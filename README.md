@@ -6,6 +6,7 @@ ALPHA ALPHA ALPHA. THERE IS NO HELP YET. PRIVATE RELEASE ONLY.
 CANDY:
 Log in to Computer1 from Computer2 through any firewall/NAT without port forwarding or server.
 ```
+$ cd examples
 $ ./gs-netcat -i -l   # Computer1 (workstation)
 $ ./gs-netcat -i      # Computer2 (workstation)
 ```
