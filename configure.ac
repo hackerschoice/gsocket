@@ -89,7 +89,7 @@ AC_CHECK_LIB([ssl], [SSL_new], [], [AC_MSG_ERROR([libssl not found])])
 dnl Checks for header files.
 AC_HEADER_STDC
 AC_HEADER_SYS_WAIT
-AC_CHECK_HEADERS(sys/time.h unistd.h string.h pty.h openssl/srp.h util.h)
+AC_CHECK_HEADERS(sys/time.h unistd.h string.h pty.h openssl/srp.h util.h libutil.h)
 
 dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST

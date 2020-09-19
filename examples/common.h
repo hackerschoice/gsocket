@@ -32,6 +32,9 @@
 #include <signal.h>
 #include <libgen.h>		/* basename() */
 #include <termios.h>
+#ifdef HAVE_LIBUTIL_H
+# include <libutil.h>	/* FreeBSD */
+#endif
 #ifdef HAVE_PTY_H
 # include <pty.h>
 #endif
