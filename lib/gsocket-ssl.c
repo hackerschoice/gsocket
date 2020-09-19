@@ -399,8 +399,8 @@ gs_ssl_continue(GS *gsocket)
 	/* SSL_connect()/SSL_accept() can return 1 on SUCCESS or <0 if WOULD-BLOCK */
 	/* A return value of 0 however means that the SSL was shut-down gracefully */
 	int err = SSL_get_error(gsocket->ssl, ret);
-	DEBUGF("SSL_ERROR SSL_%s() = SSL_%s(ret=%d, err=%d)\n-> %s\n", (state == GS_SSL_STATE_ACCEPT)?"accept":"connect", GS_SSL_strerror(err), ret, err, ERR_error_string(0, NULL));
-	DEBUGF("-> errno %d, %s\n", errno, strerror(errno));
+	DEBUGF("SSL_ERROR SSL_%s() = SSL_%s(ret=%d, err=%d)\n", (state == GS_SSL_STATE_ACCEPT)?"accept":"connect", GS_SSL_strerror(err), ret, err);
+	DEBUGF_Y(" %s\n", ERR_error_string(ERR_peek_last_error(), NULL));
 	gs_set_errorf(gsocket, "SSL_%s: %s", (state == GS_SSL_STATE_ACCEPT)?"accept":"connect", GS_SSL_strerror(err));
 
 	ret = gs_ssl_want_io_rw(gsocket->ctx->gselect_ctx, gsocket->fd, err);

@@ -191,7 +191,6 @@ cb_read_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 {
 	struct _peer *p = (struct _peer *)arg;
 	GS *gs = p->gs;
-	int ret;
 
 	XASSERT(p->rlen <= 0, "Already data in input buffer (%zd)\n", p->rlen);
 	p->rlen = GS_read(gs, p->rbuf, sizeof p->rbuf);
@@ -211,8 +210,8 @@ cb_read_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	if (p->rlen < 0) /* any ERROR (but EOF) */
 	{
 		DEBUGF_R("Fatal error=%zd in GS_read() (stdin-forward == %d)\n", p->rlen, p->is_stdin_forward);
-		ret = GS_shutdown(gs);
-		DEBUGF_R("GS_shutdown() = %d\n", ret);
+		GS_shutdown(gs);
+		// DEBUGF_R("GS_shutdown() = %d\n", ret);
 		/* Finish peer on FATAL (2nd EOF) or if half-duplex (never send data) */
 		peer_free(ctx, p);	// Will exit() if reading from stdin.
 		return GS_SUCCESS;	/* Successfully removed peer */
@@ -427,7 +426,7 @@ do_server(void)
 	GS_SELECT_CTX ctx;
 	int n;
 
-	GS_SELECT_CTX_init(&ctx, &gopt.rfd, &gopt.wfd, &gopt.r, &gopt.w, &gopt.tv_now, 0);
+	GS_SELECT_CTX_init(&ctx, &gopt.rfd, &gopt.wfd, &gopt.r, &gopt.w, &gopt.tv_now, GS_SEC2USEC(1));
 	/* Tell GS_CTX subsystem to use GS-SELECT */
 	GS_CTX_use_gselect(&gopt.gs_ctx, &ctx);
 
@@ -549,7 +548,7 @@ do_client(void)
 	int ret;
 	struct _peer *p;
 
-	GS_SELECT_CTX_init(&ctx, &gopt.rfd, &gopt.wfd, &gopt.r, &gopt.w, &gopt.tv_now, 0);
+	GS_SELECT_CTX_init(&ctx, &gopt.rfd, &gopt.wfd, &gopt.r, &gopt.w, &gopt.tv_now, GS_SEC2USEC(1));
 	/* Tell GS_CTX subsystem to use GS-SELECT */
 	GS_CTX_use_gselect(&gopt.gs_ctx, &ctx);
 

@@ -23,7 +23,6 @@ GS_SELECT_CTX_init(GS_SELECT_CTX *ctx, fd_set *rfd, fd_set *wfd, fd_set *r, fd_s
 
 	gettimeofday(ctx->tv_now, NULL);
 	ctx->hb_init = GS_TV_TO_USEC(ctx->tv_now);
-	// ctx->hb_last = ctx->hb_init;
 	ctx->hb_freq = frequency;
 
 	int i;
@@ -207,8 +206,8 @@ GS_select(GS_SELECT_CTX *ctx)
 			tv.tv_sec = 10;
 			tv.tv_usec = 0;
 		}
-		gs_fds_out(ctx->r, 'R');
-		gs_fds_out(ctx->w, 'W');
+		// gs_fds_out(ctx->r, 'R');
+		// gs_fds_out(ctx->w, 'W');
 
 		n = select(max_fd + 1, ctx->r, ctx->w, NULL, &tv);
 		// DEBUGF("max-fd = %d, *************** select = %d\n", max_fd, n);

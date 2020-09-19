@@ -1,8 +1,7 @@
 #! /bin/bash
 
-export GSOCKET_IP=127.0.0.1
-export GSOCKET_PORT=31337
-unset GSOCKET_IP
+#export GSOCKET_IP=127.0.0.1
+#export GSOCKET_PORT=31337
 
 # Sleep for connection time (CT). On localhost this can be 0.1
 SLEEP_CT=0.5
@@ -127,7 +126,7 @@ waittcp()
 			break;
 		fi
 	done
-	echo "Oops. TCP not listening...."
+	echo "Oops. TCP $1 not listening...."
 }
 
 sleep_ct()
@@ -135,9 +134,14 @@ sleep_ct()
 	sleep $SLEEP_CT
 }
 
+new_id()
+{
+	# Create a random secret for all tests
+	./gs-helloworld -g 2>/dev/null >id_sec.txt
+}
+
 # killall -9 gs-helloworld gs-pipe gs-full-pipe gs-netcat &>/dev/null
-# Create a random secret for all tests
-./gs-helloworld -g 2>/dev/null >id_sec.txt
+new_id
 
 if [[ "$tests" =~ '1.1 ' ]]; then
 ### 1 - Hello World
@@ -419,7 +423,7 @@ if [[ "$tests" =~ '8.2' ]]; then
 test_start -n "Running: netcat #8.2 (port forward both sides)............"
 GSPID1="$(sh -c './gs-netcat -k id_sec.txt -l -d 127.0.0.1 -p 12345 2>server_err.txt >server_out.dat & echo ${!}')"
 GSPID2="$(sh -c '(sleep 10) | nc -nl 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
-GSPID3="$(sh -c './gs-netcat -k id_sec.txt -p 12344 2>server_err.txt >server_out.dat & echo ${!}')"
+GSPID3="$(sh -c './gs-netcat -k id_sec.txt -w -p 12344 2>server_err.txt >server_out.dat & echo ${!}')"
 waittcp 12344
 waittcp 12345
 GSPID4="$(sh -c '(cat test50k.dat; sleep 15) | nc -vn 127.1 12344 >nc2_out.dat 2>nc2_err.txt & echo ${!}')"

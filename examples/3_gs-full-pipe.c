@@ -130,7 +130,6 @@ cb_read_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	// DEBUGF_G("cb_read_gs(fd = %d)\n", fd);
 	ssize_t len;
 	ssize_t wlen;
-	int ret;
 	char buf[1024];
 	len = GS_read(gs, buf, sizeof buf);
 	// DEBUGF_Y("GS_read() = %zd\n", len);
@@ -147,7 +146,7 @@ cb_read_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 
 	if (len < 0) /* any ERROR (but EOF) */
 	{
-		ret = GS_shutdown(gs);
+		GS_shutdown(gs);
 		/* Finish peer on FATAL (2nd EOF) or if half-duplex (never send data) */
 		do_exit(ctx, gs);
 		return GS_SUCCESS;	/* NOT REACHED */
@@ -219,7 +218,7 @@ do_client_or_server(void)
 	GS_SELECT_CTX ctx;
 	GS *gs = gopt.gsocket;
 
-	GS_SELECT_CTX_init(&ctx, &gopt.rfd, &gopt.wfd, &gopt.r, &gopt.w, &gopt.tv_now, 0);
+	GS_SELECT_CTX_init(&ctx, &gopt.rfd, &gopt.wfd, &gopt.r, &gopt.w, &gopt.tv_now, GS_SEC2USEC(1));
 	/* Tell GS_ subsystem to use GS-SELECT */
 	GS_CTX_use_gselect(&gopt.gs_ctx, &ctx);
 
@@ -231,7 +230,14 @@ do_client_or_server(void)
 	GS_SELECT_add_cb_r(&ctx, cb_connect_client, GS_get_fd(gs), gs, 0);
 	GS_SELECT_add_cb_w(&ctx, cb_connect_client, GS_get_fd(gs), gs, 0);
 
-	GS_select(&ctx);
+	int n;
+	while (1)
+	{
+		n = GS_select(&ctx);
+		GS_heartbeat(gopt.gsocket);
+		if (n < 0)
+			break;
+	}
 	ERREXIT("NOT REACHED\n");
 
 	GS_close(gs);
@@ -250,8 +256,9 @@ my_getopt(int argc, char *argv[])
 		{
 			default:
 				break;
+			case 'l':	/* -l not allowed for full pipe */
 			case '?':
-				usage("skrlgwACi");
+				usage("skrgwACi");
 				exit(255);
 		}
 	}

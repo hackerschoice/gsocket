@@ -82,8 +82,8 @@ dnl AC_CHECK_LIB([m], [sqrt])
 dnl AC_CHECK_LIB([net], [libnet_name_resolve], [AC_MSG_ERROR([libnet 1.0.x found. Requires libnet 1.1 or newer])])
 dnl AC_CHECK_LIB([net], [libnet_init], ,[AC_MSG_ERROR([libnet 1.1.x not found])])
 
-AC_CHECK_LIB([ssl], [SSL_new], [], [AC_MSG_ERROR([libssl not found])])
 AC_CHECK_LIB([crypto], [ENGINE_init], [], [AC_MSG_ERROR([libcrypto not found])])
+AC_CHECK_LIB([ssl], [SSL_new], [], [AC_MSG_ERROR([libssl not found])])
 
 
 dnl Checks for header files.
@@ -138,6 +138,6 @@ ${PACKAGE_NAME}-${PACKAGE_VERSION} has been configured:
  Linker flags......: ${LDFLAGS}
  Libraries.........: ${LIBS}
 
-Configuration complete. Now type: make all install; ${PACKAGE_NAME} -h"
+Configuration complete. Now type: make all install"
 
 

@@ -308,6 +308,7 @@ pty_cmd(const char *cmd)
 	if (pid == 0)
 	{
 		/* HERE: Child */
+		signal(SIGCHLD, SIG_DFL);
 		int i;
 		for (i = 3; i < FD_SETSIZE; i++)
 				close(i);
@@ -471,6 +472,8 @@ fd_net_listen(GS_SELECT_CTX *ctx, int fd, uint16_t port)
 {
 	struct sockaddr_in addr;
 	int ret;
+
+	setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof (int));
 
 	memset(&addr, 0, sizeof addr);
 	addr.sin_family = AF_INET;

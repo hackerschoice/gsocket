@@ -50,6 +50,8 @@
 
 #include <gsocket/gs-select.h>
 
+#define GS_SEC2USEC(val)		((val)*1000*1000)
+
 /* ###########################
  * ### PROTOCOL DEFINITION ###
  * ###########################

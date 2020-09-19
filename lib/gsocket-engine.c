@@ -15,7 +15,6 @@
 #include <openssl/sha.h>
 #include <netdb.h>		// gethostbyname
 #include <gsocket/gsocket.h>
-// #include <gsocket/gs-select.h>
 #include "gsocket-engine.h"
 #include "gsocket-sha256.h"	// Use internal SHA256 if no OpenSSL available
 
@@ -29,9 +28,9 @@ int gs_debug_level;
 #define GS_NET_DEFAULT_HOST			"gs.thc.org"
 #define GS_NET_DEFAULT_PORT			7350
 #ifdef WITH_DEBUG
-# define GS_DEFAULT_PING_INTERVAL	(60)
+# define GS_DEFAULT_PING_INTERVAL	(10)
 #else
-# define GS_DEFAULT_PING_INTERVAL	(600 - 60)	/* Every 9 minutes */
+# define GS_DEFAULT_PING_INTERVAL	(2*60)	/* Every n minutes */
 #endif
 
 // #define STRESSTEST	1
@@ -58,9 +57,6 @@ int_ntoa(uint32_t ip)
 #define gs_set_error(gs_ctx, a...)	do { \
 	snprintf(gs_ctx->err_buf, sizeof (gs_ctx)->err_buf, a); \
 } while (0)
-
-/* An array that maps fd -> SSL/srpData */
-/* Used to quickly find data when fd becomes read/writeable. */
 
 void
 gs_fds_out_fd(fd_set *fdset, char id, int fd)
@@ -477,6 +473,7 @@ gs_process_by_sox(GS *gsocket, struct gs_sox *sox)
 	int ret;
 	GS_CTX *gs_ctx = gsocket->ctx;
 
+	errno = 0;
 	if (FD_ISSET(sox->fd, gs_ctx->w))
 	{
 		DEBUGF("fd == %d\n", sox->fd);
@@ -564,6 +561,7 @@ GS_heartbeat(GS *gsocket)
 	if (gsocket->fd >= 0)
 		return;
 
+	DEBUGF_M("GS_heartbeat()\n");
 	/* Check if it is time to send a PING to keep the connection alive */
 	for (i = 0; i < gsocket->net.n_sox; i++)
 	{
@@ -585,10 +583,10 @@ GS_heartbeat(GS *gsocket)
 			continue;
 
 		uint64_t tv_diff = GS_TV_DIFF(&sox->tv_last_data, gsocket->ctx->tv_now);
+		// DEBUGF("diff = %llu\n", tv_diff);
 		if (tv_diff > GS_SEC_TO_USEC(GS_DEFAULT_PING_INTERVAL))
 		{
 			gs_pkt_ping_write(gsocket, sox);
-			// gettimeofday(gsocket->ctx->tv_now, NULL);
 			memcpy(&sox->tv_last_data, gsocket->ctx->tv_now, sizeof sox->tv_last_data);
 		}	
 	}
@@ -612,8 +610,6 @@ gs_process(GS *gsocket)
 		ERREXIT("Should not happen\n");
 		return 0;
 	}
-	// DEBUGF("inside gs_process (gsocket->fd = %d)\n", gsocket->fd);
-	// gettimeofday(&gsocket->ctx->tv_now, NULL);
 
 	for (i = 0; i < gsocket->net.n_sox; i++)
 	{
@@ -655,7 +651,7 @@ gs_process(GS *gsocket)
 
 	}
 
-	DEBUGF("Returning 0 (while net.fd_accepted is %d\n", gsocket->net.fd_accepted);
+	DEBUGF("Returning 0 (fd_accepted == %d)\n", gsocket->net.fd_accepted);
 	return 0;
 }
 
@@ -870,7 +866,7 @@ gs_connect(GS *gsocket)
 	}
 
 	ret = gs_process(gsocket);
-	DEBUGF("gs_process() = %d, error(%d) = %s\n", ret, errno, strerror(errno));
+	DEBUGF("gs_process() = %d, error(%d) = %s\n", ret, errno, errno?strerror(errno):"");
 	if (ret != 0)
 		return GS_ERR_FATAL;
 
@@ -888,7 +884,6 @@ gs_connect(GS *gsocket)
 		return 0;
 	}
 
-	DEBUGF("gs_connect() will ret -1 (waiting)\n");
 	return GS_ERR_WAITING;
 }
 
@@ -914,6 +909,8 @@ gs_connect_blocking(GS *gsocket)
 		n = select(gsocket->ctx->max_sox + 1, ctx->r, ctx->w, NULL, &tv);
 		if ((n < 0) && (errno == EINTR))
 			continue;
+		gettimeofday(gsocket->ctx->tv_now, NULL);
+		GS_heartbeat(gsocket);
 		if (n == 0)
 			continue;
 
@@ -960,7 +957,7 @@ GS_connect(GS *gsocket)
 
 	if (ret < 0)
 	{
-		DEBUGF("Oops, GS_connect() will ret = %d (waiting or fatal)\n", ret);
+		DEBUGF("GS_connect() will ret = %d (%s)\n", ret, ret==GS_ERR_WAITING?"WAITING":"FATAL");
 		return ret;
 	}
 
@@ -1051,7 +1048,6 @@ gs_accept(GS *gsocket, GS *new_gs)
 	ret = gs_process(gsocket);
 	if (ret != 0)
 	{
-
 		DEBUGF("ERROR: in gs_process(), ret = %d\n", ret);
 		return -2;	/* ERROR, FIXME: This is fatal and we should exit? */
 	}
@@ -1082,13 +1078,20 @@ int
 gs_accept_blocking(GS *gsocket, GS *new_gs)
 {
 	int ret;
+	int n;
 
 	while (1)
 	{
 		struct timeval tv = {1, 0};
 		memcpy(gsocket->ctx->r, gsocket->ctx->rfd, sizeof *gsocket->ctx->r);
 		memcpy(gsocket->ctx->w, gsocket->ctx->wfd, sizeof *gsocket->ctx->w);
-		select(gsocket->ctx->max_sox + 1, gsocket->ctx->r, gsocket->ctx->w, NULL, &tv);
+		n = select(gsocket->ctx->max_sox + 1, gsocket->ctx->r, gsocket->ctx->w, NULL, &tv);
+		if ((n < 0) && (errno == EINTR))
+			continue;
+		gettimeofday(gsocket->ctx->tv_now, NULL);
+		GS_heartbeat(gsocket);
+		if (n == 0)
+			continue;
 
 		ret = gs_accept(gsocket, new_gs);
 		if (ret == -2)
@@ -1279,53 +1282,16 @@ GS_shutdown(GS *gsocket)
 }
 
 /*
- * Return TRUE (1) if any of the fd is flagged for reading
- * or writing.
- *
- * Return FALSE (0) otherwise.
- */
-#if 0
-int
-GS_fd_isset(GS *gsocket, fd_set *rfd, fd_set *wfd)
-{
-	if (gsocket->fd >= 0)
-	{
-		if ((rfd != NULL) && (FD_ISSET(gsocket->fd, rfd)))
-			return 1;
-		if ((wfd != NULL) && (FD_ISSET(gsocket->fd, wfd)))
-			return 1;
-
-		return 0;	/* Neither READ not WRITE flag is set */
-	}
-
-	int i;
-	for (i = 0; i < gsocket->net.n_sox; i++)
-	{
-		struct gs_sox * sox = &gsocket->net.sox[i];
-		// DEBUGF("fd = %d (listening)\n", sox->fd);
-
-		if ((rfd != NULL) && FD_ISSET(sox->fd, rfd))
-			return 1;
-		if ((wfd != NULL) && FD_ISSET(sox->fd, wfd))
-			return 1;
-
-		return 0;
-	}
-
-	ERREXIT("NOT REACHED\n");
-	return 0;
-}
-#endif
-
-/*
  * Return error string (0-terminated).
- * Format: [<errno-str> - ]<Internal Error Buffer>
+ * Format: [<errno-str> - ]<Internal Error Buffer>[[SSL-Error string]]
  */
 const char *
 GS_CTX_strerror(GS_CTX *gs_ctx)
 {
 	char *dst = gs_ctx->err_buf2;
 	int dlen = sizeof gs_ctx->err_buf2;
+
+	*dst = 0;
 
 	// First record 'errno' (if set) 
 	if (errno != 0)
@@ -1337,6 +1303,14 @@ GS_CTX_strerror(GS_CTX *gs_ctx)
 		if (errno != 0)
 			snprintf(dst + strlen(dst), dlen - strlen(dst), " - "); // strlcat(dst, " - ", dlen);
 		snprintf(dst + strlen(dst), dlen - strlen(dst), "%s", gs_ctx->err_buf);
+	}
+
+	int err;
+	err = ERR_peek_last_error();
+	if (err != 0)
+	{
+		/* VERBOSE */
+		snprintf(dst + strlen(dst), dlen - strlen(dst), " [%s]", ERR_error_string(err, NULL));
 	}
 
 	return gs_ctx->err_buf2;
