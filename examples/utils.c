@@ -9,6 +9,7 @@ init_defaults(void)
 {
 	GS_library_init();
 
+	gopt.log_fp = stderr;
 	gopt.is_encryption = 1;
 	signal(SIGPIPE, SIG_IGN);
 	signal(SIGCHLD, SIG_IGN);	// no defunct childs please
@@ -54,7 +55,7 @@ init_vars(void)
 
 	gopt.sec_str = GS_user_secret(&gopt.gs_ctx, gopt.sec_file, gopt.sec_str);
 
-	fprintf(stderr, "=Secret    : \"%s\"\n", gopt.sec_str);
+	VLOG("=Secret    : \"%s\"\n", gopt.sec_str);
 
 	/* Convert a secret string to an address */
 	GS_ADDR_str2addr(&gopt.gs_addr, gopt.sec_str);
@@ -71,8 +72,8 @@ init_vars(void)
 		/* SUCCESS */
 		DEBUGF_M("Columns: %d, Rows: %d\n", gopt.winsize.ws_col, gopt.winsize.ws_row);
 	} else {
-			gopt.winsize.ws_col = 80;
-			gopt.winsize.ws_row = 24;
+		gopt.winsize.ws_col = 80;
+		gopt.winsize.ws_row = 24;
 	}
 
 }
@@ -86,6 +87,9 @@ usage(const char *params)
 	{
 		switch (params[0])
 		{
+			case 'q':
+				fprintf(stderr, "  -q           Quite. No log output\n");
+				break;
 			case 'r':
 				fprintf(stderr, "  -r           Receive-only. Terminate when no more data.\n");
 				break;
@@ -135,6 +139,9 @@ do_getopt(int argc, char *argv[])
 	{
 		switch (c)
 		{
+			case 'q':
+				gopt.log_fp = NULL;
+				break;
 			case 'r':
 				gopt.is_receive_only = 1;
 				break;
@@ -163,7 +170,7 @@ do_getopt(int argc, char *argv[])
 				gopt.sec_file = optarg;
 				break;
 			case 'g':		/* Generate a secret */
-				printf("%s", GS_gen_secret());
+				printf("%s\n", GS_gen_secret());
 				fflush(stdout);
 				exit(0);
 		}
@@ -176,16 +183,22 @@ static int is_stty_set_raw;
 struct termios tios_saved;
 
 /*
- * Save TTY state and set raw mode.
+ * Client only: Save TTY state and set raw mode.
  */
 void
 stty_set_raw(void)
 {
+	int ret;
 	if (is_stty_set_raw)
 		return;
 
+	if (!isatty(STDIN_FILENO))
+		return;
+
     struct termios tios;
-    tcgetattr(STDIN_FILENO, &tios);
+    ret = tcgetattr(STDIN_FILENO, &tios);
+    if (ret != 0)
+    	return;
     memcpy(&tios_saved, &tios, sizeof tios_saved);
     tios.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
 	tios.c_oflag &= ~(OPOST);
@@ -426,7 +439,7 @@ fd_net_connect(GS_SELECT_CTX *ctx, int fd, uint32_t ip, uint16_t port)
 	addr.sin_addr.s_addr = ip;
 	addr.sin_port = port;
 	ret = connect(fd, (struct sockaddr *)&addr, sizeof addr);
-	DEBUGF("connect(%s, fd = %d): %d (errno = %d)\n", int_ntoa(ip), fd, ret, errno);
+	DEBUGF("connect(%s:%d, fd = %d): %d (errno = %d)\n", int_ntoa(ip), ntohs(port), fd, ret, errno);
 	if (ret != 0)
 	{
 		if ((errno == EINPROGRESS) || (errno == EAGAIN) || (errno == EINTR))

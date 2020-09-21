@@ -106,13 +106,10 @@ my_getopt(int argc, char *argv[])
 	do_getopt(argc, argv);	/* from utils.c */
 
 	optind = 1;
-	while ((c = getopt(argc, argv, UTILS_GETOPT_STR "m")) != -1)
+	while ((c = getopt(argc, argv, UTILS_GETOPT_STR)) != -1)
 	{
 		switch (c)
 		{
-			case 'm':
-				fprintf(stderr, "Example Options set\n");
-				break;
 			default:
 				break;
 			case '?':
@@ -128,7 +125,7 @@ my_getopt(int argc, char *argv[])
 	/* Do not use end-2-end encryption */
 	GS_setsockopt(gopt.gsocket, GS_OPT_NO_ENCRYPTION, NULL, 0);
 
-	fprintf(stderr, "=Encryption: %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
+	VLOG("=Encryption: %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
 }
 
 int

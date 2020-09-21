@@ -55,6 +55,7 @@ struct _gopt
 	GS_CTX gs_ctx;
 	GS *gsocket;	/* Listening gsocket */
 
+	FILE *log_fp;
 	int flags;
 	int verboselevel;
 	const char *sec_str;
@@ -74,6 +75,7 @@ struct _gopt
 	uint16_t port;		/* NBO */
 	struct winsize winsize;
 	int peer_count;
+	int peer_id_counter;	
 };
 
 #define GSC_FL_IS_SERVER		(0x01)

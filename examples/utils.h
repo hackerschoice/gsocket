@@ -13,7 +13,12 @@ void stty_set_raw(void);
 void stty_reset(void);
 void stty_check_esc(GS *gs, char c);
 
-/* hack to set rows/columns and allow screen in a screen */
-#define GS_STTY_INIT_HACK	"stty rows %d columns %d;unset STY\r"
+#define VLOG(a...)	do{if (gopt.log_fp == NULL){break;} fprintf(gopt.log_fp, a); }while(0)
 
-#define UTILS_GETOPT_STR	"igwACrla:s:k:"
+/* hack to set rows/columns and allow screen in a screen
+ * unset STY - allow screen in a screen
+ * set -e STTY - fish shell (unset)
+ */
+#define GS_STTY_INIT_HACK	"(stty rows %d columns %d;unset STY; set -e STY)&>/dev/null\r"
+
+#define UTILS_GETOPT_STR	"igqwACrla:s:k:p:d:e:"

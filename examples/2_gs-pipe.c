@@ -136,7 +136,7 @@ my_getopt(int argc, char *argv[])
 			default:
 				break;
 			case '?':
-				usage("sklgwAC");
+				usage("sklgqwAC");
 				exit(255);
 		}
 	}
@@ -146,7 +146,7 @@ my_getopt(int argc, char *argv[])
 	/* This example uses blocking sockets. Set blocking. */
 	GS_setsockopt(gopt.gsocket, GS_OPT_BLOCK, NULL, 0);
 
-	fprintf(stderr, "=Encryption: %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
+	VLOG("=Encryption: %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
 }
 
 int

@@ -50,6 +50,8 @@ struct _peer
 	int is_network_forward;
 	int is_stdin_forward;
 	int is_app_forward;
+	/* For Statistics */
+	int id;			/* Stats: assign an ID to each pere */
 };
 
 /* All connected gs-peers indexed by gs->fd */
@@ -57,6 +59,39 @@ static struct _peer *peers[FD_SETSIZE];
 
 /* static functions declaration */
 static int write_gs(GS_SELECT_CTX *ctx, struct _peer *p);
+
+/*
+ * Make statistics and return them in 'dst'
+ */
+static void
+peer_mk_stats(char *dst, size_t len, struct _peer *p)
+{
+	GS *gs = p->gs;
+
+	struct timeval *tv_now = gs->ctx->tv_now;
+	gettimeofday(tv_now, NULL);
+	uint64_t diff = GS_TV_DIFF(&gs->tv_connected, tv_now);
+	int64_t msec = diff / 1000;
+	msec = MAX(msec, 1);	/* dont device by zero */
+
+	char dbuf[64];
+	GS_usecstr(dbuf, sizeof dbuf, diff);
+	char rbuf[64];
+	char wbuf[64];
+	GS_bytesstr_long(rbuf, sizeof rbuf, gs->bytes_read);
+	GS_bytesstr_long(wbuf, sizeof wbuf, gs->bytes_written);
+	// GS_bytesstr(rbuf, sizeof rbuf, gs->bytes_read);
+	// GS_bytesstr(wbuf, sizeof wbuf, gs->bytes_written);
+	char rbufps[64];
+	char wbufps[64];
+	int bps = ((gs->bytes_read * 1000) / msec);
+	GS_bytesstr(rbufps, sizeof rbufps, bps==0?0:bps);
+	bps = ((gs->bytes_written * 1000) / msec);
+	GS_bytesstr(wbufps, sizeof wbufps, bps==0?0:bps);
+
+	snprintf(dst, len, "[ID=%d] Disconnected after %s\n    Up: %s Bytes [%s/s], Down: %s Bytes [%s/s]\n", p->id, dbuf, wbuf, wbufps, rbuf, rbufps);
+}
+
 
 /*
  * Close gs-peer and free memory. Close peer->fd unless it's 
@@ -77,7 +112,6 @@ peer_free(GS_SELECT_CTX *ctx, struct _peer *p)
 	GS_SELECT_del_cb(ctx, p->fd_in);
 	if (is_stdin_forward)
 	{
-		// stty_reset(); // resets only if stored settings available.
 		// We could hard exit here but we like to see all the
 		// stats that GS_close() gives us...
 		//exit(0);	// this will close all fd's :>
@@ -86,6 +120,11 @@ peer_free(GS_SELECT_CTX *ctx, struct _peer *p)
 		/*. Not stdin/stdout. */
 		close(p->fd_in);
 	}
+
+	stty_reset();
+	char buf[512];
+	peer_mk_stats(buf, sizeof buf, p);
+	VLOG("%s %s", GS_logtime(), buf);
 
 	GS_SELECT_del_cb(ctx, gs->fd);
 
@@ -157,6 +196,7 @@ write_fd(GS_SELECT_CTX *ctx, struct _peer *p)
 {
 	ssize_t len;
 
+
 	len = write(p->fd_out, p->rbuf, p->rlen);
 	// DEBUGF_G("write(fd = %d,, len = %zd) == %zd\n", p->fd_out, p->rlen, len);
 	
@@ -169,7 +209,7 @@ write_fd(GS_SELECT_CTX *ctx, struct _peer *p)
 		return GS_SUCCESS;	/* Successfully handled */
 	}
 
-	if (len <= 0)
+	if (len < 0)
 	{
 		peer_free(ctx, p);
 		return GS_SUCCESS;	/* Succesfully remove peer */
@@ -272,6 +312,9 @@ completed_connect(GS_SELECT_CTX *ctx, struct _peer *p, int fd_in, int fd_out)
 	FD_SET(gs->fd, ctx->rfd);
 }
 
+/*
+ * Complete TCP connection to network forward on server side.
+ */
 static int
 cb_complete_connect(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 {
@@ -293,6 +336,9 @@ cb_complete_connect(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	return GS_SUCCESS;
 }
 
+/*
+ * Server & Client
+ */
 static struct _peer *
 peer_new_init(GS *gs)
 {
@@ -304,6 +350,8 @@ peer_new_init(GS *gs)
 	p->gs = gs;
 	peers[fd] = p;
 	gopt.peer_count++;
+	gopt.peer_id_counter++;
+	p->id = gopt.peer_id_counter;
 	DEBUGF_M("Connected gs-peers: %d\n", gopt.peer_count);
 
 	return p;
@@ -371,6 +419,7 @@ peer_new(GS_SELECT_CTX *ctx, GS *gs)
 		GS_SELECT_add_cb(ctx, cb_complete_connect, cb_complete_connect, p->fd_in, p, 0);
 		FD_SET(p->fd_in, ctx->wfd);	/* Wait for connect() to complete */
 		FD_CLR(p->fd_in, ctx->rfd);
+
 		FD_CLR(gs->fd, ctx->rfd);		// Stop reading from GS-peer 
 	}
 
@@ -414,6 +463,8 @@ cb_listen(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	if (p == NULL)
 		return GS_SUCCESS;	/* free'ing peer was a success */
 
+	VLOG("[ID=%d] New Connection\n", p->id);
+
 	/* Start reading from Network (SRP is handled by GS_read()/GS_write()) */
 	GS_SELECT_add_cb(ctx, cb_read_gs, cb_write_gs, gs_new->fd, p, 0);
 
@@ -426,7 +477,7 @@ do_server(void)
 	GS_SELECT_CTX ctx;
 	int n;
 
-	GS_SELECT_CTX_init(&ctx, &gopt.rfd, &gopt.wfd, &gopt.r, &gopt.w, &gopt.tv_now, GS_SEC2USEC(1));
+	GS_SELECT_CTX_init(&ctx, &gopt.rfd, &gopt.wfd, &gopt.r, &gopt.w, &gopt.tv_now, GS_SEC_TO_USEC(1));
 	/* Tell GS_CTX subsystem to use GS-SELECT */
 	GS_CTX_use_gselect(&gopt.gs_ctx, &ctx);
 
@@ -480,10 +531,14 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	/* Start reading from Network (SRP is handled by GS_read()/GS_write()) */
 	GS_SELECT_add_cb(ctx, cb_read_gs, cb_write_gs, fd, p, 0);
 
+	/* Start reading from STDIN or inbound TCP */
+	GS_SELECT_add_cb(ctx, cb_read_fd, cb_write_fd, p->fd_in, p, 0);
+	FD_SET(p->fd_in, ctx->rfd);	/* Start reading */
+
 	/* -i specified and we are a client: Set TTY to raw for a real shell
 	 * experience. Ignore this for this example.
 	 */
-	if ((p->is_stdin_forward) && (gopt.is_interactive)) // && (!GS_is_server(gs)))
+	if ((p->is_stdin_forward) && (gopt.is_interactive))
 	{
 		/* HERE: Client */
 		DEBUGF_M("Setting tty\n");
@@ -492,13 +547,12 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 		stty_set_remote_size(ctx, p);
 	}
 
-	/* Start reading from STDIN or inbound TCP */
-	GS_SELECT_add_cb(ctx, cb_read_fd, cb_write_fd, p->fd_in, p, 0);
-	FD_SET(p->fd_in, ctx->rfd);	/* Start reading */
-
 	return GS_SUCCESS;
 }
 
+/*
+ * Client
+ */
 static struct _peer *
 gs_and_peer_connect(GS_SELECT_CTX *ctx, GS *gs, int fd_in, int fd_out)
 {
@@ -518,6 +572,9 @@ gs_and_peer_connect(GS_SELECT_CTX *ctx, GS *gs, int fd_in, int fd_out)
 	return p;
 }
 
+/*
+ * Client accepting incoming TCP connection to be forwarded to GS
+ */
 static int
 cb_accept(GS_SELECT_CTX *ctx, int listen_fd, void *arg, int val)
 {
@@ -536,6 +593,12 @@ cb_accept(GS_SELECT_CTX *ctx, int listen_fd, void *arg, int val)
 	p = gs_and_peer_connect(ctx, gs, fd, fd);	/* in/out fd's are identical for TCP */
 	p->is_network_forward = 1;
 
+	struct sockaddr_in addr;
+	memset(&addr, 0, sizeof addr);
+	socklen_t len = sizeof addr;
+	getpeername(fd, (struct sockaddr *)&addr, &len);
+	VLOG("%s [ID=%d] New Connection from %s:%d\n", GS_logtime(), p->id, inet_ntoa(addr.sin_addr), ntohs(addr.sin_port));
+
 	return GS_SUCCESS;
 }
 
@@ -548,7 +611,7 @@ do_client(void)
 	int ret;
 	struct _peer *p;
 
-	GS_SELECT_CTX_init(&ctx, &gopt.rfd, &gopt.wfd, &gopt.r, &gopt.w, &gopt.tv_now, GS_SEC2USEC(1));
+	GS_SELECT_CTX_init(&ctx, &gopt.rfd, &gopt.wfd, &gopt.r, &gopt.w, &gopt.tv_now, GS_SEC_TO_USEC(1));
 	/* Tell GS_CTX subsystem to use GS-SELECT */
 	GS_CTX_use_gselect(&gopt.gs_ctx, &ctx);
 
@@ -556,7 +619,6 @@ do_client(void)
 	{
 		/* Read/Write from STDIN/STDOUT. No TCP. */
 		/* STDIN can be blocking */
-		/* FIXME: can we use socketpair() and dup2() to reduce this to 1 fd? */
 		p = gs_and_peer_connect(&ctx, gopt.gsocket, STDIN_FILENO, STDOUT_FILENO);
 		p->is_stdin_forward = 1;
 	} else {
@@ -586,7 +648,7 @@ my_usage(void)
 "gs-netcat [-lwiC] [-e cmd] [-p port] [-d ip]\n"
 "");
 
-	usage("skrlgwCie");
+	usage("skrlgqwCie");
 	fprintf(stderr, ""
 "\n"
 "Example to forward traffic from port 2222 to 192.168.6.7:22:\n"
@@ -608,8 +670,8 @@ my_getopt(int argc, char *argv[])
 	int c;
 
 	do_getopt(argc, argv);	/* from utils.c */
-	optind = 1;
-	while ((c = getopt(argc, argv, UTILS_GETOPT_STR "p:d:e:")) != -1)
+	optind = 1;	/* Start from beginning */
+	while ((c = getopt(argc, argv, UTILS_GETOPT_STR)) != -1)
 	{
 		switch (c)
 		{
@@ -636,7 +698,7 @@ my_getopt(int argc, char *argv[])
 	if (gopt.is_encryption == 0)
 		GS_setsockopt(gopt.gsocket, GS_OPT_NO_ENCRYPTION, NULL, 0);
 
-	fprintf(stderr, "=Encryption: %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
+	VLOG("=Encryption: %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
 }
 
 int

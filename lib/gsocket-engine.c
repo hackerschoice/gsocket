@@ -28,7 +28,7 @@ int gs_debug_level;
 #define GS_NET_DEFAULT_HOST			"gs.thc.org"
 #define GS_NET_DEFAULT_PORT			7350
 #ifdef WITH_DEBUG
-# define GS_DEFAULT_PING_INTERVAL	(10)
+# define GS_DEFAULT_PING_INTERVAL	(30)
 #else
 # define GS_DEFAULT_PING_INTERVAL	(2*60)	/* Every n minutes */
 #endif
@@ -37,6 +37,8 @@ int gs_debug_level;
 #ifdef STRESSTEST
 # define GS_DEFAULT_PING_INTERVAL	(1)
 #endif
+
+static const char unit[] = "BKMGT";    /* Up to Exa-bytes. */
 
 static int gs_pkt_listen_write(GS *gsocket, struct gs_sox *sox);
 static int gs_pkt_connect_write(GS *gsocket, struct gs_sox *sox);
@@ -117,6 +119,7 @@ GS_CTX_init(GS_CTX *ctx, fd_set *rfd, fd_set *wfd, fd_set *r, fd_set *w, struct 
 	ctx->w = w;
 	ctx->tv_now = tv_now;
 	ctx->out = stderr;	/* library output to STDERR */
+	ctx->log_fp = stderr;
 
 	if (ctx->rfd == NULL)
 	{
@@ -171,6 +174,32 @@ hostname_to_ip(char *hostname)
 	return addr_list[0][0].s_addr;
 }
 
+
+/*
+ * Copy over all elements of a GS to gs_new
+ * but increment gs-specific counters.
+ * This is typically used to create a GS from a listening GS.
+ */
+static void
+gs_instantiate(GS *gsocket, GS *new_gs, int new_fd)
+{
+
+		new_gs->ctx = gsocket->ctx;
+		new_gs->fd = new_fd;
+		new_gs->flags = gsocket->flags;
+		new_gs->ctx->gsocket_success_count++;
+		new_gs->id = new_gs->ctx->gsocket_success_count;
+
+#ifdef WITH_GSOCKET_SSL
+		new_gs->ssl_ctx = gsocket->ssl_ctx;
+		new_gs->srpData = gsocket->srpData;
+		memcpy(new_gs->srp_sec, gsocket->srp_sec, sizeof new_gs->srp_sec);
+		if (new_gs->ssl != NULL)
+			DEBUGF("*** WARNING ***: old SSL found???\n");
+		new_gs->ssl = NULL;
+#endif
+}
+
 GS *
 GS_new(GS_CTX *ctx, GS_ADDR *addr)
 {
@@ -183,7 +212,7 @@ GS_new(GS_CTX *ctx, GS_ADDR *addr)
 		return NULL;
 
 	gsocket->fd = -1;
-	
+
 	ptr = getenv("GSOCKET_PORT");
 	if (ptr != NULL)
 		gsocket->net.port = htons(atoi(ptr));
@@ -425,6 +454,9 @@ gs_pkt_dispatch(GS *gsocket, struct gs_sox *sox)
 
 	if (sox->rbuf[0] == GS_PKT_TYPE_START)
 	{
+		/* Called by CLIENT and SERVER. Thereafter it's up to the application
+		 * layer.
+		 */
 		struct _gs_start *start = (struct _gs_start *)sox->rbuf;
 		DEBUGF("START received. (flags = 0x%2.2x)\n", start->flags);
 		if (start->flags & GS_FL_PROTO_START_SERVER)
@@ -433,6 +465,9 @@ gs_pkt_dispatch(GS *gsocket, struct gs_sox *sox)
 			gsocket->flags |= GS_FL_IS_SERVER;
 		}
 		sox->state = GS_STATE_APP_CONNECTED;
+		gettimeofday(gsocket->ctx->tv_now, NULL);
+		memcpy(&gsocket->tv_connected, gsocket->ctx->tv_now, sizeof gsocket->tv_connected);
+		/* Indicate to caller that a new GS connection has started */
 		gsocket->net.fd_accepted = sox->fd;
 
 		gs_pkt_accept_write(gsocket, sox);
@@ -561,7 +596,7 @@ GS_heartbeat(GS *gsocket)
 	if (gsocket->fd >= 0)
 		return;
 
-	DEBUGF_M("GS_heartbeat()\n");
+	// DEBUGF_M("GS_heartbeat()\n");
 	/* Check if it is time to send a PING to keep the connection alive */
 	for (i = 0; i < gsocket->net.n_sox; i++)
 	{
@@ -792,6 +827,11 @@ gs_net_init(GS *gsocket, int backlog)
 /*
  * Free fd from GS-NET structure and pass to application layer.
  * Return 0 on success.
+ *
+ * This function is called by GS_accept() and GS_connect()
+ * GS_connect() is gsocket == new_gs because the same GS is used
+ * whereas for GS_accept() the gsocket is the listening socket (that will
+ * continue to listen) and new_gs is a newly created GS.
  */
 static int
 gs_net_disengage_tcp_fd(GS *gsocket, GS *new_gs)
@@ -810,27 +850,16 @@ gs_net_disengage_tcp_fd(GS *gsocket, GS *new_gs)
 		 * Return GS-connected socket fd to app (and stop processing any PKT on that fd...).
 		 */
 		new_fd = gsocket->net.fd_accepted;
+
 		gsocket->net.fd_accepted = -1;
-		sox->state = GS_STATE_SYS_NONE;
 		gsocket->flags &= ~GS_FL_TCP_CONNECTED;
 		gsocket->net.conn_count -= 1;
 		if (gsocket->net.conn_count < 0)
 			ERREXIT("FATAL: conn_count dropped to %d\n", gsocket->net.conn_count);
+		sox->state = GS_STATE_SYS_NONE;
 		sox->fd = -1;
 
-		// GS *new_gs = calloc(1, sizeof *new_gs);
-		// XASSERT(new_gs != NULL, "calloc()\n");
-		new_gs->ctx = gsocket->ctx;
-		new_gs->fd = new_fd;
-		new_gs->flags = gsocket->flags;
-#ifdef WITH_GSOCKET_SSL
-		new_gs->ssl_ctx = gsocket->ssl_ctx;
-		new_gs->srpData = gsocket->srpData;
-		memcpy(new_gs->srp_sec, gsocket->srp_sec, sizeof new_gs->srp_sec);
-		if (new_gs->ssl != NULL)
-			DEBUGF("*** WARNING ***: old SSL found???\n");
-		new_gs->ssl = NULL;
-#endif
+		gs_instantiate(gsocket, new_gs, new_fd);
 
 		return 0;
 	}
@@ -1049,7 +1078,7 @@ gs_accept(GS *gsocket, GS *new_gs)
 	if (ret != 0)
 	{
 		DEBUGF("ERROR: in gs_process(), ret = %d\n", ret);
-		return -2;	/* ERROR, FIXME: This is fatal and we should exit? */
+		return GS_ERR_FATAL;
 	}
 
 	/* Check if there is a new gs-connection waiting */
@@ -1063,10 +1092,10 @@ gs_accept(GS *gsocket, GS *new_gs)
 		/* Start new TCP to GS-Net to listen for more incoming connections */
 		gs_net_connect(gsocket);
 
-		return 0;	/* SUCCESS */
+		return GS_SUCCESS;
 	}
 
-	return -1; /* Waiting for socket */
+	return GS_ERR_WAITING; /* Waiting for socket */
 }
 
 /*
@@ -1119,17 +1148,17 @@ gs_accept_blocking(GS *gsocket, GS *new_gs)
 GS *
 GS_accept(GS *gsocket, int *err)
 {
-	GS gs_l;
+	GS gs_tmp;
 	int ret;
 
 	if (err != NULL)
 		*err = 0;
 
-	memset(&gs_l, 0, sizeof gs_l);
+	memset(&gs_tmp, 0, sizeof gs_tmp);
 	if (gsocket->flags & GS_FL_NONBLOCKING)
-		ret = gs_accept(gsocket, &gs_l);
+		ret = gs_accept(gsocket, &gs_tmp);
 	else
-		ret = gs_accept_blocking(gsocket, &gs_l);
+		ret = gs_accept_blocking(gsocket, &gs_tmp);
 
 	if (ret < 0)
 	{
@@ -1139,13 +1168,11 @@ GS_accept(GS *gsocket, int *err)
 	}
 
 	/* HERE: gs_accept() SUCCESS */
-	/* Negotiate SRP */		
-
 	/* Instantiate gs */
 	GS *new_gs = calloc(1, sizeof *new_gs);
 	XASSERT(new_gs != NULL, "calloc()\n");
-	memcpy(new_gs, &gs_l, sizeof *new_gs);
-	DEBUGF("new_gs == %p\n", new_gs);
+	memcpy(new_gs, &gs_tmp, sizeof *new_gs);
+	memcpy(&new_gs->tv_connected, gsocket->ctx->tv_now, sizeof new_gs->tv_connected);
 
 	new_gs->flags |= GS_FL_IS_SERVER;
 #ifdef WITH_GSOCKET_SSL
@@ -1646,6 +1673,145 @@ static const int8_t b58digits_map[] = {
 	47,48,49,50,51,52,53,54, 55,56,57,-1,-1,-1,-1,-1,
 };
 
+
+/*
+ * Convert usec into human readable string of duration.
+ * '123hrs 59min 59.283sec'
+ */
+char *
+GS_usecstr(char *buf, size_t len, uint64_t usec)
+{
+	static char buf2[64];
+	char *ptr = buf;
+
+	if (buf == NULL)
+	{
+		len = sizeof buf2;
+		ptr = buf2;
+	}
+
+	int sec;
+	int min;
+	int msec;
+	int hr;
+
+	// usec = (uint64_t)((2*60*60+61)*1000 + 123) * 1000;
+	msec = (usec / 1000) % 1000;
+	sec = usec / 1000000;
+
+	hr = sec / 3600;
+	sec -= hr * 3600;
+	min = sec / 60;
+	sec -= min * 60;
+
+	*ptr = 0;
+#if 0
+	if (hr != 0)
+		snprintf(ptr, len, "%d:%02d:%02d.%03d", hr, min, sec, msec);
+	else
+		snprintf(ptr, len, "%02d:%02d.%03d", min, sec, msec);
+#endif
+
+	if (hr != 0)
+		snprintf(ptr, len, "%dhrs %2dmin %2d.%03dsec", hr, min, sec, msec);
+	else
+		snprintf(ptr, len, "%2d min %2d.%03d sec", min, sec, msec);
+	return ptr;
+
+}
+
+/*
+ * Convert bytes into human readable string (TB, MB, KB or B).
+ */
+char *
+GS_bytesstr(char *dst, size_t len, int64_t bytes)
+{
+	static char buf2[64];
+	char *ptr = dst;
+
+	if (dst == NULL)
+	{
+		len = sizeof buf2;
+		ptr = buf2;
+	}
+
+	int i;
+
+	bytes *= 100;
+	for (i = 0; bytes >= 100*1000 && unit[i] != 'T'; i++)
+		bytes = (bytes + 512) / 1024;
+
+	snprintf(ptr, len, "%3lld.%1lld%c%s",
+		(long long) (bytes + 5) / 100,
+		(long long) (bytes + 5) / 10 % 10,
+		unit[i],
+		i ? "B" : " ");
+
+	return ptr;
+}
+
+/*
+ * Convert bytes into full length string with thousands seperation ','
+ */
+char *
+GS_bytesstr_long(char *dst, size_t len, int64_t bytes)
+{
+	if (dst == NULL)
+		return NULL;
+
+	int m = bytes / 1000 / 1000;
+	bytes -= m * 1000 * 1000;
+	int k = bytes / 1000;
+	bytes -= k * 1000;
+
+	if (m > 0)
+		snprintf(dst, len, "%d,%03d,%03d", m, k, (int)bytes);
+	else if (k > 0)
+		snprintf(dst, len, "%d,%03d", k, (int)bytes);
+	else
+		snprintf(dst, len, "%d", (int)bytes);
+
+	return dst;
+}
+
+
+/*
+ * Log a with local timestamp.
+ */
+// void
+// GS_log(GS *gs, const char *str)
+// {
+// 	char tbuf[64];
+// 	FILE *fp;
+
+// 	if (gs == NULL)
+// 		return;
+// 	if (gs->ctx == NULL)
+// 		return;
+// 	fp = gs->ctx->log_fp;
+// 	if (fp == NULL)
+// 		return;
+
+// 	time_t t = time(NULL);
+// 	strftime(tbuf, sizeof tbuf, "%c", localtime(&time(NULL)/*t*/));
+// 	fprintf(fp, "%s ", tbuf);
+// 	fprintf(fp, "%s", str);
+// 	fflush(fp);
+// }
+
+/*
+ * Create 'local' timestamp logfile style.
+ */
+const char *
+GS_logtime(void)
+{
+	static char tbuf[32];
+
+	time_t t = time(NULL);
+	strftime(tbuf, sizeof tbuf, "%c", localtime(&t));
+
+	return tbuf;
+}
 
 bool
 b58tobin(void *bin, size_t *binszp, const char *b58, size_t b58sz)

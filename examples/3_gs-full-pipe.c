@@ -196,6 +196,10 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	/* Start reading from Network (SRP is handled by GS_read()/GS_write()) */
 	GS_SELECT_add_cb(ctx, cb_read_gs, cb_write_gs, fd, gs, 0);
 
+	/* Start reading from STDIN */
+	GS_SELECT_add_cb_r(ctx, cb_read_stdin, STDIN_FILENO, gs, 0);
+	FD_SET(0, ctx->rfd);	/* Start reading from STDIN */
+
 	/* -i specified and we are a client: Set TTY to raw for a real shell
 	 * experience. Ignore this for this example.
 	 */
@@ -204,10 +208,6 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 		stty_set_raw();
 		stty_set_remote_size(ctx, gs);
 	}
-
-	/* Start reading from STDIN */
-	GS_SELECT_add_cb_r(ctx, cb_read_stdin, STDIN_FILENO, gs, 0);
-	FD_SET(0, ctx->rfd);	/* Start reading from STDIN */
 
 	return GS_SUCCESS;
 }
@@ -218,7 +218,7 @@ do_client_or_server(void)
 	GS_SELECT_CTX ctx;
 	GS *gs = gopt.gsocket;
 
-	GS_SELECT_CTX_init(&ctx, &gopt.rfd, &gopt.wfd, &gopt.r, &gopt.w, &gopt.tv_now, GS_SEC2USEC(1));
+	GS_SELECT_CTX_init(&ctx, &gopt.rfd, &gopt.wfd, &gopt.r, &gopt.w, &gopt.tv_now, GS_SEC_TO_USEC(1));
 	/* Tell GS_ subsystem to use GS-SELECT */
 	GS_CTX_use_gselect(&gopt.gs_ctx, &ctx);
 
@@ -258,7 +258,7 @@ my_getopt(int argc, char *argv[])
 				break;
 			case 'l':	/* -l not allowed for full pipe */
 			case '?':
-				usage("skrgwACi");
+				usage("skrgqwACi");
 				exit(255);
 		}
 	}
@@ -269,7 +269,7 @@ my_getopt(int argc, char *argv[])
 	if (gopt.is_encryption == 0)
 		GS_setsockopt(gopt.gsocket, GS_OPT_NO_ENCRYPTION, NULL, 0);
 
-	fprintf(stderr, "=Encryption: %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
+	VLOG("=Encryption: %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
 }
 
 int

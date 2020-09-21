@@ -48,10 +48,12 @@ user_secret_from_file(const char *file)
 	ret = fread(buf, 1, sizeof buf - 1, fp);
 	fclose(fp);
 
-	if (ret < 0)
+	if (ret <= 0)
 		return NULL;
+	if (buf[ret-1] == '\n')
+		buf[ret-1] = 0;
 
-	return strdup(buf);;
+	return strdup(buf);
 }
 
 const char *
@@ -76,6 +78,7 @@ const char *
 GS_user_secret(GS_CTX *ctx, const char *sec_file, const char *sec_str)
 {
 	const char *ptr;
+	DEBUGF("mark\n");
 
 	/* Secret from file has priority of sec_str value */
 	ptr = user_secret_from_file(sec_file);

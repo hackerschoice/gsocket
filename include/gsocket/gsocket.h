@@ -43,14 +43,13 @@
 #define GS_TV_TO_USEC(tv)		((uint64_t)(tv)->tv_sec * 1000000 + (tv)->tv_usec)
 #define GS_TV_DIFF(tv_a, tv_b)	(GS_TV_TO_USEC(tv_b) - GS_TV_TO_USEC(tv_a))
 #define GS_SEC_TO_USEC(sec)		(sec * 1000000)
+#define GS_USEC_TO_SEC(usec)	(usec / 1000000)
 
 #define GS_SECRET_MAX_LEN               (256 / 8)       /* max length in bytes */
 #define GS_DFL_CIPHER                  "SRP-AES-256-CBC-SHA"
 #define GS_DFL_CIPHER_STRENGTH         "4096"
 
 #include <gsocket/gs-select.h>
-
-#define GS_SEC2USEC(val)		((val)*1000*1000)
 
 /* ###########################
  * ### PROTOCOL DEFINITION ###
@@ -171,10 +170,11 @@ typedef struct
 	fd_set *r;
 	fd_set *w;
 	FILE *out;		/* Output for password query etc */
+	FILE *log_fp;	/* Log file output */
+	int gsocket_success_count;	/* Successfull connection counter */
 	GS_SELECT_CTX *gselect_ctx;
 	/* Listening CB and values */
 	gselect_cb_t func_listen;
-	// int (*func_listen)(void *ctx, int fd, void *cb_arg, int cb_val);
 	int cb_val_listen;
 
 	struct timeval *tv_now;
@@ -236,10 +236,12 @@ typedef struct
 	GS_ADDR gs_addr;
 	uint32_t flags;
 	uint32_t flags_proto;	/* Protocol Flags for pkt */
+	int id;					/* ID of this gsocket. Set AFTER conn success */
 	struct gs_net net;		/* fd's for listening tcp_fd */
 	int fd;					/* Only set if this is a 'connected' tcp_fd (not listening socket) */
-	ssize_t bytes_read;
-	ssize_t bytes_written;
+	int64_t bytes_read;
+	int64_t bytes_written;
+	struct timeval tv_connected;	/* TV when GS entered CONNECTED state */
 	int read_pending;
 	int write_pending;
 	int is_sent_shutdown;
@@ -253,7 +255,6 @@ typedef struct
 	int ssl_state;
 	char srp_sec[128];		/* SRP Secret */
 	int ssl_shutdown_count;	// Calls to gs_ssl_close 
-	// int ssl_wait_for_eof;	// SSL_shutdown wants to wait for EOF (SSL_read())
 #endif
 } GS;
 #define GS_ATTEMPT_WRITE			(0x01)
@@ -296,6 +297,11 @@ int GS_shutdown(GS *gsocket);
 int GS_setsockopt(GS *gsocket, int level, const void *opt_value, size_t opt_len);
 void GS_heartbeat(GS *gsocket);
 void GS_set_token(GS *gsocket, const void *buf, size_t num);
+/* Logging */
+char *GS_usecstr(char *dst, size_t len, uint64_t usec);
+char *GS_bytesstr(char *dst, size_t len, int64_t bytes);
+char *GS_bytesstr_long(char *dst, size_t len, int64_t bytes);
+const char *GS_logtime(void);
 
 #define GS_OPT_SOCKWAIT				(0x03)
 #define GS_OPT_BLOCK				(0x04)	/* Blocking TCP */
