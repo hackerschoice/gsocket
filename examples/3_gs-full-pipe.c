@@ -116,7 +116,7 @@ do_exit(GS_SELECT_CTX *ctx, GS *gs)
 	GS_SELECT_del_cb(ctx, STDIN_FILENO);	// Stop reading from STDIN
 	GS_close(gs);
 	stty_reset();
-	ERREXIT("all done\n");
+	exit(0);
 }
 
 /*

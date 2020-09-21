@@ -18,7 +18,10 @@ void stty_check_esc(GS *gs, char c);
 /* hack to set rows/columns and allow screen in a screen
  * unset STY - allow screen in a screen
  * set -e STTY - fish shell (unset)
+ * fish-shell is a bitch and does not support 'unset' but needs
+ * 'set -e' instead. unset will yield 'comand not found' on fish-sh.
  */
-#define GS_STTY_INIT_HACK	"(stty rows %d columns %d;unset STY; set -e STY)&>/dev/null\r"
+#define GS_STTY_INIT_HACK	"stty rows %d columns %d;unset STY; set -e STY\r"
+// #define GS_STTY_INIT_HACK	"(stty rows %d columns %d;unset STY; set -e STY)&>/dev/null\r"
 
 #define UTILS_GETOPT_STR	"igqwACrla:s:k:p:d:e:"

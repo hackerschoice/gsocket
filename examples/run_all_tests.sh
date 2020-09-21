@@ -451,8 +451,9 @@ if [ "`$MD5 test4k.dat`" != "`$MD5 nc2_out.dat`" ]; then fail 2; fi
 $ECHO "${OK}"
 fi
 
-
-### Clean-up
-test_start ""
+if [ x"$1" == x ]; then
+	### Clean-up
+	test_start ""
+fi
 exit 0
 
