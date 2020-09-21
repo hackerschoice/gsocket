@@ -463,7 +463,7 @@ cb_listen(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	if (p == NULL)
 		return GS_SUCCESS;	/* free'ing peer was a success */
 
-	VLOG("[ID=%d] New Connection\n", p->id);
+	VLOG("%s [ID=%d] New Connection\n", GS_logtime(), p->id);
 
 	/* Start reading from Network (SRP is handled by GS_read()/GS_write()) */
 	GS_SELECT_add_cb(ctx, cb_read_gs, cb_write_gs, gs_new->fd, p, 0);
