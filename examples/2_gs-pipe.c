@@ -136,7 +136,7 @@ my_getopt(int argc, char *argv[])
 			default:
 				break;
 			case '?':
-				usage("sklgqwAC");
+				usage("sklgqwACT");
 				exit(255);
 		}
 	}

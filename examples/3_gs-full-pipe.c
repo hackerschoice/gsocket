@@ -187,7 +187,8 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	DEBUGF("called\n");
 	ret = GS_connect(gs);
 	if (ret == GS_ERR_FATAL)
-		ERREXIT("Fatal GS_connect() error\n");
+		ERREXIT("%s\n", GS_strerror(gs));
+	//Fatal GS_connect() error\n");
 	if (ret == GS_ERR_WAITING)
 		return GS_ECALLAGAIN;
 
@@ -258,7 +259,7 @@ my_getopt(int argc, char *argv[])
 				break;
 			case 'l':	/* -l not allowed for full pipe */
 			case '?':
-				usage("skrgqwACi");
+				usage("skrgqwACTi");
 				exit(255);
 		}
 	}

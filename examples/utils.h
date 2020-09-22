@@ -26,4 +26,4 @@ char **mk_env(char **blacklist);
 // #define GS_STTY_INIT_HACK	"stty rows %d columns %d;unset STY; set -e STY\r"
 // #define GS_STTY_INIT_HACK	"(stty rows %d columns %d;unset STY; set -e STY)&>/dev/null\r"
 
-#define UTILS_GETOPT_STR	"igqwACrla:s:k:p:d:e:"
+#define UTILS_GETOPT_STR	"igqwACTrla:s:k:p:d:e:"

@@ -27,6 +27,8 @@ int gs_debug_level;
 
 #define GS_NET_DEFAULT_HOST			"gs.thc.org"
 #define GS_NET_DEFAULT_PORT			7350
+#define GS_SOCKS_DFL_IP				"127.0.0.1"
+#define GS_SOCKS_DFL_PORT			9050
 #ifdef WITH_DEBUG
 # define GS_DEFAULT_PING_INTERVAL	(30)
 #else
@@ -42,6 +44,7 @@ static const char unit[] = "BKMGT";    /* Up to Exa-bytes. */
 
 static int gs_pkt_listen_write(GS *gsocket, struct gs_sox *sox);
 static int gs_pkt_connect_write(GS *gsocket, struct gs_sox *sox);
+static int gs_pkt_connect_socks(GS *gsocket, struct gs_sox *sox);
 static void gs_close(GS *gsocket);
 static void gs_listen_add_gs_select_by_sox(GS_SELECT_CTX *ctx, gselect_cb_t func, int fd, void *arg, int val);
 
@@ -129,6 +132,15 @@ GS_CTX_init(GS_CTX *ctx, fd_set *rfd, fd_set *wfd, fd_set *r, fd_set *w, struct 
 		ctx->flags |= GS_CTX_FL_RFD_INTERNAL;
 	} 
 
+	char *ptr;
+	ptr = getenv("GSOCKET_SOCKS_IP");
+	if (ptr != NULL)
+		ctx->socks_ip = inet_addr(ptr);
+
+	ptr = getenv("GSOCKET_SOCKS_PORT");
+	if (ptr != NULL)
+		ctx->socks_port = htons(atoi(ptr));
+
 	return 0;
 }
 
@@ -213,17 +225,25 @@ GS_new(GS_CTX *ctx, GS_ADDR *addr)
 
 	gsocket->fd = -1;
 
+	uint16_t gs_port;
 	ptr = getenv("GSOCKET_PORT");
 	if (ptr != NULL)
-		gsocket->net.port = htons(atoi(ptr));
+		gs_port = htons(atoi(ptr));
 	else
-		gsocket->net.port = htons(GS_NET_DEFAULT_PORT);
+		gs_port = htons(GS_NET_DEFAULT_PORT);
 
+	ctx->gs_port = gs_port;
+
+	uint32_t gs_ip = 0;
 	ptr = getenv("GSOCKET_IP");
 	if (ptr != NULL)
 	{
-		gsocket->net.addr = inet_addr(ptr);
-	} else {
+		gs_ip = inet_addr(ptr);
+	}
+
+	if ((ctx->socks_ip != 0) || (gs_ip == 0))
+	{
+		/* HERE: Use Socks5 -or- GSOCKET_IP not available */
 		char buf[256];
 		hostname = getenv("GSOCKET_HOST");
 		if (hostname == NULL)
@@ -238,15 +258,29 @@ GS_new(GS_CTX *ctx, GS_ADDR *addr)
 			hostname = buf;
 		}
 
-		uint32_t ip;
-		ip = hostname_to_ip(hostname);
-		if (ip == 0xFFFFFFFF)
+		gsocket->net.hostname = strdup(hostname);
+
+		/* When Socks5 is used then TCP goes to Socks5 server */
+		if (ctx->socks_ip == 0)
 		{
-			free(gsocket);
-			gs_set_error(ctx, "Failed to resolve '%s'", hostname);
-			return NULL;
+			gs_ip = hostname_to_ip(hostname);
+			if (gs_ip == 0xFFFFFFFF)
+			{
+				free(gsocket);
+				gs_set_error(ctx, "Failed to resolve '%s'", hostname);
+				return NULL;
+			}
 		}
-		gsocket->net.addr = ip;
+	}
+
+	if (ctx->socks_ip != 0)
+	{
+		gsocket->net.addr = ctx->socks_ip;
+		gsocket->net.port = ctx->socks_port;
+		XASSERT(gsocket->net.hostname != NULL, "Socks5 but hostname not set\n");
+	} else {
+		gsocket->net.addr = gs_ip;
+		gsocket->net.port = gs_port;
 	}
 	gsocket->net.fd_accepted = -1;
 
@@ -264,6 +298,18 @@ GS_new(GS_CTX *ctx, GS_ADDR *addr)
 	GS_set_token(gsocket, NULL, 0);
 
 	return gsocket;
+}
+
+static void
+gs_net_connect_complete(GS *gs, struct gs_sox *sox)
+{
+	if (gs->flags & GS_FL_IS_CLIENT)
+		gs_pkt_connect_write(gs, sox);
+	else
+		gs_pkt_listen_write(gs, sox);
+
+	if (gs->net.conn_count >= gs->net.n_sox)
+		gs->flags |= GS_FL_TCP_CONNECTED;	// All TCP (APP) are now connected
 }
 
 /*
@@ -295,7 +341,11 @@ gs_net_connect_by_sox(GS *gsocket, struct gs_sox *sox)
 		}
 		if (errno != EISCONN)
 		{
-			gs_set_error(gsocket->ctx, "connect(%s:%d)", int_ntoa(gsocket->net.addr), ntohs(gsocket->net.port));
+			/* HERE: NOT connected */
+			if (gsocket->ctx->socks_ip == 0)
+				gs_set_error(gsocket->ctx, "connect(%s:%d)", int_ntoa(gsocket->net.addr), ntohs(gsocket->net.port));
+			else
+				gs_set_error(gsocket->ctx, "connect(%s:%d). Tor not running?", int_ntoa(gsocket->net.addr), ntohs(gsocket->net.port));
 			return -2;
 		}
 	}
@@ -305,16 +355,15 @@ gs_net_connect_by_sox(GS *gsocket, struct gs_sox *sox)
 	FD_SET(sox->fd, gsocket->ctx->rfd);
 
 	/* SUCCESSFULLY connected */
-	sox->state = GS_STATE_SYS_NONE;
+	sox->state = GS_STATE_SYS_NONE;		// Not stuck in a system call (connect())
 	gsocket->net.conn_count += 1;
 
-	if (gsocket->flags & GS_FL_IS_CLIENT)
-		gs_pkt_connect_write(gsocket, sox);
-	else
-		gs_pkt_listen_write(gsocket, sox);
-
-	if (gsocket->net.conn_count >= gsocket->net.n_sox)
-		gsocket->flags |= GS_FL_TCP_CONNECTED;
+	if (gsocket->ctx->socks_ip != 0)
+	{
+		gs_pkt_connect_socks(gsocket, sox);
+	} else {
+		gs_net_connect_complete(gsocket, sox);
+	}
 
 	return 0;
 }
@@ -325,14 +374,13 @@ gs_net_connect_by_sox(GS *gsocket, struct gs_sox *sox)
  * Return -1 on error.
  */
 static int
-gs_write(GS_CTX *ctx, struct gs_sox *sox, const void *data, size_t len)
+sox_write(struct gs_sox *sox, const void *data, size_t len)
 {
 	int ret;
 
 	ret = write(sox->fd, data, len);
 	if (ret == len)
 	{
-		// FD_CLR(sox->fd, ctx->wfd);
 		return len;
 	}
 	if (ret > 0)
@@ -344,6 +392,39 @@ gs_write(GS_CTX *ctx, struct gs_sox *sox, const void *data, size_t len)
 	/* EAGAIN */
 	memcpy(sox->wbuf, data, len);
 	sox->wlen = len;
+
+	return 0;
+}
+
+static int
+gs_pkt_connect_socks(GS *gs, struct gs_sox *sox)
+{
+	// Auth: 0x05 0x01 0x00
+	// Conn: 0x05 0x01 0x00 0x03 [1-octet length] [domain name] [2-octet Port]
+	char buf[512];
+	char *ptr = &buf[0];
+
+	memcpy(buf, "\x05\x01\x00" "\x05\x01\x00\x03", 7);
+	ptr += 7;
+
+	size_t hlen = strlen(gs->net.hostname);
+	XASSERT(hlen <= 255, "hostname to long\n");
+
+	ptr[0] = hlen;
+	ptr++;
+
+	memcpy(ptr, gs->net.hostname, hlen);
+	ptr += hlen;
+
+	memcpy(ptr, &gs->ctx->gs_port, 2);
+	ptr += 2;
+
+	int ret;
+	ret = sox_write(sox, &buf, ptr - buf);
+	if (ret == 0)
+		sox->state = GS_STATE_SOCKS;	// Call write() again
+
+	sox->flags |= GS_SOX_FL_AWAITING_SOCKS;
 
 	return 0;
 }
@@ -366,10 +447,13 @@ gs_pkt_ping_write(GS *gsocket, struct gs_sox *sox)
 	memset(&gping, 0, sizeof gping);
 	gping.type = GS_PKT_TYPE_PING; 
 
-	ret = gs_write(gsocket->ctx, sox, &gping, sizeof gping);
+	ret = sox_write(sox, &gping, sizeof gping);
 	if (ret == 0)
 		sox->state = GS_STATE_PKT_PING;
 
+	/* write() will eventually complete.
+	 * As soon as rfd is ready we are expecting a PONG
+	 */
 	sox->flags |= GS_SOX_FL_AWAITING_PONG;
 
 	return 0;
@@ -393,7 +477,7 @@ gs_pkt_listen_write(GS *gsocket, struct gs_sox *sox)
 	memcpy(glisten.token, gsocket->token, sizeof glisten.token);
 	memcpy(glisten.addr, gsocket->gs_addr.addr, MIN(sizeof glisten.addr, GS_ADDR_SIZE));
 
-	ret = gs_write(gsocket->ctx, sox, &glisten, sizeof glisten);
+	ret = sox_write(sox, &glisten, sizeof glisten);
 	if (ret == 0)
 		sox->state = GS_STATE_PKT_LISTEN;
 
@@ -416,7 +500,7 @@ gs_pkt_connect_write(GS *gsocket, struct gs_sox *sox)
 
 	memcpy(gconnect.addr, gsocket->gs_addr.addr, MIN(sizeof gconnect.addr, GS_ADDR_SIZE));
 
-	ret = gs_write(gsocket->ctx, sox, &gconnect, sizeof gconnect);
+	ret = sox_write(sox, &gconnect, sizeof gconnect);
 	if (ret == 0)
 		sox->state = GS_STATE_PKT_CONNECT;
 
@@ -432,7 +516,7 @@ gs_pkt_accept_write(GS *gsocket, struct gs_sox *sox)
 	memset(&gaccept, 0, sizeof gaccept);
 	gaccept.type = GS_PKT_TYPE_ACCEPT;
 
-	ret = gs_write(gsocket->ctx, sox, &gaccept, sizeof gaccept);
+	ret = sox_write(sox, &gaccept, sizeof gaccept);
 	if (ret == 0)
 		sox->state = GS_STATE_PKT_ACCEPT; 
 
@@ -483,7 +567,7 @@ gs_pkt_dispatch(GS *gsocket, struct gs_sox *sox)
  * Return length of bytes read or -1 on error (treat EOF as ECONNRESET & return -1)
  */
 static ssize_t
-gs_read(struct gs_sox *sox, size_t len)
+sox_read(struct gs_sox *sox, size_t len)
 {
 	ssize_t ret;
 
@@ -495,7 +579,112 @@ gs_read(struct gs_sox *sox, size_t len)
 
 	sox->rlen += ret;
 
-	return ret;
+	return ret;	// Return the number of bytes read.
+}
+
+/*
+ * Read at least 'min' bytes or return error if waiting.
+ * Return min on SUCCESS (min bytes available in buffer)
+ * Return -1 on WAITING
+ * Return -2 on error.
+ */
+static ssize_t
+sox_read_min(struct gs_sox *sox, size_t min)
+{
+	size_t len_rem;
+	int ret;
+
+	XASSERT(sox->rlen < min, "Data in buffer is %zu but only needing %zu\n", sox->rlen, min);
+
+	len_rem = min - sox->rlen;
+	ret = sox_read(sox, len_rem);
+	if (ret < 0)
+		return GS_ERR_FATAL;
+
+	if (sox->rlen < min)
+		return GS_ERR_WAITING;
+
+	/* Not enough data */
+	return min;
+}
+
+static int
+gs_read_pkt(GS *gs, struct gs_sox *sox)
+{
+	int ret;
+	/* Read GS message. */
+	/* Read GS MSG header (first octet) */
+	if (sox->rlen == 0)
+	{
+		ret = sox_read(sox, 1);
+		if (ret != 1)
+			return -1;
+	}
+
+	size_t len_pkt;
+	if (sox->rbuf[0] == GS_PKT_TYPE_LISTEN)
+		len_pkt = sizeof (struct _gs_listen);
+	else
+		len_pkt = sizeof (struct _gs_ping);
+
+	ret = sox_read_min(sox, len_pkt);
+	if (ret == GS_ERR_WAITING)
+		return GS_SUCCESS;	// Not enough data yet
+	if (ret != len_pkt)
+		return -1;	// ERROR
+
+	gs_pkt_dispatch(gs, sox);
+	sox->rlen = 0;
+
+	return GS_SUCCESS;
+}
+
+/* Accept Auth: 0x05 0x00
+ * Success    : 0x05 0x00 0x00 0x01 [IP 4bytes] [PORT 2bytes]
+ */
+struct _socks5_pkt
+{
+	uint8_t ver;
+	uint8_t res;
+	uint8_t ver2;
+	uint8_t code;
+	uint8_t res2;
+	uint8_t ip_type;
+	uint8_t ip[4];
+	uint8_t port[2];
+};
+
+/*
+ * Read reply from Socks5 and 'dispatch' (change state when done or -1 on error).
+ */
+static int
+gs_read_socks(GS *gs, struct gs_sox *sox)
+{
+	int ret;
+	struct _socks5_pkt spkt;
+
+	size_t len_pkt = sizeof (struct _socks5_pkt);
+
+	DEBUGF_B("reading..\n");
+	ret = sox_read_min(sox, len_pkt);
+	if (ret == GS_ERR_WAITING)
+		return GS_SUCCESS;
+	if (ret != len_pkt)
+		return -1;
+
+	HEXDUMPF(sox->rbuf, len_pkt, "Socks5 (%zu): ", len_pkt);
+	memcpy(&spkt, sox->rbuf, sizeof spkt);
+	if (spkt.code != 0)
+		return -1;
+
+	DEBUGF_M("Socks5 CONNECTED\n");
+	/* Socks5 completed. Start GS listen/connect */
+	sox->flags &= ~GS_SOX_FL_AWAITING_SOCKS;
+	gs_net_connect_complete(gs, sox);
+
+	sox->rlen = 0;
+
+	return GS_SUCCESS;
 }
 
 /*
@@ -528,10 +717,11 @@ gs_process_by_sox(GS *gsocket, struct gs_sox *sox)
 			return 0;
 		}
 
-		if ((sox->state == GS_STATE_PKT_PING) || (sox->state == GS_STATE_PKT_LISTEN))
+		/* Complete a failed write() */
+		if ((sox->state == GS_STATE_PKT_PING) || (sox->state == GS_STATE_PKT_LISTEN) || (sox->state == GS_STATE_SOCKS))
 		{
 			ret = write(sox->fd, sox->wbuf, sox->wlen);
-			/* Fatal is a single write fails even if wfd was set */
+			/* Fatal if a single write fails even if wfd was set */
 			if (ret != sox->wlen)
 			{
 				DEBUGF("ret = %d, len = %zu, errno = %s\n", ret, sox->wlen, strerror(errno));
@@ -549,39 +739,16 @@ gs_process_by_sox(GS *gsocket, struct gs_sox *sox)
 		return -1;
 	}
 
-	/* Read GS message. */
-	/* Read GS MSG header (first octet) */
-	if (sox->rlen == 0)
+	/* HERE: rfd is set - ready to read */
+	DEBUGF_M("rfd is set (state == %d)\n", sox->state);
+	if (sox->flags & GS_SOX_FL_AWAITING_SOCKS)
 	{
-		ret = gs_read(sox, 1);
-		if (ret != 1)
-			return -1;
+		ret = gs_read_socks(gsocket, sox);
+	} else {
+		ret = gs_read_pkt(gsocket, sox);
 	}
 
-	size_t len_pkt;
-	if (sox->rbuf[0] == GS_PKT_TYPE_LISTEN)
-		len_pkt = sizeof (struct _gs_listen);
-	else
-		len_pkt = sizeof (struct _gs_ping);
-
-	if (sox->rlen >= len_pkt)
-		ERREXIT("BOOM! rlen %zu pkg_len %zu\n", sox->rlen, len_pkt);
-	
-	size_t len_rem = len_pkt - sox->rlen;
-	ret = gs_read(sox, len_rem);
-	if (ret < 0)
-		return -1;
-
-	if (sox->rlen > len_pkt)
-		ERREXIT("BOOM!!\n");
-
-	if (sox->rlen < len_pkt)
-		return 0;	/* Not enough data yet */
-
-	gs_pkt_dispatch(gsocket, sox);
-	sox->rlen = 0;
-
-	return 0;
+	return ret;
 }
 
 /*
@@ -774,7 +941,6 @@ gs_net_connect(GS *gsocket)
 	int cb_val;
 	func = gsocket->ctx->func_listen;
 	cb_val = gsocket->ctx->cb_val_listen;
-
 	DEBUGF("gs_net_connect called (GS_select() func = %p\n", func);
 	GS_SELECT_CTX *gselect_ctx = gsocket->ctx->gselect_ctx;
 
@@ -795,7 +961,7 @@ gs_net_connect(GS *gsocket)
 		DEBUGF("gs_net_connect_by_sox(fd = %d): %d, %s\n", sox->fd, ret, strerror(errno));
 		if (ret == -2)
 			return -1;
-	
+
 		/* GS_select-HACK-1-START */
 		if (gsocket->ctx->gselect_ctx != NULL)
 		{
@@ -1008,19 +1174,6 @@ GS_connect(GS *gsocket)
 int
 GS_listen(GS *gsocket, int backlog)
 {
-#if 0
-	/* SINGLE_CONN socket wants 1 TCP connection only */
-	if (gsocket->flags & GS_FL_SINGLE_CONN)
-		backlog = 1;
-
-	/* Force SINGLE_CONN if backlog is 0 */
-	if (backlog <= 0)
-	{
-		gsocket->flags |= GS_FL_SINGLE_CONN;
-		backlog = 1;
-	}
-#endif
-
 	gs_net_init(gsocket, backlog);
 	gs_net_connect(gsocket);
 
@@ -1244,7 +1397,7 @@ gs_close(GS *gsocket)
 int
 GS_close(GS *gsocket)
 {
-	DEBUGF_B("read: %zd, written: %zd\n", gsocket->bytes_read, gsocket->bytes_written);
+	DEBUGF_B("read: %"PRId64", written: %"PRId64"\n", gsocket->bytes_read, gsocket->bytes_written);
 	if (gsocket == NULL)
 		return -1;
 
@@ -1385,6 +1538,22 @@ GS_setsockopt(GS *gsocket, int level, const void *opt_value, size_t opt_len)
 #endif
 
 	return 0;
+}
+
+int
+GS_setctxopt(GS_CTX *ctx, int level, const void *opt_value, size_t opt_len)
+{
+	if (level == GS_OPT_USE_SOCKS)
+	{
+		/* Set if not already set from GS_CTX_init() */
+		if (ctx->socks_ip == 0)
+			ctx->socks_ip = inet_addr(GS_SOCKS_DFL_IP);
+		if (ctx->socks_port == 0)
+			ctx->socks_port = htons(GS_SOCKS_DFL_PORT);
+	} else
+		return -1;
+
+	return 0;	// Success
 }
 
 void

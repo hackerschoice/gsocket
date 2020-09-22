@@ -648,7 +648,7 @@ my_usage(void)
 "gs-netcat [-lwiC] [-e cmd] [-p port] [-d ip]\n"
 "");
 
-	usage("skrlgqwCie");
+	usage("skrlgqwCTie");
 	fprintf(stderr, ""
 "\n"
 "Example to forward traffic from port 2222 to 192.168.6.7:22:\n"

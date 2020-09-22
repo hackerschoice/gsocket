@@ -55,6 +55,9 @@ init_vars(void)
 
 	ret = GS_CTX_init(&gopt.gs_ctx, &gopt.rfd, &gopt.wfd, &gopt.r, &gopt.w, &gopt.tv_now);
 
+	if (gopt.is_use_tor == 1)
+		GS_setctxopt(&gopt.gs_ctx, GS_OPT_USE_SOCKS, NULL, 0);
+
 	gopt.sec_str = GS_user_secret(&gopt.gs_ctx, gopt.sec_file, gopt.sec_str);
 
 	VLOG("=Secret    : \"%s\"\n", gopt.sec_str);
@@ -119,6 +122,9 @@ usage(const char *params)
 			case 'C':
 				fprintf(stderr, "  -C           Disable encryption\n");
 				break;
+			case 'T':
+				fprintf(stderr, "  -T           Use TOR.\n");
+				break;
 			case 'i':
 				fprintf(stderr, "  -i           Interactive login shell (TTY) [~. to terminate]\n");
 				break;
@@ -141,6 +147,9 @@ do_getopt(int argc, char *argv[])
 	{
 		switch (c)
 		{
+			case 'T':
+				gopt.is_use_tor = 1;
+				break;
 			case 'q':
 				gopt.log_fp = NULL;
 				break;
@@ -208,32 +217,6 @@ stty_set_raw(void)
 	tios.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &tios);
 
-#if 0
-	FILE *f;
-	size_t len;
-	int ret;
-
-	f = popen("stty -g", "r");
-	if (f == NULL)
-	{
-		fprintf(stderr, "ERROR popen(stty -g): %s\n", strerror(errno));
-		return;
-	}
-
-	len = fread(stty_val, 1, sizeof stty_val - 1, f);
-	if (len <= 0)
-		return;
-	stty_val[len] = '\0';
-
-	DEBUGF_B("stty = %s\n", stty_val);
-
-	signal(SIGCHLD, SIG_DFL);
-	ret = system("stty raw -echo");
-	signal(SIGCHLD, SIG_IGN);
-	if (ret < 0)
-		fprintf(stderr, "ERROR system(stty raw -echo) == %d: %s\n", ret, strerror(errno));
-#endif
-
 	is_stty_set_raw = 1;
 }
 
@@ -247,17 +230,6 @@ stty_reset(void)
 		return;
 
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &tios_saved);
-#if 0
-	char buf[1024];
-	int ret;
-
-	snprintf(buf, sizeof buf, "stty %.512s\n", stty_val);
-	signal(SIGCHLD, SIG_DFL);
-	ret = system(buf);
-	signal(SIGCHLD, SIG_IGN);
-	if (ret < 0)
-		fprintf(stderr, "ERROR system(stty): %s\n", strerror(errno));
-#endif
 }
 
 static const char esc_seq[] = "\r~.\r";

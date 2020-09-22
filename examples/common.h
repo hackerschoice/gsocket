@@ -67,6 +67,7 @@ struct _gopt
 	int is_encryption;
 	int is_interactive;	/* PTY interactive shell? */
 	int is_receive_only;
+	int is_use_tor;
 	fd_set rfd, r;
 	fd_set wfd, w;
 	struct timeval tv_now;

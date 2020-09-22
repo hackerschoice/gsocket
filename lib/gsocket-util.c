@@ -20,9 +20,9 @@ user_secret_from_stdin(GS_CTX *ctx)
 			ptr[len - 1] = 0;	// Remove '\n' 
 		if (strlen(ptr) == 0)
 			return NULL;
-		if (strlen(ptr) >= 16)
+		if (strlen(ptr) >= 8)
 			break;
-		fprintf(ctx->out, "Too short. Minimum length of 16 characters.\n");
+		fprintf(ctx->out, "Too short.\n");
 		fflush(ctx->out);
 	}
 

@@ -113,7 +113,7 @@ my_getopt(int argc, char *argv[])
 			default:
 				break;
 			case '?':
-				usage("sklg");
+				usage("sklgT");
 				exit(255);
 		}
 	}

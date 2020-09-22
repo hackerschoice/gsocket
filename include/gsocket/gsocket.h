@@ -181,6 +181,10 @@ typedef struct
 	int flags;
 	char err_buf[1024];
 	char err_buf2[1024];
+
+	uint32_t socks_ip;			// NBO. Use Socks5
+	uint16_t socks_port;		// Socks5
+	uint16_t gs_port;			// 7350 or GSOCKET_PORT
 } GS_CTX;
 
 #define GS_CTX_FL_RFD_INTERNAL		(0x01)	/* Use internal FD_SET */
@@ -205,8 +209,10 @@ struct gs_sox
 #define GS_STATE_APP_CONNECTED	(4)		/* Application is connected. Passingthrough of data (no pkt any longer) */
 #define GS_STATE_PKT_CONNECT	(5)
 #define GS_STATE_PKT_ACCEPT		(6)
+#define GS_STATE_SOCKS			(7)
 
-#define GS_SOX_FL_AWAITING_PONG	(0x01)	/* PING was send. Waiting for PONG */
+#define GS_SOX_FL_AWAITING_PONG		(0x01)	// Waiting for PONG 
+#define GS_SOX_FL_AWAITING_SOCKS	(0x02)	// Waiting for Socks5 reply 
 
 struct gs_net
 {
@@ -216,6 +222,7 @@ struct gs_net
 	struct gs_sox sox[GS_MAX_SOX_BACKLOG];
 	int n_sox;				/* Number of sox[n] entries */
 	int fd_accepted;
+	char *hostname;			/* xxx.gs.thc.org */
 };
 
 
@@ -295,6 +302,7 @@ GS *GS_accept(GS *gsocket, int *error);	/* Wait until client connects by GS-ID a
 int GS_close(GS *gsocket);		/* close() and free() a connected GS */
 int GS_shutdown(GS *gsocket);
 int GS_setsockopt(GS *gsocket, int level, const void *opt_value, size_t opt_len);
+int GS_setctxopt(GS_CTX *ctx, int level, const void *opt_value, size_t opt_len);
 void GS_heartbeat(GS *gsocket);
 void GS_set_token(GS *gsocket, const void *buf, size_t num);
 /* Logging */
@@ -308,10 +316,9 @@ const char *GS_logtime(void);
 #define GS_OPT_USE_SRP				(0x08)
 #define GS_OPT_NO_ENCRYPTION		(0x08)
 #define GS_OPT_CLIENT_OR_SERVER		(0x10)	/* Whoever connects first acts as a Server */
-// #define GS_OPT_DISABLE_ENCRPTION	(0x08)	/* Disable encryption */
+#define GS_OPT_USE_SOCKS			(0x08)	// Use TOR (Socks5)
 // #define GS_OPT_SINGLE_CONN			(0x10)	/* Establish 1 TCP connection and be done */
 
-// int GS_fd_isset(GS *gsocket, fd_set *rfd, fd_set *wfd);
 ssize_t GS_write(GS *gsocket, const void *buf, size_t num);
 ssize_t GS_read(GS *gsocket, void *buf, size_t num);
 GS_ADDR *GS_ADDR_bin2addr(GS_ADDR *addr, const void *data, size_t len);
