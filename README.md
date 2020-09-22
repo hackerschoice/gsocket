@@ -58,6 +58,7 @@ $ export GSOCKET_SOCKS_IP=127.0.0.1
 ```
 
 2. A reverse backdoor
+
 The backdoor supports multiple concurrent connections and spawns a real PTY/interactive-shell with ctrl-c and colors working (like OpenSSH does).
 ```
 $ ./gs-netcat -k keyfile.txt -il      # Host
@@ -65,6 +66,7 @@ $ ./gs-netcat -k keyfile.txt -T -i    # Workstation (via Tor & Global Socket Rel
 ```
 
 3. Use -k
+
 Using -s is not secure. Add your *secret* to a file and use -k or pipe your password into the programm:
 (Note the 3x '<').
 ```
