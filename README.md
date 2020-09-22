@@ -19,20 +19,19 @@ $ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/hackerschoice/gso
 
 **Usage:**
 
-1. Log in to Host from Workstation through any firewall/NAT
+1. Log in to *Host* from *Workstation* through any firewall/NAT
 ```
-$ cd examples
 $ ./gs-netcat -i -l   # Host
 $ ./gs-netcat -i      # Workstation
 ```
 
-2. Transfer files from Workstation to Host
+2. Transfer files from *Workstation* to *Host*
 ```
 $ ./gs-netcat -rl >warez.tar.gz    # Host
 $ ./gs-netcat -w <warez.tar.gz     # Workstation
 ```
 
-3. Port forward. Workstation's Port 2222 is forwarded to 192.168.6.7 via Host
+3. Port forward. *Workstation's* Port 2222 is forwarded to 192.168.6.7 on *Host's* privat LAN
 ```
 $ ./gs-netcat -l -d 192.168.6.7 -p 22 # Host
 $ ./gs-netcat -p 2222                 # Workstation
