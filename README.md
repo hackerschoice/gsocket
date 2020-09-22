@@ -31,13 +31,13 @@ $ ./gs-netcat -rl >warez.tar.gz    # Host
 $ ./gs-netcat -w <warez.tar.gz     # Workstation
 ```
 
-3. Port forward. *Workstation's* Port 2222 is forwarded to 192.168.6.7 on *Host's* privat LAN
+3. Port forward. *Workstation's* Port 2222 is forwarded to 192.168.6.7 on *Host's* private LAN
 ```
 $ ./gs-netcat -l -d 192.168.6.7 -p 22 # Host
 $ ./gs-netcat -p 2222                 # Workstation
-$ ssh -p 2222 root@127.0.0.1    # Will connect to 192.168.6.7 on Host's LAN
-```
+$ ssh -p 2222 root@127.0.0.1          # Will ssh to 192.168.6.7 on Host's private LAN
 
+```
 4. Execute any command (nc -e style)
 ```
 $ ./gs-netcat -l -e "echo hello world; id; exit"   # Host
