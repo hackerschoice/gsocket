@@ -4,6 +4,8 @@
 
 struct _gopt gopt;
 
+extern char **environ;
+
 void
 init_defaults(void)
 {
@@ -309,6 +311,66 @@ mk_shellname(char *shell_name, ssize_t len)
 	return shell;
 }
 
+/*
+ * Create an envp list from existing env. This is a hack for cmd-execution.
+ * 'blacklist' contains env-vars which should not be part of the new
+ * envp for the shell (such as STY, a screen variable, which we must remove).
+ */
+char **
+mk_env(char **blacklist)
+{
+	char **env;
+	int total = 0;
+	int i;
+	char *end;
+
+	for (i = 0; environ[i] != NULL; i++)
+	{
+		total++;
+	}
+	// DEBUGF("Number of environment variables: %d (calloc(%d, %zu)\n", total, total + 1, sizeof *env);
+
+	env = calloc(total + 1, sizeof *env);
+
+	int ii = 0;
+	for (i = 0; i < total; i++)
+	{
+		char *s = environ[i];
+
+		/* Check if we want this env variable and continue if not */
+		end = strchr(s, '=');
+		if (end == NULL)
+			continue;			// Illegal enviornment variable
+		char **b = blacklist;
+		for (; *b != NULL; b++)
+		{
+			if (end - s > strlen(*b))
+				continue;
+			if (memcmp(s, *b, end - s) == 0)
+				break;			// In the blacklist
+		}
+		if (*b != NULL)
+			continue;			// Skip if in blacklist
+
+		env[ii] = strdup(s);
+		ii++;
+	}
+
+	return env;
+}
+
+static void
+setup_cmd_child(void)
+{
+	/* Close all (but 1 end of socketpair) fd's */
+	int i;
+	for (i = 3; i < FD_SETSIZE; i++)
+		close(i);
+
+	signal(SIGCHLD, SIG_DFL);
+	signal(SIGPIPE, SIG_DFL);
+}
+
 int
 pty_cmd(const char *cmd)
 {
@@ -321,16 +383,16 @@ pty_cmd(const char *cmd)
 	if (pid == 0)
 	{
 		/* HERE: Child */
-		signal(SIGCHLD, SIG_DFL);
-		int i;
-		for (i = 3; i < FD_SETSIZE; i++)
-				close(i);
+		setup_cmd_child();
+
+		char *env_blacklist[] = {"STY", NULL};
+		char **envp = mk_env(env_blacklist);
 
 		char shell_name[64];
 		const char *shell;
 		shell = mk_shellname(shell_name, sizeof shell_name);
 
-		execl(shell, shell_name, "-il", NULL);
+		execle(shell, shell_name, "-il", NULL, envp);
 		ERREXIT("execlp(%s) failed: %s\n", shell, strerror(errno));
 	}
 	/* HERE: Parent */
@@ -345,7 +407,6 @@ int
 fd_cmd(const char *cmd)
 {
 	pid_t pid;
-	int fd = -1;
 	int fds[2];
 	int ret;
 
@@ -367,47 +428,19 @@ fd_cmd(const char *cmd)
 	if (pid == 0)
 	{
 		/* HERE: Child process */
-		signal(SIGCHLD, SIG_DFL);
-		/* Close all (but 1 end of socketpair) fd's */
-		fd = fds[0];
-		int i;
-		for (i = 0; i < FD_SETSIZE; i++)
-		{
-			if (i != fd)
-				close(i);
-		}
+		dup2(fds[0], STDOUT_FILENO);
+		dup2(fds[0], STDERR_FILENO);
+		dup2(fds[0], STDIN_FILENO);
+		setup_cmd_child();
 
-		dup2(fd, STDOUT_FILENO);
-		dup2(fd, STDERR_FILENO);
-		dup2(fd, STDIN_FILENO);
-#if 0		
-        if (gopt.is_interactive)
-        {
-                setpgid(0, 0);
-                /* Spawn an interactive PTY default shell */
-				char shell_name[64];
-                const char *shell;
-                shell = mk_shellname(shell_name, sizeof shell_name);
-
-#ifdef BSD_SCRIPT
-                execlp("script", shell_name, "-q", "/dev/null", shell, "-il", NULL);
-#else
-                char buf[64]; snprintf(buf, sizeof buf, "%s -il", shell);
-                execlp("script", shell_name, "-qc", buf, "/dev/null", NULL);
-#endif
-        } else {
-                execl("/bin/sh", cmd, "-c", cmd, NULL);
-        }
-#endif
 		execl("/bin/sh", cmd, "-c", cmd, NULL);
 		ERREXIT("exec(%s) failed: %s\n", cmd, strerror(errno));
 	}
 
 	/* HERE: Parent process */
 	close(fds[0]);
-	fd = fds[1];
 
-	return fd;
+	return fds[1];
 }
 
 #ifdef DEBUG

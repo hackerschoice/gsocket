@@ -234,7 +234,7 @@ cb_read_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 
 	XASSERT(p->rlen <= 0, "Already data in input buffer (%zd)\n", p->rlen);
 	p->rlen = GS_read(gs, p->rbuf, sizeof p->rbuf);
-	// DEBUGF_G("GS_read(fd = %d) == %zd\n", gs->fd, p->rlen);
+	DEBUGF_G("GS_read(fd = %d) == %zd\n", gs->fd, p->rlen);
 	if (p->rlen == 0)
 		return GS_ECALLAGAIN;
 
