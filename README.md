@@ -18,12 +18,12 @@ The library comes with example tools. Gs-netcat is a re-implementation of netcat
 Direct Download: [gsocket-1.4.11.tar.gz](https://github.com/hackerschoice/gsocket/releases/download/v1.4.11/gsocket-1.4.11.tar.gz)
 
 BETA BETA BETA. PRIVATE RELEASE ONLY.
-
+---
 **Installation:**
 ```
 $ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/hackerschoice/gsocket/master/install.sh)"
 ```
-
+---
 **Usage:**
 
 1. Log in to *Host* from *Workstation* through any firewall/NAT
@@ -54,9 +54,9 @@ $ ./gs-netcat                                      # Workstation
 5. Quick Secure Chat with a friend:
 ```
 $ ./gs-full-pipe -s MySecret -A               # You
-$ ./gs-full-pipe -s MySecret -A               # Him
+$ ./gs-full-pipe -s MySecret -A               # Them
 ```
-
+---
 **Pro-Tips:**
 
 1. Force Tor or fail:
@@ -78,6 +78,13 @@ Using -s is not secure. Add your *secret* to a file and use -k &lt;filen&gt; or 
 ```
 $ ./gs-netcat -li <<<"MySecretPassword"
 ```
+---
+**Crypto / Security Mumble Jumble**
+1. The security is end-2-end. This means from User-2-User (and not to the Relay Network). The Relay Network just relays data between two Users. 
+2. The session key is 256 bit and ephemeral. It is newly generated for every session and generated randomly (not based on the password).
+3. The password can be 'weak' without weakening the security of the session. A brute force attack against a weak password would require a new TCP connection for every guess.
+4. SRP has Perfect Forward Secrecy. This means that a previously recorded session can not be decrypted even if the password gets published after the session has been established.
+5. I did not invent this. It's part of OpenSSL :>
 ---
 
 Join us 
