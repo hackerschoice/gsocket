@@ -5,7 +5,7 @@ Global Socket allows two users behind NAT/Firewall to establish a TCP connection
 
 **Features:**
 - Uses the Global Socket Relay Network to connect TCP pipes
-- End-2-End encryption using (OpenSSL's SRP / RFC 5054)
+- End-2-End encryption using (OpenSSL's SRP / [RFC 5054](https://tools.ietf.org/html/rfc5054)
 - AES-256 with a 4096 Prime
 - No PKI required.
 - TOR support (optional)
@@ -77,8 +77,12 @@ Using -s is not secure. Add your *secret* to a file and use -k &lt;filen&gt; or 
 ```
 $ ./gs-netcat -li <<<"MySecretPassword"
 ```
+---
 
+Join us 
 
-Join us Telegram: https://t.me/thcorg
+Telegram: https://t.me/thcorg 
+
+Twitter: https://twitter.com/hackerschoice
 
 shoutz: D1G, xaitax, #!adm
