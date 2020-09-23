@@ -8,6 +8,7 @@ Global Socket allows two users behind NAT/Firewall to establish a TCP connection
 - End-2-End encryption using (OpenSSL's SRP / [RFC 5054](https://tools.ietf.org/html/rfc5054))
 - AES-256 with a 4096 Prime
 - No PKI required.
+- Perfect Forward Secrecy
 - TOR support (optional)
 
 Abandon your thinking that an IP Address is needed to communicate with somebody. Instead start thinking that two Users should be able to communicate with each other as long as they know the same secret (key/password). The Global Socket Library handles the rest: It locally derives temporary session keys and IDs and finds the other User in the Global Relay Network. Once found the library then negotiates a secure TLS connection (End-2-End) using OpenSSL's SRP protocol. **The Relay Network sees only the encrypted traffic**.
