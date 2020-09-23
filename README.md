@@ -73,8 +73,7 @@ $ ./gs-netcat -k keyfile.txt -T -i    # Workstation (via Tor & Global Socket Rel
 
 3. Use -k
 
-Using -s is not secure. Add your *secret* to a file and use -k or pipe your password into the programme:
-(Note the 3x '<').
+Using -s is not secure. Add your *secret* to a file and use -k &lt;filen&gt; or pipe your password into the programme (Note the 3x '<').
 ```
 $ ./gs-netcat -li <<<"MySecretPassword"
 ```
