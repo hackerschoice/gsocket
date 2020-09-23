@@ -10,7 +10,7 @@ Global Socket allows two users behind NAT/Firewall to establish a TCP connection
 - No PKI required.
 - TOR support (optional)
 
-Abandon your thinking that an IP Address is needed to communicate with somebody. Instead start thinking that two Users should be able to communicate with each other as long as they know the same secret (key/password). The Global Socket Library handles the rest: It locally derives session keys and IDs and finds the other User through the Global Relay Network. Once found the Users then create a secure TLS connection (End-2-End) using OpenSSL's SRP protocol. The Relay Network sees only the encrypted traffic.
+Abandon your thinking that an IP Address is needed to communicate with somebody. Instead start thinking that two Users should be able to communicate with each other as long as they know the same secret (key/password). The Global Socket Library handles the rest: It locally derives temporary session keys and IDs and finds the other User in the Global Relay Network. Once found the library then negotiates a secure TLS connection (End-2-End) using OpenSSL's SRP protocol. **The Relay Network sees only the encrypted traffic**.
 
 The library comes with example tools. Gs-netcat is a re-implementation of netcat. It supports the well beloved *-e* option and spwans a true PTY/interactive command shell on a remote host. Effectively an AES-256 encrypted reverse backdoor via TOR (optional) and without the need of a Command & Control server. It can also be used to tunnel a friend into your local network or give somebody temporary shell access to your workstation.
 
