@@ -81,10 +81,12 @@ $ ./gs-netcat -li <<<"MySecretPassword"
 ---
 **Crypto / Security Mumble Jumble**
 1. The security is end-2-end. This means from User-2-User (and not just to the Relay Network). The Relay Network relays only (encrypted) data to and from the Users. 
-2. The session key is 256 bit and ephemeral. It is newly generated for every session and generated randomly (and is not based on the password).
+2. The session key is 256 bit and ephemeral. It is freshly generated for every session and generated randomly (and is not based on the password).
 3. The password can be 'weak' without weakening the security of the session. A brute force attack against a weak password requires a new TCP connection for every guess.
-4. SRP has Perfect Forward Secrecy. This means that past sessions can not be decrypted even if the password becomes known.
-5. I did not invent SRP. It's part of OpenSSL :>
+4. Do not use stupid passwords like 'password123'. Malice might pick the same (stupid) password by chance and connect. If in doubt use *gs-netcat -g* to generate a strong one. Alice's and Bob's password should at least be strong enough so that Malice can not guess it by chance while Alice is waiting for Bob to connect.
+5. If Alice shares the same password with Bob and Charlie and either one of them connects then Alice can not tell if it is Bob or Charlie who connected.
+6. SRP has Perfect Forward Secrecy. This means that past sessions can not be decrypted even if the password becomes known.
+7. I did not invent SRP. It's part of OpenSSL :>
 ---
 
 Join us 
