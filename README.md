@@ -14,7 +14,7 @@ Abandon your thinking that an IP Address is needed to communicate with somebody.
 
 The library comes with some example tools. One is a re-implementation of netcat called gs-netcat which includes the well loved -e option and spwaning a true PTY/interactive command shell on a remote host.
 
-Direct Download: [gsocket-1.4.11.tar.gz](https://raw.githubusercontent.com/hackerschoice/gsocket/master/releases/gsocket-1.4.11.tar.gz)
+Direct Download: [gsocket-1.4.11.tar.gz](https://github.com/hackerschoice/gsocket/releases/download/v1.4.11/gsocket-1.4.11.tar.gz)
 
 BETA BETA BETA. PRIVATE RELEASE ONLY.
 
