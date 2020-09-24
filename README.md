@@ -60,8 +60,10 @@ $ gs-full-pipe -s MySecret -A               # You
 $ gs-full-pipe -s MySecret -A               # Them
 ```
 
-6. SoCAT 2
-It is socat compatible and can be used in a socat address-chain using the EXEC target. 
+6. SoCAT 2 
+```
+gs-netcat can be used in a socat address-chain using the EXEC target. Happy bouncing. Enjoy. :> 
+```
 ---
 **Pro-Tips:**
 
