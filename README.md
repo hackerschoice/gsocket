@@ -28,34 +28,40 @@ $ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/hackerschoice/gso
 
 1. Log in to *Host* from *Workstation* through any firewall/NAT
 ```
-$ ./gs-netcat -i -l   # Host
+$ ./gs-netcat -l -i   # Host
 $ ./gs-netcat -i      # Workstation
 ```
 
 2. Transfer files from *Workstation* to *Host*
 ```
-$ ./gs-netcat -rl >warez.tar.gz    # Host
-$ ./gs-netcat -w <warez.tar.gz     # Workstation
+$ gs-netcat -l -r >warez.tar.gz    # Host
+$ gs-netcat <warez.tar.gz     # Workstation
 ```
 
 3. Port forward. *Workstation's* Port 2222 is forwarded to 192.168.6.7 on *Host's* private LAN
 ```
-$ ./gs-netcat -l -d 192.168.6.7 -p 22 # Host
-$ ./gs-netcat -p 2222                 # Workstation
-$ ssh -p 2222 root@127.0.0.1          # Will ssh to 192.168.6.7 on Host's private LAN
-
+$ gs-netcat -l -d 192.168.6.7 -p 22 # Host
+$ gs-netcat -p 2222                 # Workstation
+$ ssh -p 2222 root@127.0.0.1        # Will ssh to 192.168.6.7:22 on Host's private LAN
+...or...
+$ gs-netcat -s MySecret -l -d 192.168.6.7 -p 22                   # Host
+$ ssh -o ProxyCommand='gs-netcat -s MySecret' root@doesnotmatter  # Workstation
 ```
+
 4. Execute any command (nc -e style)
 ```
-$ ./gs-netcat -l -e "echo hello world; id; exit"   # Host
-$ ./gs-netcat                                      # Workstation
+$ gs-netcat -l -e "echo hello world; id; exit"   # Host
+$ gs-netcat                                      # Workstation
 ```
 
 5. Quick Secure Chat with a friend:
 ```
-$ ./gs-full-pipe -s MySecret -A               # You
-$ ./gs-full-pipe -s MySecret -A               # Them
+$ gs-full-pipe -s MySecret -A               # You
+$ gs-full-pipe -s MySecret -A               # Them
 ```
+
+6. SoCAT 2
+It is socat compatible and can be used in a socat address-chain using the EXEC target. 
 ---
 **Pro-Tips:**
 
@@ -68,15 +74,15 @@ $ export GSOCKET_SOCKS_IP=127.0.0.1
 
 The backdoor supports multiple concurrent connections and spawns a real PTY/interactive-shell with ctrl-c and colors working (like OpenSSH does).
 ```
-$ ./gs-netcat -k keyfile.txt -il      # Host
-$ ./gs-netcat -k keyfile.txt -T -i    # Workstation (via Tor & Global Socket Relay)
+$ gs-netcat -k keyfile.txt -l -i      # Host
+$ gs-netcat -k keyfile.txt -T -i    # Workstation (via Tor & Global Socket Relay)
 ```
 
 3. Use -k
 
 Using -s is not secure. Add your *secret* to a file and use -k &lt;filen&gt; or pipe your password into the programme (Note the 3x '<').
 ```
-$ ./gs-netcat -li <<<"MySecretPassword"
+$ gs-netcat -li <<<"MySecretPassword"
 ```
 ---
 **Crypto / Security Mumble Jumble**
