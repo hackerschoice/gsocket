@@ -15,14 +15,14 @@ MD5="md5 -q"
 OK="....[\033[1;32mOK\033[0m]"
 FAIL="[\033[1;31mFAILED\033[0m]"
 ECHO="echo -e"
-# tests="1.1 "
-# tests+="2.1 "
-# tests+="3.1 "
-# tests+="4.1 4.2 "
-# tests+="5.1 5.2 5.3 5.4 "
-# tests+="5.5 "		# cleartext
+tests="1.1 "
+tests+="2.1 2.2 "
+tests+="3.1 "
+tests+="4.1 4.2 "
+tests+="5.1 5.2 5.3 5.4 "
+tests+="5.5 "		# cleartext
 tests+="6.1 6.2 6.3 6.4 6.5 6.6 "
-# tests+="6.7 "		# cleartext
+tests+="6.7 "		# cleartext
 tests+="7.1 7.2 7.3 "
 tests+="8.1 8.2 8.3 "
 
@@ -181,7 +181,7 @@ fi
 
 if [[ "$tests" =~ '3.1 ' ]]; then
 ### Impersonate 'listen'
-test_start -n "Running: pipe #3.1 ......................................."
+test_start -n "Running: pipe #3.1 (auth token)..........................."
 GS1PID="$(sh -c './gs-pipe -k id_sec.txt -l -a player-alice 2>server1_err.txt >server1_out.dat & echo ${!}')"
 GS2PID="$(sh -c './gs-pipe -k id_sec.txt -l -a player-alice 2>server2_err.txt >server2_out.dat & echo ${!}')"
 # Next server should not be allowed to listen (wrong -a key)
@@ -212,17 +212,6 @@ fi
 if [[ "$tests" =~ '4.2' ]]; then
 # Client already waiting. 2nd client to become server (if no server available)
 test_start -n "Running: pipe #4.2 (..while client waiting)..............."
-GSPID="$(sh -c './gs-pipe -k id_sec.txt -w <test50k.dat 2>client_err.txt >client_out.dat & echo ${!}')"
-sleep_ct
-./gs-pipe -k id_sec.txt -A 2>server_err.txt >server_out.dat
-waitk $GSPID
-if [ "`$MD5 test50k.dat`" != "`$MD5 server_out.dat`" ]; then fail 1; fi
-$ECHO "${OK}"
-fi
-
-if [[ "$tests" =~ '4.3' ]]; then
-# Client already waiting. 2nd client to become server (if no server available)
-test_start -n "Running: pipe #4.3 (..while client waiting)..............."
 GSPID="$(sh -c './gs-pipe -k id_sec.txt -w <test50k.dat 2>client_err.txt >client_out.dat & echo ${!}')"
 sleep_ct
 ./gs-pipe -k id_sec.txt -A 2>server_err.txt >server_out.dat

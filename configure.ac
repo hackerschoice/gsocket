@@ -1,6 +1,6 @@
 dnl Process this file with autoconf to produce a configure script.
 AC_PREREQ(2.61)
-AC_INIT([gsocket], 1.4.11)
+AC_INIT([gsocket], 1.4.12)
 AC_CONFIG_AUX_DIR(config)
 AC_CANONICAL_SYSTEM
 
@@ -90,6 +90,8 @@ dnl Checks for header files.
 AC_HEADER_STDC
 AC_HEADER_SYS_WAIT
 AC_CHECK_HEADERS(sys/time.h unistd.h string.h pty.h openssl/srp.h util.h libutil.h)
+
+AC_CHECK_HEADER(openssl/srp.h, [], [AC_MSG_ERROR([openssl/srp.h not found. Update OpenSSL?])])
 
 dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST

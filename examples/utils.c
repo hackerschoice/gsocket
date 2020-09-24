@@ -56,7 +56,9 @@ init_vars(void)
 	ret = GS_CTX_init(&gopt.gs_ctx, &gopt.rfd, &gopt.wfd, &gopt.r, &gopt.w, &gopt.tv_now);
 
 	if (gopt.is_use_tor == 1)
+	{
 		GS_setctxopt(&gopt.gs_ctx, GS_OPT_USE_SOCKS, NULL, 0);
+	}
 
 	gopt.sec_str = GS_user_secret(&gopt.gs_ctx, gopt.sec_file, gopt.sec_str);
 

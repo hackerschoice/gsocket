@@ -220,8 +220,7 @@ GS_new(GS_CTX *ctx, GS_ADDR *addr)
 	char *hostname;
 
 	gsocket = calloc(1, sizeof *gsocket);
-	if (gsocket == NULL)
-		return NULL;
+	XASSERT(gsocket != NULL, "calloc(): %s\n", strerror(errno));
 
 	gsocket->fd = -1;
 
@@ -941,8 +940,9 @@ gs_net_connect(GS *gsocket)
 	int cb_val;
 	func = gsocket->ctx->func_listen;
 	cb_val = gsocket->ctx->cb_val_listen;
-	DEBUGF("gs_net_connect called (GS_select() func = %p\n", func);
+	DEBUGF("gs_net_connect called (GS_select() cb_func = %p\n", func);
 	GS_SELECT_CTX *gselect_ctx = gsocket->ctx->gselect_ctx;
+	/* GS_select_HACK-1-END */
 
 	for (i = 0; i < gsocket->net.n_sox; i++)
 	{
