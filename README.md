@@ -85,8 +85,9 @@ $ ./gs-netcat -li <<<"MySecretPassword"
 3. The password can be 'weak' without weakening the security of the session. A brute force attack against a weak password requires a new TCP connection for every guess.
 4. Do not use stupid passwords like 'password123'. Malice might pick the same (stupid) password by chance and connect. If in doubt use *gs-netcat -g* to generate a strong one. Alice's and Bob's password should at least be strong enough so that Malice can not guess it by chance while Alice is waiting for Bob to connect.
 5. If Alice shares the same password with Bob and Charlie and either one of them connects then Alice can not tell if it is Bob or Charlie who connected.
-6. SRP has Perfect Forward Secrecy. This means that past sessions can not be decrypted even if the password becomes known.
-7. I did not invent SRP. It's part of OpenSSL :>
+6. If Alice shares the same password with Bob and Malice and Alice stops listening for a connection then Malice could start to listen for the connection instead and Bob (when opening a new connection) could not tell if he is connected to Malice or to Alice (because Alice and Malice uses the same password). Use -a &lt;token&gt; if you worry about this.
+7. SRP has Perfect Forward Secrecy. This means that past sessions can not be decrypted even if the password becomes known.
+8. I did not invent SRP. It's part of OpenSSL :>
 ---
 
 Join us 
