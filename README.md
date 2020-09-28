@@ -5,15 +5,15 @@ Global Socket allows two users behind NAT/Firewall to establish a TCP connection
 
 **Features:**
 - Uses the Global Socket Relay Network to connect TCP pipes
-- End-2-End encryption using (OpenSSL's SRP / [RFC 5054](https://tools.ietf.org/html/rfc5054))
+- End-2-End encryption (using OpenSSL's SRP / [RFC 5054](https://tools.ietf.org/html/rfc5054))
 - AES-256 with a 4096 Prime
 - No PKI required.
 - Perfect Forward Secrecy
 - TOR support (optional)
 
-Abandon your thinking that an IP Address is needed to communicate with somebody. Instead start thinking that two Users should be able to communicate with each other as long as they know the same secret (key/password). The Global Socket Library handles the rest: It locally derives temporary session keys and IDs and finds the other User in the Global Relay Network. Once found the library then negotiates a secure TLS connection (End-2-End) using OpenSSL's SRP protocol. **The Relay Network sees only the encrypted traffic**.
+Abandon your thinking that an IP Address is needed to communicate with somebody. Instead start thinking that two Users should be able to communicate with each other as long as they know the same secret (key/password). The Global Socket Library handles the rest: It locally derives temporary session keys and IDs and finds the other User in the Global Relay Network. Once found the library then negotiates a secure TLS connection between both Users (End-2-End). **The Relay Network sees only the encrypted traffic**.
 
-The library comes with example tools. Gs-netcat is a re-implementation of netcat. It supports the well loved *-e* option and spwans a true PTY/interactive command shell on a remote host. Effectively an AES-256 encrypted reverse backdoor via TOR (optional) and without the need of a Command & Control server. It can also be used to tunnel a friend into your local network or give somebody temporary shell access to your workstation.
+The library comes with example tools. Gs-netcat is a re-implementation of netcat. It supports the well loved *-e* option and spwans a true PTY/interactive command shell on a remote host. Effectively an AES-256 encrypted reverse backdoor via TOR (optional) and without the need of a Command & Control server. It can also be used to tunnel a friend into your local network or to give somebody temporary shell access to your workstation.
 
 Direct Download: [gsocket-1.4.11.tar.gz](https://github.com/hackerschoice/gsocket/releases/download/v1.4.11/gsocket-1.4.11.tar.gz)
 
@@ -35,7 +35,7 @@ $ ./gs-netcat -i      # Workstation
 2. Transfer files from *Workstation* to *Host*
 ```
 $ gs-netcat -l -r >warez.tar.gz    # Host
-$ gs-netcat <warez.tar.gz     # Workstation
+$ gs-netcat <warez.tar.gz          # Workstation
 ```
 
 3. Port forward. *Workstation's* Port 2222 is forwarded to 192.168.6.7 on *Host's* private LAN
@@ -70,13 +70,14 @@ gs-netcat can be used in a socat address-chain using the EXEC target. Happy boun
 1. Force Tor or fail:
 ```
 $ export GSOCKET_SOCKS_IP=127.0.0.1
+$ export GSOCKET_SOCKS_PORT=9050
 ```
 
 2. A reverse backdoor
 
 The backdoor supports multiple concurrent connections and spawns a real PTY/interactive-shell with ctrl-c and colors working (like OpenSSH does).
 ```
-$ gs-netcat -k keyfile.txt -l -i      # Host
+$ gs-netcat -k keyfile.txt -l -i    # Host
 $ gs-netcat -k keyfile.txt -T -i    # Workstation (via Tor & Global Socket Relay)
 ```
 
