@@ -1,3 +1,3 @@
 SUBDIRS = lib examples
-EXTRA_DIST = config bootstrap include/gsocket
+EXTRA_DIST = README.md config bootstrap include/gsocket
 

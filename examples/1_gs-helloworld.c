@@ -118,12 +118,10 @@ my_getopt(int argc, char *argv[])
 		}
 	}
 
-	init_vars();			/* from utils.c */
+	gopt.is_no_encryption = 1;	// Do not use end-2-end encryption
+	gopt.is_blocking = 1;		// Use blocking sockets
 
-	/* This example uses blocking sockets. Set blocking. */
-	GS_setsockopt(gopt.gsocket, GS_OPT_BLOCK, NULL, 0);
-	/* Do not use end-2-end encryption */
-	GS_setsockopt(gopt.gsocket, GS_OPT_NO_ENCRYPTION, NULL, 0);
+	init_vars();			/* from utils.c */
 
 	VLOG("=Encryption: %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
 }

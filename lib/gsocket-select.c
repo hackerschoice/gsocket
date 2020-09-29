@@ -79,9 +79,9 @@ gs_select_rw_restore_state(GS_SELECT_CTX *ctx, int fd, char *idstr)
 	FD_CLR(fd, ctx->rfd);
 	FD_CLR(fd, ctx->wfd);
 	if (ctx->saved_rw_state[fd] & 0x01)
-		FD_SET(fd, ctx->rfd);
+		XFD_SET(fd, ctx->rfd);
 	if (ctx->saved_rw_state[fd] & 0x02)
-		FD_SET(fd, ctx->wfd);
+		XFD_SET(fd, ctx->wfd);
 	ctx->saved_rw_state[fd] = 0;
 
 	if (fd > 0)
@@ -130,10 +130,10 @@ call_item(GS_SELECT_CTX *ctx, struct _gs_sel_item *item, int fd)
 			DEBUGF_R("CB wants to be called again...\n");
 			if (ctx->blocking_func[fd] & GS_CALLWRITE)
 			{
-				FD_SET(fd, ctx->wfd);
+				XFD_SET(fd, ctx->wfd);
 				//gs_ssl_want_io_rw(ctx, fd, SSL_ERROR_WANT_WRITE);
 			} else if (ctx->blocking_func[fd] & GS_CALLREAD) {
-				FD_SET(fd, ctx->rfd);
+				XFD_SET(fd, ctx->rfd);
 				// gs_ssl_want_io_rw(ctx, fd, SSL_ERROR_WANT_READ);
 			} else {
 				DEBUGF_R("blocking_func[%d] not set. Not a Read/Write call?\n", fd);
@@ -177,7 +177,7 @@ GS_select(GS_SELECT_CTX *ctx)
 			/* HERE: Call to GS_read() needed because there is still
 			 * data in the input buffer (not i/o buffer).
 			 */
-			// DEBUGF_Y("Pending data in read input buffer :>\n");
+			DEBUGF_Y("Pending data in read input buffer :>\n");
 			ctx->rdata_pending_count--;
 			call_item(ctx, &ctx->mgr_r[i], i);
 		}
@@ -206,11 +206,9 @@ GS_select(GS_SELECT_CTX *ctx)
 			tv.tv_sec = 10;
 			tv.tv_usec = 0;
 		}
-		// gs_fds_out(ctx->r, 'R');
-		// gs_fds_out(ctx->w, 'W');
-
+		// gs_fds_out_rwfd(ctx);		// BUG-2-MAX-FD
 		n = select(max_fd + 1, ctx->r, ctx->w, NULL, &tv);
-		// DEBUGF("max-fd = %d, *************** select = %d\n", max_fd, n);
+		// DEBUGF_B("max-fd = %d, *************** select = %d\n", max_fd, n);
 		if (n < 0)
 		{
 			if (errno == EINTR)
@@ -220,8 +218,8 @@ GS_select(GS_SELECT_CTX *ctx)
 
 		gettimeofday(ctx->tv_now, NULL);
 
-		// gs_fds_out(ctx->r, 'r');
-		// gs_fds_out(ctx->w, 'w');
+		// gs_fds_out(ctx->r, max_fd, 'r');
+		// gs_fds_out(ctx->w, max_fd, 'w');
 		// int wants = 0;
 		for (i = 0; i <= max_fd; i++)
 		{
@@ -252,7 +250,7 @@ GS_select(GS_SELECT_CTX *ctx)
 					} 
 				}
 
-				DEBUGF_B("CTX-R: %c fd=%d\n", c, i);
+				// DEBUGF_B("CTX-R: %c fd=%d\n", c, i);
 				XASSERT(item->func != NULL, "%c fd = %d has no function to call\n", c, i);
 				call_item(ctx, item, i);
 				n--;
@@ -272,7 +270,7 @@ GS_select(GS_SELECT_CTX *ctx)
 					}
 				}
 
-				DEBUGF_B("CTX-W: %c fd=%d\n", c, i);
+				// DEBUGF_B("CTX-W: %c fd=%d\n", c, i);
 				XASSERT(item->func != NULL, "%c fd = %d has no function to call\n", c, i);
 				call_item(ctx, item, i);
 				n--;
@@ -304,14 +302,47 @@ GS_SELECT_del_cb(GS_SELECT_CTX *ctx, int fd)
 	ctx->mgr_r[fd].cb_val = 0;
 	FD_CLR(fd, ctx->rfd);
 	FD_CLR(fd, ctx->wfd);
+	FD_CLR(fd, ctx->r);
+	FD_CLR(fd, ctx->w);
 	/* Calcualte new max-fd */
 	int i;
+#ifdef DEBUG
+	char buf[FD_SETSIZE + 1];
+	memset(buf, '-', sizeof buf);
+	buf[ctx->max_fd + 1] = '\0';
+	int c;
+#endif
+
+	int tracking = 0;
 	for (i = 0; i <= ctx->max_fd; i++)
 	{
+		
 		if ((ctx->mgr_r[i].func == NULL) && (ctx->mgr_w[i].func == NULL))
+		{
 			continue;
+		}
+#ifdef DEBUG
+		tracking += 1;
+		c = 0;
+		if (ctx->mgr_r[i].func != NULL)
+			c = 1;
+		if (ctx->mgr_w[i].func != NULL)
+			c += 2;
+		if (c == 1)
+			buf[i] = 'r';	// should not happen
+		if (c == 2)
+			buf[i] = 'w';	// should not happen.
+		if (c == 3)
+			buf[i] = 'X';	// both callback functions set (normal case).
+#endif
 		new_max_fd = i;
 	}
+#ifdef DEBUG
+	buf[fd] = '*';	// This one being removed
+	// BUG-2-MAX-FD
+	// fprintf(gs_errfp, "%s (CB funcs, tracking=%d, max=%d)\n", buf, tracking, ctx->max_fd);
+#endif
+
 	DEBUGF("Setting MAX-FD to %d\n", new_max_fd);
 	ctx->max_fd = new_max_fd;
 }
@@ -319,6 +350,7 @@ GS_SELECT_del_cb(GS_SELECT_CTX *ctx, int fd)
 void
 GS_SELECT_add_cb_r(GS_SELECT_CTX *ctx, gselect_cb_t func, int fd, void *arg, int val)
 {
+	DEBUGF_B("Adding CB-r for fd = %d\n", fd);
 	ctx->mgr_r[fd].func = (void *)func;
 	ctx->mgr_r[fd].cb_arg = arg;
 	ctx->mgr_r[fd].cb_val = val;
@@ -328,6 +360,7 @@ GS_SELECT_add_cb_r(GS_SELECT_CTX *ctx, gselect_cb_t func, int fd, void *arg, int
 void
 GS_SELECT_add_cb_w(GS_SELECT_CTX *ctx, gselect_cb_t func, int fd, void *arg, int val)
 {
+	DEBUGF_B("Adding CB-w for fd = %d\n", fd);
 	ctx->mgr_w[fd].func = (void *)func;
 	ctx->mgr_w[fd].cb_arg = arg;
 	ctx->mgr_w[fd].cb_val = val;

@@ -112,15 +112,14 @@ do_client(void)
 	ssl = gopt.gsocket->ssl;
 
 	/* -A flags can make a Client to act as a Server if no server is
-	 * listening. This is used for run_all_tests.sh and a self-check.
-	 * Ignore the call to do_ssl_server() if you study this example.
+	 * listening. This is used for run_all_tests.sh and for the sake
+	 * of studying this exampe you can ignore the call to do_ssl_server().
 	 */
 	if (GS_is_server(gopt.gsocket))
 		do_ssl_server(ssl);
 	else
 		do_ssl_client(ssl);
 }
-
 
 static void
 my_getopt(int argc, char *argv[])
@@ -141,10 +140,8 @@ my_getopt(int argc, char *argv[])
 		}
 	}
 
+	gopt.is_blocking = 1;
 	init_vars();			/* from utils.c */
-
-	/* This example uses blocking sockets. Set blocking. */
-	GS_setsockopt(gopt.gsocket, GS_OPT_BLOCK, NULL, 0);
 
 	VLOG("=Encryption: %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
 }

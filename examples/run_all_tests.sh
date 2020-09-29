@@ -37,6 +37,9 @@ if [ x"$1" != x ]; then
 	tests="$@ "
 fi
 
+#OPTS="-k ./id_sec.txt"
+#OPTS+=" -C"
+
 # echo "Tests: ${tests}"
 mk_dummy()
 {
