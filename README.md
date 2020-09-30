@@ -60,8 +60,7 @@ $ gs-full-pipe -s MySecret -A               # You
 $ gs-full-pipe -s MySecret -A               # Them
 ```
 
-6. Access entirety of Host's LAN (with SOCKS)
-*(Maintain access to Host's network without a Command & Control server)*
+6. Access entirety of Host's private LAN (with SOCKS)
 ```
 $ gs-netcat -l -S                                  # Host
 $ gs-netcat -p 1080                                # Workstation
