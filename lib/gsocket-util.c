@@ -153,7 +153,8 @@ GS_daemonize(FILE *logfp)
 
 	/* HERE: Child. */
 	setsid();
-	chdir("/");
+	if (chdir("/") != 0)
+		ERREXIT("chdir(): %s\n", strerror(errno));
 	close(STDIN_FILENO);
 	close(STDOUT_FILENO);
 	close(STDERR_FILENO);

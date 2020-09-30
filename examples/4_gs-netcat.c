@@ -159,7 +159,6 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	errno = 0;
 	p->wlen = read(fd, p->wbuf, sizeof p->wbuf);
 	// DEBUGF_M("Read %zd from fd_cmd = %d (errno %d)\n", p->wlen, fd, errno);
-	// write(2, p->wbuf, p->wlen);
 	if (p->wlen <= 0)
 	{
 		if (p->is_stdin_forward)
@@ -264,6 +263,7 @@ cb_read_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 		ret = SOCKS_add(p);
 		if (ret != GS_SUCCESS)
 		{
+			DEBUGF_R("**** SOCKS_add() ERROR ****\n");
 			GS_shutdown(gs);
 			peer_free(ctx, p);
 
@@ -356,7 +356,7 @@ cb_complete_connect(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	int ret;
 	struct _peer *p = (struct _peer *)arg;
 
-	ret = fd_net_connect(ctx, fd, gopt.dst_ip, gopt.port);
+	ret = fd_net_connect(ctx, fd, p->socks.dst_ip, p->socks.dst_port);
 	DEBUGF_M("fd_net_connect(fd=%d) = %d\n", fd, ret);
 	if (ret == GS_ERR_WAITING)
 		return GS_ECALLAGAIN;
@@ -399,7 +399,7 @@ peer_forward_connect(struct _peer *p, uint32_t ip, uint16_t port)
 	GS *gs = p->gs;
 	GS_SELECT_CTX *ctx = gs->ctx->gselect_ctx;
 
-	VLOG("    [ID=%d] Forwarding to %s:%d\n", p->id, p->socks.dst_hostname, ntohs(p->socks.dst_port));
+	VLOG("    [ID=%d] Forwarding to %s:%d\n", p->id, p->socks.dst_hostname, ntohs(port));
 	ret = fd_net_connect(ctx, p->fd_in, ip, port);
 	if (ret <= -2)
 	{
@@ -466,12 +466,11 @@ peer_new(GS_SELECT_CTX *ctx, GS *gs)
 				peer_free(ctx, p);
 				return NULL;
 			}
-			// STOP HERE: We have to set XFD_SET() on gs->fd somewhere to start reading, not? or why is that cleared?
 		} else {
 			/* A straight network forward is as if the SOCKS completed already */
 			p->socks.dst_ip = gopt.dst_ip;
 			p->socks.dst_port = gopt.port;
-			snprintf(p->socks.dst_hostname, sizeof p->socks.dst_hostname, "%s", int_ntoa(gopt.dst_ip));
+			snprintf(p->socks.dst_hostname, sizeof p->socks.dst_hostname, "%s", int_ntoa(p->socks.dst_ip));
 			p->socks.state = GSNC_STATE_CONNECTED;
 
 			ret = peer_forward_connect(p, p->socks.dst_ip, p->socks.dst_port);
@@ -571,7 +570,7 @@ stty_set_remote_size(GS_SELECT_CTX *ctx, struct _peer *p)
  * CLIENT
  */
 static int
-cb_connect_client(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
+cb_connect_client(GS_SELECT_CTX *ctx, int fd_notused, void *arg, int val)
 {
 	struct _peer *p = (struct _peer *)arg;
 	GS *gs = p->gs;
@@ -602,7 +601,7 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	DEBUGF_M("*** GS_connect() SUCCESS *****\n");
 	/* HERE: Connection successfully established */
 	/* Start reading from Network (SRP is handled by GS_read()/GS_write()) */
-	GS_SELECT_add_cb(ctx, cb_read_gs, cb_write_gs, fd, p, 0);
+	GS_SELECT_add_cb(ctx, cb_read_gs, cb_write_gs, gs->fd, p, 0);
 
 	/* Start reading from STDIN or inbound TCP */
 	GS_SELECT_add_cb(ctx, cb_read_fd, cb_write_fd, p->fd_in, p, 0);
@@ -769,13 +768,15 @@ my_getopt(int argc, char *argv[])
 				gopt.dst_ip = inet_addr(optarg);
 				gopt.is_multi_peer = 1;
 				break;
-#ifdef D31337
 			case 'S':
+#ifdef D31337
 				gopt.is_socks_server = 1;
 				gopt.is_multi_peer = 1;
 				gopt.flags |= GSC_FL_IS_SERVER;	// implicit
-				break;
+#else
+				ERREXIT("Experimental Feature. Contact us on Telegram to use this.\n");
 #endif
+				break;
 			default:
 				break;
 			case 'A':	// Disable -A for gs-netcat. Use gs-full-pipe instead

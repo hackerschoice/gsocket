@@ -90,7 +90,7 @@ static void
 socks_done(struct _peer *p, char *reply, ssize_t len, ssize_t consumed)
 {
 
-	DEBUGF_M("Socks5 Conn to %s:%d\n", int_ntoa(p->socks.dst_ip), ntohs(p->socks.dst_port));
+	DEBUGF_M("Socks-Conn to %s:%d\n", int_ntoa(p->socks.dst_ip), ntohs(p->socks.dst_port));
 
 	wmsg_add(p, reply, len);	// Reply 'Request granted'
 	rmsg_consume(p, consumed);
@@ -141,7 +141,7 @@ SOCKS4_add(struct _peer *p)
 		getip(p, ip_ptr);
 	}
 
-	socks_done(p, "\x04\x5a" "\x00\x00" "\x00\x00\x00\x00", 8, ptr - p->rbuf);
+	socks_done(p, "\x00\x5a" "\x00\x00" "\x00\x00\x00\x00", 8, ptr - p->rbuf);
 	return GS_SUCCESS;
 }
 
@@ -230,7 +230,7 @@ SOCKS5_add(struct _peer *p)
 		memcpy(&p->socks.dst_port, ptr, 2);
 		ptr += 2;
 
-		socks_done(p, "\x05\x00\x00\x01\x01\x02\x07\x08\x09\x10", 10, ptr - p->rbuf);
+		socks_done(p, "\x05\x00\x00" /*IPv4*/ "\x01" /*ip*/ "\x00\x00\x00\x00" /*port*/ "\x00\x00", 10, ptr - p->rbuf);
 	}
 
 	return GS_SUCCESS;

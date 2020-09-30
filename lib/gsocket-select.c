@@ -206,7 +206,7 @@ GS_select(GS_SELECT_CTX *ctx)
 			tv.tv_sec = 10;
 			tv.tv_usec = 0;
 		}
-		// gs_fds_out_rwfd(ctx);		// BUG-2-MAX-FD
+		gs_fds_out_rwfd(ctx);		// BUG-2-MAX-FD
 		n = select(max_fd + 1, ctx->r, ctx->w, NULL, &tv);
 		// DEBUGF_B("max-fd = %d, *************** select = %d\n", max_fd, n);
 		if (n < 0)
@@ -311,9 +311,9 @@ GS_SELECT_del_cb(GS_SELECT_CTX *ctx, int fd)
 	memset(buf, '-', sizeof buf);
 	buf[ctx->max_fd + 1] = '\0';
 	int c;
+	int tracking = 0;
 #endif
 
-	int tracking = 0;
 	for (i = 0; i <= ctx->max_fd; i++)
 	{
 		

@@ -125,6 +125,24 @@ waitf()
 	echo "Oops. files not identical...."	
 }
 
+# Wait for file to match has
+waitfhash()
+{
+	x=0;
+	rounds=`bc <<<"$SLEEP_WD / 0.1"`
+	while :; do
+		if [ "`$MD5 $1`" == "$2" ]; then
+			return
+		fi
+		sleep 0.1
+		x=$(($x + 1))
+		if [ $x -gt $rounds ]; then
+			break;
+		fi
+	done	
+	echo "Oops. files not identical...."	
+}
+
 waittcp()
 {
 	x=0;
@@ -516,6 +534,25 @@ else
 	kill -9 $GSPID1 $GSPID2 $GSPID3 $GSPID4 &>/dev/null 
 	if [ "`$MD5 test50k.dat`" != "`$MD5 nc1_out.dat`" ]; then fail 1; fi
 	if [ "`$MD5 test4k.dat`" != "`$MD5 nc2_out.dat`" ]; then fail 2; fi
+	$ECHO "${OK}"
+	fi
+fi
+
+if [[ "$tests" =~ '9.4' ]]; then
+# SOCKS test with cUrl
+test_start -n "Running: netcat #9.4 (curl/socks5)........................"
+curl -h | grep socks5-hostname >/dev/null
+if [ $? -ne 0 ]; then
+	skip "(no curl)"
+else
+	GSPID1="$(sh -c './gs-netcat -k id_sec.txt -lS 2>server1_err.txt >server1_out.dat & echo ${!}')"
+	GSPID3="$(sh -c './gs-netcat -k id_sec.txt -p 1085 2>client_err.txt >client_out.dat & echo ${!}')"
+	waittcp 1085
+	touch testmp3.dat
+	GSPID4="$(sh -c 'curl --socks5-hostname 127.1:1085 --output testmp3.dat https://raw.githubusercontent.com/hackerschoice/thc-art/master/deep-phreakin.mp3 >nc2_out.dat 2>nc2_err.txt & echo ${!}')"
+	waitfhash testmp3.dat 171a9952951484d020ce1bef52b9eef5
+	kill -9 $GSPID1 $GSPID3 $GSPID4 &>/dev/null 
+	if [ "`$MD5 testmp3.dat`" != "171a9952951484d020ce1bef52b9eef5" ]; then fail 1; fi
 	$ECHO "${OK}"
 	fi
 fi
