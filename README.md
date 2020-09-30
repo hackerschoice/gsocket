@@ -54,13 +54,26 @@ $ gs-netcat -l -e "echo hello world; id; exit"   # Host
 $ gs-netcat                                      # Workstation
 ```
 
-5. Quick Secure Chat with a friend:
+5. Quick Secure Chat with a friend
 ```
 $ gs-full-pipe -s MySecret -A               # You
 $ gs-full-pipe -s MySecret -A               # Them
 ```
 
-6. SoCAT 2 
+6. Access entirety of Host's LAN (with SOCKS)
+*(Maintain access to Host's network without a Command & Control server)*
+```
+$ gs-netcat -l -S                                  # Host
+$ gs-netcat -p 1080                                # Workstation
+
+Access www.google.com via Host's private LAN from your Workstation:
+$ curl --socks4a 127.1:1080 http://www.google.com 
+
+Access 10.0.0.1:22 on Host's private LAN from your Workstation:
+$ socat -  "SOCKS4a:127.1:some-host-locally:22"
+```
+
+7. SoCAT 2 
 ```
 gs-netcat can be used in a socat address-chain using the EXEC target. Happy bouncing. Enjoy. :> 
 ```
