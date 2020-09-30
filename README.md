@@ -68,8 +68,8 @@ $ gs-netcat -p 1080                                # Workstation
 Access www.google.com via Host's private LAN from your Workstation:
 $ curl --socks4a 127.1:1080 http://www.google.com 
 
-Access 10.0.0.1:22 on Host's private LAN from your Workstation:
-$ socat -  "SOCKS4a:127.1:some-host-locally:22"
+Access route.local:22 on Host's private LAN from your Workstation:
+$ socat -  "SOCKS4a:127.1:route.local:22"
 ```
 
 7. SoCAT 2 
