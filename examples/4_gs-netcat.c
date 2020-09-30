@@ -36,29 +36,15 @@
  
 #include "common.h"
 #include "utils.h"
-
-struct _peer
-{
-	/* A peer is connected to a gsocket and the a cmd_fd */
-	GS *gs;
-	int fd_in;
-	int fd_out;	/* Same as fd_in unless client reads from stdin/stdout */
-	uint8_t rbuf[2048];	/* from GS */
-	ssize_t rlen;
-	uint8_t wbuf[2048];	/* to GS */
-	ssize_t wlen;
-	int is_network_forward;
-	int is_stdin_forward;
-	int is_app_forward;
-	/* For Statistics */
-	int id;			/* Stats: assign an ID to each pere */
-};
+#include "socks.h"
 
 /* All connected gs-peers indexed by gs->fd */
 static struct _peer *peers[FD_SETSIZE];
 
 /* static functions declaration */
 static int write_gs(GS_SELECT_CTX *ctx, struct _peer *p);
+static int peer_forward_connect(struct _peer *p, uint32_t ip, uint16_t port);
+
 
 /*
  * Make statistics and return them in 'dst'
@@ -103,8 +89,12 @@ peer_free(GS_SELECT_CTX *ctx, struct _peer *p)
 {
 	GS *gs = p->gs;
 	int is_stdin_forward = p->is_stdin_forward;
+	int fd;
 
-	XASSERT(peers[gs->fd] == p, "Oops, %p != %p on fd = %d, cmd_fd = %d\n", peers[gs->fd], p, gs->fd, p->fd_in);
+	/* A connecting fd (gs->net.sox[0].fd or a connected fd (gs->fd) */
+	fd = GS_get_fd(gs);
+	DEBUGF_R("GS_get_fd() == %d\n", GS_get_fd(gs));
+	XASSERT(peers[fd] == p, "Oops, %p != %p on fd = %d, cmd_fd = %d\n", peers[fd], p, fd, p->fd_in);
 
 	/* Exit() if we were reading from stdin/stdout. No other clients
 	 * in this case.
@@ -118,20 +108,24 @@ peer_free(GS_SELECT_CTX *ctx, struct _peer *p)
 	} else {
 		/* is_stdin_forward == 0 */
 		/*. Not stdin/stdout. */
-		close(p->fd_in);
+		XCLOSE(p->fd_in);
 	}
 
 	stty_reset();
-	char buf[512];
-	peer_mk_stats(buf, sizeof buf, p);
-	VLOG("%s %s", GS_logtime(), buf);
+	/* Output stats gs was connected */
+	if (gs->tv_connected.tv_sec != 0)
+	{
+		char buf[512];
+		peer_mk_stats(buf, sizeof buf, p);
+		VLOG("%s %s", GS_logtime(), buf);
+	}
 
-	GS_SELECT_del_cb(ctx, gs->fd);
+	GS_SELECT_del_cb(ctx, fd);
 
-	DEBUGF_Y("free'ing peer on fd = %d\n", gs->fd);
+	DEBUGF_Y("free'ing peer on fd = %d\n", fd);
 	memset(p, 0, sizeof *p);
-	XFREE(peers[gs->fd]);
-	GS_close(gs);	// sets gs->fd to 0
+	XFREE(peers[fd]);
+	GS_close(gs);	// sets gs->fd to -1
 	gopt.peer_count = MAX(gopt.peer_count - 1, 0);
 	DEBUGF_M("Freed gs-peer. Still connected: %d\n", gopt.peer_count);
 #ifdef DEBUG
@@ -164,8 +158,7 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 
 	errno = 0;
 	p->wlen = read(fd, p->wbuf, sizeof p->wbuf);
-	DEBUGF_M("Read %zd from fd_cmd = %d (errno %d)\n", p->wlen, fd, errno);
-	// write(2, p->wbuf, p->wlen);
+	// DEBUGF_M("Read %zd from fd_cmd = %d (errno %d)\n", p->wlen, fd, errno);
 	if (p->wlen <= 0)
 	{
 		if (p->is_stdin_forward)
@@ -196,16 +189,15 @@ write_fd(GS_SELECT_CTX *ctx, struct _peer *p)
 {
 	ssize_t len;
 
-
 	len = write(p->fd_out, p->rbuf, p->rlen);
-	// DEBUGF_G("write(fd = %d,, len = %zd) == %zd\n", p->fd_out, p->rlen, len);
+	// DEBUGF_G("write(fd = %d, len = %zd) == %zd\n", p->fd_out, p->rlen, len);
 	
 	if ((len < 0) && (errno == EAGAIN))
 	{
 		/* Stop reading from GS */
 		FD_CLR(p->gs->fd, ctx->rfd);
 		/* Mark that cmd_fd need call to write() */
-		FD_SET(p->fd_out, ctx->wfd);
+		XFD_SET(p->fd_out, ctx->wfd);
 		return GS_SUCCESS;	/* Successfully handled */
 	}
 
@@ -231,25 +223,31 @@ cb_read_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 {
 	struct _peer *p = (struct _peer *)arg;
 	GS *gs = p->gs;
+	ssize_t len;
+	int ret;
 
-	XASSERT(p->rlen <= 0, "Already data in input buffer (%zd)\n", p->rlen);
-	p->rlen = GS_read(gs, p->rbuf, sizeof p->rbuf);
-	DEBUGF_G("GS_read(fd = %d) == %zd\n", gs->fd, p->rlen);
-	if (p->rlen == 0)
+	// XASSERT(p->rlen <= 0, "Already data in input buffer (%zd)\n", p->rlen);
+	XASSERT(p->rlen < sizeof p->rbuf, "rlen=%zd larger than buffer\n", p->rlen);
+	len = GS_read(gs, p->rbuf + p->rlen, sizeof p->rbuf - p->rlen);
+	// DEBUGF_G("GS_read(fd = %d) == %zd\n", gs->fd, len);
+	if (len == 0)
 		return GS_ECALLAGAIN;
 
-	if (p->rlen == GS_ERR_EOF)
+	if (len == GS_ERR_EOF)
 	{
 		/* The same for STDOUT, tcp-fordward or cmd-forward [/bin/sh] */
 		DEBUGF_M("CMD shutdown(fd=%d)\n", p->fd_out);
-		shutdown(p->fd_out, SHUT_WR);
+		shutdown(p->fd_out, SHUT_WR);	// BUG-2-MAX-FD
 		if (gopt.is_receive_only)
+		{
+			DEBUGF_M("is_receive_only is TRUE. Calling peer_free()\n");
 			peer_free(ctx, p);
+		}
 		return GS_SUCCESS;
 	}
-	if (p->rlen < 0) /* any ERROR (but EOF) */
+	if (len < 0) /* any ERROR (but EOF) */
 	{
-		DEBUGF_R("Fatal error=%zd in GS_read() (stdin-forward == %d)\n", p->rlen, p->is_stdin_forward);
+		DEBUGF_R("Fatal error=%zd in GS_read() (stdin-forward == %d)\n", len, p->is_stdin_forward);
 		GS_shutdown(gs);
 		// DEBUGF_R("GS_shutdown() = %d\n", ret);
 		/* Finish peer on FATAL (2nd EOF) or if half-duplex (never send data) */
@@ -257,9 +255,35 @@ cb_read_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 		return GS_SUCCESS;	/* Successfully removed peer */
 	}
 
-	write_fd(ctx, p);
+	p->rlen += len;
 
-	p->rlen = 0;
+	if ((gopt.is_socks_server && (p->socks.state != GSNC_STATE_CONNECTED)))
+	{
+		/* HERE: SOCKS has not finished yet. Keep stuffing data in */
+		ret = SOCKS_add(p);
+		if (ret != GS_SUCCESS)
+		{
+			DEBUGF_R("**** SOCKS_add() ERROR ****\n");
+			GS_shutdown(gs);
+			peer_free(ctx, p);
+
+			return GS_SUCCESS;
+		}
+		if (p->socks.state == GSNC_STATE_CONNECTING)
+		{
+			DEBUGF_C("SOCKS_add() has finished\n");
+			ret = peer_forward_connect(p, p->socks.dst_ip, p->socks.dst_port);
+			if (ret != 0)
+				return GS_SUCCESS;	// Successfully removed
+			p->socks.state = GSNC_STATE_CONNECTED;	// as if this is a normal port forward...
+		}
+		if (p->wlen > 0)
+			write_gs(ctx, p);
+		// DEBUGF_C("fd=%d in RFD is %s\n", gs->fd, FD_ISSET(gs->fd, ctx->rfd)?"set":"NOT SET");
+	} else {
+		write_fd(ctx, p);
+	}
+
 	return GS_SUCCESS;
 }
 
@@ -270,7 +294,7 @@ write_gs(GS_SELECT_CTX *ctx, struct _peer *p)
 	int len;
 
 	len = GS_write(gs, p->wbuf, p->wlen);
-	DEBUGF_R("GS_write() = %d\n", len);
+	// DEBUGF_R("GS_write(fd==%d) = %d\n", gs->fd, len);
 	if (len == 0)
 	{
 		/* GS_write() would block. */
@@ -282,7 +306,13 @@ write_gs(GS_SELECT_CTX *ctx, struct _peer *p)
 	{
 		/* GS_write() was a success */
 		p->wlen = 0;
-		FD_SET(p->fd_in, ctx->rfd);	// Start reading from input again
+		if (p->is_fd_connected)
+		{
+			/* SOCKS subsystem calls write_gs() before p->fd_in is connected
+			 * Make sure XFD_SET() is only called on a connected() socket.
+			 */
+			XFD_SET(p->fd_in, ctx->rfd);	// Start reading from input again
+		}
 		return GS_SUCCESS;
 	}
 
@@ -305,11 +335,16 @@ completed_connect(GS_SELECT_CTX *ctx, struct _peer *p, int fd_in, int fd_out)
 	GS *gs = p->gs;
 	/* Get ready to read from FD (either (forwarding) TCP, app or stdin/stdout */
 	FD_CLR(fd_out, ctx->wfd);
-	FD_SET(fd_in, ctx->rfd);
+	XFD_SET(fd_in, ctx->rfd);
 	GS_SELECT_add_cb(ctx, cb_read_fd, cb_write_fd, fd_in, p, 0);
 
 	/* And also get ready to read from GS-peer */
-	FD_SET(gs->fd, ctx->rfd);
+	XFD_SET(gs->fd, ctx->rfd);
+
+	p->is_fd_connected = 1;
+
+	/* Write any data that is left in rbuf to fd */
+	write_fd(ctx, p);
 }
 
 /*
@@ -321,7 +356,7 @@ cb_complete_connect(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	int ret;
 	struct _peer *p = (struct _peer *)arg;
 
-	ret = fd_net_connect(ctx, fd, gopt.dst_ip, gopt.port);
+	ret = fd_net_connect(ctx, fd, p->socks.dst_ip, p->socks.dst_port);
 	DEBUGF_M("fd_net_connect(fd=%d) = %d\n", fd, ret);
 	if (ret == GS_ERR_WAITING)
 		return GS_ECALLAGAIN;
@@ -352,10 +387,34 @@ peer_new_init(GS *gs)
 	gopt.peer_count++;
 	gopt.peer_id_counter++;
 	p->id = gopt.peer_id_counter;
-	DEBUGF_M("Connected gs-peers: %d\n", gopt.peer_count);
+	DEBUGF_M("[ID=%d] (fd=%d) Number of connected gs-peers: %d\n", p->id, fd, gopt.peer_count);
 
 	return p;
 }
+
+static int
+peer_forward_connect(struct _peer *p, uint32_t ip, uint16_t port)
+{
+	int ret;
+	GS *gs = p->gs;
+	GS_SELECT_CTX *ctx = gs->ctx->gselect_ctx;
+
+	VLOG("    [ID=%d] Forwarding to %s:%d\n", p->id, p->socks.dst_hostname, ntohs(port));
+	ret = fd_net_connect(ctx, p->fd_in, ip, port);
+	if (ret <= -2)
+	{
+		peer_free(ctx, p);
+		return -1;
+	}
+	GS_SELECT_add_cb(ctx, cb_complete_connect, cb_complete_connect, p->fd_in, p, 0);
+	XFD_SET(p->fd_in, ctx->wfd);	/* Wait for connect() to complete */
+	FD_CLR(p->fd_in, ctx->rfd);
+
+	FD_CLR(gs->fd, ctx->rfd);		// Stop reading from GS-peer 
+
+	return 0;
+}
+
 
 /*
  * SERVER
@@ -378,49 +437,47 @@ peer_new(GS_SELECT_CTX *ctx, GS *gs)
 		p->fd_in = fd_new_socket();	// Forward to ip:port
 		p->fd_out = p->fd_in;
 		p->is_network_forward = 1;
+	} else if (gopt.is_socks_server != 0) {
+		p->fd_in = fd_new_socket();	// SOCKS
+		DEBUGF_W("[ID=%d] gs->fd = %d\n", p->id, gs->fd);
+		p->fd_out = p->fd_in;
+		p->is_network_forward = 1;		
 	} else {
 		p->fd_in = STDIN_FILENO;	// Forward to STDIN/STDOUT
 		p->fd_out = STDOUT_FILENO;
 		p->is_stdin_forward = 1;
-#if 0
-		/* 2020-09-09: Do not allow multiple gs-peers to connect
-		 * to the same stdin/stdout. In stdin/stdout mode enforce
-		 * 1x gs-peer to stdin (stop accepting new connections)
-		 */
-		/* Disconnect any connected gs but this one */
-		for (int i = 0; i < FD_SETSIZE; i++)
-		{
-			if ((peers[i] == NULL) || (peers[i]->gs == NULL))
-				continue;
-			if (peers[i]->gs->fd == gs->fd)
-				continue;	// found myself
-			DEBUGF_R("Disconnecting stale peer: gs-fd = %d\n", peers[i]->gs->fd);
-			/* Free/Disconnect gs-peer but keep stdin/stdout open */
-			peer_free(ctx, peers[i]);
-			break;	/* There can only be 1 stale/old gs-peer */
-		}
-#endif
 	}
 
 	if (p->fd_in < 0)
-		ERREXIT("Cant create forward...\n");
+	{
+		ERREXIT("Cant create forward...%s\n", GS_strerror(gs));
+	}
 
 	if (p->is_network_forward == 0)
 	{
 		/* STDIN/STDOUT or app-fd always complete immediately */
 		completed_connect(ctx, p, p->fd_in, p->fd_out);
 	} else {
-		ret = fd_net_connect(ctx, p->fd_in, gopt.dst_ip, gopt.port);
-		if (ret <= -2)
+		if (gopt.is_socks_server)
 		{
-			peer_free(ctx, p);
-			return NULL;
-		}
-		GS_SELECT_add_cb(ctx, cb_complete_connect, cb_complete_connect, p->fd_in, p, 0);
-		FD_SET(p->fd_in, ctx->wfd);	/* Wait for connect() to complete */
-		FD_CLR(p->fd_in, ctx->rfd);
+			ret = SOCKS_init(p);
+			if (ret != GS_SUCCESS)
+			{
+				peer_free(ctx, p);
+				return NULL;
+			}
+		} else {
+			/* A straight network forward is as if the SOCKS completed already */
+			p->socks.dst_ip = gopt.dst_ip;
+			p->socks.dst_port = gopt.port;
+			snprintf(p->socks.dst_hostname, sizeof p->socks.dst_hostname, "%s", int_ntoa(p->socks.dst_ip));
+			p->socks.state = GSNC_STATE_CONNECTED;
 
-		FD_CLR(gs->fd, ctx->rfd);		// Stop reading from GS-peer 
+			ret = peer_forward_connect(p, p->socks.dst_ip, p->socks.dst_port);
+			if (ret != 0)
+				return NULL;
+
+		}
 	}
 
 	return p;
@@ -441,7 +498,7 @@ cb_listen(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	if (gs_new == NULL)
 	{
 		if (err <= -2)
-			ERREXIT("Fatal error. Another Server already listening?\n");
+			ERREXIT("Another Server is already listening or Network error.\n");
 		/* HERE: GS_accept() is not ready yet to accept() a new
 		 * gsocket. (May have processed GS-pkt data) or may have 
 		 * closed the socket and established a new one (to wait for
@@ -451,7 +508,7 @@ cb_listen(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	}
 
 	/* Stop accepting more connections if stdin/stdout is used */
-	if ((gopt.cmd == NULL) && (gopt.dst_ip == 0) && (!gopt.is_interactive))
+	if (gopt.is_multi_peer == 0) //(gopt.cmd == NULL) && (gopt.dst_ip == 0) && (!gopt.is_interactive))
 	{
 		GS_close(gopt.gsocket);
 	}
@@ -481,7 +538,7 @@ do_server(void)
 	/* Tell GS_CTX subsystem to use GS-SELECT */
 	GS_CTX_use_gselect(&gopt.gs_ctx, &ctx);
 
-	GS_listen(gopt.gsocket, 2);
+	GS_listen(gopt.gsocket, 1);
 	/* Add all listening fd's to select()-subsystem */
 	GS_listen_add_gs_select(gopt.gsocket, &ctx, cb_listen, gopt.gsocket, 0);
 
@@ -513,7 +570,7 @@ stty_set_remote_size(GS_SELECT_CTX *ctx, struct _peer *p)
  * CLIENT
  */
 static int
-cb_connect_client(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
+cb_connect_client(GS_SELECT_CTX *ctx, int fd_notused, void *arg, int val)
 {
 	struct _peer *p = (struct _peer *)arg;
 	GS *gs = p->gs;
@@ -522,18 +579,34 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	ret = GS_connect(gs);
 	DEBUGF_M("GS_connect(fd=%d) == %d\n", gs->fd, ret);
 	if (ret == GS_ERR_FATAL)
-		ERREXIT("Fatal GS_connect() error\n");
+	{
+		VLOG("%s [ID=%d] Connection failed: %s\n", GS_logtime(), p->id, GS_strerror(gs));
+		if (gopt.is_multi_peer == 0)
+			exit(255);	// No server listening
+		/* This can happen if server accepts 1 connection only but client
+		 * wants to open multiple. All but the 1st connection will fail. We shall
+		 * not exit but keep the 1 connection alive.
+		 * ./gs-netcat -l
+		 * ./gs-netcat -p 1080
+		 * -> Connection 2x to 127.1:1080 should keep 1st connection alive and 2nd
+		 * should (gracefully) fail.
+		 */
+		usleep(100 * 1000);
+		peer_free(ctx, p);
+		return GS_SUCCESS;
+	}
 	if (ret == GS_ERR_WAITING)
 		return GS_ECALLAGAIN;
 
 	DEBUGF_M("*** GS_connect() SUCCESS *****\n");
 	/* HERE: Connection successfully established */
 	/* Start reading from Network (SRP is handled by GS_read()/GS_write()) */
-	GS_SELECT_add_cb(ctx, cb_read_gs, cb_write_gs, fd, p, 0);
+	GS_SELECT_add_cb(ctx, cb_read_gs, cb_write_gs, gs->fd, p, 0);
 
 	/* Start reading from STDIN or inbound TCP */
 	GS_SELECT_add_cb(ctx, cb_read_fd, cb_write_fd, p->fd_in, p, 0);
-	FD_SET(p->fd_in, ctx->rfd);	/* Start reading */
+	XFD_SET(p->fd_in, ctx->rfd);	/* Start reading */
+	p->is_fd_connected = 1;
 
 	/* -i specified and we are a client: Set TTY to raw for a real shell
 	 * experience. Ignore this for this example.
@@ -561,8 +634,7 @@ gs_and_peer_connect(GS_SELECT_CTX *ctx, GS *gs, int fd_in, int fd_out)
 
 	ret = GS_connect(gs);	// First call always returns -1 (waiting)
 	XASSERT(ret == GS_ERR_WAITING, "ERROR GS_connect() == %d\n", ret);
-	DEBUGF_B("GS_connect() = %d\n", ret);
-	DEBUGF_B("GS->fd = %d\n", GS_get_fd(gs));
+	DEBUGF_B("GS_connect(GS->fd = %d)\n", GS_get_fd(gs));
 	p = peer_new_init(gs);
 	p->fd_in = fd_in;
 	p->fd_out = fd_out;
@@ -582,7 +654,7 @@ cb_accept(GS_SELECT_CTX *ctx, int listen_fd, void *arg, int val)
 	GS *gs;
 	struct _peer *p;
 
-	fd = fd_net_accept(ctx, listen_fd);
+	fd = fd_net_accept(listen_fd);
 	if (fd < 0)
 		return GS_SUCCESS;
 
@@ -606,29 +678,21 @@ static void
 do_client(void)
 {
 	GS_SELECT_CTX ctx;
-	// GS *gs = gopt.gsocket;
-	int fd;
-	int ret;
 	struct _peer *p;
 
 	GS_SELECT_CTX_init(&ctx, &gopt.rfd, &gopt.wfd, &gopt.r, &gopt.w, &gopt.tv_now, GS_SEC_TO_USEC(1));
 	/* Tell GS_CTX subsystem to use GS-SELECT */
 	GS_CTX_use_gselect(&gopt.gs_ctx, &ctx);
 
-	if (gopt.port == 0)
+	if (gopt.is_multi_peer == 0)
 	{
 		/* Read/Write from STDIN/STDOUT. No TCP. */
 		/* STDIN can be blocking */
 		p = gs_and_peer_connect(&ctx, gopt.gsocket, STDIN_FILENO, STDOUT_FILENO);
 		p->is_stdin_forward = 1;
 	} else {
-		fd = fd_new_socket();
-		ret = fd_net_listen(&ctx, fd, gopt.port);
-		if (ret != 0)
-			ERREXIT("listen(): %s\n", strerror(errno));
-
-		GS_SELECT_add_cb(&ctx, cb_accept, cb_accept, fd, NULL, 0);
-		FD_SET(fd, ctx.rfd);	/* listening socket */
+		GS_SELECT_add_cb(&ctx, cb_accept, cb_accept, gopt.listen_fd, NULL, 0);
+		XFD_SET(gopt.listen_fd, ctx.rfd);	/* listening socket */
 	}
 
 	int n;
@@ -648,15 +712,29 @@ my_usage(void)
 "gs-netcat [-lwiC] [-e cmd] [-p port] [-d ip]\n"
 "");
 
-	usage("skrlgqwCTie");
+	usage("skrlSgqwCTL");
 	fprintf(stderr, ""
+#ifdef D31337
+"  -S           Act as a Socks server [needs -l]\n"
+#endif
+"  -D           Daemon & Watchdog mode [background]\n"
+"  -d <IP>      IPv4 address for port forwarding\n"
+"  -p <port>    TCP Port to listen on or forward to\n"
+"  -i           Interactive login shell (TTY) [~. to terminate]\n"
+"  -e <cmd>     Execute command [e.g. \"bash -il\" or \"id\"]\n"
+"   "
 "\n"
 "Example to forward traffic from port 2222 to 192.168.6.7:22:\n"
 "    $ gs-netcat -l -d 192.168.6.7 -p 22     # Server\n"
 "    $ gs-netcat -p 2222                     # Client\n"
+#ifdef D31337
+"Example to act as a Socks proxy\n"
+"    $ gs-netcat -l -S                       # Server\n"
+"    $ gs-netcat -p 1080                     # Client\n"
+#endif
 "Example file transfer:\n"
-"    $ gs-netcat -s blah -rl >warez.tar.gz   # Server\n"
-"    $ gs-netcat -s blah <warez.tar.gz       # Client\n"
+"    $ gs-netcat -l -r >warez.tar.gz         # Server\n"
+"    $ gs-netcat <warez.tar.gz               # Client\n"
 "Example for a reverse shell:\n"
 "    $ gs-netcat -l -i                       # Server\n"
 "    $ gs-netcat -i                          # Client\n"
@@ -675,14 +753,29 @@ my_getopt(int argc, char *argv[])
 	{
 		switch (c)
 		{
+			case 'D':
+				gopt.is_daemon = 1;
+				break;
 			case 'p':
 				gopt.port = htons(atoi(optarg));
+				gopt.is_multi_peer = 1;
 				break;
 			case 'e':
 				gopt.cmd = optarg;
+				gopt.is_multi_peer = 1;
 				break;
 			case 'd':
 				gopt.dst_ip = inet_addr(optarg);
+				gopt.is_multi_peer = 1;
+				break;
+			case 'S':
+#ifdef D31337
+				gopt.is_socks_server = 1;
+				gopt.is_multi_peer = 1;
+				gopt.flags |= GSC_FL_IS_SERVER;	// implicit
+#else
+				ERREXIT("Experimental Feature. Contact us on Telegram to use this.\n");
+#endif
 				break;
 			default:
 				break;
@@ -692,11 +785,31 @@ my_getopt(int argc, char *argv[])
 		}
 	}
 
+	/* Try to bind port (if listening) now and exit with error on failure
+	 * so that we only turn daemon/watchdog if port is available
+	 */
+	if (!(gopt.flags & GSC_FL_IS_SERVER))
+	{
+		/* HERE: Client */
+		if (gopt.is_multi_peer == 1)
+		{
+			XASSERT(gopt.port != 0, "Client listening port is 0 but want multple peers.\n");
+			gopt.listen_fd = fd_new_socket();
+			int ret;
+			ret = fd_net_listen(gopt.listen_fd, gopt.port);
+			if (ret != 0)
+				ERREXIT("Listening on port %d failed: %s\n", ntohs(gopt.port), strerror(errno));
+		}
+	}
+
 	init_vars();			/* from utils.c */
 
-	/* Disable encryption (-C) */
-	if (gopt.is_encryption == 0)
-		GS_setsockopt(gopt.gsocket, GS_OPT_NO_ENCRYPTION, NULL, 0);
+	/* Become a daemon & watchdog (auto-restart) */
+	if (gopt.is_daemon)
+	{
+		gopt.err_fp = gopt.log_fp;	// Errors to logfile or /dev/null
+		GS_daemonize(gopt.log_fp);
+	}
 
 	VLOG("=Encryption: %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
 }

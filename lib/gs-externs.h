@@ -9,5 +9,6 @@
 extern FILE *gs_dout;
 extern int gs_debug_level;
 #endif
+extern FILE *gs_errfp;
 
 #endif /* !__LIBGSOCKET_GS_COMMON_H__ */

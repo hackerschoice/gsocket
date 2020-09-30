@@ -11,6 +11,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
+#include <sys/resource.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
@@ -56,6 +57,7 @@ struct _gopt
 	GS *gsocket;	/* Listening gsocket */
 
 	FILE *log_fp;
+	FILE *err_fp;
 	int flags;
 	int verboselevel;
 	const char *sec_str;
@@ -64,25 +66,68 @@ struct _gopt
 	char *token_str;
 	int is_sock_wait;
 	int is_client_or_server;
-	int is_encryption;
+	int is_no_encryption;
+	int is_blocking;
 	int is_interactive;	/* PTY interactive shell? */
 	int is_receive_only;
 	int is_use_tor;
+	int is_socks_server;	/* -S flag */
+	int is_multi_peer;		/* -p / -S / -d [client & server] */
+	int is_daemon;
 	fd_set rfd, r;
 	fd_set wfd, w;
 	struct timeval tv_now;
 	const char *cmd;
 	uint32_t dst_ip;	/* NBO */
 	uint16_t port;		/* NBO */
+	int listen_fd;
 	struct winsize winsize;
 	int peer_count;
 	int peer_id_counter;	
+};
+
+struct _socks
+{
+	uint32_t dst_ip;
+	uint16_t dst_port;
+	char dst_hostname[256];	// dst host name. 
+	int state;
+};
+
+#define GSNC_STATE_AWAITING_MSG_AUTH		(0x01)
+#define GSNC_STATE_AWAITING_MSG_CONNECT		(0x02)
+#define GSNC_STATE_RESOLVING_DN				(0x03)
+#define GSNC_STATE_CONNECTING				(0x04)
+#define GSNC_STATE_CONNECTED				(0x05)
+
+
+/* gs-netcat peers */
+struct _peer
+{
+	/* A peer is connected to a gsocket and the a cmd_fd */
+	GS *gs;
+	int fd_in;
+	int fd_out;	/* Same as fd_in unless client reads from stdin/stdout */
+	uint8_t rbuf[2048];	/* from GS */
+	ssize_t rlen;
+	uint8_t wbuf[2048];	/* to GS */
+	ssize_t wlen;
+	int is_network_forward;
+	int is_stdin_forward;
+	int is_app_forward;
+	int is_fd_connected;
+	/* For Statistics */
+	int id;			/* Stats: assign an ID to each pere */
+	struct _socks socks;
 };
 
 #define GSC_FL_IS_SERVER		(0x01)
 
 
 extern struct _gopt gopt;
+#define xfprintf(fp, a...) do {if (fp == NULL) { break; } fprintf(fp, a); } while (0)
+
+#define int_ntoa(x)	inet_ntoa(*((struct in_addr *)&x))
 
 #ifndef MAX
 # define MAX(X, Y) (((X) < (Y)) ? (Y) : (X))
@@ -103,12 +148,14 @@ extern struct _gopt gopt;
 # define D_BYEL(a)	"\033[1;33m"a"\033[0m"
 # define D_BBLU(a)	"\033[1;34m"a"\033[0m"
 # define D_BMAG(a)	"\033[1;35m"a"\033[0m"
-# define DEBUGF(a...) do{fprintf(stderr, "DEBUG %s:%d: ", __func__, __LINE__); fprintf(stderr, a); }while(0)
-# define DEBUGF_R(a...) do{fprintf(stderr, "DEBUG %s:%d: ", __func__, __LINE__); fprintf(stderr, "\033[1;31m"); fprintf(stderr, a); fprintf(stderr, "\033[0m"); }while(0)
-# define DEBUGF_G(a...) do{fprintf(stderr, "DEBUG %s:%d: ", __func__, __LINE__); fprintf(stderr, "\033[1;32m"); fprintf(stderr, a); fprintf(stderr, "\033[0m"); }while(0)
-# define DEBUGF_B(a...) do{fprintf(stderr, "DEBUG %s:%d: ", __func__, __LINE__); fprintf(stderr, "\033[1;34m"); fprintf(stderr, a); fprintf(stderr, "\033[0m"); }while(0)
-# define DEBUGF_Y(a...) do{fprintf(stderr, "DEBUG %s:%d: ", __func__, __LINE__); fprintf(stderr, "\033[1;33m"); fprintf(stderr, a); fprintf(stderr, "\033[0m"); }while(0)
-# define DEBUGF_M(a...) do{fprintf(stderr, "DEBUG %s:%d: ", __func__, __LINE__); fprintf(stderr, "\033[1;35m"); fprintf(stderr, a); fprintf(stderr, "\033[0m"); }while(0)
+# define DEBUGF(a...) do{xfprintf(gopt.err_fp, "DEBUG %s:%d: ", __func__, __LINE__); xfprintf(gopt.err_fp, a); }while(0)
+# define DEBUGF_R(a...) do{xfprintf(gopt.err_fp, "DEBUG %s:%d: ", __func__, __LINE__); xfprintf(gopt.err_fp, "\033[1;31m"); xfprintf(gopt.err_fp, a); xfprintf(gopt.err_fp, "\033[0m"); }while(0)
+# define DEBUGF_G(a...) do{xfprintf(gopt.err_fp, "DEBUG %s:%d: ", __func__, __LINE__); xfprintf(gopt.err_fp, "\033[1;32m"); xfprintf(gopt.err_fp, a); xfprintf(gopt.err_fp, "\033[0m"); }while(0)
+# define DEBUGF_B(a...) do{xfprintf(gopt.err_fp, "DEBUG %s:%d: ", __func__, __LINE__); xfprintf(gopt.err_fp, "\033[1;34m"); xfprintf(gopt.err_fp, a); xfprintf(gopt.err_fp, "\033[0m"); }while(0)
+# define DEBUGF_Y(a...) do{xfprintf(gopt.err_fp, "DEBUG %s:%d: ", __func__, __LINE__); xfprintf(gopt.err_fp, "\033[1;33m"); xfprintf(gopt.err_fp, a); xfprintf(gopt.err_fp, "\033[0m"); }while(0)
+# define DEBUGF_M(a...) do{xfprintf(gopt.err_fp, "DEBUG %s:%d: ", __func__, __LINE__); xfprintf(gopt.err_fp, "\033[1;35m"); xfprintf(gopt.err_fp, a); xfprintf(gopt.err_fp, "\033[0m"); }while(0)
+# define DEBUGF_C(a...) do{xfprintf(gopt.err_fp, "DEBUG %s:%d: ", __func__, __LINE__); xfprintf(gopt.err_fp, "\033[1;36m"); xfprintf(gopt.err_fp, a); xfprintf(gopt.err_fp, "\033[0m"); }while(0)
+# define DEBUGF_W(a...) do{xfprintf(gopt.err_fp, "DEBUG %s:%d: ", __func__, __LINE__); xfprintf(gopt.err_fp, "\033[1;37m"); xfprintf(gopt.err_fp, a); xfprintf(gopt.err_fp, "\033[0m"); }while(0)
 #else
 # define DEBUGF(a...)
 # define DEBUGF_R(a...)
@@ -116,12 +163,14 @@ extern struct _gopt gopt;
 # define DEBUGF_B(a...)
 # define DEBUGF_Y(a...)
 # define DEBUGF_M(a...)
+# define DEBUGF_C(a...)
+# define DEBUGF_W(a...)
 #endif
 
 #define VOUT(level, a...) do { \
 	if (level > gopt.verboselevel) \
 		break; \
-	fprintf(gopt.out, a); \
+	xfprintf(gopt.out, a); \
 	fflush(gopt.out); \
 } while (0)
 
@@ -129,15 +178,15 @@ extern struct _gopt gopt;
 
 #ifdef DEBUG
 # define ERREXIT(a...)   do { \
-		fprintf(stderr, "ERROR "); \
-        fprintf(stderr, "%s():%d ", __func__, __LINE__); \
-        fprintf(stderr, a); \
+		xfprintf(gopt.err_fp, "ERROR "); \
+        xfprintf(gopt.err_fp, "%s():%d ", __func__, __LINE__); \
+        xfprintf(gopt.err_fp, a); \
         exit(255); \
 } while (0)
 #else
 # define ERREXIT(a...)   do { \
-		fprintf(stderr, "ERROR: "); \
-        fprintf(stderr, a); \
+		xfprintf(gopt.err_fp, "ERROR: "); \
+        xfprintf(gopt.err_fp, a); \
         exit(255); \
 } while (0)
 #endif
@@ -145,23 +194,38 @@ extern struct _gopt gopt;
 #ifndef XASSERT
 # define XASSERT(expr, a...) do { \
 	if (!(expr)) { \
-		fprintf(stderr, "%s:%d:%s() ASSERT(%s) ", __FILE__, __LINE__, __func__, #expr); \
-		fprintf(stderr, a); \
-		fprintf(stderr, " Exiting...\n"); \
+		xfprintf(gopt.err_fp, "%s:%d:%s() ASSERT(%s) ", __FILE__, __LINE__, __func__, #expr); \
+		xfprintf(gopt.err_fp, a); \
+		xfprintf(gopt.err_fp, " Exiting...\n"); \
 		exit(255); \
 	} \
 } while (0)
 #endif
 
+#define XCLOSE(fd)      do { \
+        if (fd < 0) { DEBUGF_R("*** WARNING *** CLosing BAD fd\n"); break; } \
+        DEBUGF_W("Closing fd = %d\n", fd); \
+        close(fd); \
+        fd = -1; \
+} while (0)
+
+#define XFD_SET(fd, set) do { \
+        if (fd < 0) { DEBUGF_R("WARNING: FD_SET(%d, )\n", fd); break; } \
+        if (fd == 0) { DEBUGF_R("WARNING0: FD_SET(%d, )\n", fd); } \
+        FD_SET(fd, set); \
+} while (0)
+
 #ifdef DEBUG
 # define HEXDUMP(a, len)        do { \
         int n = 0; \
-        fprintf(stderr, "%s:%d HEX ", __FILE__, __LINE__); \
-        while (n < len) fprintf(stderr, "%2.2x", ((unsigned char *)a)[n++]); \
-        fprintf(stderr, "\n"); \
+        xfprintf(gopt.err_fp, "%s:%d HEX ", __FILE__, __LINE__); \
+        while (n < len) xfprintf(gopt.err_fp, "%2.2x", ((unsigned char *)a)[n++]); \
+        xfprintf(gopt.err_fp, "\n"); \
 } while (0)
+# define HEXDUMPF(a, len, m...) do{xfprintf(gopt.err_fp, m); HEXDUMP(a, len);}while(0)
 #else
 # define HEXDUMP(a, len)
+# define HEXDUMPF(a, len, m...)
 #endif
 
 #endif /* !__GST_COMMON_H__ */

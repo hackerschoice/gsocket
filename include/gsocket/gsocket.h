@@ -94,6 +94,7 @@ struct _gs_connect
 #define GS_PKT_PROTO_VERSION_MINOR		(0x02)
 
 #define GS_FL_PROTO_WAIT				(0x01)	/* Wait for LC to connect */
+
 /* Client allowed to become a Server if Server does not exist.
  * Or Server allowed to become a Client if Server already exists.
  */
@@ -169,8 +170,8 @@ typedef struct
 	fd_set *wfd;
 	fd_set *r;
 	fd_set *w;
-	FILE *out;		/* Output for password query etc */
-	FILE *log_fp;	/* Log file output */
+	// FILE *out;		/* Output for password query etc */
+	// FILE *log_fp;	/* Log file output */
 	int gsocket_success_count;	/* Successfull connection counter */
 	GS_SELECT_CTX *gselect_ctx;
 	/* Listening CB and values */
@@ -178,9 +179,13 @@ typedef struct
 	int cb_val_listen;
 
 	struct timeval *tv_now;
-	int flags;
 	char err_buf[1024];
 	char err_buf2[1024];
+
+	uint32_t flags;				// CTX specific flags.
+
+	uint32_t gs_flags;			// GS specific. Copied to GS on creation
+	uint32_t flags_proto;
 
 	uint32_t socks_ip;			// NBO. Use Socks5
 	uint16_t socks_port;		// Socks5
@@ -188,6 +193,11 @@ typedef struct
 } GS_CTX;
 
 #define GS_CTX_FL_RFD_INTERNAL		(0x01)	/* Use internal FD_SET */
+
+#define GSC_FL_NONBLOCKING			(0x02)	/* Do not Block on socket IO */
+#define GSC_FL_USE_SRP				(0x20)
+#define GSC_FL_CLIENT_OR_SERVER		(0x40)
+
 
 /* TCP network address may depend on GS_ADDR (load balancing) */
 struct gs_sox
@@ -212,7 +222,7 @@ struct gs_sox
 #define GS_STATE_SOCKS			(7)
 
 #define GS_SOX_FL_AWAITING_PONG		(0x01)	// Waiting for PONG 
-#define GS_SOX_FL_AWAITING_SOCKS	(0x02)	// Waiting for Socks5 reply 
+#define GS_SOX_FL_AWAITING_SOCKS	(0x02)	// Waiting for Socks5 (TOR) reply 
 
 struct gs_net
 {
@@ -242,7 +252,7 @@ typedef struct
 	GS_CTX *ctx;
 	GS_ADDR gs_addr;
 	uint32_t flags;
-	uint32_t flags_proto;	/* Protocol Flags for pkt */
+	// uint32_t flags_proto;	/* Protocol Flags for pkt */
 	int id;					/* ID of this gsocket. Set AFTER conn success */
 	struct gs_net net;		/* fd's for listening tcp_fd */
 	int fd;					/* Only set if this is a 'connected' tcp_fd (not listening socket) */
@@ -268,12 +278,9 @@ typedef struct
 #define GS_ATTEMPT_READ				(0x02)
 
 #define GS_FL_TCP_CONNECTED			(0x01)	/* All TCP sockets are connected */
-#define GS_FL_NONBLOCKING			(0x02)	/* Do not Block on socket IO */
 #define GS_FL_CALLED_NET_CONNECT	(0x04)	/* GS_connect() already called GS_FL_CALLED_NET_CONNECT */
 #define GS_FL_IS_CLIENT				(0x08)
 #define GS_FL_CALLED_NET_NEW_SOCKET	(0x10)
-#define GS_FL_USE_SRP				(0x20)
-#define GS_FL_CLIENT_OR_SERVER		(0x40)
 #define GS_FL_IS_SERVER				(0x80)	/* A GS-CLient (the first connected) is an SRP-Server */
 #ifdef WITH_GSOCKET_SSL
 # define GS_SSL_STATE_ACCEPT		(0x01)	/* Call SSL_accpet() again */
@@ -301,8 +308,6 @@ void GS_listen_add_gs_select(GS *gs, GS_SELECT_CTX *ctx, gselect_cb_t func, void
 GS *GS_accept(GS *gsocket, int *error);	/* Wait until client connects by GS-ID and return Unix fileno */
 int GS_close(GS *gsocket);		/* close() and free() a connected GS */
 int GS_shutdown(GS *gsocket);
-int GS_setsockopt(GS *gsocket, int level, const void *opt_value, size_t opt_len);
-int GS_setctxopt(GS_CTX *ctx, int level, const void *opt_value, size_t opt_len);
 void GS_heartbeat(GS *gsocket);
 void GS_set_token(GS *gsocket, const void *buf, size_t num);
 /* Logging */
@@ -311,6 +316,8 @@ char *GS_bytesstr(char *dst, size_t len, int64_t bytes);
 char *GS_bytesstr_long(char *dst, size_t len, int64_t bytes);
 const char *GS_logtime(void);
 
+int GS_CTX_setsockopt(GS_CTX *ctx, int level, const void *opt_value, size_t opt_len);
+// int GS_setsockopt(GS *gsocket, int level, const void *opt_value, size_t opt_len);
 #define GS_OPT_SOCKWAIT				(0x03)
 #define GS_OPT_BLOCK				(0x04)	/* Blocking TCP */
 #define GS_OPT_USE_SRP				(0x08)
@@ -324,6 +331,9 @@ ssize_t GS_read(GS *gsocket, void *buf, size_t num);
 GS_ADDR *GS_ADDR_bin2addr(GS_ADDR *addr, const void *data, size_t len);
 GS_ADDR *GS_ADDR_str2addr(GS_ADDR *addr, const char *str);
 GS_ADDR *GS_ADDR_ipport2addr(GS_ADDR *addr, uint32_t ip, uint16_t port);
+uint32_t GS_hton(const char *hostname);
+
+void GS_daemonize(FILE *logfp);
 
 const char *GS_gen_secret(void);
 const char *GS_user_secret(GS_CTX *ctx, const char *file, const char *sec_str);

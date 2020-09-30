@@ -35,8 +35,8 @@ autoheader
 if test $? -ne 0; then
     exit 1
 fi
-echo "automake --foreign --add-missing"
-automake --foreign --add-missing
+echo "automake --foreign --add-missing -c"
+automake --foreign --add-missing -c
 if test $? -ne 0; then
     exit 1
 fi

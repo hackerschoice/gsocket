@@ -10,10 +10,13 @@ if [ x"$GSOCKET_IP" == "x127.0.0.1" ]; then
 	SLEEP_CT=0.1
 fi
 
+PATH=~/usr/bin:$PATH
+
 SLEEP_WD=15	# Max timeout to wait for a process to finish receiving...
 MD5="md5 -q"
 OK="....[\033[1;32mOK\033[0m]"
 FAIL="[\033[1;31mFAILED\033[0m]"
+SKIP="[\033[1;33mskipping\033[0m]"
 ECHO="echo -e"
 tests="1.1 "
 tests+="2.1 2.2 "
@@ -25,6 +28,7 @@ tests+="6.1 6.2 6.3 6.4 6.5 6.6 "
 tests+="6.7 "		# cleartext
 tests+="7.1 7.2 7.3 "
 tests+="8.1 8.2 8.3 "
+tests+="9.1 9.2 9.3 "
 
 # tests="2.1 "
 #tests="5.2"
@@ -36,6 +40,9 @@ tests+="8.1 8.2 8.3 "
 if [ x"$1" != x ]; then
 	tests="$@ "
 fi
+
+#OPTS="-k ./id_sec.txt"
+#OPTS+=" -C"
 
 # echo "Tests: ${tests}"
 mk_dummy()
@@ -63,6 +70,11 @@ fail()
 {
 	$ECHO ${FAIL}-$@
 	exit 255
+}
+
+skip()
+{
+	$ECHO ${SKIP} $@
 }
 
 # Wait until a process has termianted or kill it after SLEEP_WD seconds..
@@ -102,6 +114,24 @@ waitf()
 	rounds=`bc <<<"$SLEEP_WD / 0.1"`
 	while :; do
 		if [ "`$MD5 $1`" == "`$MD5 $2`" ]; then
+			return
+		fi
+		sleep 0.1
+		x=$(($x + 1))
+		if [ $x -gt $rounds ]; then
+			break;
+		fi
+	done	
+	echo "Oops. files not identical...."	
+}
+
+# Wait for file to match has
+waitfhash()
+{
+	x=0;
+	rounds=`bc <<<"$SLEEP_WD / 0.1"`
+	while :; do
+		if [ "`$MD5 $1`" == "$2" ]; then
 			return
 		fi
 		sleep 0.1
@@ -440,6 +470,91 @@ kill -9 $GSPID1 $GSPID2 $GSPID3 $GSPID4 &>/dev/null
 if [ "`$MD5 test50k.dat`" != "`$MD5 nc1_out.dat`" ]; then fail 1; fi
 if [ "`$MD5 test4k.dat`" != "`$MD5 nc2_out.dat`" ]; then fail 2; fi
 $ECHO "${OK}"
+fi
+
+if [[ "$tests" =~ '9.1' ]]; then
+# SOCKS test socat -> port 1085 -> GS-NET -> Port 12345 -> nc -ln
+test_start -n "Running: netcat #9.1 (socat/socks5)......................."
+socat -h | grep socks5 >/dev/null
+if [ $? -ne 0 ]; then
+	skip "(no socat2)"
+else
+	GSPID1="$(sh -c './gs-netcat -k id_sec.txt -lS 2>server1_err.txt >server1_out.dat & echo ${!}')"
+	GSPID2="$(sh -c '(cat test4k.dat; sleep 15) | nc -nl 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
+	GSPID3="$(sh -c './gs-netcat -k id_sec.txt -p 1085 2>client_err.txt >client_out.dat & echo ${!}')"
+	waittcp 1085
+	waittcp 12345
+	GSPID4="$(sh -c '(cat test50k.dat; sleep 15) | socat -  "SOCKS5:localhost:12345 | TCP:127.1:1085" >nc2_out.dat 2>nc2_err.txt & echo ${!}')"
+	waitf test50k.dat nc1_out.dat
+	waitf test4k.dat nc2_out.dat
+	kill -9 $GSPID1 $GSPID2 $GSPID3 $GSPID4 &>/dev/null 
+	if [ "`$MD5 test50k.dat`" != "`$MD5 nc1_out.dat`" ]; then fail 1; fi
+	if [ "`$MD5 test4k.dat`" != "`$MD5 nc2_out.dat`" ]; then fail 2; fi
+	$ECHO "${OK}"
+	fi
+fi
+
+if [[ "$tests" =~ '9.2' ]]; then
+# SOCKS test socat -> port 1085 -> GS-NET -> Port 12345 -> nc -ln
+test_start -n "Running: netcat #9.2 (socat/socks4)......................."
+socat -h | grep socks4 >/dev/null
+if [ $? -ne 0 ]; then
+	skip "(no socat)"
+else
+	GSPID1="$(sh -c './gs-netcat -k id_sec.txt -lS 2>server1_err.txt >server1_out.dat & echo ${!}')"
+	GSPID2="$(sh -c '(cat test4k.dat; sleep 15) | nc -nl 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
+	GSPID3="$(sh -c './gs-netcat -k id_sec.txt -p 1085 2>client_err.txt >client_out.dat & echo ${!}')"
+	waittcp 1085
+	waittcp 12345
+	GSPID4="$(sh -c '(cat test50k.dat; sleep 15) | socat -  "SOCKS4:127.1:127.1:12345,socksport=1085" >nc2_out.dat 2>nc2_err.txt & echo ${!}')"
+	waitf test50k.dat nc1_out.dat
+	waitf test4k.dat nc2_out.dat
+	kill -9 $GSPID1 $GSPID2 $GSPID3 $GSPID4 &>/dev/null 
+	if [ "`$MD5 test50k.dat`" != "`$MD5 nc1_out.dat`" ]; then fail 1; fi
+	if [ "`$MD5 test4k.dat`" != "`$MD5 nc2_out.dat`" ]; then fail 2; fi
+	$ECHO "${OK}"
+	fi
+fi
+
+if [[ "$tests" =~ '9.3' ]]; then
+# SOCKS test socat -> port 1085 -> GS-NET -> Port 12345 -> nc -ln
+test_start -n "Running: netcat #9.3 (socat/socks4a)......................"
+socat -h | grep socks4 >/dev/null
+if [ $? -ne 0 ]; then
+	skip "(no socat)"
+else
+	GSPID1="$(sh -c './gs-netcat -k id_sec.txt -lS 2>server1_err.txt >server1_out.dat & echo ${!}')"
+	GSPID2="$(sh -c '(cat test4k.dat; sleep 15) | nc -nl 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
+	GSPID3="$(sh -c './gs-netcat -k id_sec.txt -p 1085 2>client_err.txt >client_out.dat & echo ${!}')"
+	waittcp 1085
+	waittcp 12345
+	GSPID4="$(sh -c '(cat test50k.dat; sleep 15) | socat -  "SOCKS4a:127.1:localhost:12345,socksport=1085" >nc2_out.dat 2>nc2_err.txt & echo ${!}')"
+	waitf test50k.dat nc1_out.dat
+	waitf test4k.dat nc2_out.dat
+	kill -9 $GSPID1 $GSPID2 $GSPID3 $GSPID4 &>/dev/null 
+	if [ "`$MD5 test50k.dat`" != "`$MD5 nc1_out.dat`" ]; then fail 1; fi
+	if [ "`$MD5 test4k.dat`" != "`$MD5 nc2_out.dat`" ]; then fail 2; fi
+	$ECHO "${OK}"
+	fi
+fi
+
+if [[ "$tests" =~ '9.4' ]]; then
+# SOCKS test with cUrl
+test_start -n "Running: netcat #9.4 (curl/socks5)........................"
+curl -h | grep socks5-hostname >/dev/null
+if [ $? -ne 0 ]; then
+	skip "(no curl)"
+else
+	GSPID1="$(sh -c './gs-netcat -k id_sec.txt -lS 2>server1_err.txt >server1_out.dat & echo ${!}')"
+	GSPID3="$(sh -c './gs-netcat -k id_sec.txt -p 1085 2>client_err.txt >client_out.dat & echo ${!}')"
+	waittcp 1085
+	touch testmp3.dat
+	GSPID4="$(sh -c 'curl --socks5-hostname 127.1:1085 --output testmp3.dat https://raw.githubusercontent.com/hackerschoice/thc-art/master/deep-phreakin.mp3 >nc2_out.dat 2>nc2_err.txt & echo ${!}')"
+	waitfhash testmp3.dat 171a9952951484d020ce1bef52b9eef5
+	kill -9 $GSPID1 $GSPID3 $GSPID4 &>/dev/null 
+	if [ "`$MD5 testmp3.dat`" != "171a9952951484d020ce1bef52b9eef5" ]; then fail 1; fi
+	$ECHO "${OK}"
+	fi
 fi
 
 if [ x"$1" == x ]; then

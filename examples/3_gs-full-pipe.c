@@ -266,10 +266,6 @@ my_getopt(int argc, char *argv[])
 
 	init_vars();			/* from utils.c */
 
-	/* Disable encryption (-C) */
-	if (gopt.is_encryption == 0)
-		GS_setsockopt(gopt.gsocket, GS_OPT_NO_ENCRYPTION, NULL, 0);
-
 	VLOG("=Encryption: %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
 }
 

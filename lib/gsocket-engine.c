@@ -13,7 +13,6 @@
 #include <errno.h>
 #include <unistd.h>
 #include <openssl/sha.h>
-#include <netdb.h>		// gethostbyname
 #include <gsocket/gsocket.h>
 #include "gsocket-engine.h"
 #include "gsocket-sha256.h"	// Use internal SHA256 if no OpenSSL available
@@ -22,7 +21,12 @@
 # define WITH_DEBUG
 FILE *gs_dout;		/* DEBUG OUTPUT */
 int gs_debug_level;
+fd_set *gs_debug_rfd;
+fd_set *gs_debug_wfd;
+fd_set *gs_debug_r;
+fd_set *gs_debug_w;
 #endif
+FILE *gs_errfp;
 // #define WITH_DEBUG
 
 #define GS_NET_DEFAULT_HOST			"gs.thc.org"
@@ -77,17 +81,78 @@ gs_fds_out_fd(fd_set *fdset, char id, int fd)
 static int gs_lib_init_called;
 
 void
-gs_fds_out(fd_set *fdset, char id)
+gs_fds_out(fd_set *fdset, int max, char id)
 {
+	char buf[max + 1 + 1];
+
+	memset(buf, ' ', sizeof buf);
 #ifdef WITH_DEBUG
 	int i;
 
-	for (i = 0; i < FD_SETSIZE; i++)
+	for (i = 0; i <= max; i++)
+		buf[i] = '0' + i % 10;
+	buf[i] = '\0';
+	fprintf(gs_errfp, "%s (max = %d)\n", buf, max);
+	int n = 0;
+	memset(buf, '.', sizeof buf);
+	for (i = 0; i <= max; i++)
 	{
 		if (FD_ISSET(i, fdset))
-			DEBUGF("%c FD %d is set\n", id, i);
+		{
+			n++;
+			buf[i] = id;
+		}
+
 	}
+	buf[i] = '\0';
+	fprintf(gs_errfp, "%s (Tracking: %d)\n", buf, n);
 #endif
+}
+
+void
+gs_fds_out_rwfd(GS_SELECT_CTX *ctx)
+{
+#ifndef DEBUG
+	return;
+#endif
+	int i;
+	char buf[ctx->max_fd + 1 + 1];
+
+	for (i = 0; i <= ctx->max_fd; i++)
+		buf[i] = '0' + i % 10;
+	buf[i] = '\0';
+	fprintf(gs_errfp, "%s (max = %d)\n", buf, ctx->max_fd);
+
+	memset(buf, ' ', sizeof buf);
+	buf[sizeof buf - 1] = '\0';
+
+	int c;
+	int n = 0;
+	for (i = 0; i <= ctx->max_fd; i++)
+	{
+		c = 0;
+		if (FD_ISSET(i, ctx->rfd))
+			c = 1;
+		if (FD_ISSET(i, ctx->wfd))
+			c += 2;
+
+		if (c == 0)
+		{
+			buf[i] = '.';
+			continue;
+		}
+		else if (c == 1)
+			buf[i] = 'R';
+		else if (c == 2)
+			buf[i] = 'W';
+		else if (c == 3)
+			buf[i] = 'X';
+		else
+			buf[i] = 'E';	// Cant happen.
+		n++;
+	}
+	buf[i] = '\0';
+	fprintf(gs_errfp, "%s (Tracking: %d)\n", buf, n);
 }
 
 void
@@ -104,6 +169,7 @@ GS_library_init(void)
 
 	XASSERT(RAND_status() == 1, "RAND_status()");
 
+	gs_errfp = stderr;
 #ifdef DEBUG
 	gs_dout = stderr;
 #endif
@@ -121,8 +187,12 @@ GS_CTX_init(GS_CTX *ctx, fd_set *rfd, fd_set *wfd, fd_set *r, fd_set *w, struct 
 	ctx->r = r;
 	ctx->w = w;
 	ctx->tv_now = tv_now;
-	ctx->out = stderr;	/* library output to STDERR */
-	ctx->log_fp = stderr;
+#ifdef DEBUG
+	gs_debug_rfd = rfd;
+	gs_debug_wfd = wfd;
+	gs_debug_r = r;
+	gs_debug_w = w;
+#endif
 
 	if (ctx->rfd == NULL)
 	{
@@ -140,6 +210,9 @@ GS_CTX_init(GS_CTX *ctx, fd_set *rfd, fd_set *wfd, fd_set *r, fd_set *w, struct 
 	ptr = getenv("GSOCKET_SOCKS_PORT");
 	if (ptr != NULL)
 		ctx->socks_port = htons(atoi(ptr));
+
+	ctx->gs_flags |= GSC_FL_USE_SRP;		// Encryption by default
+	ctx->gs_flags |= GSC_FL_NONBLOCKING;	// Non-blocking by default
 
 	return 0;
 }
@@ -166,26 +239,6 @@ GS_CTX_free(GS_CTX *ctx)
 
 	return 0;
 }
-
-static uint32_t
-hostname_to_ip(char *hostname)
-{
-	struct hostent *he;
-	struct in_addr **addr_list;
-
-	he = gethostbyname(hostname);
-	if (he == NULL)
-		return 0xFFFFFFFF;
-
-	addr_list = (struct in_addr **)he->h_addr_list;
-	if (addr_list == NULL)
-		return 0xFFFFFFFF;
-	if (addr_list[0] == NULL)
-		return 0xFFFFFFFF;
-
-	return addr_list[0][0].s_addr;
-}
-
 
 /*
  * Copy over all elements of a GS to gs_new
@@ -262,7 +315,7 @@ GS_new(GS_CTX *ctx, GS_ADDR *addr)
 		/* When Socks5 is used then TCP goes to Socks5 server */
 		if (ctx->socks_ip == 0)
 		{
-			gs_ip = hostname_to_ip(hostname);
+			gs_ip = GS_hton(hostname);
 			if (gs_ip == 0xFFFFFFFF)
 			{
 				free(gsocket);
@@ -287,8 +340,7 @@ GS_new(GS_CTX *ctx, GS_ADDR *addr)
 
 	gsocket->net.n_sox = 5;
 
-	gsocket->flags |= GS_FL_NONBLOCKING;	/* non-blocking by default */
-	gsocket->flags |= GS_FL_USE_SRP;		/* encryption by default */
+	gsocket->flags = ctx->gs_flags;
 
 	memcpy(&gsocket->gs_addr, addr, sizeof gsocket->gs_addr);
 
@@ -333,7 +385,7 @@ gs_net_connect_by_sox(GS *gsocket, struct gs_sox *sox)
 	{
 		if ((errno == EINPROGRESS) || (errno == EAGAIN) || (errno == EINTR))
 		{
-			FD_SET(sox->fd, gsocket->ctx->wfd);
+			XFD_SET(sox->fd, gsocket->ctx->wfd);
 			sox->state = GS_STATE_SYS_CONNECT;
 
 			return -1;
@@ -351,7 +403,7 @@ gs_net_connect_by_sox(GS *gsocket, struct gs_sox *sox)
 	/* HERRE: ret == 0 or errno == EISCONN (Socket is already connected) */
 	DEBUGF("connect(fd = %d) SUCCESS (errno = %d)\n", sox->fd, errno);
 	FD_CLR(sox->fd, gsocket->ctx->wfd);
-	FD_SET(sox->fd, gsocket->ctx->rfd);
+	XFD_SET(sox->fd, gsocket->ctx->rfd);
 
 	/* SUCCESSFULLY connected */
 	sox->state = GS_STATE_SYS_NONE;		// Not stuck in a system call (connect())
@@ -494,7 +546,7 @@ gs_pkt_connect_write(GS *gsocket, struct gs_sox *sox)
 	gconnect.type = GS_PKT_TYPE_CONNECT;
 	gconnect.version_major = GS_PKT_PROTO_VERSION_MAJOR;
 	gconnect.version_minor = GS_PKT_PROTO_VERSION_MINOR;
-	gconnect.flags = gsocket->flags_proto;
+	gconnect.flags = gsocket->ctx->flags_proto;
 	DEBUGF_Y("Proto Flags: %x\n", gconnect.flags);
 
 	memcpy(gconnect.addr, gsocket->gs_addr.addr, MIN(sizeof gconnect.addr, GS_ADDR_SIZE));
@@ -572,9 +624,31 @@ sox_read(struct gs_sox *sox, size_t len)
 
 	ret = read(sox->fd, sox->rbuf + sox->rlen, len);
 	if (ret == 0)	/* EOF */
+	{
+		/* HERE: GS-NET can not find a listening peer for this GS-addres.
+		 * Disconnect hard.
+		 */
+		DEBUGF_R("EOF on GS TCP connection -> treat as ECONNRESET\n");
 		errno = ECONNRESET;
-	if (ret <= 0)
+		return -1;	// ERROR
+	}
+	if (ret < 0)
+	{
+		/* This can happen when we read packets. We read 1 byte and
+		 * then without going into select() we try to read the rest
+		 * of the packet.
+		 */
+		if ((errno == EAGAIN) || (errno == EINTR))
+		{
+#ifdef DEBUG
+			gs_fds_out_fd(gs_debug_rfd, 'r', sox->fd);
+			gs_fds_out_fd(gs_debug_r, 'R', sox->fd);
+#endif
+			DEBUGF_R("EAGAIN [would block], wanting %zd\n", len);
+			return 0;	// Waiting. No data read.
+		}
 		return -1;
+	}
 
 	sox->rlen += ret;
 
@@ -727,7 +801,7 @@ gs_process_by_sox(GS *gsocket, struct gs_sox *sox)
 				return -1;
 			}
 			FD_CLR(sox->fd, gs_ctx->wfd);
-			FD_SET(sox->fd, gs_ctx->rfd);
+			XFD_SET(sox->fd, gs_ctx->rfd);
 			sox->state = GS_STATE_SYS_NONE;
 
 			return 0;
@@ -830,7 +904,10 @@ gs_process(GS *gsocket)
 			ret = gs_process_by_sox(gsocket, sox);
 			DEBUGF("gs_process_by_sox() = %d\n", ret);
 			if (ret != 0)
+			{
+				DEBUGF_R("errno(%d) = %s\n", errno, strerror(errno));
 				return -1;
+			}
 
 			memcpy(&sox->tv_last_data, gsocket->ctx->tv_now, sizeof sox->tv_last_data);
 			/* Immediatly let app know that a new gs-connection has been accepted */
@@ -890,6 +967,7 @@ gs_net_new_socket(GS *gsocket, struct gs_sox *sox)
 	gsocket->flags |= GS_FL_CALLED_NET_NEW_SOCKET;
 
 	s = socket(PF_INET, SOCK_STREAM, 0);
+	DEBUGF_W("socket() == %d (LIB)\n", s);
 	if (s < 0)
 		return -1;
 
@@ -899,8 +977,6 @@ gs_net_new_socket(GS *gsocket, struct gs_sox *sox)
 
 	gsocket->ctx->max_sox = MAX(s, gsocket->ctx->max_sox);
 	sox->fd = s;
-
-	DEBUGF("socket(): %d\n", s);
 
 	return 0;
 }
@@ -1116,7 +1192,7 @@ gs_connect_blocking(GS *gsocket)
 		if (ret == GS_ERR_FATAL)
 			return GS_ERR_FATAL;
 		
-		DEBUGF("Setting FD BLOCKING on ret = %d\n", ret);
+		DEBUGF("Setting FD BLOCKING\n");
 		int tcp_fd = gsocket->fd;
 		/* Make tcp fd 'blocking' for caller. */
 		fcntl(tcp_fd, F_SETFL, ~O_NONBLOCK & fcntl(tcp_fd, F_GETFL, 0));
@@ -1145,7 +1221,7 @@ GS_connect(GS *gsocket)
 		return GS_ERR_FATAL;
 	}
 
-	if (gsocket->flags & GS_FL_NONBLOCKING)
+	if (gsocket->flags & GSC_FL_NONBLOCKING)
 		ret = gs_connect(gsocket);
 	else
 		ret = gs_connect_blocking(gsocket);
@@ -1157,7 +1233,7 @@ GS_connect(GS *gsocket)
 	}
 
 #ifdef WITH_GSOCKET_SSL
-	if (gsocket->flags & GS_FL_USE_SRP)
+	if (gsocket->flags & GSC_FL_USE_SRP)
 	{
 		ret = gs_srp_init(gsocket);
 		if (ret >= 0)
@@ -1308,7 +1384,7 @@ GS_accept(GS *gsocket, int *err)
 		*err = 0;
 
 	memset(&gs_tmp, 0, sizeof gs_tmp);
-	if (gsocket->flags & GS_FL_NONBLOCKING)
+	if (gsocket->flags & GSC_FL_NONBLOCKING)
 		ret = gs_accept(gsocket, &gs_tmp);
 	else
 		ret = gs_accept_blocking(gsocket, &gs_tmp);
@@ -1329,7 +1405,7 @@ GS_accept(GS *gsocket, int *err)
 
 	new_gs->flags |= GS_FL_IS_SERVER;
 #ifdef WITH_GSOCKET_SSL
-	if (new_gs->flags & GS_FL_USE_SRP)
+	if (new_gs->flags & GSC_FL_USE_SRP)
 	{
 		ret = gs_srp_init(new_gs);
 		if (ret < 0)
@@ -1364,7 +1440,7 @@ gs_close(GS *gsocket)
 		FD_CLR(gsocket->fd, gsocket->ctx->r);
 		FD_CLR(gsocket->fd, gsocket->ctx->w);
 		/* HERE: This was not listening socket */
-		close(gsocket->fd);
+		XCLOSE(gsocket->fd);
 		gsocket->fd = -1;
 		return;
 	}
@@ -1377,12 +1453,12 @@ gs_close(GS *gsocket)
 		struct gs_sox * sox = &gsocket->net.sox[i];
 		if (sox->fd < 0)
 			continue;
-		DEBUGF_B("Closing I/O socket (fd = %d)\n", sox->fd);
+		DEBUGF_B("Closing I/O socket (sox->fd = %d)\n", sox->fd);
 		FD_CLR(sox->fd, gsocket->ctx->rfd);
 		FD_CLR(sox->fd, gsocket->ctx->wfd);
 		FD_CLR(sox->fd, gsocket->ctx->r);
 		FD_CLR(sox->fd, gsocket->ctx->w);
-		close(sox->fd);
+		XCLOSE(sox->fd);
 		sox->fd = -1;
 	}
 
@@ -1391,7 +1467,6 @@ gs_close(GS *gsocket)
 
 /*
  * Return 0 on success.
- * Return -1 on waiting for
  * Return -2 on fatal error.
  */
 int
@@ -1399,10 +1474,10 @@ GS_close(GS *gsocket)
 {
 	DEBUGF_B("read: %"PRId64", written: %"PRId64"\n", gsocket->bytes_read, gsocket->bytes_written);
 	if (gsocket == NULL)
-		return -1;
+		return -2;
 
 #ifdef WITH_GSOCKET_SSL
-	if (gsocket->flags & GS_FL_USE_SRP)
+	if (gsocket->flags & GSC_FL_USE_SRP)
 	{
 		if (gsocket->ssl != NULL)
 		{
@@ -1433,7 +1508,7 @@ GS_shutdown(GS *gsocket)
 {
 	int ret;
 
-	if (gsocket->flags & GS_FL_USE_SRP)
+	if (gsocket->flags & GSC_FL_USE_SRP)
 	{
 		if (gsocket->ssl_state != GS_SSL_STATE_RW)
 		{
@@ -1485,11 +1560,19 @@ GS_CTX_strerror(GS_CTX *gs_ctx)
 		snprintf(dst + strlen(dst), dlen - strlen(dst), "%s", gs_ctx->err_buf);
 	}
 
-	int err;
-	err = ERR_peek_last_error();
+	/* Get the last SSL error only. Clear the error-queue */
+	int err = 0;
+	int err2;
+	while (1)
+	{
+		err2 = ERR_get_error();
+		DEBUGF_Y("err2 = %d\n", err2);
+		if (err2 == 0)
+			break;
+		err = err2;
+	}
 	if (err != 0)
 	{
-		/* VERBOSE */
 		snprintf(dst + strlen(dst), dlen - strlen(dst), " [%s]", ERR_error_string(err, NULL));
 	}
 
@@ -1502,48 +1585,26 @@ GS_strerror(GS *gsocket)
 	return GS_CTX_strerror(gsocket->ctx);
 }
 
+/*
+ * Called after CTX has been created. Set template flags for GS.
+ * Flags are copied to GS on GS_new().
+ */
 int
-GS_setsockopt(GS *gsocket, int level, const void *opt_value, size_t opt_len)
+GS_CTX_setsockopt(GS_CTX *ctx, int level, const void *opt_value, size_t opt_len)
 {
-	if (gsocket->flags & GS_FL_CALLED_NET_NEW_SOCKET)
-	{
-		DEBUGF("ERROR: Cant set socket option after socket was created\n");
-		errno = EPERM;		/* Cant set socket options after socket was created */
-		return -1;
-	}
 
+	/* PROTOCOL FLAGS -> copied into pkt's flags 1:1 */
 	if (level == GS_OPT_SOCKWAIT)
-		gsocket->flags_proto |= GS_FL_PROTO_WAIT;
-	else if (level == GS_OPT_BLOCK)
-		gsocket->flags &= ~GS_FL_NONBLOCKING;
+		ctx->flags_proto |= GS_FL_PROTO_WAIT;
 	else if (level == GS_OPT_CLIENT_OR_SERVER)
-		gsocket->flags_proto |= GS_FL_PROTO_CLIENT_OR_SERVER;
+		ctx->flags_proto |= GS_FL_PROTO_CLIENT_OR_SERVER;
+	/* FLAGS */
+	else if (level == GS_OPT_BLOCK)
+		ctx->gs_flags &= ~GSC_FL_NONBLOCKING;
 	else if (level == GS_OPT_NO_ENCRYPTION)
-		gsocket->flags &= ~GS_FL_USE_SRP;
-	else
-		return -1;
-#if 0
-	else if (level == GS_OPT_USE_SRP)
-	{
-#ifndef WITH_GSOCKET_SSL
-		return -1;
-#else
-		const char *pwd = (const char *)opt_value;
-		gsocket->flags |= GS_FL_USE_SRP;
-		if (pwd == NULL)
-			pwd = gsocket->gs_addr.b58str;
-		XASSERT(strlen(pwd) > 16, "strlen(pwd) <= 16");
-		GS_srp_setpassword(gsocket, pwd);
-#endif
-#endif
-
-	return 0;
-}
-
-int
-GS_setctxopt(GS_CTX *ctx, int level, const void *opt_value, size_t opt_len)
-{
-	if (level == GS_OPT_USE_SOCKS)
+		ctx->gs_flags &= ~GSC_FL_USE_SRP;
+	/* OPTIONS */
+	else if (level == GS_OPT_USE_SOCKS)
 	{
 		/* Set if not already set from GS_CTX_init() */
 		if (ctx->socks_ip == 0)
@@ -1555,6 +1616,31 @@ GS_setctxopt(GS_CTX *ctx, int level, const void *opt_value, size_t opt_len)
 
 	return 0;	// Success
 }
+
+#if 0
+int
+GS_setsockopt(GS_CTX *gsocket, int level, const void *opt_value, size_t opt_len)
+{
+	if (gsocket->flags & GS_FL_CALLED_NET_NEW_SOCKET)
+	{
+		DEBUGF_R("ERROR: Cant set socket option after socket was created\n");
+		errno = EPERM;		/* Cant set socket options after socket was created */
+		return -1;
+	}
+
+	return 0;
+}
+#endif
+
+#if 0
+int
+GS_setctxopt(GS_CTX *ctx, int level, const void *opt_value, size_t opt_len)
+{
+		return -1;
+
+	return 0;	// Success
+}
+#endif
 
 void
 GS_FD_CLR_R(GS *gs)
@@ -1590,7 +1676,7 @@ GS_read(GS *gsocket, void *buf, size_t count)
 
 	// gsocket->ctx->gselect_ctx->current_func[gsocket->fd] = GS_CALLREAD;
 
-	if (gsocket->flags & GS_FL_USE_SRP)
+	if (gsocket->flags & GSC_FL_USE_SRP)
 	{
 #ifndef WITH_GSOCKET_SSL
 		return GS_ERR_FATAL;
@@ -1610,7 +1696,7 @@ GS_read(GS *gsocket, void *buf, size_t count)
 #endif
 	} else {
 		len = read(gsocket->fd, buf, count);
-		DEBUGF_M("read(fd=%d) = %zd, errno = %d\n", gsocket->fd, len, errno);
+		// DEBUGF_M("read(fd=%d) = %zd, errno = %d\n", gsocket->fd, len, errno);
 
 		if (len == 0)
 		{
@@ -1658,7 +1744,7 @@ GS_read(GS *gsocket, void *buf, size_t count)
 	if (err == SSL_ERROR_ZERO_RETURN)
 	{
 		gsocket->eof_count++;
-		DEBUGF_R("%d. EOF received from peer.\n", gsocket->eof_count);
+		DEBUGF_R("%d. EOF received by gs (fd = %d).\n", gsocket->eof_count, gsocket->fd);
 		/* Second EOF means that the underlying transport was shut (TCP). It's a hard fail. */
 		if (gsocket->eof_count >= 2)
 			return GS_ERR_FATAL;
@@ -1699,12 +1785,9 @@ GS_FD_SET_W(GS *gs)
 		/* Add to saved state */
 		sctx->saved_rw_state[fd] |= 0x02;	/* add WRITE */
 	} else {
-		FD_SET(fd, sctx->wfd);
+		XFD_SET(fd, sctx->wfd);
 	}
-
 }
-
-static int repeats;
 
 /*
  * Return 0 on WOULD_BLOCK
@@ -1717,37 +1800,21 @@ GS_write(GS *gsocket, const void *buf, size_t count)
 	ssize_t len;
 	int err;
 
-	// If we already in a stored state then modify the stored state and return to caller
-	// that we like to be called again (caller must not modify rfd/wfd as this is used by SSL...)
+	// If already in a stored state then modify the stored state and return to caller
+	// that to be called again (caller must not modify rfd/wfd as this is used by SSL...)
 	GS_SELECT_CTX *sctx = gsocket->ctx->gselect_ctx;
-#if 0
-	/* HERE: Socket is writeable. */
-	if (gsocket->write_pending == 1)
-	{
-		/* HERE: Data is already pending */
-		if (!(sctx->blocking_func[gsocket->fd] & GS_CALLWRITE))
-		{
-			DEBUGF_R("*** WARNING **** Oops. Apps trying to send data while SSL_write() was busy?..\n");
-
-			return 0;
-		}
-	}
-#endif
 #if 1
 	if (sctx->is_rw_state_saved[gsocket->fd])
 	{
-		/* HERE: *write() blocked previously or SSL_read() wants write */
-		if (gsocket->write_pending == 0) //sctx->current_func[gsocket->fd] != GS_CALLWRITE)
+		/* HERE: *write() blocked previously or SSL_read() WANTS-WRITE */
+		if (gsocket->write_pending == 0)
 		{
 			/* HERE: GS_write() was called but SSL still busy with SSL_read().
 			 * Set wfd in saved state so that when state is restored this function
 			 * is triggered.
 			 */
-			DEBUGF_R("*** WARNING **** Wanting to write app data while SSL is busy..\n");
+			DEBUGF_R("*** WARNING **** Wanting to write app data (%zd) while SSL is busy..\n", count);
 			GS_FD_SET_W(gsocket);
-			repeats++;
-			if (repeats > 3)
-				ERREXIT("Oops. looping..\n");
 
 			return 0;	/* WOULD BLOCK */
 		}
@@ -1755,9 +1822,8 @@ GS_write(GS *gsocket, const void *buf, size_t count)
 #endif 
 
 	// DEBUGF("GS_write(%zu) to fd = %d, ssl = %p\n", count, gsocket->fd, gsocket->ssl);
-	// gsocket->ctx->gselect_ctx->current_func[gsocket->fd] = GS_CALLWRITE;
 
-	if (gsocket->flags & GS_FL_USE_SRP)
+	if (gsocket->flags & GSC_FL_USE_SRP)
 	{
 #ifndef WITH_GSOCKET_SSL
 		return -1;
@@ -1795,7 +1861,6 @@ GS_write(GS *gsocket, const void *buf, size_t count)
 			gsocket->write_pending = 0;
 			sctx->blocking_func[gsocket->fd] &= ~GS_CALLWRITE;
 			FD_CLR(gsocket->fd, sctx->wfd);
-			repeats = 0;
 
 			return len;
 	}
@@ -1803,17 +1868,6 @@ GS_write(GS *gsocket, const void *buf, size_t count)
 	/* ERROR */
 	int ret;
 	ret = 0;
-#if 0
-	/* FIXME 2020-09-16: Why do we have to keep the state if SSL_write() returns
-	 * WANT-WRITE? Why not just return here?
-	 */
-	if (err == SSL_ERROR_WANT_READ)
-	{
-		sctx->blocking_func[gsocket->fd] |= GS_CALLWRITE;
-		ret = gs_ssl_want_io_rw(sctx, gsocket->fd, err);
-	}
-
-#endif
 #if 1
 	sctx->blocking_func[gsocket->fd] |= GS_CALLWRITE;
 

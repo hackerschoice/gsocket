@@ -232,13 +232,13 @@ gs_ssl_want_io_rw(GS_SELECT_CTX *ctx, int fd, int err)
 
 	if (err == SSL_ERROR_WANT_READ)
 	{
-		FD_SET(fd, ctx->rfd);
+		XFD_SET(fd, ctx->rfd);
 		ctx->want_io_read[fd] = 1;
 		return 0;
 	}
 	if (err == SSL_ERROR_WANT_WRITE)
 	{
-		FD_SET(fd, ctx->wfd);
+		XFD_SET(fd, ctx->wfd);
 		ctx->want_io_write[fd] = 1;
 		DEBUGF_B("ctx->want_io_write[fd=%d] := %d\n", fd, ctx->want_io_write[fd]);
 		return 0;
@@ -378,7 +378,7 @@ gs_ssl_continue(GS *gsocket)
 	}
 	if (ret == 1)
 	{
-		DEBUGF_G("*** SUCCESS ***\n");
+		DEBUGF_G("*** SUCCESS *** [SSL_%s()]\n", (state == GS_SSL_STATE_ACCEPT)?"accept":"connect");
 		gs_ssl_want_io_finished(gsocket);
 		if (gsocket->is_want_shutdown != 0)
 		{
@@ -400,8 +400,10 @@ gs_ssl_continue(GS *gsocket)
 	/* A return value of 0 however means that the SSL was shut-down gracefully */
 	int err = SSL_get_error(gsocket->ssl, ret);
 	DEBUGF("SSL_ERROR SSL_%s() = SSL_%s(ret=%d, err=%d)\n", (state == GS_SSL_STATE_ACCEPT)?"accept":"connect", GS_SSL_strerror(err), ret, err);
-	DEBUGF_Y(" %s\n", ERR_error_string(ERR_peek_last_error(), NULL));
-	gs_set_errorf(gsocket, "SSL_%s: %s", (state == GS_SSL_STATE_ACCEPT)?"accept":"connect", GS_SSL_strerror(err));
+	if (ERR_peek_last_error())
+		DEBUGF_Y(" %s\n", ERR_error_string(ERR_peek_last_error(), NULL));
+	if ((err != SSL_ERROR_WANT_READ) && (err != SSL_ERROR_WANT_WRITE))
+		gs_set_errorf(gsocket, "SSL_%s: %s", (state == GS_SSL_STATE_ACCEPT)?"accept":"connect", GS_SSL_strerror(err));
 
 	ret = gs_ssl_want_io_rw(gsocket->ctx->gselect_ctx, gsocket->fd, err);
 	DEBUGF("gs_ssl_continue will return = %d (%s)\n", ret, ret<0?"FATAL":"continue");
@@ -427,10 +429,7 @@ gs_ssl_continue(GS *gsocket)
 int
 gs_srp_init(GS *gsocket)
 {
-	DEBUGF("Before SSL init\n");
-	// gs_ssl_lib_init();
 	gs_ssl_ctx_init(gsocket, gsocket->flags & GS_FL_IS_SERVER?1:0);
-	DEBUGF("Before SSL init\n");
 	gs_ssl_init(gsocket);	/* Call to SSL_new() */
 	DEBUGF("AFTER SSL init\n");
 
@@ -460,7 +459,7 @@ GS_srp_setpassword(GS *gsocket, const char *pwd)
 const char *
 GS_get_cipher(GS *gs)
 {
-	if (gs->flags & GS_FL_USE_SRP)
+	if (gs->flags & GSC_FL_USE_SRP)
 		return GS_DFL_CIPHER"-End2End";
 
 	return "NO ENCRYPTION";
@@ -469,7 +468,7 @@ GS_get_cipher(GS *gs)
 int
 GS_get_cipher_strength(GS *gs)
 {
-	if (gs->flags & GS_FL_USE_SRP)
+	if (gs->flags & GSC_FL_USE_SRP)
 		return atoi(GS_DFL_CIPHER_STRENGTH);
 
 	return 0;

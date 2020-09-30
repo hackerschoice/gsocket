@@ -12,9 +12,22 @@ init_defaults(void)
 	GS_library_init();
 
 	gopt.log_fp = stderr;
-	gopt.is_encryption = 1;
+	gopt.err_fp = stderr;
 	signal(SIGPIPE, SIG_IGN);
 	signal(SIGCHLD, SIG_IGN);	// no defunct childs please
+
+	/* MacOS process limit is 256 which makes Socks-Proxie yield...*/
+	struct rlimit rlim;
+	memset(&rlim, 0, sizeof rlim);
+	int ret;
+	ret = getrlimit(RLIMIT_NOFILE, &rlim);
+	if (ret == 0)
+	{
+		rlim.rlim_cur = MIN(rlim.rlim_max, FD_SETSIZE);
+		ret = setrlimit(RLIMIT_NOFILE, &rlim);
+		getrlimit(RLIMIT_NOFILE, &rlim);
+		// DEBUGF_C("Max File Des: %llu (max = %llu)\n", rlim.rlim_cur, rlim.rlim_max);
+	}
 }
 
 GS *
@@ -24,14 +37,6 @@ gs_create(void)
 
 	if (gopt.token_str != NULL)
 		GS_set_token(gs, gopt.token_str, strlen(gopt.token_str));
-
-	/* If Server is not available yet then wait for Server. */
-	if (gopt.is_sock_wait != 0)
-		GS_setsockopt(gs, GS_OPT_SOCKWAIT, NULL, 0);
-
-	/* We can turn client _OR_ server */
-	if (gopt.is_client_or_server != 0)
-		GS_setsockopt(gs, GS_OPT_CLIENT_OR_SERVER, NULL, 0);
 
 	return gs;
 }
@@ -56,9 +61,23 @@ init_vars(void)
 	ret = GS_CTX_init(&gopt.gs_ctx, &gopt.rfd, &gopt.wfd, &gopt.r, &gopt.w, &gopt.tv_now);
 
 	if (gopt.is_use_tor == 1)
-	{
-		GS_setctxopt(&gopt.gs_ctx, GS_OPT_USE_SOCKS, NULL, 0);
-	}
+		GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_USE_SOCKS, NULL, 0);
+	/* If Server is not available yet then wait for Server. */
+	if (gopt.is_sock_wait != 0)
+		GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_SOCKWAIT, NULL, 0);
+
+	/* We can turn client _OR_ server */
+	if (gopt.is_client_or_server != 0)
+		GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_CLIENT_OR_SERVER, NULL, 0);
+
+	/* Disable encryption (-C) */
+	if (gopt.is_no_encryption == 1)
+		GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_NO_ENCRYPTION, NULL, 0);
+
+	/* This example uses blocking sockets. Set blocking. */
+	if (gopt.is_blocking == 1)
+		GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_BLOCK, NULL, 0);
+
 
 	gopt.sec_str = GS_user_secret(&gopt.gs_ctx, gopt.sec_file, gopt.sec_str);
 
@@ -83,6 +102,7 @@ init_vars(void)
 		gopt.winsize.ws_row = 24;
 	}
 
+
 }
 
 void
@@ -94,6 +114,9 @@ usage(const char *params)
 	{
 		switch (params[0])
 		{
+			case 'L':
+				fprintf(stderr, "  -L <file>    Logfile\n");
+				break;
 			case 'q':
 				fprintf(stderr, "  -q           Quite. No log output\n");
 				break;
@@ -127,12 +150,6 @@ usage(const char *params)
 			case 'T':
 				fprintf(stderr, "  -T           Use TOR.\n");
 				break;
-			case 'i':
-				fprintf(stderr, "  -i           Interactive login shell (TTY) [~. to terminate]\n");
-				break;
-			case 'e':
-				fprintf(stderr, "  -e <cmd>     Execute command [e.g. \"bash -il\" or \"id\"]\n");
-				break;
 		}
 
 		params++;
@@ -149,6 +166,11 @@ do_getopt(int argc, char *argv[])
 	{
 		switch (c)
 		{
+			case 'L':
+				gopt.log_fp = fopen(optarg, "a");
+				if (gopt.log_fp == NULL)
+					ERREXIT("fopen(%s): %s\n", optarg, strerror(errno));
+				break;
 			case 'T':
 				gopt.is_use_tor = 1;
 				break;
@@ -162,7 +184,7 @@ do_getopt(int argc, char *argv[])
 				gopt.is_interactive = 1;
 				break;
 			case 'C':
-				gopt.is_encryption = 0;
+				gopt.is_no_encryption = 1;
 				break;
 			case 'A':
 				gopt.is_client_or_server = 1;
@@ -171,6 +193,11 @@ do_getopt(int argc, char *argv[])
 				gopt.is_sock_wait = 1;
 				break;
 			case 'a':
+				/* This only becomes secure when the initial GS-network connection is done by TLS
+				 * (at least for the listening server to submit the token securely to the server so that
+				 * the server rejects any listening attempt that uses a bad token)
+				 */
+				VLOG("*** WARNING *** -a not fully supported yet. Trying our best...\n");
 				gopt.token_str = optarg;
 				break;
 			case 'l':
@@ -417,18 +444,17 @@ fd_cmd(const char *cmd)
 	return fds[1];
 }
 
-#ifdef DEBUG
-#ifndef int_ntoa
-static const char *
-int_ntoa(uint32_t ip)
-{
-	struct in_addr in;
+// #ifndef int_ntoa
+// const char *
+// int_ntoa(uint32_t ip)
+// {
+// 	struct in_addr in;
 
-	in.s_addr = ip;
-	return inet_ntoa(in);
-}
-#endif
-#endif
+// 	in.s_addr = ip;
+// 	return inet_ntoa(in);
+// }
+// #endif
+
 
 /*
  * Complete the connect() call
@@ -451,7 +477,7 @@ fd_net_connect(GS_SELECT_CTX *ctx, int fd, uint32_t ip, uint16_t port)
 	{
 		if ((errno == EINPROGRESS) || (errno == EAGAIN) || (errno == EINTR))
 		{
-			FD_SET(fd, ctx->wfd);
+			XFD_SET(fd, ctx->wfd);
 			return -1;
 		}
 		if (errno != EISCONN)
@@ -468,12 +494,13 @@ fd_net_connect(GS_SELECT_CTX *ctx, int fd, uint32_t ip, uint16_t port)
 }
 
 int
-fd_net_accept(GS_SELECT_CTX *ctx, int listen_fd)
+fd_net_accept(int listen_fd)
 {
 	int sox;
 	int ret;
 
 	sox = accept(listen_fd, NULL, NULL);
+	DEBUGF_B("accept(%d) == %d\n", listen_fd, sox);
 	if (sox < 0)
 		return -2;
 
@@ -488,7 +515,7 @@ fd_net_accept(GS_SELECT_CTX *ctx, int listen_fd)
  * Create a listening fd on port.
  */
 int
-fd_net_listen(GS_SELECT_CTX *ctx, int fd, uint16_t port)
+fd_net_listen(int fd, uint16_t port)
 {
 	struct sockaddr_in addr;
 	int ret;
@@ -524,6 +551,7 @@ fd_new_socket(void)
 	fd = socket(PF_INET, SOCK_STREAM, 0);
 	if (fd < 0)
 		return -2;
+	DEBUGF_W("socket() == %d\n", fd);
 
 	ret = fcntl(fd, F_SETFL, O_NONBLOCK | fcntl(fd, F_GETFL, 0));
 	if (ret != 0)

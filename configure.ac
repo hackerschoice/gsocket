@@ -1,6 +1,7 @@
 dnl Process this file with autoconf to produce a configure script.
 AC_PREREQ(2.61)
 AC_INIT([gsocket], 1.4.12)
+dnl AC_CONFIG_AUX_DIR(config-x86_64-apple-darwin19.6.0)
 AC_CONFIG_AUX_DIR(config)
 AC_CANONICAL_SYSTEM
 
@@ -109,10 +110,18 @@ AC_TYPE_UID_T
 
 AC_CHECK_FUNCS(gettimeofday memcpy strchr strlcat)
 
+AC_ARG_ENABLE([31337],
+	AS_HELP_STRING([--enable-31337],
+		[Enable experimental features.]),
+	AC_DEFINE(D31337, 1, [Expermental feature])
+)
+
 AC_ARG_ENABLE(debug,
 [  --enable-debug          Enable debug information],
 	AC_DEFINE(DEBUG, 1, [Debug infos])
 )
+
+AS_IF([test x$enable_debug = xyes], AC_DEFINE(D31337, 1, [Expermental feature]))
 
 AC_ARG_ENABLE(dist,
 [  --enable-dist           Enable distribution mode, Use own libraries.],
