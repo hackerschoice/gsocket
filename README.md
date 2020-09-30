@@ -60,7 +60,7 @@ $ gs-full-pipe -s MySecret -A               # You
 $ gs-full-pipe -s MySecret -A               # Them
 ```
 
-6. Access entirety of Host's private LAN (with SOCKS)
+6. Access entirety of Host's private LAN (Sock4/4a/5 proxy)
 ```
 $ gs-netcat -l -S                                  # Host
 $ gs-netcat -p 1080                                # Workstation
