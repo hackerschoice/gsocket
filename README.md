@@ -15,7 +15,7 @@ Abandon your thinking that an IP Address is needed to communicate with somebody.
 
 The library comes with example tools. Gs-netcat is a re-implementation of netcat. It supports the well loved *-e* option and spwans a true PTY/interactive command shell on a remote host. Effectively an AES-256 encrypted reverse backdoor via TOR (optional) and without the need of a Command & Control server. It can also be used to tunnel a friend into your local network or to give somebody temporary shell access to your workstation.
 
-Direct Download: [gsocket-1.4.11.tar.gz](https://github.com/hackerschoice/gsocket/releases/download/v1.4.11/gsocket-1.4.11.tar.gz)
+Direct Download: [gsocket-1.4.12.tar.gz](https://github.com/hackerschoice/gsocket/releases/download/v1.4.12/gsocket-1.4.12.tar.gz)
 
 BETA BETA BETA. PRIVATE RELEASE ONLY.
 ---
@@ -54,13 +54,25 @@ $ gs-netcat -l -e "echo hello world; id; exit"   # Host
 $ gs-netcat                                      # Workstation
 ```
 
-5. Quick Secure Chat with a friend:
+5. Quick Secure Chat with a friend
 ```
 $ gs-full-pipe -s MySecret -A               # You
 $ gs-full-pipe -s MySecret -A               # Them
 ```
 
-6. SoCAT 2 
+6. Access entirety of Host's private LAN (Sock4/4a/5 proxy)
+```
+$ gs-netcat -l -S                                  # Host
+$ gs-netcat -p 1080                                # Workstation
+
+Access www.google.com via Host's private LAN from your Workstation:
+$ curl --socks4a 127.1:1080 http://www.google.com 
+
+Access route.local:22 on Host's private LAN from your Workstation:
+$ socat -  "SOCKS4a:127.1:route.local:22"
+```
+
+7. SoCAT 2 
 ```
 gs-netcat can be used in a socat address-chain using the EXEC target. Happy bouncing. Enjoy. :> 
 ```
