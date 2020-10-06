@@ -112,6 +112,19 @@ Using -s is not secure. Add your *secret* to a file and use -k &lt;filen&gt; or 
 ```
 $ gs-netcat -li <<<"MySecretPassword"
 ```
+
+4. Hide your arguments (argv)
+
+Pass the arguments by environment variable (GSOCKET_ARGS) and use a bash-trick to hide gs-netcat binary in the process list:
+```
+$ export GSOCKET_ARGS="-s MySecret -l -i -D"
+$ exec -a -bash ./gs-netcat &     # Hide as '-bash'.
+$ ps alxww | grep gs-netcat
+
+$ ps alxww | grep -bash
+  1001 47255     1   0  26  5  4281168    436 -      SNs    ??    0:00.00 -bash
+```
+
 ---
 **Crypto / Security Mumble Jumble**
 1. The security is end-2-end. This means from User-2-User (and not just to the Relay Network). The Relay Network relays only (encrypted) data to and from the Users. 
