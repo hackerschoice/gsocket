@@ -137,17 +137,17 @@ extern struct _gopt gopt;
 # define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
 #endif
 
+#define D_RED(a)	"\033[0;31m"a"\033[0m"
+#define D_GRE(a)	"\033[0;32m"a"\033[0m"
+#define D_YEL(a)	"\033[0;33m"a"\033[0m"
+#define D_BLU(a)	"\033[0;34m"a"\033[0m"
+#define D_MAG(a)	"\033[0;35m"a"\033[0m"
+#define D_BRED(a)	"\033[1;31m"a"\033[0m"
+#define D_BGRE(a)	"\033[1;32m"a"\033[0m"
+#define D_BYEL(a)	"\033[1;33m"a"\033[0m"
+#define D_BBLU(a)	"\033[1;34m"a"\033[0m"
+#define D_BMAG(a)	"\033[1;35m"a"\033[0m"
 #ifdef DEBUG
-# define D_RED(a)	"\033[0;31m"a"\033[0m"
-# define D_GRE(a)	"\033[0;32m"a"\033[0m"
-# define D_YEL(a)	"\033[0;33m"a"\033[0m"
-# define D_BLU(a)	"\033[0;34m"a"\033[0m"
-# define D_MAG(a)	"\033[0;35m"a"\033[0m"
-# define D_BRED(a)	"\033[1;31m"a"\033[0m"
-# define D_BGRE(a)	"\033[1;32m"a"\033[0m"
-# define D_BYEL(a)	"\033[1;33m"a"\033[0m"
-# define D_BBLU(a)	"\033[1;34m"a"\033[0m"
-# define D_BMAG(a)	"\033[1;35m"a"\033[0m"
 # define DEBUGF(a...) do{xfprintf(gopt.err_fp, "DEBUG %s:%d: ", __func__, __LINE__); xfprintf(gopt.err_fp, a); }while(0)
 # define DEBUGF_R(a...) do{xfprintf(gopt.err_fp, "DEBUG %s:%d: ", __func__, __LINE__); xfprintf(gopt.err_fp, "\033[1;31m"); xfprintf(gopt.err_fp, a); xfprintf(gopt.err_fp, "\033[0m"); }while(0)
 # define DEBUGF_G(a...) do{xfprintf(gopt.err_fp, "DEBUG %s:%d: ", __func__, __LINE__); xfprintf(gopt.err_fp, "\033[1;32m"); xfprintf(gopt.err_fp, a); xfprintf(gopt.err_fp, "\033[0m"); }while(0)

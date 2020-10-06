@@ -44,6 +44,7 @@ static struct _peer *peers[FD_SETSIZE];
 /* static functions declaration */
 static int write_gs(GS_SELECT_CTX *ctx, struct _peer *p);
 static int peer_forward_connect(struct _peer *p, uint32_t ip, uint16_t port);
+static void vlog_hostname(struct _peer *p, const char *desc, uint16_t port);
 
 
 /*
@@ -75,7 +76,10 @@ peer_mk_stats(char *dst, size_t len, struct _peer *p)
 	bps = ((gs->bytes_written * 1000) / msec);
 	GS_bytesstr(wbufps, sizeof wbufps, bps==0?0:bps);
 
-	snprintf(dst, len, "[ID=%d] Disconnected after %s\n    Up: %s Bytes [%s/s], Down: %s Bytes [%s/s]\n", p->id, dbuf, wbuf, wbufps, rbuf, rbufps);
+	// snprintf(dst, len, "[ID=%d] Disconnected after %s\n    Up: %s Bytes [%s/s], Down: %s Bytes [%s/s]\n", p->id, dbuf, wbuf, wbufps, rbuf, rbufps);
+	snprintf(dst, len, 
+	"[ID=%d] Disconnected after %s\n"
+	"    Up: "D_MAG("%12s")" [%s/s], Down: "D_MAG("%12s")" [%s/s]\n", p->id, dbuf, wbuf, wbufps, rbuf, rbufps);
 }
 
 
@@ -118,6 +122,9 @@ peer_free(GS_SELECT_CTX *ctx, struct _peer *p)
 		char buf[512];
 		peer_mk_stats(buf, sizeof buf, p);
 		VLOG("%s %s", GS_logtime(), buf);
+		if ((p->is_network_forward) && (p->socks.dst_port != 0))
+	    	vlog_hostname(p, "", p->socks.dst_port);
+
 	}
 
 	GS_SELECT_del_cb(ctx, fd);
@@ -392,6 +399,18 @@ peer_new_init(GS *gs)
 	return p;
 }
 
+static void
+vlog_hostname(struct _peer *p, const char *desc, uint16_t port)
+{
+	uint16_t hp = ntohs(port);
+	if (hp == 443)
+		VLOG("    [ID=%d] %s"D_BLU("%s")":"D_GRE("%d")"\n", p->id, desc, p->socks.dst_hostname, hp);
+	else if (hp == 80)
+		VLOG("    [ID=%d] %s"D_BLU("%s")":"D_YEL("%d")"\n", p->id, desc, p->socks.dst_hostname, hp);
+	else
+		VLOG("    [ID=%d] %s"D_BLU("%s")":"D_BRED("%d")"\n", p->id, desc, p->socks.dst_hostname, hp);
+}
+
 static int
 peer_forward_connect(struct _peer *p, uint32_t ip, uint16_t port)
 {
@@ -399,7 +418,7 @@ peer_forward_connect(struct _peer *p, uint32_t ip, uint16_t port)
 	GS *gs = p->gs;
 	GS_SELECT_CTX *ctx = gs->ctx->gselect_ctx;
 
-	VLOG("    [ID=%d] Forwarding to %s:%d\n", p->id, p->socks.dst_hostname, ntohs(port));
+	vlog_hostname(p, "Forwarding to ", port);
 	ret = fd_net_connect(ctx, p->fd_in, ip, port);
 	if (ret <= -2)
 	{
