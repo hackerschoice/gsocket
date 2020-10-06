@@ -149,7 +149,7 @@ my_getopt(int argc, char *argv[])
 int
 main(int argc, char *argv[])
 {
-	init_defaults();
+	init_defaults(&argc, &argv);
 	my_getopt(argc, argv);
 
 	if (gopt.flags & GSC_FL_IS_SERVER)

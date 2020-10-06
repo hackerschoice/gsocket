@@ -6,8 +6,53 @@ struct _gopt gopt;
 
 extern char **environ;
 
+/*
+ * Add list of argv's from GSOCKET_ARGS to argv[]
+ */
+static void
+add_env_argv(int *argcptr, char **argvptr[])
+{
+	char *str = getenv("GSOCKET_ARGS");
+	char *next = str;
+	char **newargv;
+	int newargc;
+
+	if (str == NULL)
+		return;
+
+	newargv = malloc(*argcptr * sizeof *argvptr);
+	memcpy(newargv, *argvptr, *argcptr * sizeof *argvptr);
+	newargc = *argcptr;
+
+	while (next != NULL)
+	{
+		while (*str == ' ')
+			str++;
+
+		next = strchr(str, ' ');
+		if (next != NULL)
+		{
+			*next = 0;
+			next++;
+		}
+		DEBUGF("arg = '%s'\n", str);
+		/* *next == '\0'; str points to argument (0-terminated) */
+		newargc++;
+		newargv = realloc(newargv, newargc * sizeof newargv);
+		newargv[newargc - 1] = str;
+
+		str = next;
+		if (str == NULL)
+			break;
+	}
+
+	*argcptr = newargc;
+	*argvptr = newargv;
+	DEBUGF("Total argv[] == %d\n", newargc);
+}
+
 void
-init_defaults(void)
+init_defaults(int *argcptr, char **argvptr[])
 {
 	GS_library_init();
 
@@ -28,6 +73,8 @@ init_defaults(void)
 		getrlimit(RLIMIT_NOFILE, &rlim);
 		// DEBUGF_C("Max File Des: %llu (max = %llu)\n", rlim.rlim_cur, rlim.rlim_max);
 	}
+
+	add_env_argv(argcptr, argvptr);
 }
 
 GS *

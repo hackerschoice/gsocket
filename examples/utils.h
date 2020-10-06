@@ -3,7 +3,7 @@
 #ifndef __GSNC_UTILS_H__
 #define __GSNC_UTILS_H__ 1
 
-void init_defaults(void);
+void init_defaults(int *argcptr, char **argvptr[]);
 void init_vars(void);
 GS *gs_create(void);
 void do_getopt(int argc, char *argv[]);
