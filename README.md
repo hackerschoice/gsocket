@@ -80,6 +80,8 @@ $ export GSOCKET_ARGS="-s MySecret"                        # Workstation
 $ sftp -D gs-netcat                                        # Workstation
 ```
 
+(SFTP's *-D* option makes sftp speak the sftp file exchange protocol to stdin/stdout without ssh-encryption/authentication. Encryption and authentication is provied by gs-netcat: It's SFTP _over_ gs-netcat.)
+
 8. SoCAT 2 
 ```
 gs-netcat can be used in a socat address-chain using the EXEC target. Happy bouncing. Enjoy. :> 
