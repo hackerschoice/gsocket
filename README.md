@@ -72,7 +72,16 @@ Access route.local:22 on Host's private LAN from your Workstation:
 $ socat -  "SOCKS4a:127.1:route.local:22"
 ```
 
-7. SoCAT 2 
+7. SFTP through gs-netcat
+```
+$ gs-netcat -s MySecret -l -e /usr/lib/sftp-server         # Host
+
+$ export GSOCKET_ARGS="-s MySecret"                        # Workstation
+$ sftp -D gs-netcat                                        # Workstation
+```
+...add -T to tunnel through TOR.
+
+8. SoCAT 2 
 ```
 gs-netcat can be used in a socat address-chain using the EXEC target. Happy bouncing. Enjoy. :> 
 ```
