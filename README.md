@@ -68,8 +68,8 @@ $ gs-netcat -p 1080                                # Workstation
 Access www.google.com via Host's private LAN from your Workstation:
 $ curl --socks4a 127.1:1080 http://www.google.com 
 
-Access route.local:22 on Host's private LAN from your Workstation:
-$ socat -  "SOCKS4a:127.1:route.local:22"
+Access fileserver.local:22 on Host's private LAN from your Workstation:
+$ socat -  "SOCKS4a:127.1:fileserver.local:22"
 ```
 
 7. SFTP through gs-netcat
