@@ -79,7 +79,6 @@ $ gs-netcat -s MySecret -l -e /usr/lib/sftp-server         # Host
 $ export GSOCKET_ARGS="-s MySecret"                        # Workstation
 $ sftp -D gs-netcat                                        # Workstation
 ```
-...add -T to tunnel through TOR.
 
 8. SoCAT 2 
 ```
@@ -88,7 +87,8 @@ gs-netcat can be used in a socat address-chain using the EXEC target. Happy boun
 ---
 **Pro-Tips:**
 
-1. Force Tor or fail:
+1. Force TOR or fail:
+Add -T to relay your traffic through TOR or use these environment variable to force TOR or fail gracefully if TOR is not running:
 ```
 $ export GSOCKET_SOCKS_IP=127.0.0.1
 $ export GSOCKET_SOCKS_PORT=9050
@@ -101,6 +101,8 @@ The backdoor supports multiple concurrent connections and spawns a real PTY/inte
 $ gs-netcat -k keyfile.txt -l -i    # Host
 $ gs-netcat -k keyfile.txt -T -i    # Workstation (via Tor & Global Socket Relay)
 ```
+
+Add -D on the host side to run gs-netcat as a daemon and in watchdog-mode: The backdoor will automatically restart if it is ever killed.
 
 3. Use -k
 
