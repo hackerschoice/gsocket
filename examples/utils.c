@@ -12,13 +12,16 @@ extern char **environ;
 static void
 add_env_argv(int *argcptr, char **argvptr[])
 {
-	char *str = getenv("GSOCKET_ARGS");
+	char *str_orig = getenv("GSOCKET_ARGS");
+	char *str = NULL;
 	char *next = str;
 	char **newargv;
 	int newargc;
 
-	if (str == NULL)
+	if (str_orig == NULL)
 		return;
+
+	str = strdup(str_orig);
 
 	newargv = malloc(*argcptr * sizeof *argvptr);
 	memcpy(newargv, *argvptr, *argcptr * sizeof *argvptr);
@@ -35,7 +38,7 @@ add_env_argv(int *argcptr, char **argvptr[])
 			*next = 0;
 			next++;
 		}
-		DEBUGF("arg = '%s'\n", str);
+		// DEBUGF("arg = '%s'\n", str);
 		/* *next == '\0'; str points to argument (0-terminated) */
 		newargc++;
 		newargv = realloc(newargv, newargc * sizeof newargv);
@@ -48,14 +51,12 @@ add_env_argv(int *argcptr, char **argvptr[])
 
 	*argcptr = newargc;
 	*argvptr = newargv;
-	DEBUGF("Total argv[] == %d\n", newargc);
+	// DEBUGF("Total argv[] == %d\n", newargc);
 }
 
 void
 init_defaults(int *argcptr, char **argvptr[])
 {
-	GS_library_init();
-
 	gopt.log_fp = stderr;
 	gopt.err_fp = stderr;
 	signal(SIGPIPE, SIG_IGN);
@@ -105,6 +106,8 @@ init_vars(void)
 {
 	int ret;
 
+	GS_library_init(gopt.err_fp, /* Debug Output */ gopt.err_fp);
+
 	ret = GS_CTX_init(&gopt.gs_ctx, &gopt.rfd, &gopt.wfd, &gopt.r, &gopt.w, &gopt.tv_now);
 
 	if (gopt.is_use_tor == 1)
@@ -125,6 +128,10 @@ init_vars(void)
 	if (gopt.is_blocking == 1)
 		GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_BLOCK, NULL, 0);
 
+
+	char *str = getenv("GSOCKET_ARGS");
+	if (str != NULL)
+		VLOG("=Using extra arguments: '%s'\n", str);
 
 	gopt.sec_str = GS_user_secret(&gopt.gs_ctx, gopt.sec_file, gopt.sec_str);
 
@@ -214,6 +221,7 @@ do_getopt(int argc, char *argv[])
 		switch (c)
 		{
 			case 'L':
+				gopt.is_logfile = 1;
 				gopt.log_fp = fopen(optarg, "a");
 				if (gopt.log_fp == NULL)
 					ERREXIT("fopen(%s): %s\n", optarg, strerror(errno));
@@ -222,7 +230,7 @@ do_getopt(int argc, char *argv[])
 				gopt.is_use_tor = 1;
 				break;
 			case 'q':
-				gopt.log_fp = NULL;
+				gopt.is_quite = 1;
 				break;
 			case 'r':
 				gopt.is_receive_only = 1;
@@ -262,10 +270,8 @@ do_getopt(int argc, char *argv[])
 				exit(0);
 		}
 	}
-
 }
 
-// static char stty_val[1024];
 static int is_stty_set_raw;
 struct termios tios_saved;
 
@@ -490,18 +496,6 @@ fd_cmd(const char *cmd)
 
 	return fds[1];
 }
-
-// #ifndef int_ntoa
-// const char *
-// int_ntoa(uint32_t ip)
-// {
-// 	struct in_addr in;
-
-// 	in.s_addr = ip;
-// 	return inet_ntoa(in);
-// }
-// #endif
-
 
 /*
  * Complete the connect() call

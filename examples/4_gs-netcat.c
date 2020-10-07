@@ -733,9 +733,7 @@ my_usage(void)
 
 	usage("skrlSgqwCTL");
 	fprintf(stderr, ""
-#ifdef D31337
 "  -S           Act as a Socks server [needs -l]\n"
-#endif
 "  -D           Daemon & Watchdog mode [background]\n"
 "  -d <IP>      IPv4 address for port forwarding\n"
 "  -p <port>    TCP Port to listen on or forward to\n"
@@ -746,11 +744,9 @@ my_usage(void)
 "Example to forward traffic from port 2222 to 192.168.6.7:22:\n"
 "    $ gs-netcat -l -d 192.168.6.7 -p 22     # Server\n"
 "    $ gs-netcat -p 2222                     # Client\n"
-#ifdef D31337
 "Example to act as a Socks proxy\n"
 "    $ gs-netcat -l -S                       # Server\n"
 "    $ gs-netcat -p 1080                     # Client\n"
-#endif
 "Example file transfer:\n"
 "    $ gs-netcat -l -r >warez.tar.gz         # Server\n"
 "    $ gs-netcat <warez.tar.gz               # Client\n"
@@ -788,13 +784,9 @@ my_getopt(int argc, char *argv[])
 				gopt.is_multi_peer = 1;
 				break;
 			case 'S':
-#ifdef D31337
 				gopt.is_socks_server = 1;
 				gopt.is_multi_peer = 1;
 				gopt.flags |= GSC_FL_IS_SERVER;	// implicit
-#else
-				ERREXIT("Experimental Feature. Contact us on Telegram to use this.\n");
-#endif
 				break;
 			default:
 				break;
@@ -804,6 +796,24 @@ my_getopt(int argc, char *argv[])
 		}
 	}
 
+	if (gopt.is_daemon)
+	{
+		if (gopt.is_logfile == 0)
+			gopt.is_quite = 1;
+	}
+
+	if (gopt.is_quite != 0)
+	{
+		gopt.log_fp = NULL;
+		gopt.err_fp = NULL;
+	}
+
+	if (gopt.flags & GSC_FL_IS_SERVER)
+	{
+		/* Server side (-i -l) shall be allowed to spawn multiple shells */
+		if (gopt.is_interactive)
+			gopt.is_multi_peer = 1;
+	}
 	/* Try to bind port (if listening) now and exit with error on failure
 	 * so that we only turn daemon/watchdog if port is available
 	 */
@@ -822,15 +832,14 @@ my_getopt(int argc, char *argv[])
 	}
 
 	init_vars();			/* from utils.c */
+	VLOG("=Encryption: %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
 
 	/* Become a daemon & watchdog (auto-restart) */
 	if (gopt.is_daemon)
 	{
-		gopt.err_fp = gopt.log_fp;	// Errors to logfile or /dev/null
+		gopt.err_fp = gopt.log_fp;	// Errors to logfile or NULL
 		GS_daemonize(gopt.log_fp);
 	}
-
-	VLOG("=Encryption: %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
 }
 
 int

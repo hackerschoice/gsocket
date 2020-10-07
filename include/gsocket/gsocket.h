@@ -293,7 +293,7 @@ typedef struct
  * #####################################
  */
 
-void GS_library_init(void);
+void GS_library_init(FILE *err_fp, FILE *dout_fp);
 int GS_CTX_init(GS_CTX *, fd_set *rfd, fd_set *wfd, fd_set *r, fd_set *w, struct timeval *tv_now);
 void GS_CTX_use_gselect(GS_CTX *ctx, GS_SELECT_CTX *gselect_ctx);
 int GS_CTX_free(GS_CTX *);

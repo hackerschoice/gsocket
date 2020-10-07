@@ -92,7 +92,7 @@ gs_fds_out(fd_set *fdset, int max, char id)
 	for (i = 0; i <= max; i++)
 		buf[i] = '0' + i % 10;
 	buf[i] = '\0';
-	fprintf(gs_errfp, "%s (max = %d)\n", buf, max);
+	xfprintf(gs_dout, "%s (max = %d)\n", buf, max);
 	int n = 0;
 	memset(buf, '.', sizeof buf);
 	for (i = 0; i <= max; i++)
@@ -105,23 +105,21 @@ gs_fds_out(fd_set *fdset, int max, char id)
 
 	}
 	buf[i] = '\0';
-	fprintf(gs_errfp, "%s (Tracking: %d)\n", buf, n);
+	xfprintf(gs_dout, "%s (Tracking: %d)\n", buf, n);
 #endif
 }
 
 void
 gs_fds_out_rwfd(GS_SELECT_CTX *ctx)
 {
-#ifndef DEBUG
-	return;
-#endif
+#ifdef DEBUG
 	int i;
 	char buf[ctx->max_fd + 1 + 1];
 
 	for (i = 0; i <= ctx->max_fd; i++)
 		buf[i] = '0' + i % 10;
 	buf[i] = '\0';
-	fprintf(gs_errfp, "%s (max = %d)\n", buf, ctx->max_fd);
+	xfprintf(gs_dout, "%s (max = %d)\n", buf, ctx->max_fd);
 
 	memset(buf, ' ', sizeof buf);
 	buf[sizeof buf - 1] = '\0';
@@ -152,11 +150,12 @@ gs_fds_out_rwfd(GS_SELECT_CTX *ctx)
 		n++;
 	}
 	buf[i] = '\0';
-	fprintf(gs_errfp, "%s (Tracking: %d)\n", buf, n);
+	xfprintf(gs_dout, "%s (Tracking: %d)\n", buf, n);
+#endif
 }
 
 void
-GS_library_init(void)
+GS_library_init(FILE *err_fp, FILE *dout_fp)
 {
 	if (gs_lib_init_called != 0)
 		return;
@@ -169,16 +168,16 @@ GS_library_init(void)
 
 	XASSERT(RAND_status() == 1, "RAND_status()");
 
-	gs_errfp = stderr;
+	gs_errfp = err_fp;
 #ifdef DEBUG
-	gs_dout = stderr;
+	gs_dout = dout_fp;
 #endif
 }
 
 int
 GS_CTX_init(GS_CTX *ctx, fd_set *rfd, fd_set *wfd, fd_set *r, fd_set *w, struct timeval *tv_now)
 {
-	GS_library_init();
+	GS_library_init(stderr, stderr);
 
 	memset(ctx, 0, sizeof *ctx);
 
@@ -1997,31 +1996,6 @@ GS_bytesstr_long(char *dst, size_t len, int64_t bytes)
 	return dst;
 }
 
-
-/*
- * Log a with local timestamp.
- */
-// void
-// GS_log(GS *gs, const char *str)
-// {
-// 	char tbuf[64];
-// 	FILE *fp;
-
-// 	if (gs == NULL)
-// 		return;
-// 	if (gs->ctx == NULL)
-// 		return;
-// 	fp = gs->ctx->log_fp;
-// 	if (fp == NULL)
-// 		return;
-
-// 	time_t t = time(NULL);
-// 	strftime(tbuf, sizeof tbuf, "%c", localtime(&time(NULL)/*t*/));
-// 	fprintf(fp, "%s ", tbuf);
-// 	fprintf(fp, "%s", str);
-// 	fflush(fp);
-// }
-
 /*
  * Create 'local' timestamp logfile style.
  */
@@ -2195,6 +2169,7 @@ GS_ADDR_bin2addr(GS_ADDR *addr, const void *data, size_t len)
 	memset(addr, 0, sizeof *addr);
 	GS_SHA256(data, len, md);
 	memcpy(addr->addr, md, sizeof addr->addr);
+
 	HEXDUMP(addr->addr, sizeof addr->addr);
 
 	b58enc(b58, &b58sz, md, GS_ADDR_SIZE);

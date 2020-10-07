@@ -340,7 +340,7 @@ GS_SELECT_del_cb(GS_SELECT_CTX *ctx, int fd)
 #ifdef DEBUG
 	buf[fd] = '*';	// This one being removed
 	// BUG-2-MAX-FD
-	// fprintf(gs_errfp, "%s (CB funcs, tracking=%d, max=%d)\n", buf, tracking, ctx->max_fd);
+	// xfprintf(gs_errfp, "%s (CB funcs, tracking=%d, max=%d)\n", buf, tracking, ctx->max_fd);
 #endif
 
 	DEBUGF("Setting MAX-FD to %d\n", new_max_fd);

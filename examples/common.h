@@ -74,6 +74,8 @@ struct _gopt
 	int is_socks_server;	/* -S flag */
 	int is_multi_peer;		/* -p / -S / -d [client & server] */
 	int is_daemon;
+	int is_logfile;
+	int is_quite;
 	fd_set rfd, r;
 	fd_set wfd, w;
 	struct timeval tv_now;
@@ -125,7 +127,7 @@ struct _peer
 
 
 extern struct _gopt gopt;
-#define xfprintf(fp, a...) do {if (fp == NULL) { break; } fprintf(fp, a); } while (0)
+#define xfprintf(fp, a...) do {if (fp != NULL) { fprintf(fp, a); fflush(fp); } } while (0)
 
 #define int_ntoa(x)	inet_ntoa(*((struct in_addr *)&x))
 
@@ -148,7 +150,7 @@ extern struct _gopt gopt;
 #define D_BBLU(a)	"\033[1;34m"a"\033[0m"
 #define D_BMAG(a)	"\033[1;35m"a"\033[0m"
 #ifdef DEBUG
-# define DEBUGF(a...) do{xfprintf(gopt.err_fp, "DEBUG %s:%d: ", __func__, __LINE__); xfprintf(gopt.err_fp, a); }while(0)
+# define DEBUGF(a...)   do{xfprintf(gopt.err_fp, "DEBUG %s:%d: ", __func__, __LINE__); xfprintf(gopt.err_fp, a); }while(0)
 # define DEBUGF_R(a...) do{xfprintf(gopt.err_fp, "DEBUG %s:%d: ", __func__, __LINE__); xfprintf(gopt.err_fp, "\033[1;31m"); xfprintf(gopt.err_fp, a); xfprintf(gopt.err_fp, "\033[0m"); }while(0)
 # define DEBUGF_G(a...) do{xfprintf(gopt.err_fp, "DEBUG %s:%d: ", __func__, __LINE__); xfprintf(gopt.err_fp, "\033[1;32m"); xfprintf(gopt.err_fp, a); xfprintf(gopt.err_fp, "\033[0m"); }while(0)
 # define DEBUGF_B(a...) do{xfprintf(gopt.err_fp, "DEBUG %s:%d: ", __func__, __LINE__); xfprintf(gopt.err_fp, "\033[1;34m"); xfprintf(gopt.err_fp, a); xfprintf(gopt.err_fp, "\033[0m"); }while(0)

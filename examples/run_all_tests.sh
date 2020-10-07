@@ -26,9 +26,9 @@ tests+="5.1 5.2 5.3 5.4 "
 tests+="5.5 "		# cleartext
 tests+="6.1 6.2 6.3 6.4 6.5 6.6 "
 tests+="6.7 "		# cleartext
-tests+="7.1 7.2 7.3 "
+tests+="7.1 7.2 7.3 7.4 "
 tests+="8.1 8.2 8.3 "
-tests+="9.1 9.2 9.3 "
+tests+="9.1 9.2 9.3 9.4 "
 
 # tests="2.1 "
 #tests="5.2"
@@ -396,10 +396,9 @@ test_start -n "Running: netcat #7.1 (cmd, multi connect)................."
 GSPID1="$(sh -c './gs-netcat -k id_sec.txt -l -e "echo Hello World" 2>server_err.txt >server_out.dat & echo ${!}')"
 GSPID2="$(sh -c './gs-netcat -k id_sec.txt -w </dev/null 2>client2_err.txt >client2_out.dat & echo ${!}')"
 GSPID3="$(sh -c './gs-netcat -k id_sec.txt -w </dev/null 2>client3_err.txt >client3_out.dat & echo ${!}')"
-sleep 1 # Give the gs-netcat -l server time to establish a new TCP to GS-NEtwork...
 ./gs-netcat -k id_sec.txt -w </dev/null 2>client_err.txt >client_out.dat
 waitk $GSPID2 $GSPID3
-kill -9 $GSPID1	&>/dev/null # kill server last...
+kill -9 $GSPID1	&>/dev/null
 if [ "`echo 'Hello World' | $MD5`" != "`$MD5 client_out.dat`" ]; then fail 1; fi
 if [ "`echo 'Hello World' | $MD5`" != "`$MD5 client2_out.dat`" ]; then fail 2; fi
 if [ "`echo 'Hello World' | $MD5`" != "`$MD5 client3_out.dat`" ]; then fail 3; fi
@@ -409,7 +408,7 @@ fi
 if [[ "$tests" =~ '7.2' ]]; then
 test_start -n "Running: netcat #7.2 (shell, exit)........................"
 GSPID1="$(sh -c './gs-netcat -k id_sec.txt -l -e /bin/sh 2>server_err.txt >server_out.dat & echo ${!}')"
-echo "echo; date; echo Hello World; exit" | ./gs-netcat -k id_sec.txt -w 2>client_err.txt >client_out.dat
+echo "date; echo Hello World; exit" | ./gs-netcat -k id_sec.txt -w 2>client_err.txt >client_out.dat
 sleep_ct
 kill $GSPID1
 if [ "`echo 'Hello World' | $MD5`" != "`tail -n1 client_out.dat | $MD5`" ]; then fail 1; fi
@@ -419,11 +418,25 @@ fi
 if [[ "$tests" =~ '7.3' ]]; then
 test_start -n "Running: netcat #7.3 (pty shell, exit)...................."
 GSPID1="$(sh -c './gs-netcat -k id_sec.txt -l -i 2>server_err.txt >server_out.dat & echo ${!}')"
-echo "echo; date; echo Hello World; exit" | ./gs-netcat -k id_sec.txt -w 2>client_err.txt >client_out.dat
+echo "date; echo Hello World; exit" | ./gs-netcat -k id_sec.txt -w 2>client_err.txt >client_out.dat
 sleep_ct
 kill $GSPID1 
 tail -n2 client_out.dat | grep 'Hello World' &>/dev/null
 if [ $? -ne 0 ]; then fail 1; fi
+$ECHO "${OK}"
+fi
+
+if [[ "$tests" =~ '7.4' ]]; then
+test_start -n "Running: netcat #7.4 (multi pty shell, exit).............."
+GSPID1="$(sh -c './gs-netcat -k id_sec.txt -l -i 2>server_err.txt >server_out.dat & echo ${!}')"
+GSPID2="$(sh -c '(echo "date && echo Hello World && exit") | ./gs-netcat -k id_sec.txt -iw 2>client1_err.txt >client1_out.dat & echo ${!}')"
+GSPID3="$(sh -c '(echo "date && echo Hello World && exit") | ./gs-netcat -k id_sec.txt -iw 2>client2_err.txt >client2_out.dat & echo ${!}')"
+GSPID4="$(sh -c '(echo "date && echo Hello World && exit") | ./gs-netcat -k id_sec.txt -iw 2>client3_err.txt >client3_out.dat & echo ${!}')"
+waitk $GSPID2 $GSPID3 $GSPID4
+kill $GSPID1
+if [ x"`tail -n2 client1_out.dat | grep 'Hello World'`" == x ]; then fail 1; fi
+if [ x"`tail -n2 client2_out.dat | grep 'Hello World'`" == x ]; then fail 2; fi
+if [ x"`tail -n2 client3_out.dat | grep 'Hello World'`" == x ]; then fail 3; fi
 $ECHO "${OK}"
 fi
 
@@ -540,7 +553,7 @@ fi
 
 if [[ "$tests" =~ '9.4' ]]; then
 # SOCKS test with cUrl
-test_start -n "Running: netcat #9.4 (curl/socks5)........................"
+test_start -n "Running: netcat #9.4 (curl/socks5, multi)................."
 curl -h | grep socks5-hostname >/dev/null
 if [ $? -ne 0 ]; then
 	skip "(no curl)"
@@ -548,11 +561,13 @@ else
 	GSPID1="$(sh -c './gs-netcat -k id_sec.txt -lS 2>server1_err.txt >server1_out.dat & echo ${!}')"
 	GSPID3="$(sh -c './gs-netcat -k id_sec.txt -p 1085 2>client_err.txt >client_out.dat & echo ${!}')"
 	waittcp 1085
-	touch testmp3.dat
-	GSPID4="$(sh -c 'curl --socks5-hostname 127.1:1085 --output testmp3.dat https://raw.githubusercontent.com/hackerschoice/thc-art/master/deep-phreakin.mp3 >nc2_out.dat 2>nc2_err.txt & echo ${!}')"
-	waitfhash testmp3.dat 171a9952951484d020ce1bef52b9eef5
-	kill -9 $GSPID1 $GSPID3 $GSPID4 &>/dev/null 
+	touch testmp3.dat testmp3-2.dat
+	GSPID4="$(sh -c 'curl --socks5-hostname 127.1:1085 --output testmp3.dat https://raw.githubusercontent.com/hackerschoice/thc-art/master/deep-phreakin.mp3 >client1_out.dat 2>client1_err.txt & echo ${!}')"
+	GSPID5="$(sh -c 'curl --socks5-hostname 127.1:1085 --output testmp3-2.dat https://raw.githubusercontent.com/hackerschoice/thc-art/master/deep-phreakin.mp3 >client2_out.dat 2>client2_err.txt & echo ${!}')"
+	waitk $GSPID4 $GSPID5
+	kill -9 $GSPID1 $GSPID3 &>/dev/null 
 	if [ "`$MD5 testmp3.dat`" != "171a9952951484d020ce1bef52b9eef5" ]; then fail 1; fi
+	if [ "`$MD5 testmp3-2.dat`" != "171a9952951484d020ce1bef52b9eef5" ]; then fail 2; fi
 	$ECHO "${OK}"
 	fi
 fi

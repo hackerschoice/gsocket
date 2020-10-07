@@ -57,14 +57,14 @@
 #define D_BBLU(a)	"\033[1;34m"a"\033[0m"
 #define D_BMAG(a)	"\033[1;35m"a"\033[0m"
 #ifdef DEBUG
-# define DEBUGF(a...) do{ if (gs_dout == NULL) break; xfprintf(gs_dout, D_BLU("LIB")" %s:%d: ", __func__, __LINE__); xfprintf(gs_dout, a); }while(0)
-# define DEBUGF_R(a...) do{ if (gs_dout == NULL) break; xfprintf(gs_dout, D_BLU("LIB")" %s:%d: ", __func__, __LINE__); xfprintf(gs_dout, "\033[1;31m"); xfprintf(gs_dout, a); xfprintf(gs_dout, "\033[0m"); }while(0)
-# define DEBUGF_G(a...) do{ if (gs_dout == NULL) break; xfprintf(gs_dout, D_BLU("LIB")" %s:%d: ", __func__, __LINE__); xfprintf(gs_dout, "\033[1;32m"); xfprintf(gs_dout, a); xfprintf(gs_dout, "\033[0m"); }while(0)
-# define DEBUGF_B(a...) do{ if (gs_dout == NULL) break; xfprintf(gs_dout, D_BLU("LIB")" %s:%d: ", __func__, __LINE__); xfprintf(gs_dout, "\033[1;34m"); xfprintf(gs_dout, a); xfprintf(gs_dout, "\033[0m"); }while(0)
-# define DEBUGF_Y(a...) do{ if (gs_dout == NULL) break; xfprintf(gs_dout, D_BLU("LIB")" %s:%d: ", __func__, __LINE__); xfprintf(gs_dout, "\033[1;33m"); xfprintf(gs_dout, a); xfprintf(gs_dout, "\033[0m"); }while(0)
-# define DEBUGF_M(a...) do{ if (gs_dout == NULL) break; xfprintf(gs_dout, D_BLU("LIB")" %s:%d: ", __func__, __LINE__); xfprintf(gs_dout, "\033[1;35m"); xfprintf(gs_dout, a); xfprintf(gs_dout, "\033[0m"); }while(0)
-# define DEBUGF_C(a...) do{ if (gs_dout == NULL) break; xfprintf(gs_dout, D_BLU("LIB")" %s:%d: ", __func__, __LINE__); xfprintf(gs_dout, "\033[1;36m"); xfprintf(gs_dout, a); xfprintf(gs_dout, "\033[0m"); }while(0)
-# define DEBUGF_W(a...) do{ if (gs_dout == NULL) break; xfprintf(gs_dout, D_BLU("LIB")" %s:%d: ", __func__, __LINE__); xfprintf(gs_dout, "\033[1;37m"); xfprintf(gs_dout, a); xfprintf(gs_dout, "\033[0m"); }while(0)
+# define DEBUGF(a...)   do{ xfprintf(gs_dout, D_BLU("LIB")" %s:%d: ", __func__, __LINE__); xfprintf(gs_dout, a); }while(0)
+# define DEBUGF_R(a...) do{ xfprintf(gs_dout, D_BLU("LIB")" %s:%d: ", __func__, __LINE__); xfprintf(gs_dout, "\033[1;31m"); xfprintf(gs_dout, a); xfprintf(gs_dout, "\033[0m"); }while(0)
+# define DEBUGF_G(a...) do{ xfprintf(gs_dout, D_BLU("LIB")" %s:%d: ", __func__, __LINE__); xfprintf(gs_dout, "\033[1;32m"); xfprintf(gs_dout, a); xfprintf(gs_dout, "\033[0m"); }while(0)
+# define DEBUGF_B(a...) do{ xfprintf(gs_dout, D_BLU("LIB")" %s:%d: ", __func__, __LINE__); xfprintf(gs_dout, "\033[1;34m"); xfprintf(gs_dout, a); xfprintf(gs_dout, "\033[0m"); }while(0)
+# define DEBUGF_Y(a...) do{ xfprintf(gs_dout, D_BLU("LIB")" %s:%d: ", __func__, __LINE__); xfprintf(gs_dout, "\033[1;33m"); xfprintf(gs_dout, a); xfprintf(gs_dout, "\033[0m"); }while(0)
+# define DEBUGF_M(a...) do{ xfprintf(gs_dout, D_BLU("LIB")" %s:%d: ", __func__, __LINE__); xfprintf(gs_dout, "\033[1;35m"); xfprintf(gs_dout, a); xfprintf(gs_dout, "\033[0m"); }while(0)
+# define DEBUGF_C(a...) do{ xfprintf(gs_dout, D_BLU("LIB")" %s:%d: ", __func__, __LINE__); xfprintf(gs_dout, "\033[1;36m"); xfprintf(gs_dout, a); xfprintf(gs_dout, "\033[0m"); }while(0)
+# define DEBUGF_W(a...) do{ xfprintf(gs_dout, D_BLU("LIB")" %s:%d: ", __func__, __LINE__); xfprintf(gs_dout, "\033[1;37m"); xfprintf(gs_dout, a); xfprintf(gs_dout, "\033[0m"); }while(0)
 #else
 # define DEBUGF(a...)
 # define DEBUGF_R(a...)
@@ -78,7 +78,7 @@
 
 #define XFREE(ptr)  do{if(ptr) free(ptr); ptr = NULL;}while(0)
 
-#define xfprintf(fp, a...) do {if (fp == NULL) { break; } fprintf(fp, a); } while (0)
+#define xfprintf(fp, a...) do {if (fp != NULL) { fprintf(fp, a); fflush(fp); } } while (0)
 
 #ifdef DEBUG
 # define ERREXIT(a...)   do { \
@@ -123,7 +123,7 @@
 # define HEXDUMP(a, len)        do { \
         int n = 0; \
         xfprintf(gs_dout, D_BLU("LIB")" %s:%d HEX ", __FILE__, __LINE__); \
-        while (n < len) xfprintf(gs_dout, "%2.2x", ((unsigned char *)a)[n++]); \
+        while (n < len) { xfprintf(gs_dout, "%2.2x", ((unsigned char *)a)[n]); n++; } \
         xfprintf(gs_dout, "\n"); \
 } while (0)
 

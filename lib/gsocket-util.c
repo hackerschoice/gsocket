@@ -12,8 +12,7 @@ user_secret_from_stdin(GS_CTX *ctx)
 
 	while (1)
 	{
-		fprintf(gs_errfp, "Enter Secret (or press Enter to generate): ");
-		fflush(gs_errfp);
+		xfprintf(gs_errfp, "Enter Secret (or press Enter to generate): ");
 		len = getline(&ptr, &n, stdin);
 		XASSERT(len > 0, "getline()\n");
 		if (ptr[len - 1] == '\n')
@@ -22,8 +21,7 @@ user_secret_from_stdin(GS_CTX *ctx)
 			return NULL;
 		if (strlen(ptr) >= 8)
 			break;
-		fprintf(gs_errfp, "Too short.\n");
-		fflush(gs_errfp);
+		xfprintf(gs_errfp, "Too short.\n");
 	}
 
 	return strdup(ptr);
@@ -86,7 +84,7 @@ GS_gen_secret(void)
 {
 	int ret;
 
-	GS_library_init();
+	GS_library_init(stderr, stderr);
 
 	/* Generate a new secret */
 	uint8_t buf[GS_SECRET_MAX_LEN + 1];
@@ -179,8 +177,7 @@ GS_daemonize(FILE *logfp)
 		int n = 60;
 		if (diff > 60)
 			n = 1;	// Immediately restart if this is first restart or child ran for >60sec
-		fprintf(gs_errfp, "%s ***DIED*** (status=%d). Restarting in %d second%s.\n", GS_logtime(), status, n, n>1?"s":"");
-		fflush(gs_errfp);
+		xfprintf(gs_errfp, "%s ***DIED*** (status=%d). Restarting in %d second%s.\n", GS_logtime(), status, n, n>1?"s":"");
 		sleep(n);
 
 		gettimeofday(&last, NULL);	// When last restarted.

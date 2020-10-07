@@ -18,7 +18,7 @@ void stty_reset(void);
 void stty_check_esc(GS *gs, char c);
 char **mk_env(char **blacklist);
 
-#define VLOG(a...)	do{if (gopt.log_fp == NULL){break;} fprintf(gopt.log_fp, a); fflush(gopt.log_fp); }while(0)
+#define VLOG(a...)	do{if (gopt.log_fp != NULL){ fprintf(gopt.log_fp, a); fflush(gopt.log_fp); } }while(0)
 
 /* hack to set rows/columns */
 #define GS_STTY_INIT_HACK	"stty rows %d columns %d\r"
