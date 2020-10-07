@@ -113,6 +113,11 @@ Using -s is not secure. Add your *secret* to a file and use -k &lt;filen&gt; or 
 $ gs-netcat -li <<<"MySecretPassword"
 ```
 
+Use this command to generate a new secure password at random:
+```
+$ gs-netcat -g
+```
+
 4. Hide your arguments (argv)
 
 Pass the arguments by environment variable (GSOCKET_ARGS) and use a bash-trick to hide gs-netcat binary in the process list:
