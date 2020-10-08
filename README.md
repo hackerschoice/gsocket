@@ -108,10 +108,7 @@ Add -D on the host side to run gs-netcat as a daemon and in watchdog-mode: The b
 
 3. Use -k
 
-Using -s is not secure. Add your *secret* to a file and use -k &lt;filen&gt; or pipe your password into the programme (Note the 3x '<').
-```
-$ gs-netcat -li <<<"MySecretPassword"
-```
+Using -s is not secure. Add your *secret* to a file and use -k &lt;filen&gt; or do not specify -k or -s and enter the password when prompted.
 
 Use this command to generate a new secure password at random:
 ```
