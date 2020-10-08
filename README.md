@@ -6,7 +6,7 @@ Global Socket allows two users behind NAT/Firewall to establish a TCP connection
 **Features:**
 - Uses the Global Socket Relay Network to connect TCP pipes
 - End-2-End encryption (using OpenSSL's SRP / [RFC 5054](https://tools.ietf.org/html/rfc5054))
-- AES-256 with a 4096 Prime
+- AES-256 & key exchange using 4096-bit Prime
 - No PKI required.
 - Perfect Forward Secrecy
 - TOR support (optional)
