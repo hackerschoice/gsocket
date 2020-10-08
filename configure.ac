@@ -1,6 +1,6 @@
 dnl Process this file with autoconf to produce a configure script.
 AC_PREREQ(2.61)
-AC_INIT([gsocket], 1.4.14)
+AC_INIT([gsocket], 1.4.15)
 dnl AC_CONFIG_AUX_DIR(config-x86_64-apple-darwin19.6.0)
 AC_CONFIG_AUX_DIR(config)
 AC_CANONICAL_SYSTEM
@@ -137,7 +137,7 @@ if test x"$STATIC" = x"yes"; then
 	CFLAGS="-static ${CFLAGS}"
 fi
 
-AC_OUTPUT([Makefile lib/Makefile examples/Makefile])
+AC_OUTPUT([Makefile lib/Makefile tools/Makefile man/Makefile])
 
 echo "
 ${PACKAGE_NAME}-${PACKAGE_VERSION} has been configured:

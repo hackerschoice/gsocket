@@ -21,7 +21,7 @@ if test "$DIE" -eq 1; then
 fi
 
 echo Removing old files...
-rm -f configure Makefile Makefile.in examples/Makefile examples/Makesfile.in src/Makefile src/Makefile.in config.h config.status aclocal.m4 config.cache config.log
+rm -f configure Makefile Makefile.in tools/Makefile tools/Makesfile.in src/Makefile src/Makefile.in config.h config.status aclocal.m4 config.cache config.log
 [ -d "config" ] &&  rm -rf config
 mkdir config
 

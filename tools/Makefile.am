@@ -1,4 +1,5 @@
-bin_PROGRAMS = gs-helloworld gs-pipe gs-full-pipe gs-netcat
+noinst_PROGRAMS = gs-helloworld gs-pipe gs-full-pipe
+bin_PROGRAMS = gs-netcat
 gs_helloworld_SOURCES = 1_gs-helloworld.c utils.c
 gs_helloworld_LDADD = ../lib/libgsocket.a
 
