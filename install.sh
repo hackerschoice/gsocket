@@ -5,5 +5,5 @@ git clone https://github.com/hackerschoice/gsocket.git
 cd gsocket
 ./bootstrap
 ./configure && make
-echo "Type 'make install' to install."
+echo "Type 'sudo make install' to install."
 
