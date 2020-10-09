@@ -78,7 +78,7 @@ IPv4 address for port forwarding.
 .It Fl p Ar port
 TCP port to listen on or to forward traffic to.
 .It Fl i
-Interactive login shell. The server spawns a true PTY login shell. The client acts as a true PTY client (with Ctrl-C etc working). The client can terminate the session by typing '~.' at any time or by typing 'exit'. The server supports multiple clients at the same time.
+Interactive login shell. The server spawns a true PTY login shell. The client acts as a true PTY client (with Ctrl-C etc working). The client can terminate the session by typing \'~.\' at any time or by typing \'exit\'. The server supports multiple clients at the same time.
 .El
 
 .Pp
@@ -86,38 +86,38 @@ Interactive login shell. The server spawns a true PTY login shell. The client ac
 can be a numerical value between 1-65535.
 .Sh EXAMPLES
 .Nm Example 1
-- Listen for a new connection using the password 'MySecret':
+- Listen for a new connection using the password \'MySecret\':
 .Dl $ gs-netcat -s MySecret -l
 .Pp
-Client connect using the password 'MySecret':
+Connect with client using the same password:
 .Dl $ gs-netcat -s MySecret
 .Pp
 .Nm Example 2
 - spawn a PTY login shell when a client connects:
 .Dl $ gs-netcat -s MySecret -l -i
 .Pp
-Client connect to the server's interactive login shell:
+Log in to server\'s interactive shell:
 .Dl $ gs-netcat -s MySecret -i
 .Pp
 .Nm Example 3
 - Execute a command when a client connects:
-.Dl $ gs-netcat -s MySecret -l -e 'echo hello world; id; exit'
+.Dl $ gs-netcat -s MySecret -l -e \'echo hello world; id; exit\'
 .Pp
-Client connect to the server:
+Connect client to the server:
 .Dl $ gs-netcat -s MySecret
 .Pp
 .Nm Example 4
 - Pipe data from client to server:
 .Dl $ gs-netcat -s MySecret -l -r >warez.tar.gz
 .Pp
-Client to read 'warez.tar.gz' and pipe it to the server.
+Client to read \'warez.tar.gz\' and pipe it to the server.
 .Dl $ gs-netcat -s MySecret <warez.tar.gz
 .Pp
 .Nm Example 5
 - Server to act as a Socks4/4a/5 server:
 .Dl $ gs-netcat -s MySecret -l -S
 .Pp
-Client to listen on TCP port 1080 and forward any new connection to the server's Socks server:
+Client to listen on TCP port 1080 and forward any new connection to the server\'s Socks server:
 .Dl $ gs-netcat -s MySecret -p 1080
 .Pp
 .Nm Example 6
@@ -129,18 +129,19 @@ Client to listen on TCP port 2222 and forward any new connection to the the serv
 .Dl $ ssh -p 2222 root@127.0.0.1
 .Pp
 The same using 1 command:
-.Dl $ ssh -o ProxyCommand='gs-netcat -s MySecret' root@ignored
+.Dl $ ssh -o ProxyCommand=\'gs-netcat -s MySecret\' root@ignored
 .Pp
 .Nm Example 7
 - Creating an SFTP server using gs-netcat:
 .Dl $ gs-netcat -s MySecret -l -e /usr/lib/sftp-server
 .Pp
-Client to use SFTP over GSRN (encrypted) to connect to the server:
+The sftp-server binary speaks the sftp-protocol to stdin/stdout. The sftp binary also speaks sftp-protocol to stdin/stdout. The tool can be used to connect both via GSRN (encrypted) and access the SFTP server running on the server's side from the client via the GSRN (encrypted).:
+.Dl $ export GSOCKET_ARGS=\'-s MySecret\'
 .Dl $ sftp -D gs-netcat
 .Pp
 .Nm Example 8
-- Encrypted Reverse PTY shell hidden as '-bash' in the process list - also known as 'backdoor':
-.Dl $ export GSOCKET_ARGS='-s MySecret -l -i -D'
+- Encrypted Reverse PTY shell hidden as \'-bash\' in the process list - also known as \'backdoor\':
+.Dl $ export GSOCKET_ARGS=\'-s MySecret -l -i -D\'
 .Dl $ exec -a -bash gs-netcat &
 .Pp
 Client to connect to the backdoor:
@@ -172,13 +173,13 @@ Passing the password as command line parameter is not secure. Consider using the
 The security is end-2-end. This means from User-2-User (and not just to the GSRN). The GSRN relays only (encrypted) data to and from the users.
 .Pp
 .Nm 2.
-The session is 256 bit and ephemeral. It is freshly generated for every session and generated randomly (and is not based on the password). It uses OpenSSL's SRP with AES-256 and a 4096 Prime.
+The session is 256 bit and ephemeral. It is freshly generated for every session and generated randomly (and is not based on the password). It uses OpenSSL\'s SRP with AES-256 and a 4096 Prime.
 .Pp
 .Nm 3.
-The password can be 'weak' without weakening the security of the session. A brute force attack against a weak password requires a new TCP connection for every guess.
+The password can be \'weak\' without weakening the security of the session. A brute force attack against a weak password requires a new TCP connection for every guess.
 .Pp
 .Nm 4.
-Do not use stupid passwords like 'password123'. Malice might pick the same (stupid) password by chance and connect. If in doubt use gs-netcat -g to generate a strong one. Alice's and Bob's password should at least be strong enough so that Malice can not guess it by chance while Alice is waiting for Bob to connect.
+Do not use stupid passwords like \'password123\'. Malice might pick the same (stupid) password by chance and connect. If in doubt use gs-netcat -g to generate a strong one. Alice\'s and Bob\'s password should at least be strong enough so that Malice can not guess it by chance while Alice is waiting for Bob to connect.
 .Pp
 .Nm 5.
 If Alice shares the same password with Bob and Charlie and either one of them connects then Alice can not tell if it is Bob or Charlie who connected.
