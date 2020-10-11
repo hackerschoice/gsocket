@@ -1,0 +1,104 @@
+#! /bin/sh
+
+# A wrapper script to do this (essentially):
+# $ gs-netcat -s MySecret -l -e /usr/lib/sftp-server         # Host
+#
+# $ export GSOCKET_ARGS="-s MySecret"                        # Workstation
+# $ sftp -D gs-netcat                                        # Workstation
+
+GS_NETCAT_BIN="gs-netcat"
+# Try to use the gs-netcat that's in the same path as gs-sftp first.
+BIN=`echo "${0}" | sed 's/gs-sftp$/'"${GS_NETCAT_BIN}"'/'`
+[[ -f "${BIN}" ]] && GS_NETCAT_BIN="${BIN}"
+
+# GSNC_PARAMS="-q "
+GSNC_PARAMS="-w "	# Client to wait until server becomes available
+
+usage()
+{
+
+	printf  "\
+gs-sftp [-k file] [-s password] [-l]\n\
+   -l           Server Mode.\n\
+   -s <secret>  Secret (e.g. password).\n\
+   -k <file>    Read Secret from file.\n\
+ \n\
+Example:\n\
+    $ gs-sftp -s MySecret -l             # Server\n\
+    $ gs-sftp -s MySecret                # Client\n\
+\n\
+See 'gs-netcat -h' for more options.\n"
+	exit 0
+}
+
+OPTERR=0
+FL_NEED_PASSWORD=1
+while getopts "hs:k:" opt; do
+	case ${opt} in
+		s )
+			unset FL_NEED_PASSWORD
+			;;
+		k )
+			unset FL_NEED_PASSWORD
+			;;
+		h )
+			usage
+			;;
+	esac
+done
+
+# Find a binary or exit.
+find_binary()
+{
+	bin=$1
+	shift 1
+	file="`which "${bin}"`"
+	if [[ -f "${file}" ]]; then
+		echo "${file}"
+		return
+	fi
+	for dir in "$@"; do
+		file="${dir}/${bin}"
+		if [[ -f "$file" ]]; then
+			echo "${file}"
+			return
+		fi
+	done
+	echo ""
+	return
+}
+
+read_password()
+{
+	printf >&2 "Enter Secret (or press Enter to generate): "
+	read password
+	if [[ -z "${password}" ]]; then
+		password=`${GS_NETCAT_BIN} -g`
+	fi
+	echo "${password}" | tr -d "[:space:]"
+}
+
+GSNC_PARAMS+="$@"
+
+command -v "${GS_NETCAT_BIN}" >/dev/null 2>&1 || { echo >&2 "${GS_NETCAT_BIN} not found. Check PATH=?"; exit 1; }
+command -v sftp >/dev/null 2>&1 || { echo >&2 "sftp not found. Try 'apt-get install openssh' or check PATH=?"; exit 1; }
+
+
+SFTP_SERVER_BIN=$(find_binary sftp-server "$PREFIX"/lib /usr/lib/ /usr/local/lib /usr/libexec)
+[[ -z "${SFTP_SERVER_BIN}" ]] && { echo >&2 "sftp-server not found."; exit 1; }
+
+if [[ "$@" == *"-l"* ]]; then
+	# SERVER
+	GSOCKET_ARGS="`eval echo "${GSNC_PARAMS}"`" $GS_NETCAT_BIN -e "${SFTP_SERVER_BIN}"
+else
+	# CLIENT
+	# sftp does not allow reading password. Must read here
+	# unless -s/-k was specified
+	GSNC_PASSWORD=""
+	if [[ ! -z "$FL_NEED_PASSWORD" ]]; then
+		password=$(read_password)
+		GSNC_PASSWORD="-s ${password}"
+	fi
+
+	GSOCKET_ARGS="`eval echo "${GSNC_PARAMS}"` "${GSNC_PASSWORD}"" sftp -D "${GS_NETCAT_BIN}"
+fi
