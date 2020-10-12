@@ -318,12 +318,12 @@ const char *GS_logtime(void);
 
 int GS_CTX_setsockopt(GS_CTX *ctx, int level, const void *opt_value, size_t opt_len);
 // int GS_setsockopt(GS *gsocket, int level, const void *opt_value, size_t opt_len);
-#define GS_OPT_SOCKWAIT				(0x03)
+#define GS_OPT_SOCKWAIT				(0x02)
 #define GS_OPT_BLOCK				(0x04)	/* Blocking TCP */
 #define GS_OPT_USE_SRP				(0x08)
 #define GS_OPT_NO_ENCRYPTION		(0x08)
 #define GS_OPT_CLIENT_OR_SERVER		(0x10)	/* Whoever connects first acts as a Server */
-#define GS_OPT_USE_SOCKS			(0x08)	// Use TOR (Socks5)
+#define GS_OPT_USE_SOCKS			(0x20)	// Use TOR (Socks5)
 // #define GS_OPT_SINGLE_CONN			(0x10)	/* Establish 1 TCP connection and be done */
 
 ssize_t GS_write(GS *gsocket, const void *buf, size_t num);
