@@ -50,7 +50,7 @@ A file containing the password.
 .It Fl g
 Generate a secure random password and output it to standard output.
 .It Fl l
-Server mode (listen for GSRN connections). The default mode is client.
+Server mode. The default mode is client.
 .It Fl q
 Quite mode. Do not output any warnings or errors.
 .It Fl w
@@ -194,7 +194,10 @@ SRP has Perfect Forward Secrecy. This means that past sessions can not be decryp
 The latest version is available from https://github.com/hackerschoice/gsocket/.
 
 .Sh SEE ALSO
-nc(1)
+.Xr gs-sftp(1) ,
+.Xr blitz(1) ,
+.Xr nc(1) ,
+.Xr socat(1)
 
 .Sh BUGS
 Efforts have been made to have

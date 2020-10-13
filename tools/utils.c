@@ -8,24 +8,26 @@ extern char **environ;
 
 /*
  * Add list of argv's from GSOCKET_ARGS to argv[]
+ * result: argv[0] + GSOCKET_ARGS + argv[1..n]
  */
 static void
 add_env_argv(int *argcptr, char **argvptr[])
 {
 	char *str_orig = getenv("GSOCKET_ARGS");
 	char *str = NULL;
-	char *next = str;
-	char **newargv;
+	char *next;
+	char **newargv = NULL;
 	int newargc;
 
 	if (str_orig == NULL)
 		return;
 
 	str = strdup(str_orig);
+	next = str;
 
-	newargv = malloc(*argcptr * sizeof *argvptr);
-	memcpy(newargv, *argvptr, *argcptr * sizeof *argvptr);
-	newargc = *argcptr;
+	newargv = malloc(1 * sizeof *argvptr);
+	memcpy(&newargv[0], argvptr[0], 1 * sizeof *argvptr);
+	newargc = 1; 
 
 	while (next != NULL)
 	{
@@ -38,20 +40,34 @@ add_env_argv(int *argcptr, char **argvptr[])
 			*next = 0;
 			next++;
 		}
-		// DEBUGF("arg = '%s'\n", str);
-		/* *next == '\0'; str points to argument (0-terminated) */
-		newargc++;
-		newargv = realloc(newargv, newargc * sizeof newargv);
-		newargv[newargc - 1] = str;
+		// catch if last character is ' '
+		if (strlen(str) > 0)
+		{
+			/* *next == '\0'; str points to argument (0-terminated) */
+			newargc++;
+			DEBUGF("%d. arg = '%s'\n", newargc, str);
+			newargv = realloc(newargv, newargc * sizeof newargv);
+			newargv[newargc - 1] = str;
+		}
 
 		str = next;
 		if (str == NULL)
 			break;
 	}
 
+	// Copy original argv[1..n]
+	newargv = realloc(newargv, (newargc + *argcptr) * sizeof newargv);
+	memcpy(newargv + newargc, *argvptr + 1, (*argcptr - 1) * sizeof *argvptr);
+
+	newargc += (*argcptr - 1);
+	newargv[newargc] = NULL;
+
 	*argcptr = newargc;
 	*argvptr = newargv;
-	// DEBUGF("Total argv[] == %d\n", newargc);
+	DEBUGF("Total argv[] == %d\n", newargc);
+	int i;
+	for (i = 0; i < newargc + 1; i++)
+		DEBUGF("argv[%d] = %s\n", i, newargv[i]);
 }
 
 void
@@ -82,7 +98,8 @@ GS *
 gs_create(void)
 {
 	GS *gs = GS_new(&gopt.gs_ctx, &gopt.gs_addr);
-
+	XASSERT(gs != NULL, "%s\n", GS_CTX_strerror(&gopt.gs_ctx));
+	
 	if (gopt.token_str != NULL)
 		GS_set_token(gs, gopt.token_str, strlen(gopt.token_str));
 
@@ -128,14 +145,16 @@ init_vars(void)
 	if (gopt.is_blocking == 1)
 		GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_BLOCK, NULL, 0);
 
-
 	char *str = getenv("GSOCKET_ARGS");
-	if (str != NULL)
-		VLOG("=Using extra arguments: '%s'\n", str);
+	if ((str != NULL) && (strlen(str) > 0))
+		VLOG("=Extra arguments: '%s'\n", str);
 
+	DEBUGF("sec_str %s\n", gopt.sec_str);
 	gopt.sec_str = GS_user_secret(&gopt.gs_ctx, gopt.sec_file, gopt.sec_str);
+	if (gopt.sec_str == NULL)
+		ERREXIT("%s\n", GS_CTX_strerror(&gopt.gs_ctx));
 
-	VLOG("=Secret    : \"%s\"\n", gopt.sec_str);
+	VLOG("=Secret         : \"%s\"\n", gopt.sec_str);
 
 	/* Convert a secret string to an address */
 	GS_ADDR_str2addr(&gopt.gs_addr, gopt.sec_str);
@@ -210,6 +229,15 @@ usage(const char *params)
 	}
 }
 
+static void
+zap_arg(char *str)
+{
+	int len;
+
+	len = strlen(str);
+	memset(str, '*', len);
+}
+
 void
 do_getopt(int argc, char *argv[])
 {
@@ -259,10 +287,12 @@ do_getopt(int argc, char *argv[])
 				gopt.flags |= GSC_FL_IS_SERVER;
 				break;
 			case 's':
-				gopt.sec_str = optarg;
+				gopt.sec_str = strdup(optarg);
+				zap_arg(optarg);
 				break;
 			case 'k':
-				gopt.sec_file = optarg;
+				gopt.sec_file = strdup(optarg);
+				zap_arg(optarg);
 				break;
 			case 'g':		/* Generate a secret */
 				printf("%s\n", GS_gen_secret());

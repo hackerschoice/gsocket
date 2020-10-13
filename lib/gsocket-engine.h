@@ -16,6 +16,8 @@ void gs_fds_out(fd_set *fdset, int max, char id);
 void gs_fds_out_rwfd(GS_SELECT_CTX *ctx);
 void gs_fds_out_fd(fd_set *fdset, char id, int fd);
 
-#define gs_set_errorf(gs, a...)	do{snprintf((gs)->ctx->err_buf, sizeof (gs)->ctx->err_buf, a);} while(0)
+#define gs_ctx_set_errorf(ctx, a...)	do{snprintf((ctx)->err_buf, sizeof (ctx)->err_buf, a);} while(0)
+#define gs_set_errorf(gs, a...)			gs_ctx_set_errorf((gs)->ctx, a)
+// do{snprintf((gs)->ctx->err_buf, sizeof (gs)->ctx->err_buf, a);} while(0)
 
 #endif /* !__LIBGSOCKET_ENGINE_H__ */

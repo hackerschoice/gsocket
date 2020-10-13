@@ -1,6 +1,7 @@
 
 #include "gs-common.h"
 #include <gsocket/gsocket.h>
+#include "gsocket-engine.h"
 #include "gs-externs.h"
 
 static char *
@@ -29,7 +30,7 @@ user_secret_from_stdin(GS_CTX *ctx)
 
 
 static char *
-user_secret_from_file(const char *file)
+user_secret_from_file(GS_CTX *ctx, const char *file)
 {
 	FILE *fp;
 	char buf[256];
@@ -41,7 +42,10 @@ user_secret_from_file(const char *file)
 	memset(buf, 0, sizeof buf);
 	fp = fopen(file, "r");
 	if (fp == NULL)
+	{
+		gs_ctx_set_errorf(ctx, "'%s'", file);
 		return NULL;
+	}
 
 	ret = fread(buf, 1, sizeof buf - 1, fp);
 	fclose(fp);
@@ -103,9 +107,13 @@ GS_user_secret(GS_CTX *ctx, const char *sec_file, const char *sec_str)
 	const char *ptr;
 
 	/* Secret from file has priority of sec_str value */
-	ptr = user_secret_from_file(sec_file);
-	if (ptr != NULL)
-		return ptr;
+	if (sec_file != NULL)
+	{
+		ptr = user_secret_from_file(ctx, sec_file);
+		if (ptr != NULL)
+			return ptr;
+		return NULL;
+	}
 
 	/* If sec_str is set by command line parameters then use it */
 	if (sec_str != NULL)
