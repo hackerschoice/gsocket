@@ -1,0 +1,139 @@
+#! /bin/bash
+
+# A wrapper script to do this (esentially):
+# Server:
+#     $ gs-netcat -s MySecret -l -e "/usr/bin/rsync --server -vlogDtpr --partial ."
+# Client:
+#     $ rsync -aP -e "gs-netcat -s MySecret --" test4k.dat 127.1:.
+
+GS_NETCAT_BIN="gs-netcat"
+RSYNC_SERVER_DEFAULTS="--server -logtprR --safe-links --partial"
+# -D special devices
+# -g preserver group (may need root)
+# -p preserve permissions
+# -r recursive into directories
+# -R use relative path names
+# If client uses '-a' then server must use '-g'
+# If client uses '-R' then server must use '-R'
+# RSYNC_SERVER_DEFAULTS="--server -lotpr --partial"
+# RSYNC_SERVER_DEFAULTS="--server -lotpr --partial"
+# RSYNC_SERVER_DEFAULTS="--server -logDtprRe.iLsfxCIvu --partial"
+RSYNC_CLIENT_DEFAULTS="-ahPRv"
+
+# Try to use the gs-netcat that's in the same path as this binary first.
+# shellcheck disable=SC2001 # See if you can use ${variable//search/replace} instead.
+BIN=$(echo "${0}" | sed 's/blitz$/'"${GS_NETCAT_BIN}"'/')
+[[ x"${BIN}" != x"${0}" ]] && [[ -f "${BIN}" ]] && GS_NETCAT_BIN="${BIN}"
+
+usage()
+{
+	printf "\
+blitz [-k file] [-s password] [-l] [FILES]\n\
+   -l           Server Mode.\n\
+   -s <secret>  Secret (e.g. password).\n\
+   -k <file>    Read Secret from file.\n\
+   -o RSOPT=val Options passed to rsync.\n\
+ \n\
+ Example:\n\
+    $ blitz -s MySecret -l             # Server\n\
+    $ blitz -s MySecret *.dat          # Client\n\
+...another example to limit transfer rate to 10kB/sec\n\
+    $ blitz -s MySecret -o 'RSOPT=--bwlimit=10 -v' /./etc/*.conf *.dat\n\
+\n\
+See 'man gs-netcat' and 'man rsync' for more options.\n"
+	exit 0
+}
+
+read_password()
+{
+	printf >&2 "Enter Secret (or press Enter to generate): "
+	read -r password
+	if [[ -z "${password}" ]]; then
+		password=$(${GS_NETCAT_BIN} -g)
+	fi
+	echo "${password}" | tr -d "[:space:]"
+}
+
+# remove -o from parameter list.
+# Remove -s/-k from parameter list
+# Copy all other
+OPTERR=0
+FL_NEED_PASSWORD=1
+# Current options are options for gs-netcat followed by a list of files. We
+# need to split off the gs-netcat options (all but -o/-s/-k) without the
+# files. To do so we need to know which gs-netcat options takes an argument
+# at add those to getopts's optstring (such as -L <logfile>).
+# These are caught by '*'.
+# All single options (e.g. -w etc) are caught by '\?'.
+# shellcheck disable=SC2220 # Invalid flags are not handled. Add a *) case.
+while getopts ":hgs:k:o:L:" opt; do
+	case ${opt} in
+		o )
+			RSYNC_ARGS=${OPTARG//RSOPT=/}
+			;;
+		s )
+			GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-s"	# Add to end of array
+			GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="$OPTARG"	# Add to end of array
+			unset FL_NEED_PASSWORD
+			;;
+		k )
+			GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-k"	# Add to end of array
+			GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]=$(eval echo "$OPTARG")	# Add to end of array
+			unset FL_NEED_PASSWORD
+			;;
+		g )
+			"${GS_NETCAT_BIN}" -g
+			exit
+			;;
+		h )
+			usage
+			;;
+		\? )
+			# UNKNOWN option. Handle before '*' (e.g. -l)
+			ARGS_NEW[${#ARGS_NEW[@]}]="-${OPTARG}"	# Add to end of array			
+			;;
+		* )
+			# Other (known opts from opstring) w parameters (e.g. -L <file>)
+			ARGS_NEW[${#ARGS_NEW[@]}]="-${opt}"		# Add to end of array			
+			ARGS_NEW[${#ARGS_NEW[@]}]="${OPTARG}"	# Add to end of array			
+			;;
+	esac
+done
+
+# Prepare existing GSOCKET_ARGS to take more arguments if there are any
+[[ -n "$GSOCKET_ARGS" ]] && GSOCKET_ARGS+=" "
+# Already got password in env-variable -> DONT ASK again.
+[[ "$GSOCKET_ARGS" == *"-s"* ]] && unset FL_NEED_PASSWORD
+[[ "$GSOCKET_ARGS" == *"-k"* ]] && unset FL_NEED_PASSWORD
+# Must read here unless -s/-k was used
+if [[ -n "$FL_NEED_PASSWORD" ]]; then
+	password=$(read_password)
+	echo "=Secret         :\"${password}\""
+	GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-s"	# Add to end of array			
+	GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="$password"	# Add to end of array			
+fi
+ENV_ARGS="${GSOCKET_ARGS}${GSNC_ENV_ARGS[*]}"
+
+# echo $OPTIND
+# echo args-new      : ${ARGS_NEW[@]}
+# echo gsnc-env-args : \'${GSNC_ENV_ARGS[@]}\'
+# echo rsync-args    : ${RSYNC_ARGS}
+
+command -v "${GS_NETCAT_BIN}" >/dev/null 2>&1 || { echo >&2 "${GS_NETCAT_BIN} not found. Check PATH=?"; exit 1; }
+command -v rsync >/dev/null 2>&1 || { echo >&2 "rsync not found. Try 'apt-get install rsync' or check PATH=?"; exit 1; }
+
+if [[ "$*" == *"-l"* ]]; then
+	# SERVER
+	ENV_ARGS="${GSOCKET_ARGS}${GSNC_ENV_ARGS[*]}"
+	GSOCKET_ARGS="${ENV_ARGS}" exec "${GS_NETCAT_BIN}" "${ARGS_NEW[@]}" -e "rsync ${RSYNC_SERVER_DEFAULTS} ${RSYNC_ARGS} ."
+else
+	# CLIENT
+	shift $((OPTIND -1))	# list of files...
+	# echo "Remaining: $*"
+	ARGS=" -q"
+	# ARGS=""
+	[[ -n ${ARGS_NEW[*]} ]] && ARGS+=" ${ARGS_NEW[*]}"
+	# shellcheck disable=SC2086 # Double quote to prevent globbing and word splitting. ${RSYNC_ARGS} -> We want word splitting for multiple arugments.
+	GSOCKET_ARGS="${ENV_ARGS}" exec rsync ${RSYNC_CLIENT_DEFAULTS} ${RSYNC_ARGS} -e "${GS_NETCAT_BIN}${ARGS} --" "${@}" 127.1:.
+fi
+
