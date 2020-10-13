@@ -144,7 +144,7 @@ gs_fds_out_rwfd(GS_SELECT_CTX *ctx)
 		else if (c == 2)
 			buf[i] = 'W';
 		else if (c == 3)
-			buf[i] = 'X';
+			buf[i] = 'X';	// Set of Reading _and_ Writing
 		else
 			buf[i] = 'E';	// Cant happen.
 		n++;
@@ -1616,30 +1616,6 @@ GS_CTX_setsockopt(GS_CTX *ctx, int level, const void *opt_value, size_t opt_len)
 	return 0;	// Success
 }
 
-#if 0
-int
-GS_setsockopt(GS_CTX *gsocket, int level, const void *opt_value, size_t opt_len)
-{
-	if (gsocket->flags & GS_FL_CALLED_NET_NEW_SOCKET)
-	{
-		DEBUGF_R("ERROR: Cant set socket option after socket was created\n");
-		errno = EPERM;		/* Cant set socket options after socket was created */
-		return -1;
-	}
-
-	return 0;
-}
-#endif
-
-#if 0
-int
-GS_setctxopt(GS_CTX *ctx, int level, const void *opt_value, size_t opt_len)
-{
-		return -1;
-
-	return 0;	// Success
-}
-#endif
 
 void
 GS_FD_CLR_R(GS *gs)

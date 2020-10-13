@@ -197,23 +197,44 @@ write_fd(GS_SELECT_CTX *ctx, struct _peer *p)
 	ssize_t len;
 
 	len = write(p->fd_out, p->rbuf, p->rlen);
-	// DEBUGF_G("write(fd = %d, len = %zd) == %zd\n", p->fd_out, p->rlen, len);
+	DEBUGF_G("write(fd = %d, len = %zd) == %zd, errno = %d\n", p->fd_out, p->rlen, len, errno);
 	
 	if ((len < 0) && (errno == EAGAIN))
 	{
-		/* Stop reading from GS */
-		FD_CLR(p->gs->fd, ctx->rfd);
-		/* Mark that cmd_fd need call to write() */
-		XFD_SET(p->fd_out, ctx->wfd);
-		return GS_SUCCESS;	/* Successfully handled */
+		int fd = p->gs->fd;
+		/* Marked saved state and current state to STOP READING.
+		 * Even when in WANT_WRITE we must not start reading after
+		 * the WANT_WRITE has been satisfied (until this write() has
+		 * completed.
+		 */
+		GS_SELECT_FD_CLR_R(ctx, fd);
+
+		// if (ctx->is_rw_state_saved[fd] == 1)
+		// {
+		// 	ctx->saved_rw_state[fd] &= ~0x01;
+		// }
+		// FD_CLR(p->gs->fd, ctx->rfd);	// Stop reading from GS
+		XFD_SET(p->fd_out, ctx->wfd);	// Mark cmd_fd for writing	
+		return GS_ECALLAGAIN; //GS_SUCCESS;	/* Successfully handled */
 	}
 
 	if (len < 0)
 	{
 		peer_free(ctx, p);
-		return GS_SUCCESS;	/* Succesfully remove peer */
+		return GS_SUCCESS;	/* Succesfully removed peer */
 	}
 
+	FD_CLR(p->fd_out, ctx->wfd);	// write success.
+	int fd = p->gs->fd;
+	/* Start reading from GS if we are not in a saved state.
+	 * Otherwise mark for reading in saved state (and let WANT_WRITE finish)
+	 */
+	GS_SELECT_FD_SET_R(ctx, fd);
+	// if (ctx->is_rw_state_saved[fd])
+	// {
+	// 		ctx->saved_rw_state[fd] |= 0x01;
+	// } else
+	// 	XFD_SET(p->gs->fd, ctx->rfd);	// Start reading from GS again
 	p->rlen = 0;
 	return GS_SUCCESS;
 }
@@ -306,6 +327,7 @@ write_gs(GS_SELECT_CTX *ctx, struct _peer *p)
 	{
 		/* GS_write() would block. */
 		FD_CLR(p->fd_in, ctx->rfd);	// Stop reading from input
+		XFD_SET(p->gs->fd, ctx->wfd);	// Mark for writing..
 		return GS_ECALLAGAIN;
 	}
 
@@ -318,6 +340,7 @@ write_gs(GS_SELECT_CTX *ctx, struct _peer *p)
 			/* SOCKS subsystem calls write_gs() before p->fd_in is connected
 			 * Make sure XFD_SET() is only called on a connected() socket.
 			 */
+			FD_CLR(p->gs->fd, ctx->wfd);
 			XFD_SET(p->fd_in, ctx->rfd);	// Start reading from input again
 		}
 		return GS_SUCCESS;
@@ -343,7 +366,8 @@ completed_connect(GS_SELECT_CTX *ctx, struct _peer *p, int fd_in, int fd_out)
 	/* Get ready to read from FD (either (forwarding) TCP, app or stdin/stdout */
 	FD_CLR(fd_out, ctx->wfd);
 	XFD_SET(fd_in, ctx->rfd);
-	GS_SELECT_add_cb(ctx, cb_read_fd, cb_write_fd, fd_in, p, 0);
+	GS_SELECT_add_cb_r(ctx, cb_read_fd, fd_in, p, 0);
+	GS_SELECT_add_cb_w(ctx, cb_write_fd, fd_out, p, 0);
 
 	/* And also get ready to read from GS-peer */
 	XFD_SET(gs->fd, ctx->rfd);
@@ -623,7 +647,8 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd_notused, void *arg, int val)
 	GS_SELECT_add_cb(ctx, cb_read_gs, cb_write_gs, gs->fd, p, 0);
 
 	/* Start reading from STDIN or inbound TCP */
-	GS_SELECT_add_cb(ctx, cb_read_fd, cb_write_fd, p->fd_in, p, 0);
+	GS_SELECT_add_cb_r(ctx, cb_read_fd, p->fd_in, p, 0);
+	GS_SELECT_add_cb_w(ctx, cb_write_fd, p->fd_out, p, 0);
 	XFD_SET(p->fd_in, ctx->rfd);	/* Start reading */
 	p->is_fd_connected = 1;
 
@@ -832,7 +857,7 @@ my_getopt(int argc, char *argv[])
 	}
 
 	init_vars();			/* from utils.c */
-	VLOG("=Encryption: %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
+	VLOG("=Encryption     : %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
 
 	/* Become a daemon & watchdog (auto-restart) */
 	if (gopt.is_daemon)

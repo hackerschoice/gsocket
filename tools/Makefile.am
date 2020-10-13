@@ -1,4 +1,6 @@
-bin_PROGRAMS = gs-helloworld gs-pipe gs-full-pipe gs-netcat
+noinst_PROGRAMS = gs-helloworld gs-pipe gs-full-pipe
+bin_PROGRAMS = gs-netcat
+
 gs_helloworld_SOURCES = 1_gs-helloworld.c utils.c
 gs_helloworld_LDADD = ../lib/libgsocket.a
 
@@ -10,6 +12,8 @@ gs_full_pipe_LDADD = ../lib/libgsocket.a
 
 gs_netcat_SOURCES = 4_gs-netcat.c utils.c socks.c
 gs_netcat_LDADD = ../lib/libgsocket.a
+
+dist_bin_SCRIPTS = blitz gs-sftp
 
 EXTRA_DIST = run_all_tests.sh
 noinst_HEADERS = common.h utils.h socks.h

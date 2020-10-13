@@ -114,7 +114,7 @@
 } while (0)
 
 #define XFD_SET(fd, set) do { \
-        if (fd <= 0) { DEBUGF_R("WARNING: FD_SET(%d, )\n", fd); } \
+        /*if (fd <= 0) { DEBUGF_R("WARNING: FD_SET(%d, )\n", fd); } */ \
         if (fd < 0) { break; } \
         FD_SET(fd, set); \
 } while (0)
