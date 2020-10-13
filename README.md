@@ -6,7 +6,7 @@ Global Socket allows two users behind NAT/Firewall to establish a TCP connection
 **Features:**
 - Uses the Global Socket Relay Network to connect TCP pipes
 - End-2-End encryption (using OpenSSL's SRP / [RFC 5054](https://tools.ietf.org/html/rfc5054))
-- AES-256 with a 4096 Prime
+- AES-256 & key exchange using 4096-bit Prime
 - No PKI required.
 - Perfect Forward Secrecy
 - TOR support (optional)
@@ -15,7 +15,7 @@ Abandon your thinking that an IP Address is needed to communicate with somebody.
 
 The library comes with example tools. Gs-netcat is a re-implementation of netcat. It supports the well loved *-e* option and spwans a true PTY/interactive command shell on a remote host. Effectively an AES-256 encrypted reverse backdoor via TOR (optional) and without the need of a Command & Control server. It can also be used to tunnel a friend into your local network or to give somebody temporary shell access to your workstation.
 
-Direct Download: [gsocket-1.4.13.tar.gz](https://github.com/hackerschoice/gsocket/releases/download/v1.4.13/gsocket-1.4.13.tar.gz)
+Direct Download: [gsocket-1.4.15.tar.gz](https://github.com/hackerschoice/gsocket/releases/download/v1.4.15/gsocket-1.4.15.tar.gz)
 
 BETA BETA BETA. PRIVATE RELEASE ONLY.
 ---
@@ -108,9 +108,18 @@ Add -D on the host side to run gs-netcat as a daemon and in watchdog-mode: The b
 
 3. Use -k
 
-Using -s is not secure. Add your *secret* to a file and use -k &lt;filen&gt; or pipe your password into the programme (Note the 3x '<').
+Using -s is not secure. Add your *secret* to a file and use -k &lt;filen&gt; or use GSOCKET_ARGS or enter the password when prompted.
+
 ```
-$ gs-netcat -li <<<"MySecretPassword"
+$ gs-netcat -k MyFile.txt
+
+$ export GSOCKET_ARGS="-s MySecret"
+$ gs-netcat -l
+```
+
+Use this command to generate a new secure password at random:
+```
+$ gs-netcat -g
 ```
 
 4. Hide your arguments (argv)
@@ -132,7 +141,7 @@ $ ps alxww | grep -bash
 3. The password can be 'weak' without weakening the security of the session. A brute force attack against a weak password requires a new TCP connection for every guess.
 4. Do not use stupid passwords like 'password123'. Malice might pick the same (stupid) password by chance and connect. If in doubt use *gs-netcat -g* to generate a strong one. Alice's and Bob's password should at least be strong enough so that Malice can not guess it by chance while Alice is waiting for Bob to connect.
 5. If Alice shares the same password with Bob and Charlie and either one of them connects then Alice can not tell if it is Bob or Charlie who connected.
-6. If Alice shares the same password with Bob and Malice and Alice stops listening for a connection then Malice could start to listen for the connection instead. Bob (when opening a new connection) could not tell if he is connecting to Alice or to Malice. Use -a &lt;token&gt; if you worry about this. TL;DR: When sharing the same password with a group larger than 2 then it is assumed that everyone in that group plays nicely. Otherwise use SSH over the GS/TLS connection.
+6. Assume Alice shares the same password with Bob and Malice. When Alice stops listening for a connection then Malice could start to listen for the connection instead. Bob (when opening a new connection) can not tell if he is connecting to Alice or to Malice. Use -a &lt;token&gt; if you worry about this. TL;DR: When sharing the same password with a group larger than 2 then it is assumed that everyone in that group plays nicely. Otherwise use SSH over the GS/TLS connection.
 7. SRP has Perfect Forward Secrecy. This means that past sessions can not be decrypted even if the password becomes known.
 8. I did not invent SRP. It's part of OpenSSL :>
 ---
