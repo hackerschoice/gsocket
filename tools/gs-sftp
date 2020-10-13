@@ -19,6 +19,8 @@ GSNC_PARAMS=""
 # GSNC_PARAMS+="-q "	# quite mode
 GSNC_PARAMS+="-w "	# Client to wait until server becomes available
 
+
+
 usage()
 {
 	printf "\
@@ -61,6 +63,12 @@ read_password()
 	fi
 	echo "${password}" | tr -d "[:space:]"
 }
+
+command -v "${GS_NETCAT_BIN}" >/dev/null 2>&1 || { echo >&2 "${GS_NETCAT_BIN} not found. Check PATH=?"; exit 1; }
+command -v sftp >/dev/null 2>&1 || { echo >&2 "sftp not found. Try 'apt-get install openssh' or check PATH=?"; exit 1; }
+
+SFTP_SERVER_BIN=$(find_binary sftp-server "$PREFIX"/lib /usr/lib/ /usr/local/lib /usr/libexec)
+[[ -z "${SFTP_SERVER_BIN}" ]] && { echo >&2 "sftp-server binary not found."; exit 1; }
 
 OPTERR=0
 FL_NEED_PASSWORD=1
@@ -111,11 +119,6 @@ if [[ -n "$FL_NEED_PASSWORD" ]]; then
 fi
 ENV_ARGS="${GSOCKET_ARGS}${GSNC_ENV_ARGS[*]}"
 
-command -v "${GS_NETCAT_BIN}" >/dev/null 2>&1 || { echo >&2 "${GS_NETCAT_BIN} not found. Check PATH=?"; exit 1; }
-command -v sftp >/dev/null 2>&1 || { echo >&2 "sftp not found. Try 'apt-get install openssh' or check PATH=?"; exit 1; }
-
-SFTP_SERVER_BIN=$(find_binary sftp-server "$PREFIX"/lib /usr/lib/ /usr/local/lib /usr/libexec)
-[[ -z "${SFTP_SERVER_BIN}" ]] && { echo >&2 "sftp-server binary not found."; exit 1; }
 
 if [[ "$*" == *"-l"* ]]; then
 	# SERVER
@@ -123,7 +126,7 @@ if [[ "$*" == *"-l"* ]]; then
 	GSOCKET_ARGS="${ENV_ARGS}" exec "${GS_NETCAT_BIN}" "${ARGS_NEW[@]}" -e "${SFTP_SERVER_BIN}"
 else
 	# CLIENT
-	ARGS=""
+	ARGS=" -q"
 	[[ -n ${ARGS_NEW[*]} ]] && ARGS=" ${ARGS_NEW[*]}"
 	# shellcheck disable=SC2086 # Double quote to prevent globbing and word splitting. ${RSYNC_ARGS} -> We want word splitting for multiple arugments.
 	GSOCKET_ARGS="${ENV_ARGS}${ARGS}" exec sftp -D "${GS_NETCAT_BIN}"

@@ -201,19 +201,12 @@ write_fd(GS_SELECT_CTX *ctx, struct _peer *p)
 	
 	if ((len < 0) && (errno == EAGAIN))
 	{
-		int fd = p->gs->fd;
 		/* Marked saved state and current state to STOP READING.
 		 * Even when in WANT_WRITE we must not start reading after
 		 * the WANT_WRITE has been satisfied (until this write() has
 		 * completed.
 		 */
-		GS_SELECT_FD_CLR_R(ctx, fd);
-
-		// if (ctx->is_rw_state_saved[fd] == 1)
-		// {
-		// 	ctx->saved_rw_state[fd] &= ~0x01;
-		// }
-		// FD_CLR(p->gs->fd, ctx->rfd);	// Stop reading from GS
+		GS_SELECT_FD_CLR_R(ctx, p->gs->fd);
 		XFD_SET(p->fd_out, ctx->wfd);	// Mark cmd_fd for writing	
 		return GS_ECALLAGAIN; //GS_SUCCESS;	/* Successfully handled */
 	}
@@ -225,16 +218,10 @@ write_fd(GS_SELECT_CTX *ctx, struct _peer *p)
 	}
 
 	FD_CLR(p->fd_out, ctx->wfd);	// write success.
-	int fd = p->gs->fd;
 	/* Start reading from GS if we are not in a saved state.
 	 * Otherwise mark for reading in saved state (and let WANT_WRITE finish)
 	 */
-	GS_SELECT_FD_SET_R(ctx, fd);
-	// if (ctx->is_rw_state_saved[fd])
-	// {
-	// 		ctx->saved_rw_state[fd] |= 0x01;
-	// } else
-	// 	XFD_SET(p->gs->fd, ctx->rfd);	// Start reading from GS again
+	GS_SELECT_FD_SET_R(ctx, p->gs->fd);
 	p->rlen = 0;
 	return GS_SUCCESS;
 }

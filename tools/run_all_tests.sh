@@ -26,9 +26,11 @@ tests+="5.1 5.2 5.3 5.4 "
 tests+="5.5 "		# cleartext
 tests+="6.1 6.2 6.3 6.4 6.5 6.6 "
 tests+="6.7 "		# cleartext
+tests+="6.8 "		# TOR
 tests+="7.1 7.2 7.3 7.4 "
 tests+="8.1 8.2 8.3 "
 tests+="9.1 9.2 9.3 9.4 "
+tests+="10.1 10.2 "		# blitz, gs-sftp
 
 # tests="2.1 "
 #tests="5.2"
@@ -63,18 +65,24 @@ MD1MB="`$MD5 test1M.dat`"
 test_start()
 {
 	rm -f client_out.dat server_out.dat server_err.txt client_err.txt server[123]_out.dat client[12]_out.dat server[123]_err.txt client[12]_err.txt nc[123]_out.dat nc[123]_err.txt
-	[[ x"$1" != x ]] && $ECHO $@
+	[[ x"$1" != x ]] && $ECHO $*
 }
 
 fail()
 {
-	$ECHO ${FAIL}-$@
+	$ECHO "${FAIL}"-$*
 	exit 255
 }
 
 skip()
 {
-	$ECHO ${SKIP} $@
+	$ECHO "${SKIP}" $*
+}
+
+# code file1 file2
+md5fail()
+{
+	[[ "`$MD5 ${2}`" != "`$MD5 ${3}`" ]] && fail $1;
 }
 
 # Wait until a process has termianted or kill it after SLEEP_WD seconds..
@@ -391,6 +399,22 @@ if [ "`$MD5 test50k.dat`" != "`$MD5 client_out.dat`" ]; then fail 2; fi
 $ECHO "${OK}"
 fi
 
+if [[ "$tests" =~ '6.8' ]]; then
+test_start -n "Running: netcat #6.8 (stdin, assymetric sizes, TOR)....."
+netstat -ant 2>/dev/null | grep LISTEN | grep 9050 &>/dev/null
+if [ $? -ne 0 ]; then
+	skip "(no TOR)"
+else
+	GSPID="$(sh -c './gs-netcat -k id_sec.txt -wT <test4k.dat 2>client_err.txt >client_out.dat & echo ${!}')"
+	sleep_ct
+	./gs-netcat -k id_sec.txt -l <test50k.dat 2>server_err.txt >server_out.dat
+	waitk $GSPID
+	if [ "`$MD5 test4k.dat`" != "`$MD5 server_out.dat`" ]; then fail 1; fi
+	if [ "`$MD5 test50k.dat`" != "`$MD5 client_out.dat`" ]; then fail 2; fi
+	$ECHO "${OK}"
+fi
+fi
+
 if [[ "$tests" =~ '7.1' ]]; then
 test_start -n "Running: netcat #7.1 (cmd, multi connect)................."
 GSPID1="$(sh -c './gs-netcat -k id_sec.txt -l -e "echo Hello World" 2>server_err.txt >server_out.dat & echo ${!}')"
@@ -570,6 +594,48 @@ else
 	if [ "`$MD5 testmp3-2.dat`" != "171a9952951484d020ce1bef52b9eef5" ]; then fail 2; fi
 	$ECHO "${OK}"
 	fi
+fi
+
+if [[ "${tests}" =~ '10.1' ]]; then
+test_start -n "Running: blitz #10.1 ....................................."
+rm -rf test_server test_client
+mkdir -p test_server test_client/foo/bar test_client/empty
+cp test4k.dat test_client/foo/bar/test4k.dat
+cp test1k.dat test_client/foo/bar/test1k.dat
+cp test1k.dat test_client/test1k.dat
+mkfifo test_client/fifo.io
+ln -s foo/bar/test4k.dat test_client/test4k.dat
+ln -s /etc/hosts test_client/etc-hosts
+ln -s /dev/zero test_client/zero
+GSPID1="$(sh -c './blitz -k id_sec.txt -w -o "RSOPT=--bwlimit=100 -v" test_client/./ 2>client1_err.txt >client1_out.dat & echo ${!}')"
+cd test_server
+GSPID2="$(sh -c '../blitz -k ../id_sec.txt -l 2>../server1_err.txt >../server1_out.dat & echo ${!}')"
+cd ..
+waitk $GSPID1
+kill $GSPID2
+(cd test_client; find . -type f | while read x; do md5fail 1 ../test_server/${x} ${x}; done)
+md5fail 2 test_server/test4k.dat test4k.dat
+[[ -e test_server/fifo.io ]] && fail 3
+[[ -e test_server/zero ]] && fail 4
+[[ -e test_server/etc-hosts ]] && fail 5
+[[ -L test_server/test4k.dat ]] || fail 6
+[[ -d test_server/empty ]] || fail 7
+rm -rf test_server test_client
+$ECHO "${OK}"
+fi
+
+if [[ "${tests}" =~ '10.2' ]]; then
+test_start -n "Running: gs-sftp #10.2 ....................................."
+rm -rf test_client
+mkdir -p test_client
+GSPID1="$(bash -c '(echo -en "lcd test_client\nget test4k.dat\nlcd ..\ncd test_client\nput test1k.dat\nls\nquit\n") | ./gs-sftp -k id_sec.txt -w 2>client1_err.txt >client1_out.dat & echo ${!}')"
+GSPID2="$(sh -c './gs-sftp -k id_sec.txt -l 2>server1_err.txt >server1_out.dat & echo ${!}')"
+waitk $GSPID1
+kill $GSPID2
+md5fail 1 test1k.dat test_client/test1k.dat
+md5fail 2 test4k.dat test_client/test4k.dat
+rm -rf test_client
+$ECHO "${OK}"
 fi
 
 if [ x"$1" == x ]; then

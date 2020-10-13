@@ -25,6 +25,9 @@ RSYNC_CLIENT_DEFAULTS="-ahPRv"
 BIN=$(echo "${0}" | sed 's/blitz$/'"${GS_NETCAT_BIN}"'/')
 [[ x"${BIN}" != x"${0}" ]] && [[ -f "${BIN}" ]] && GS_NETCAT_BIN="${BIN}"
 
+command -v "${GS_NETCAT_BIN}" >/dev/null 2>&1 || { echo >&2 "${GS_NETCAT_BIN} not found. Check PATH=?"; exit 1; }
+command -v rsync >/dev/null 2>&1 || { echo >&2 "rsync not found. Try 'apt-get install rsync' or check PATH=?"; exit 1; }
+
 usage()
 {
 	printf "\
@@ -100,6 +103,14 @@ while getopts ":hgs:k:o:L:" opt; do
 	esac
 done
 
+if [[ "$*" == *"-l"* ]]; then
+	IS_SERVER=1
+else
+	shift $((OPTIND -1))	# list of files...
+	# echo "Remaining (files): $*"
+	[[ -z $* ]] && { echo >&2 "ERROR: No files specified."; usage; }
+fi
+
 # Prepare existing GSOCKET_ARGS to take more arguments if there are any
 [[ -n "$GSOCKET_ARGS" ]] && GSOCKET_ARGS+=" "
 # Already got password in env-variable -> DONT ASK again.
@@ -119,17 +130,12 @@ ENV_ARGS="${GSOCKET_ARGS}${GSNC_ENV_ARGS[*]}"
 # echo gsnc-env-args : \'${GSNC_ENV_ARGS[@]}\'
 # echo rsync-args    : ${RSYNC_ARGS}
 
-command -v "${GS_NETCAT_BIN}" >/dev/null 2>&1 || { echo >&2 "${GS_NETCAT_BIN} not found. Check PATH=?"; exit 1; }
-command -v rsync >/dev/null 2>&1 || { echo >&2 "rsync not found. Try 'apt-get install rsync' or check PATH=?"; exit 1; }
-
-if [[ "$*" == *"-l"* ]]; then
+if [[ -n ${IS_SERVER} ]]; then
 	# SERVER
 	ENV_ARGS="${GSOCKET_ARGS}${GSNC_ENV_ARGS[*]}"
 	GSOCKET_ARGS="${ENV_ARGS}" exec "${GS_NETCAT_BIN}" "${ARGS_NEW[@]}" -e "rsync ${RSYNC_SERVER_DEFAULTS} ${RSYNC_ARGS} ."
 else
 	# CLIENT
-	shift $((OPTIND -1))	# list of files...
-	# echo "Remaining: $*"
 	ARGS=" -q"
 	# ARGS=""
 	[[ -n ${ARGS_NEW[*]} ]] && ARGS+=" ${ARGS_NEW[*]}"
