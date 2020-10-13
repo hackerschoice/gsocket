@@ -15,7 +15,7 @@ Abandon your thinking that an IP Address is needed to communicate with somebody.
 
 The library comes with example tools. Gs-netcat is a re-implementation of netcat. It supports the well loved *-e* option and spwans a true PTY/interactive command shell on a remote host. Effectively an AES-256 encrypted reverse backdoor via TOR (optional) and without the need of a Command & Control server. It can also be used to tunnel a friend into your local network or to give somebody temporary shell access to your workstation.
 
-Direct Download: [gsocket-1.4.15.tar.gz](https://github.com/hackerschoice/gsocket/releases/download/v1.4.15/gsocket-1.4.15.tar.gz)
+Direct Download: [gsocket-1.4.16.tar.gz](https://github.com/hackerschoice/gsocket/releases/download/v1.4.16/gsocket-1.4.16.tar.gz)
 
 BETA BETA BETA. PRIVATE RELEASE ONLY.
 ---
