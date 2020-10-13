@@ -1,0 +1,130 @@
+#! /bin/bash
+
+# A wrapper script to do this (essentially):
+# $ gs-netcat -s MySecret -l -e /usr/lib/sftp-server         # Host
+#
+# $ export GSOCKET_ARGS="-s MySecret"                        # Workstation
+# $ sftp -D gs-netcat                                        # Workstation
+
+GS_NETCAT_BIN="gs-netcat"
+# Try to use the gs-netcat that's in the same path as gs-sftp first.
+# shellcheck disable=SC2001 # See if you can use ${variable//search/replace} instead.
+BIN=$(echo "${0}" | sed 's/gs-sftp$/'"${GS_NETCAT_BIN}"'/')
+[[ -f "${BIN}" ]] && GS_NETCAT_BIN="${BIN}"
+
+# To find sftp-server in PREFIX/lib
+PREFIX=$(echo "${0}" | sed 's/gs-sftp$/..\//')
+
+GSNC_PARAMS=""
+# GSNC_PARAMS+="-q "	# quite mode
+GSNC_PARAMS+="-w "	# Client to wait until server becomes available
+
+usage()
+{
+	printf "\
+gs-sftp [-k file] [-s password] [-l]\n\
+   -l           Server Mode.\n\
+   -s <secret>  Secret (e.g. password).\n\
+   -k <file>    Read Secret from file.\n\
+ \n\
+Example:\n\
+    $ gs-sftp -s MySecret -l             # Server\n\
+    $ gs-sftp -s MySecret                # Client\n\
+\n\
+See 'gs-netcat -h' for more options.\n"
+	exit 0
+}
+
+# Find a sftp-serve binary
+find_binary()
+{
+	bin=$1
+	command -v "${bin}" && { echo "${bin}"; return; }
+	shift 1
+	for dir in "$@"; do
+		file="${dir}/${bin}"
+		if [[ -f "$file" ]]; then
+			echo "${file}"
+			return
+		fi
+	done
+	echo ""
+	return
+}
+
+read_password()
+{
+	printf >&2 "Enter Secret (or press Enter to generate): "
+	read -r password
+	if [[ -z "${password}" ]]; then
+		password=$(${GS_NETCAT_BIN} -g)
+	fi
+	echo "${password}" | tr -d "[:space:]"
+}
+
+OPTERR=0
+FL_NEED_PASSWORD=1
+# shellcheck disable=SC2220 # Invalid flags are not handled. Add a *) case.
+while getopts ":hgs:k:L:" opt; do
+	case ${opt} in
+		s )
+			GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-s"	# Add to end of array
+			GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="$OPTARG"	# Add to end of array
+			unset FL_NEED_PASSWORD
+			;;
+		k )
+			GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-k"	# Add to end of array
+			GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]=$(eval echo "$OPTARG")	# Add to end of array
+			unset FL_NEED_PASSWORD
+			;;
+		g )
+			"${GS_NETCAT_BIN}" -g
+			exit
+			;;
+		h )
+			usage
+			;;
+		\? )
+			# UNKNOWN option. Handle before '*' (e.g. -l)
+			ARGS_NEW[${#ARGS_NEW[@]}]="-${OPTARG}"	# Add to end of array			
+			;;
+		* )
+			# Other (known opts from opstring) w parameters (e.g. -L <file>)
+			ARGS_NEW[${#ARGS_NEW[@]}]="-${opt}"		# Add to end of array			
+			ARGS_NEW[${#ARGS_NEW[@]}]="${OPTARG}"	# Add to end of array			
+			;;
+	esac
+done
+
+
+GSNC_PARAMS+="$*"
+
+# Prepare existing GSOCKET_ARGS to take more arguments if there are any
+[[ -n "$GSOCKET_ARGS" ]] && GSOCKET_ARGS+=" "
+[[ "$GSOCKET_ARGS" == *"-s"* ]] && unset FL_NEED_PASSWORD
+[[ "$GSOCKET_ARGS" == *"-k"* ]] && unset FL_NEED_PASSWORD
+if [[ -n "$FL_NEED_PASSWORD" ]]; then
+	password=$(read_password)
+	echo "=Secret         :\"${password}\""
+	GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-s"	# Add to end of array			
+	GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="$password"	# Add to end of array			
+fi
+ENV_ARGS="${GSOCKET_ARGS}${GSNC_ENV_ARGS[*]}"
+
+command -v "${GS_NETCAT_BIN}" >/dev/null 2>&1 || { echo >&2 "${GS_NETCAT_BIN} not found. Check PATH=?"; exit 1; }
+command -v sftp >/dev/null 2>&1 || { echo >&2 "sftp not found. Try 'apt-get install openssh' or check PATH=?"; exit 1; }
+
+SFTP_SERVER_BIN=$(find_binary sftp-server "$PREFIX"/lib /usr/lib/ /usr/local/lib /usr/libexec)
+[[ -z "${SFTP_SERVER_BIN}" ]] && { echo >&2 "sftp-server binary not found."; exit 1; }
+
+if [[ "$*" == *"-l"* ]]; then
+	# SERVER
+	ENV_ARGS="${GSOCKET_ARGS}${GSNC_ENV_ARGS[*]}"
+	GSOCKET_ARGS="${ENV_ARGS}" exec "${GS_NETCAT_BIN}" "${ARGS_NEW[@]}" -e "${SFTP_SERVER_BIN}"
+else
+	# CLIENT
+	ARGS=""
+	[[ -n ${ARGS_NEW[*]} ]] && ARGS=" ${ARGS_NEW[*]}"
+	# shellcheck disable=SC2086 # Double quote to prevent globbing and word splitting. ${RSYNC_ARGS} -> We want word splitting for multiple arugments.
+	GSOCKET_ARGS="${ENV_ARGS}${ARGS}" exec sftp -D "${GS_NETCAT_BIN}"
+fi

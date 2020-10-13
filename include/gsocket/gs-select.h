@@ -55,6 +55,18 @@ void GS_SELECT_add_cb_callagain(GS_SELECT_CTX *ctx, gselect_cb_t func_r, gselect
 void GS_SELECT_del_cb(GS_SELECT_CTX *ctx, int fd);
 void GS_SELECT_del_cb_callagain(GS_SELECT_CTX *ctx, int fd);
 
+#define GS_SELECT_FD_CLR_R(ctx, fd)	do { \
+	if ((ctx)->is_rw_state_saved[fd]) { ctx->saved_rw_state[fd] &= ~0x01; } \
+	FD_CLR(fd, (ctx)->rfd); \
+} while (0)
+
+#define GS_SELECT_FD_SET_R(ctx, fd) do { \
+	if ((ctx)->is_rw_state_saved[fd]) { \
+		ctx->saved_rw_state[fd] |= 0x01; \
+	} else { \
+		XFD_SET(fd, (ctx)->rfd); \
+	} \
+} while (0)
 
 #define GS_SUCCESS			(0x00)
 #define GS_ECALLAGAIN		(0x01)		/* Return Error Likes to be calleda gain */

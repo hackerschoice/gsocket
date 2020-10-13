@@ -1,0 +1,86 @@
+.Dd October 12, 2020
+.Dt BLITZ 1
+.Os
+.Sh NAME
+.Nm blitz
+.Nd Securely transfer files between two workstations through NAT/Firewall.
+.Sh SYNOPSIS
+.Nm blitz
+.Bk -words
+.Op Fl lT
+.Op Fl s Ar secret
+.Op Fl k Ar keyfile
+.Op Fl o Ar RSOPT=
+.Op Ar files
+.Ek
+.Sh DESCRIPTION
+The
+.Nm
+utility is a wrapper script for gs-netcat and rsync. It allows a user to send files to another user via the Global Socket Relay Network (GSRN).
+.Pp
+A typical use-case is when both users are separated by a Firewall or NAT without being able to establish a direct connection. 
+.Pp
+.Sh OPTIONS
+.Bl -tag -width Ds
+.It Fl s Ar secret
+A password chosen by the user. Both users need to use the same password to connect.
+.It Fl k Ar file
+A file containing the password.
+.It Fl l
+Server mode. The default mode is client.
+.It Fl o Ar RSOPT=
+Options passed to rsync. See
+.Xr rsync(1) 
+for available options.
+.It Fl T
+Use TOR. The
+.Nm
+tool will connect via TOR to the GSRN. This requires TOR to be installed and running. The IP and PORT of the TOR server can be set using environment variables.
+.El
+.Pp
+See 
+.Xr gs-netcat(1)
+for more options.
+.Sh EXAMPLES
+Listen for clients with password \'MySecret\':
+.Dl $ mkdir /tmp/foo && cd /tmp/foo
+.Dl $ blitz -s MySecret -l
+.Pp
+Copy 'file.dat' to /tmp/foo/file.dat on the server:
+.Dl $ blitz -s MySecret file.dat
+.Pp
+Copy '/etc/ssh/ssh*config' to /tmp/foo/etc/ssh/ on the server:
+.Dl $ blitz -s MySecret /etc/ssh/ssh*config
+.Pp
+It is also possible to limit the amount of path information that is sent as implied directories for each path you specify. You can insert a dot and a slash into the source path, like this:
+.Pp
+.Dl $ blitz -s MySecret /etc/./ssh/ssh*config
+The received files will be stored to /tmp/foo/ssh/ instead of /tmp/foo/etc/ssh.
+.Pp
+Copy recursively and limit bandwidth to 10kB/sec:
+.Dl $ blitz -s MySecret -o \'RSOPT=--bwlimit=10\' /usr/./share
+.Pp
+Copy the entire root file-system:
+.Dl $ blitz -s MySecret -o \'RSOPT=-x\' /
+.Pp
+Run a permanent server (daemon) trough TOR:
+.Dl $ blitz -s MySecret -l -D -T
+.Pp
+.Sh ENVIRONMENT
+See 
+.Xr gs-netcat(1)
+for a list of supported environment variables.
+.Pp
+.Sh SEE ALSO
+.Xr gs-netcat(1) ,
+.Xr gs-sftp(1) ,
+.Xr rsync(1)
+.Pp
+.Sh BUGS
+Efforts have been made to have
+.Nm
+"do the right thing" in all its various modes. If you believe that it is doing the wrong thing under whatever circumstances, please notify me (skyper@thc.org) and tell me how you think it should behave.
+
+
+
+
