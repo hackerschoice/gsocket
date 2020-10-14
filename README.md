@@ -11,9 +11,15 @@ Global Socket allows two users behind NAT/Firewall to establish a TCP connection
 - Perfect Forward Secrecy
 - TOR support (optional)
 
-Abandon your thinking that an IP Address is needed to communicate with somebody. Instead start thinking that two Users should be able to communicate with each other as long as they know the same secret (key/password). The Global Socket Library handles the rest: It locally derives temporary session keys and IDs and finds the other User in the Global Relay Network. Once found the library then negotiates a secure TLS connection between both Users (End-2-End). **The Relay Network sees only the encrypted traffic**.
+Abandon the thinking that an IP Address is needed to communicate with somebody. Instead start thinking that two users should be able to communicate with each other as long as they know the same secret (key/password). The Global Socket library handles the rest: It locally derives temporary session keys and IDs and connects with the other user trough the Global Socket Relay Network (GSRN). Once found the library then negotiates a secure TLS connection between both users (End-2-End). **The GSRN sees only the encrypted traffic**.
 
-The library comes with example tools. Gs-netcat is a re-implementation of netcat. It supports the well loved *-e* option and spwans a true PTY/interactive command shell on a remote host. Effectively an AES-256 encrypted reverse backdoor via TOR (optional) and without the need of a Command & Control server. It can also be used to tunnel a friend into your local network or to give somebody temporary shell access to your workstation.
+The GSRN is a free cloud service and is free to use by anyone.
+
+Includes:
+* **gs-netcat** - Netcat on steroids. Turn gs-netcat into an AES-256 encrypted reverse backdoor via TOR (optional) with a true PTY/interactive command shell (```gs-netcat -s MySecret -i```), spawn a Socks4/4a/5 proxy or forward TCP connections or give somebody temporary shell access.
+* **gs-sftp** - sftp server & client between two firewalled workstations (```gs-sftp -s MySecret```)
+* **blitz** - Copy data (single or recursivley) between two workstations (```blitz -s MySecret /usr/share/*```)
+* ...many more examples and tools.
 
 Direct Download: [gsocket-1.4.16.tar.gz](https://github.com/hackerschoice/gsocket/releases/download/v1.4.16/gsocket-1.4.16.tar.gz)
 
@@ -34,6 +40,9 @@ $ ./gs-netcat -i      # Workstation
 
 2. Transfer files from *Workstation* to *Host*
 ```
+$ blitz -l                         # Host
+$ blitz /usr/share/*  /etc/*       # Workstation
+...or use gs-netcat...
 $ gs-netcat -l -r >warez.tar.gz    # Host
 $ gs-netcat <warez.tar.gz          # Workstation
 ```
@@ -72,15 +81,11 @@ Access fileserver.local:22 on Host's private LAN from your Workstation:
 $ socat -  "SOCKS4a:127.1:fileserver.local:22"
 ```
 
-7. SFTP through gs-netcat
+7. SFTP through Global Socket Relay Network
 ```
-$ gs-netcat -s MySecret -l -e /usr/lib/sftp-server         # Host
-
-$ export GSOCKET_ARGS="-s MySecret"                        # Workstation
-$ sftp -D gs-netcat                                        # Workstation
+$ gs-sftp -l                  # Host
+$ gs-sftp                     # Workstation
 ```
-
-(SFTP's *-D* option makes sftp speak the sftp file exchange protocol to stdin/stdout without ssh-encryption/authentication. Encryption and authentication is provied by gs-netcat: It's SFTP _over_ gs-netcat.)
 
 8. SoCAT 2 
 ```
