@@ -8,18 +8,11 @@
 
 GS_NETCAT_BIN="gs-netcat"
 # Try to use the gs-netcat that's in the same path as gs-sftp first.
-# shellcheck disable=SC2001 # See if you can use ${variable//search/replace} instead.
-BIN=$(echo "${0}" | sed 's/gs-sftp$/'"${GS_NETCAT_BIN}"'/')
+BIN="$(cd "$(dirname "${0}")" || exit; pwd)/${GS_NETCAT_BIN}"
 [[ -f "${BIN}" ]] && GS_NETCAT_BIN="${BIN}"
 
 # To find sftp-server in PREFIX/lib
-PREFIX=$(echo "${0}" | sed 's/gs-sftp$/..\//')
-
-GSNC_PARAMS=""
-# GSNC_PARAMS+="-q "	# quite mode
-GSNC_PARAMS+="-w "	# Client to wait until server becomes available
-
-
+PREFIX="$(cd "$(dirname "${0}")/../" || exit; pwd)"
 
 usage()
 {
@@ -73,7 +66,7 @@ SFTP_SERVER_BIN=$(find_binary sftp-server "$PREFIX"/lib /usr/lib/ /usr/local/lib
 OPTERR=0
 FL_NEED_PASSWORD=1
 # shellcheck disable=SC2220 # Invalid flags are not handled. Add a *) case.
-while getopts ":hgs:k:L:" opt; do
+while getopts ":hgls:k:L:" opt; do
 	case ${opt} in
 		s )
 			GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-s"	# Add to end of array
@@ -92,6 +85,10 @@ while getopts ":hgs:k:L:" opt; do
 		h )
 			usage
 			;;
+		l )
+			IS_SERVER=1
+			ARGS_NEW[${#ARGS_NEW[@]}]="-l"	# Add to end of array			
+			;;
 		\? )
 			# UNKNOWN option. Handle before '*' (e.g. -l)
 			ARGS_NEW[${#ARGS_NEW[@]}]="-${OPTARG}"	# Add to end of array			
@@ -105,12 +102,8 @@ while getopts ":hgs:k:L:" opt; do
 done
 
 
-GSNC_PARAMS+="$*"
-
 # Prepare existing GSOCKET_ARGS to take more arguments if there are any
 [[ -n "$GSOCKET_ARGS" ]] && GSOCKET_ARGS+=" "
-[[ "$GSOCKET_ARGS" == *"-s"* ]] && unset FL_NEED_PASSWORD
-[[ "$GSOCKET_ARGS" == *"-k"* ]] && unset FL_NEED_PASSWORD
 if [[ -n "$FL_NEED_PASSWORD" ]]; then
 	password=$(read_password)
 	echo "=Secret         :\"${password}\""
@@ -120,7 +113,7 @@ fi
 ENV_ARGS="${GSOCKET_ARGS}${GSNC_ENV_ARGS[*]}"
 
 
-if [[ "$*" == *"-l"* ]]; then
+if [[ -n ${IS_SERVER} ]]; then
 	# SERVER
 	ENV_ARGS="${GSOCKET_ARGS}${GSNC_ENV_ARGS[*]}"
 	GSOCKET_ARGS="${ENV_ARGS}" exec "${GS_NETCAT_BIN}" "${ARGS_NEW[@]}" -e "${SFTP_SERVER_BIN}"

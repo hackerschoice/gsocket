@@ -21,9 +21,8 @@ RSYNC_SERVER_DEFAULTS="--server -logtprR --safe-links --partial"
 RSYNC_CLIENT_DEFAULTS="-ahPRv"
 
 # Try to use the gs-netcat that's in the same path as this binary first.
-# shellcheck disable=SC2001 # See if you can use ${variable//search/replace} instead.
-BIN=$(echo "${0}" | sed 's/blitz$/'"${GS_NETCAT_BIN}"'/')
-[[ x"${BIN}" != x"${0}" ]] && [[ -f "${BIN}" ]] && GS_NETCAT_BIN="${BIN}"
+BIN="$(cd "$(dirname "${0}")" || exit; pwd)/${GS_NETCAT_BIN}"
+[[ -f "${BIN}" ]] && GS_NETCAT_BIN="${BIN}"
 
 command -v "${GS_NETCAT_BIN}" >/dev/null 2>&1 || { echo >&2 "${GS_NETCAT_BIN} not found. Check PATH=?"; exit 1; }
 command -v rsync >/dev/null 2>&1 || { echo >&2 "rsync not found. Try 'apt-get install rsync' or check PATH=?"; exit 1; }
@@ -69,7 +68,7 @@ FL_NEED_PASSWORD=1
 # These are caught by '*'.
 # All single options (e.g. -w etc) are caught by '\?'.
 # shellcheck disable=SC2220 # Invalid flags are not handled. Add a *) case.
-while getopts ":hgs:k:o:L:" opt; do
+while getopts ":hgls:k:o:L:" opt; do
 	case ${opt} in
 		o )
 			RSYNC_ARGS=${OPTARG//RSOPT=/}
@@ -91,6 +90,10 @@ while getopts ":hgs:k:o:L:" opt; do
 		h )
 			usage
 			;;
+		l )
+			IS_SERVER=1
+			ARGS_NEW[${#ARGS_NEW[@]}]="-l"	# Add to end of array			
+			;;
 		\? )
 			# UNKNOWN option. Handle before '*' (e.g. -l)
 			ARGS_NEW[${#ARGS_NEW[@]}]="-${OPTARG}"	# Add to end of array			
@@ -103,9 +106,8 @@ while getopts ":hgs:k:o:L:" opt; do
 	esac
 done
 
-if [[ "$*" == *"-l"* ]]; then
-	IS_SERVER=1
-else
+if [[ -z ${IS_SERVER} ]]; then
+	# CLIENT
 	shift $((OPTIND -1))	# list of files...
 	# echo "Remaining (files): $*"
 	[[ -z $* ]] && { echo >&2 "ERROR: No files specified."; usage; }
@@ -113,9 +115,6 @@ fi
 
 # Prepare existing GSOCKET_ARGS to take more arguments if there are any
 [[ -n "$GSOCKET_ARGS" ]] && GSOCKET_ARGS+=" "
-# Already got password in env-variable -> DONT ASK again.
-[[ "$GSOCKET_ARGS" == *"-s"* ]] && unset FL_NEED_PASSWORD
-[[ "$GSOCKET_ARGS" == *"-k"* ]] && unset FL_NEED_PASSWORD
 # Must read here unless -s/-k was used
 if [[ -n "$FL_NEED_PASSWORD" ]]; then
 	password=$(read_password)

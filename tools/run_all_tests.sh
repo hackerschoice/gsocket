@@ -625,7 +625,7 @@ $ECHO "${OK}"
 fi
 
 if [[ "${tests}" =~ '10.2' ]]; then
-test_start -n "Running: gs-sftp #10.2 ....................................."
+test_start -n "Running: gs-sftp #10.2 ..................................."
 rm -rf test_client
 mkdir -p test_client
 GSPID1="$(bash -c '(echo -en "lcd test_client\nget test4k.dat\nlcd ..\ncd test_client\nput test1k.dat\nls\nquit\n") | ./gs-sftp -k id_sec.txt -w 2>client1_err.txt >client1_out.dat & echo ${!}')"

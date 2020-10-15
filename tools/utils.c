@@ -298,6 +298,9 @@ do_getopt(int argc, char *argv[])
 				printf("%s\n", GS_gen_secret());
 				fflush(stdout);
 				exit(0);
+			case '3':
+				if (strcmp(optarg, "1337") == 0)
+					VLOG("!!Greets to 0xD1G, xaitax and the rest of https://t.me/thcorg!!\n");
 		}
 	}
 }

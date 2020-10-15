@@ -23,6 +23,6 @@ char **mk_env(char **blacklist);
 /* hack to set rows/columns */
 #define GS_STTY_INIT_HACK	"stty rows %d columns %d\r"
 
-#define UTILS_GETOPT_STR	"igqwACTrlSDL:a:s:k:p:d:e:"
+#define UTILS_GETOPT_STR	"3:igqwACTrlSDL:a:s:k:p:d:e:"
 
 #endif /* !__GSNC_UTILS_H__ */

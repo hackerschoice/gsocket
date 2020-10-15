@@ -13,7 +13,7 @@ gs_full_pipe_LDADD = ../lib/libgsocket.a
 gs_netcat_SOURCES = 4_gs-netcat.c utils.c socks.c
 gs_netcat_LDADD = ../lib/libgsocket.a
 
-dist_bin_SCRIPTS = blitz gs-sftp
+dist_bin_SCRIPTS = blitz gs-sftp gs-mount
 
 EXTRA_DIST = run_all_tests.sh
 noinst_HEADERS = common.h utils.h socks.h
