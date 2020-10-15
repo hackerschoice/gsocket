@@ -4,10 +4,11 @@
 # $ gs-netcat -s MySecret -l -e /usr/lib/sftp-server         # Host
 #
 # $ export GSOCKET_ARGS="-s MySecret"                        # Workstation
-# $ sftp -D gs-netcat                                        # Workstation
+# $ sshfs -o ServerAliveInterval=30,reconnect,attr_timeout=60,auto_cache,compression=yes,default_permissions -o ssh_command="gs-netcat --"  -o idmap=user,uid="${UID}",gid="$(id -g)" x@127.1:. ~/gs-fs
+
 
 GS_NETCAT_BIN="gs-netcat"
-# Try to use the gs-netcat that's in the same path as gs-sftp first.
+# Try to use the gs-netcat that's in the same path as this execute first.
 BASEDIR="$(cd "$(dirname "${0}")" || exit; pwd)"
 BIN="${BASEDIR}/${GS_NETCAT_BIN}"
 [[ -f "${BIN}" ]] && GS_NETCAT_BIN="${BIN}"
@@ -17,19 +18,21 @@ UCHROOT_BIN="${BASEDIR}/uchroot_so"
 # To find sftp-server in PREFIX/lib
 PREFIX="$(cd "$(dirname "${0}")/../" || exit; pwd)"
 
+SSHFS_OPT="ServerAliveInterval=30,reconnect,attr_timeout=60,auto_cache,compression=yes,default_permissions,idmap=user,uid=${UID},gid=$(id -g)"
+
 usage()
 {
 	printf "\
-gs-sftp [-k file] [-s password] [-l]\n\
+gs-mount [-k file] [-s password] [-l] [mount-point]\n\
    -l           Server Mode.\n\
    -s <secret>  Secret (e.g. password).\n\
    -k <file>    Read Secret from file.\n\
  \n\
 Example:\n\
-    $ gs-sftp -s MySecret -l             # Server\n\
-    $ gs-sftp -s MySecret                # Client\n\
+    $ gs-mount -s MySecret -l             # Server\n\
+    $ gs-mount -s MySecret ~/gsfs         # Client\n\
 \n\
-See 'gs-netcat -h' for more options.\n"
+See 'gs-netcat -h' and for more options.\n"
 	exit 0
 }
 
@@ -85,8 +88,6 @@ uchroot_check()
 }
 
 command -v "${GS_NETCAT_BIN}" >/dev/null 2>&1 || { echo >&2 "${GS_NETCAT_BIN} not found. Check PATH=?"; exit 1; }
-command -v sftp >/dev/null 2>&1 || { echo >&2 "sftp not found. Try 'apt-get install openssh' or check PATH=?"; exit 1; }
-
 
 OPTERR=0
 FL_NEED_PASSWORD=1
@@ -127,17 +128,18 @@ while getopts ":hgls:k:L:" opt; do
 done
 
 
-# Prepare existing GSOCKET_ARGS to take more arguments if there are any
-[[ -n "$GSOCKET_ARGS" ]] && GSOCKET_ARGS+=" "
-if [[ -n "$FL_NEED_PASSWORD" ]]; then
-	password=$(read_password)
-	echo "=Secret         :\"${password}\""
-	GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-s"	# Add to end of array			
-	GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="$password"	# Add to end of array			
-fi
-ENV_ARGS="${GSOCKET_ARGS}${GSNC_ENV_ARGS[*]}"
-
-if [[ -n ${IS_SERVER} ]]; then
+if [[ -z ${IS_SERVER} ]]; then
+	# CLIENT
+	shift $((OPTIND -1))	# list of files...
+	# echo "Remaining (files): $*"
+	[[ -z $* ]] && { echo >&2 "ERROR: No directory (mount point) specified."; usage; }
+	command -v sshfs >/dev/null 2>&1 || { echo >&2 "sshfs not found. Try 'apt-get install sshfs' or check PATH=?"; exit 1; }
+	FUSE_OPT=""
+	if [[ x"$OSTYPE" == "xdarwin"* ]]; then
+        # Setting 'noapplexattr' prevents 'finder' from copying.
+        FUSE_OPT=",async,local,iosize=65536,noappledouble,volname=THC-"$(basename "${1}")
+	fi
+else
 	# SERVER
 	# OSX does not allow PRELOAD of binaries in /usr/. Copy to /tmp...
 	if [[ x"$OSTYPE" == "xdarwin"* ]]; then
@@ -151,14 +153,33 @@ if [[ -n ${IS_SERVER} ]]; then
 		PRELOAD="LD_PRELOAD=${UCHROOT_BIN}"
 	fi
 	[[ -z "${SFTP_SERVER_BIN}" ]] && { echo >&2 "sftp-server binary not found."; exit 1; }
+fi
 
+# Prepare existing GSOCKET_ARGS to take more arguments if there are any
+[[ -n "$GSOCKET_ARGS" ]] && GSOCKET_ARGS+=" "
+if [[ -n "$FL_NEED_PASSWORD" ]]; then
+	password=$(read_password)
+	echo "=Secret         :\"${password}\""
+	GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-s"	# Add to end of array			
+	GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="$password"	# Add to end of array			
+fi
+ENV_ARGS="${GSOCKET_ARGS}${GSNC_ENV_ARGS[*]}"
+
+if [[ -n ${IS_SERVER} ]]; then
+	# SERVER
 	ENV_ARGS="${GSOCKET_ARGS}${GSNC_ENV_ARGS[*]}"
-	echo GSOCKET_ARGS="${ENV_ARGS}" exec "${GS_NETCAT_BIN}" "${ARGS_NEW[@]}" -e "${PRELOAD} ${SFTP_SERVER_BIN}"
 	GSOCKET_ARGS="${ENV_ARGS}" exec "${GS_NETCAT_BIN}" "${ARGS_NEW[@]}" -e "${PRELOAD} ${SFTP_SERVER_BIN}"
 else
 	# CLIENT
 	ARGS=" -q"
 	[[ -n ${ARGS_NEW[*]} ]] && ARGS=" ${ARGS_NEW[*]}"
-	# shellcheck disable=SC2086 # Double quote to prevent globbing and word splitting. ${RSYNC_ARGS} -> We want word splitting for multiple arugments.
-	GSOCKET_ARGS="${ENV_ARGS}${ARGS}" exec sftp -D "${GS_NETCAT_BIN}"
+
+	GSOCKET_ARGS="${ENV_ARGS}" sshfs -o "${SSHFS_OPT}${FUSE_OPT}" -o ssh_command="${GS_NETCAT_BIN}${ARGS} --" x@127.1:. "${1}"
+	[[ $? -eq 0 ]] || exit 1
+	echo "Successfully mounted to $*."
+	command -v fusermount >/dev/null 2>&1
+	if [ $? -eq 0 ]; then
+		echo "To unmount use: fusermount -zu $*"
+	fi
+
 fi

@@ -30,6 +30,9 @@ aclocal -I .
 if test $? -ne 0; then
     exit 1
 fi
+
+# libtoolize -c
+
 echo "autoheader"
 autoheader
 if test $? -ne 0; then

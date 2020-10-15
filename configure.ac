@@ -1,6 +1,6 @@
 dnl Process this file with autoconf to produce a configure script.
 AC_PREREQ(2.61)
-AC_INIT([gsocket], 1.4.17)
+AC_INIT([gsocket], 1.4.18)
 dnl AC_CONFIG_AUX_DIR(config-x86_64-apple-darwin19.6.0)
 AC_CONFIG_AUX_DIR(config)
 AC_CANONICAL_SYSTEM
@@ -8,15 +8,17 @@ AC_CANONICAL_SYSTEM
 dnl we use automake
 AM_INIT_AUTOMAKE
 AM_CONFIG_HEADER(config.h)
-AC_PROG_RANLIB
 AM_PROG_AR
 dnl for --enable-maintainer-mode fun use:
 dnl AM_MAINTAINER_MODE 
+dnl LT_INIT()
+
+dnl AC_CONFIG_MACRO_DIRS([m4])
 
 dnl Checks for programs.
 AC_PROG_CC
 AC_PROG_INSTALL
-dnl AC_PROG_RANLIB
+AC_PROG_RANLIB
 
 dnl
 dnl Use these compiler flags if we have gcc.
