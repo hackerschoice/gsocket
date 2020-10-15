@@ -18,7 +18,8 @@ The GSRN is a free cloud service and is free to use by anyone.
 Includes:
 * **gs-netcat** - Netcat on steroids. Turn gs-netcat into an AES-256 encrypted reverse backdoor via TOR (optional) with a true PTY/interactive command shell (```gs-netcat -s MySecret -i```), spawn a Socks4/4a/5 proxy or forward TCP connections or give somebody temporary shell access.
 * **gs-sftp** - sftp server & client between two firewalled workstations (```gs-sftp -s MySecret```)
-* **blitz** - Copy data (single or recursivley) between two workstations (```blitz -s MySecret /usr/share/*```)
+* **gs-mount** - Access and mount a remote file system (```gs-mount -s MySecret ~/mnt/warez```)
+* **blitz** - Copy data (single or recursivley) (```blitz -s MySecret /usr/share/*```)
 * ...many more examples and tools.
 
 Download: [gsocket-1.4.16.tar.gz](https://github.com/hackerschoice/gsocket/releases/download/v1.4.16/gsocket-1.4.16.tar.gz) <BR>
