@@ -11,7 +11,7 @@ GS_NETCAT_BIN="gs-netcat"
 BASEDIR="$(cd "$(dirname "${0}")" || exit; pwd)"
 BIN="${BASEDIR}/${GS_NETCAT_BIN}"
 [[ -f "${BIN}" ]] && GS_NETCAT_BIN="${BIN}"
-UCHROOT_BIN="${BASEDIR}/uchroot_so"
+UCHROOT_BIN="${BASEDIR}/gs_uchroot_so"
 [[ -f "${UCHROOT_BIN}" ]] || { echo >&2 "${UCHROOT_BIN} not found."; exit 2; }
 
 # To find sftp-server in PREFIX/lib
@@ -153,7 +153,6 @@ if [[ -n ${IS_SERVER} ]]; then
 	[[ -z "${SFTP_SERVER_BIN}" ]] && { echo >&2 "sftp-server binary not found."; exit 1; }
 
 	ENV_ARGS="${GSOCKET_ARGS}${GSNC_ENV_ARGS[*]}"
-	echo GSOCKET_ARGS="${ENV_ARGS}" exec "${GS_NETCAT_BIN}" "${ARGS_NEW[@]}" -e "${PRELOAD} ${SFTP_SERVER_BIN}"
 	GSOCKET_ARGS="${ENV_ARGS}" exec "${GS_NETCAT_BIN}" "${ARGS_NEW[@]}" -e "${PRELOAD} ${SFTP_SERVER_BIN}"
 else
 	# CLIENT

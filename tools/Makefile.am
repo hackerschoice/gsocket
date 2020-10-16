@@ -1,5 +1,5 @@
 noinst_PROGRAMS = gs-helloworld gs-pipe gs-full-pipe
-bin_PROGRAMS = gs-netcat uchroot_so
+bin_PROGRAMS = gs-netcat gs_uchroot_so
 
 gs_helloworld_SOURCES = 1_gs-helloworld.c utils.c
 gs_helloworld_LDADD = ../lib/libgsocket.a
@@ -15,9 +15,9 @@ gs_netcat_LDADD = ../lib/libgsocket.a
 
 dist_bin_SCRIPTS = blitz gs-sftp gs-mount
 
-uchroot_so_SOURCES = uchroot.c
-uchroot_so_CFLAGS = -shared -fPIC
-uchroot_so_LDFLAGS = -ldl
+gs_uchroot_so_SOURCES = gs_uchroot.c
+gs_uchroot_so_CFLAGS = -shared -fPIC
+gs_uchroot_so_LDFLAGS = -ldl
 
 EXTRA_DIST = run_all_tests.sh
 noinst_HEADERS = common.h utils.h socks.h

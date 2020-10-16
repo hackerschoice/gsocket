@@ -12,7 +12,7 @@ GS_NETCAT_BIN="gs-netcat"
 BASEDIR="$(cd "$(dirname "${0}")" || exit; pwd)"
 BIN="${BASEDIR}/${GS_NETCAT_BIN}"
 [[ -f "${BIN}" ]] && GS_NETCAT_BIN="${BIN}"
-UCHROOT_BIN="${BASEDIR}/uchroot_so"
+UCHROOT_BIN="${BASEDIR}/gs_uchroot_so"
 [[ -f "${UCHROOT_BIN}" ]] || { echo >&2 "${UCHROOT_BIN} not found."; exit 2; }
 
 # To find sftp-server in PREFIX/lib
