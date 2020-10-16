@@ -10,165 +10,46 @@
 GS_NETCAT_BIN="gs-netcat"
 # Try to use the gs-netcat that's in the same path as this execute first.
 BASEDIR="$(cd "$(dirname "${0}")" || exit; pwd)"
-BIN="${BASEDIR}/${GS_NETCAT_BIN}"
-[[ -f "${BIN}" ]] && GS_NETCAT_BIN="${BIN}"
-UCHROOT_BIN="${BASEDIR}/gs_uchroot_so"
-[[ -f "${UCHROOT_BIN}" ]] || { echo >&2 "${UCHROOT_BIN} not found."; exit 2; }
+source "${BASEDIR}/gs_funcs" || exit 3
 
-# To find sftp-server in PREFIX/lib
-PREFIX="$(cd "$(dirname "${0}")/../" || exit; pwd)"
+gs_init 
+
+# BIN="${BASEDIR}/${GS_NETCAT_BIN}"
+# [[ -f "${BIN}" ]] && GS_NETCAT_BIN="${BIN}"
+# UCHROOT_BIN="${BASEDIR}/gs_uchroot_so"
+# [[ -f "${UCHROOT_BIN}" ]] || { echo >&2 "${UCHROOT_BIN} not found."; exit 2; }
+
+# # To find sftp-server in PREFIX/lib
+# PREFIX="$(cd "$(dirname "${0}")/../" || exit; pwd)"
 
 SSHFS_OPT="ServerAliveInterval=30,reconnect,attr_timeout=60,auto_cache,compression=yes,default_permissions,idmap=user,uid=${UID},gid=$(id -g)"
 
-usage()
+my_usage()
 {
-	printf "\
-gs-mount [-k file] [-s password] [-l] [mount-point]\n\
-   -l           Server Mode.\n\
-   -s <secret>  Secret (e.g. password).\n\
-   -k <file>    Read Secret from file.\n\
- \n\
-Example:\n\
-    $ gs-mount -s MySecret -l             # Server\n\
-    $ gs-mount -s MySecret ~/gsfs         # Client\n\
-\n\
-See 'gs-netcat -h' and for more options.\n"
+	printf "${BIN_NAME} [-k file] [-s password] [-l] [mount point]\n"
+	usage "${BIN_NAME}"
 	exit 0
 }
 
-# Find a sftp-serve binary
-find_binary()
-{
-	bin=$1
-	command -v "${bin}" && { echo "${bin}"; return; }
-	shift 1
-	for dir in "$@"; do
-		file="${dir}/${bin}"
-		if [[ -f "$file" ]]; then
-			echo "${file}"
-			return
-		fi
-	done
-	echo ""
-	return
-}
-
-read_password()
-{
-	printf >&2 "Enter Secret (or press Enter to generate): "
-	read -r password
-	if [[ -z "${password}" ]]; then
-		password=$(${GS_NETCAT_BIN} -g)
-	fi
-	echo "${password}" | tr -d "[:space:]"
-}
-
-uchroot_check_bin()
-{
-	FUNC="${1}"
-	shift 1
-	# First test if binary completed nicely without hijacking...
-	LD_PRELOAD="" $* &>/dev/null
-	[[ $? -eq 0 ]] || { echo >&2 "LD_PRELOAD failed. ${FUNC}() got caught. Contact us."; exit 1; }
-	rmdir "/tmp/thc-testdir-${$}" &>/dev/null
-
-	# Then test if binary fails when hijacking....(it should!)...
-	LD_PRELOAD="${UCHROOT_BIN}" $* &>/dev/null 
-	[[ $? -eq 0 ]] && { echo >&2 "LD_PRELOAD failed. ${FUNC}() not caught. Contact us."; exit 1; }
-}
-
-# Check that stat()/lstat() hijacking is working.
-uchroot_check()
-{
-	[[ -f /etc/hosts ]] || { echo >&2 "/etc/hosts not found. Odd Unix tis is...."; exit 1; }
-	rmdir "/tmp/thc-testdir-${$}" &>/dev/null
-	uchroot_check_bin open cat /etc/hosts
-	uchroot_check_bin __xstat ls /etc/hosts
-	uchroot_check_bin mkdir mkdir "/tmp/thc-testdir-${$}" 
-}
-
-command -v "${GS_NETCAT_BIN}" >/dev/null 2>&1 || { echo >&2 "${GS_NETCAT_BIN} not found. Check PATH=?"; exit 1; }
-
-OPTERR=0
-FL_NEED_PASSWORD=1
-# shellcheck disable=SC2220 # Invalid flags are not handled. Add a *) case.
-while getopts ":hgls:k:L:" opt; do
-	case ${opt} in
-		s )
-			GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-s"	# Add to end of array
-			GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="$OPTARG"	# Add to end of array
-			unset FL_NEED_PASSWORD
-			;;
-		k )
-			GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-k"	# Add to end of array
-			GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]=$(eval echo "$OPTARG")	# Add to end of array
-			unset FL_NEED_PASSWORD
-			;;
-		g )
-			"${GS_NETCAT_BIN}" -g
-			exit
-			;;
-		h )
-			usage
-			;;
-		l )
-			IS_SERVER=1
-			ARGS_NEW[${#ARGS_NEW[@]}]="-l"	# Add to end of array			
-			;;
-		\? )
-			# UNKNOWN option. Handle before '*' (e.g. -l)
-			ARGS_NEW[${#ARGS_NEW[@]}]="-${OPTARG}"	# Add to end of array			
-			;;
-		* )
-			# Other (known opts from opstring) w parameters (e.g. -L <file>)
-			ARGS_NEW[${#ARGS_NEW[@]}]="-${opt}"		# Add to end of array			
-			ARGS_NEW[${#ARGS_NEW[@]}]="${OPTARG}"	# Add to end of array			
-			;;
-	esac
-done
-
+do_getopt $@
 
 if [[ -z ${IS_SERVER} ]]; then
 	# CLIENT
-	shift $((OPTIND -1))	# list of files...
+	shift $((OPTIND -1))	# Mount Point
 	# echo "Remaining (files): $*"
-	[[ -z $* ]] && { echo >&2 "ERROR: No directory (mount point) specified."; usage; }
+	[[ -z "${1}" ]] && { echo >&2 "ERROR: No directory (mount point) specified."; my_usage; }
 	command -v sshfs >/dev/null 2>&1 || { echo >&2 "sshfs not found. Try 'apt-get install sshfs' or check PATH=?"; exit 1; }
 	FUSE_OPT=""
 	if [[ x"$OSTYPE" == "xdarwin"* ]]; then
         # Setting 'noapplexattr' prevents 'finder' from copying.
         FUSE_OPT=",async,local,iosize=65536,noappledouble,volname=THC-"$(basename "${1}")
 	fi
-else
-	# SERVER
-	# OSX does not allow PRELOAD of binaries in /usr/. Copy to /tmp...
-	if [[ x"$OSTYPE" == "xdarwin"* ]]; then
-		rm -f /tmp/sftp-server-* &>/dev/null
-		cp /usr/libexec/sftp-server /tmp/sftp-server-${$} &>/dev/null
-		SFTP_SERVER_BIN="/tmp/sftp-server-${$}"
-		PRELOAD="DYLD_INSERT_LIBRARIES=${UCHROOT_BIN} DYLD_FORCE_FLAT_NAMESPACE=1"
-	else
-		uchroot_check
-		SFTP_SERVER_BIN=$(find_binary sftp-server "$PREFIX"/lib /usr/lib /usr/local/lib)
-		PRELOAD="LD_PRELOAD=${UCHROOT_BIN}"
-	fi
-	[[ -z "${SFTP_SERVER_BIN}" ]] && { echo >&2 "sftp-server binary not found."; exit 1; }
 fi
 
-# Prepare existing GSOCKET_ARGS to take more arguments if there are any
-[[ -n "$GSOCKET_ARGS" ]] && GSOCKET_ARGS+=" "
-if [[ -n "$FL_NEED_PASSWORD" ]]; then
-	password=$(read_password)
-	echo "=Secret         :\"${password}\""
-	GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-s"	# Add to end of array			
-	GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="$password"	# Add to end of array			
-fi
-ENV_ARGS="${GSOCKET_ARGS}${GSNC_ENV_ARGS[*]}"
+env_arg_init
 
 if [[ -n ${IS_SERVER} ]]; then
-	# SERVER
-	ENV_ARGS="${GSOCKET_ARGS}${GSNC_ENV_ARGS[*]}"
-	GSOCKET_ARGS="${ENV_ARGS}" exec "${GS_NETCAT_BIN}" "${ARGS_NEW[@]}" -e "${PRELOAD} ${SFTP_SERVER_BIN}"
+	sftp_server_start
 else
 	# CLIENT
 	ARGS=" -q"
@@ -176,10 +57,9 @@ else
 
 	GSOCKET_ARGS="${ENV_ARGS}" sshfs -o "${SSHFS_OPT}${FUSE_OPT}" -o ssh_command="${GS_NETCAT_BIN}${ARGS} --" x@127.1:. "${1}"
 	[[ $? -eq 0 ]] || exit 1
-	echo "Successfully mounted to $*."
+	echo "Successfully mounted to ${1}."
 	command -v fusermount >/dev/null 2>&1
 	if [ $? -eq 0 ]; then
-		echo "To unmount use: fusermount -zu $*"
+		echo "To unmount use: fusermount -zu ${1}"
 	fi
-
 fi
