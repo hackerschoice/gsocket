@@ -1,0 +1,63 @@
+.Dd October 12, 2020
+.Dt GS-MOUNT 1
+.Os
+.Sh NAME
+.Nm gs-mount
+.Nd Secure filesystem client through via Global Socket.
+.Sh SYNOPSIS
+.Nm gs-mount
+.Bk -words
+.Op Fl lT
+.Op Fl s Ar secret
+.Op Fl k Ar keyfile
+.Op Ar mountpoint
+.Ek
+.Sh DESCRIPTION
+The
+.Nm
+utility is a wrapper script for gs-netcat. It allows a user to mount and access a filesystem from another user via the Global Socket Relay Network (GSRN). This is useful in a scenario where both users are behind NAT/Firewall and unable to connect to each other directly.
+.Pp
+.Sh OPTIONS
+.Bl -tag -width Ds
+.It Fl s Ar secret
+A password chosen by the user. Both users need to use the same password to connect.
+.It Fl k Ar file
+A file containing the password.
+.It Fl l
+Server mode. The default mode is client.
+.It Fl T
+Use TOR. The
+.Nm
+tool will connect via TOR to the GSRN. This requires TOR to be installed and running. The IP and PORT of the TOR server can be set using environment variables.
+.El
+.Pp
+See 
+.Xr gs-netcat(1)
+for more options.
+.Sh EXAMPLES
+.Nm Example 1
+- Alice sharing her current directory:
+.Dl $ gs-mount -s MySecret -l
+.Pp
+Bob mounting Alice's directroy to ~/gs-alice:
+.Dl $ gs-mount -s MySecret ~/gs-alice
+.Pp
+.Sh ENVIRONMENT
+See 
+.Xr gs-netcat(1)
+for a list of supported environment variables.
+.Pp
+.Sh SEE ALSO
+.Xr gs-netcat(1) ,
+.Xr gs-sftp(1) ,
+.Xr blitz(1) ,
+.Xr sshfs(1)
+.Pp
+.Sh BUGS
+Efforts have been made to have
+.Nm
+"do the right thing" in all its various modes. If you believe that it is doing the wrong thing under whatever circumstances, please notify me (skyper@thc.org) and tell me how you think it should behave.
+
+
+
+
