@@ -53,6 +53,7 @@ uchroot_check()
 
 gs_init()
 {
+	GS_NETCAT_BIN="gs-netcat"
 	BIN="${BASEDIR}/${GS_NETCAT_BIN}"
 	[[ -f "${BIN}" ]] && GS_NETCAT_BIN="${BIN}"
 	UCHROOT_BIN="${BASEDIR}/gs_uchroot_so"
@@ -70,6 +71,7 @@ usage()
 {
 	printf "\
    -l           Server Mode.\n\
+   -R           Server in read-only mode\n\
    -s <secret>  Secret (e.g. password).\n\
    -k <file>    Read Secret from file.\n\
  \n\
@@ -85,7 +87,7 @@ do_getopt()
 	OPTERR=0
 	FL_NEED_PASSWORD=1
 	# shellcheck disable=SC2220 # Invalid flags are not handled. Add a *) case.
-	while getopts ":hgls:k:L:" opt; do
+	while getopts ":hRgls:k:L:" opt; do
 		case ${opt} in
 			s )
 				GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-s"	# Add to end of array
@@ -107,6 +109,10 @@ do_getopt()
 			l )
 				IS_SERVER=1
 				ARGS_NEW[${#ARGS_NEW[@]}]="-l"	# Add to end of array			
+				;;
+			R )
+				IS_READONLY=1
+				SFTP_ARGS[${#SFTP_ARGS[@]}]="-R"
 				;;
 			\? )
 				# UNKNOWN option. Handle before '*' (e.g. -l)
@@ -151,7 +157,7 @@ sftp_server_start()
 	[[ -z "${SFTP_SERVER_BIN}" ]] && { echo >&2 "sftp-server binary not found."; exit 1; }
 
 	ENV_ARGS="${GSOCKET_ARGS}${GSNC_ENV_ARGS[*]}"
-	GSOCKET_ARGS="${ENV_ARGS}" exec "${GS_NETCAT_BIN}" "${ARGS_NEW[@]}" -e "${PRELOAD} ${SFTP_SERVER_BIN}"
+	GSOCKET_ARGS="${ENV_ARGS}" exec "${GS_NETCAT_BIN}" "${ARGS_NEW[@]}" -e "${PRELOAD} ${SFTP_SERVER_BIN} ${SFTP_ARGS[*]}"
 }
 
 

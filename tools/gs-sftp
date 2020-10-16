@@ -6,12 +6,9 @@
 # $ export GSOCKET_ARGS="-s MySecret"                        # Workstation
 # $ sftp -D gs-netcat                                        # Workstation
 
-GS_NETCAT_BIN="gs-netcat"
-# Try to use the gs-netcat that's in the same path as gs-sftp first.
+# Try to use the gs-netcat that's in the same directory as this executable.
 BASEDIR="$(cd "$(dirname "${0}")" || exit; pwd)"
 source "${BASEDIR}/gs_funcs" || exit 3
-
-gs_init
 
 my_usage()
 {
@@ -21,7 +18,7 @@ my_usage()
 }
 
 command -v sftp >/dev/null 2>&1 || { echo >&2 "sftp not found. Try 'apt-get install openssh' or check PATH=?"; exit 1; }
-
+gs_init
 do_getopt $@
 
 env_arg_init
