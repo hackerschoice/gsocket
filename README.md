@@ -11,7 +11,7 @@ Global Socket allows two users behind NAT/Firewall to establish a TCP connection
 - Perfect Forward Secrecy
 - TOR support (optional)
 
-Abandon the thinking that an IP Address is needed to communicate with somebody. Instead start thinking that two users should be able to communicate with each other as long as they know the same secret (key/password). The Global Socket library handles the rest: It locally derives temporary session keys and IDs and connects with the other user trough the Global Socket Relay Network (GSRN). Once found the library then negotiates a secure TLS connection between both users (End-2-End). **The GSRN sees only the encrypted traffic**.
+Abandon the thinking that an IP Address is needed to communicate with somebody. Instead start thinking that two users should be able to communicate with each other as long as they know the same secret (key/password). The Global Socket library handles the rest: It locally derives temporary session keys and IDs and connects with the other user trough the Global Socket Relay Network (GSRN). Once found the library then negotiates a secure TLS connection between both users (End-2-End). The password/secret never leaves your workstation. **The GSRN sees only the encrypted traffic**.
 
 The GSRN is a free cloud service and is free to use by anyone.
 
