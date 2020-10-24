@@ -27,16 +27,25 @@ Man Page: [gs-netcat(1)](https://hackerschoice.github.io/gs-netcat.1.html), [gs-
 
 **BETA BETA BETA. PRIVATE RELEASE ONLY.**
 ---
-**TEST SERVER FOR TESTING = TRY ANY OF THOSE COMMANDS**
+**TEST SERVER FOR TESTING = TRY ANY OF THESE COMMANDS**
+
+The Test-Server is running behind NAT/FIREWALL and your commands will use the GSRN to connect to the test-server.
 ```
+### Access the test-server
 $ gs-sftp -s THCWarezServer
 
+### Mount a directory from the test-server to your local workstation
 $ mkdir ~/mnt
-$ gs-mount -s THCWarezServer ~/mnt
+$ gs-mount -s THCWarezServer ~/mnt   
 
+### Transfer 'directory-with-stuff' to the test-server
 $ blitz -s BLITZServer directory-with-stuff
 
+### Transfer all your mp3 to the test-server
 $ find . -name '*.mp3' | blitz -s BLITZServer -f -
+
+### Get a root-shell on the test-server
+$ gs-netcat -s AskUsForThePassword -i
 ```
 ---
 **Installation:**
@@ -61,7 +70,19 @@ $ gs-netcat -l -r >warez.tar.gz    # Host
 $ gs-netcat <warez.tar.gz          # Workstation
 ```
 
-3. Port forward. *Workstation's* Port 2222 is forwarded to 192.168.6.7 on *Host's* private LAN
+3. SFTP through Global Socket Relay Network
+```
+$ gs-sftp -l                  # Host
+$ gs-sftp                     # Workstation
+```
+
+4. Mount a firectory from Host
+```
+$ gs-mount -l                # Host
+$ gs-mount ~/mnt             # Workstation
+```
+
+5. Port forward. *Workstation's* Port 2222 is forwarded to 192.168.6.7 on *Host's* private LAN
 ```
 $ gs-netcat -l -d 192.168.6.7 -p 22 # Host
 $ gs-netcat -p 2222                 # Workstation
@@ -71,19 +92,19 @@ $ gs-netcat -s MySecret -l -d 192.168.6.7 -p 22                   # Host
 $ ssh -o ProxyCommand='gs-netcat -s MySecret' root@doesnotmatter  # Workstation
 ```
 
-4. Execute any command (nc -e style)
+6. Execute any command (nc -e style)
 ```
 $ gs-netcat -l -e "echo hello world; id; exit"   # Host
 $ gs-netcat                                      # Workstation
 ```
 
-5. Quick Secure Chat with a friend
+7. Quick Secure Chat with a friend
 ```
 $ gs-full-pipe -s MySecret -A               # You
 $ gs-full-pipe -s MySecret -A               # Them
 ```
 
-6. Access entirety of Host's private LAN (Sock4/4a/5 proxy)
+8. Access entirety of Host's private LAN (Sock4/4a/5 proxy)
 ```
 $ gs-netcat -l -S                                  # Host
 $ gs-netcat -p 1080                                # Workstation
@@ -95,13 +116,7 @@ Access fileserver.local:22 on Host's private LAN from your Workstation:
 $ socat -  "SOCKS4a:127.1:fileserver.local:22"
 ```
 
-7. SFTP through Global Socket Relay Network
-```
-$ gs-sftp -l                  # Host
-$ gs-sftp                     # Workstation
-```
-
-8. SoCAT 2 
+9. SoCAT 2 
 ```
 gs-netcat can be used in a socat address-chain using the EXEC target. Happy bouncing. Enjoy. :> 
 ```
