@@ -32,11 +32,11 @@ Man Page: [gs-netcat(1)](https://hackerschoice.github.io/gs-netcat.1.html), [gs-
 The Test-Server is running behind NAT/FIREWALL. The commands below will use the GSRN to connect to the Test-Server.
 ```
 ### Access the test-server
-$ gs-sftp -s THCWarezServer
+$ gs-sftp -s THCTestServer
 
 ### Mount a directory from the test-server to your local workstation
 $ mkdir ~/mnt
-$ gs-mount -s THCWarezServer ~/mnt   
+$ gs-mount -s THCTestServer ~/mnt   
 
 ### Transfer 'directory-with-stuff' to the test-server
 $ blitz -s BLITZServer directory-with-stuff
