@@ -57,68 +57,81 @@ $ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/hackerschoice/gso
 ---
 **Usage:**
 
-1. Log in to *Host* from *Workstation* through any firewall/NAT
+1. Log in to *Workstation A* from *Workstation B* through any firewall/NAT
 ```
-$ ./gs-netcat -l -i   # Host
-$ ./gs-netcat -i      # Workstation
+$ ./gs-netcat -l -i   # Workstation A
+$ ./gs-netcat -i      # Workstation B
 ```
+See also: [gs-netcat(1)](https://hackerschoice.github.io/gs-netcat.1.html)
 
-2. Transfer files from *Workstation* to *Host*
+2. Transfer files from *Workstation B* to *Workstation A*
 ```
-$ blitz -l                         # Host
-$ blitz /usr/share/*  /etc/*       # Workstation
-...or use gs-netcat...
-$ gs-netcat -l -r >warez.tar.gz    # Host
-$ gs-netcat <warez.tar.gz          # Workstation
+$ blitz -l                         # Workstation A
+$ blitz /usr/share/*  /etc/*       # Workstation B
 ```
+See also: [blitz(1)](https://hackerschoice.github.io/blitz.1.html)
 
 3. SFTP through Global Socket Relay Network
 ```
-$ gs-sftp -l                  # Host
-$ gs-sftp                     # Workstation
+$ gs-sftp -l                  # Workstation A
+$ gs-sftp                     # Workstation B
+```
+See also: [gs-sftp(1)](https://hackerschoice.github.io/gs-sftp.1.html)
+
+4. Mount *Workstation A's* directory from  *Workstation B*
+```
+$ gs-mount -l                # Workstation A
+$ gs-mount ~/mnt             # Workstation B
+```
+See also: [gs-mount(1)](https://hackerschoice.github.io/gs-mount.1.html)
+
+5. Pipe data from Workstation B to Workstation A
+```
+$ gs-netcat -l -r >warez.tar.gz    # Workstation A
+$ gs-netcat <warez.tar.gz          # Workstation B
 ```
 
-4. Mount a firectory from Host
+6. Port forward. *Workstation B's* Port 2222 is forwarded to 192.168.6.7 on *Workstation A's* private LAN
 ```
-$ gs-mount -l                # Host
-$ gs-mount ~/mnt             # Workstation
-```
-
-5. Port forward. *Workstation's* Port 2222 is forwarded to 192.168.6.7 on *Host's* private LAN
-```
-$ gs-netcat -l -d 192.168.6.7 -p 22 # Host
-$ gs-netcat -p 2222                 # Workstation
+$ gs-netcat -l -d 192.168.6.7 -p 22 # Workstation A
+$ gs-netcat -p 2222                 # Workstation B
 $ ssh -p 2222 root@127.0.0.1        # Will ssh to 192.168.6.7:22 on Host's private LAN
 ...or...
-$ gs-netcat -s MySecret -l -d 192.168.6.7 -p 22                   # Host
-$ ssh -o ProxyCommand='gs-netcat -s MySecret' root@doesnotmatter  # Workstation
+$ gs-netcat -s MySecret -l -d 192.168.6.7 -p 22                   # Workstation A
+$ ssh -o ProxyCommand='gs-netcat -s MySecret' root@doesnotmatter  # Workstation B
 ```
 
-6. Execute any command (nc -e style)
+7. Execute any command (nc -e style) on *Workstation A*
 ```
-$ gs-netcat -l -e "echo hello world; id; exit"   # Host
-$ gs-netcat                                      # Workstation
+$ gs-netcat -l -e "echo hello world; id; exit"   # Workstation A
+$ gs-netcat                                      # Workstation B
 ```
 
-7. Quick Secure Chat with a friend
+8. Quick Secure Chat with a friend
 ```
 $ gs-full-pipe -s MySecret -A               # You
 $ gs-full-pipe -s MySecret -A               # Them
 ```
 
-8. Access entirety of Host's private LAN (Sock4/4a/5 proxy)
+9. Access entirety of *Workstation A's* private LAN (Sock4/4a/5 proxy)
 ```
-$ gs-netcat -l -S          # Host
-$ gs-netcat -p 1080        # Workstation
+$ gs-netcat -l -S          # Workstation A
+$ gs-netcat -p 1080        # Workstation B
 
-Access www.google.com via Host's private LAN from your Workstation:
+Access www.google.com via Workstation A's private LAN from your Workstation B:
 $ curl --socks4a 127.1:1080 http://www.google.com 
 
-Access fileserver.local:22 on Host's private LAN from your Workstation:
+Access fileserver.local:22 on Workstation A's private LAN from your Workstation B:
 $ socat -  "SOCKS4a:127.1:fileserver.local:22"
 ```
 
-9. SoCAT 2 
+10. Persistant, daemonized and auto-respawn/watchdog reverse PTY backdoor via TOR
+```
+$ gs-netcat -l -i -D    # some firewalled server
+$ gs-netcat -i -T       # You, via TOR
+```
+
+11. SoCAT 2 
 ```
 gs-netcat can be used in a socat address-chain using the EXEC target. Happy bouncing. Enjoy. :> 
 ```
