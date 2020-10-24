@@ -47,7 +47,7 @@ $ find . -name '*.mp3' | blitz -s BLITZServer -f -
 ### Get a root-shell on the test-server
 $ gs-netcat -s AskUsForThePassword -i
 ```
-Run your own server by using option *-l* and pick your own password (option *-s \<secret\>*).
+Run your own server by using option *-l* and pick your own password (option *-s \<secret\>*). The server does not need to be reachable from the Internet.
 
 ---
 **Installation:**
