@@ -9,46 +9,44 @@
 
 # Try to use the gs-netcat that's in the same directory as this executable.
 BASEDIR="$(cd "$(dirname "${0}")" || exit; pwd)"
+# shellcheck disable=SC1090 # Can't follow non-constant source. Use a directive to specify location.
 source "${BASEDIR}/gs_funcs" || exit 3
 
 my_usage()
 {
-	printf "${BIN_NAME} [-k file] [-s password] [-l] [mount point]\n"
+	echo "${BIN_NAME} [-k file] [-s password] [-l] [mount point]"
 	usage "${BIN_NAME}"
 	exit 0
 }
 
 gs_init 
-do_getopt $@
+do_getopt "$@"
+shift $((OPTIND -1))	# Mount Point
+env_arg_init
 
 if [[ -z ${IS_SERVER} ]]; then
 	# CLIENT
 	SSHFS_OPT="ServerAliveInterval=30,reconnect,attr_timeout=60,auto_cache,compression=yes,default_permissions,idmap=user,uid=${UID},gid=$(id -g)"
-	shift $((OPTIND -1))	# Mount Point
 	# echo "Remaining (files): $*"
 	[[ -z "${1}" ]] && { echo >&2 "ERROR: No directory (mount point) specified."; my_usage; }
 	command -v sshfs >/dev/null 2>&1 || { echo >&2 "sshfs not found. Try 'apt-get install sshfs' or check PATH=?"; exit 1; }
+	# FUSE_OPT=",cache=yes,kernel_cache"
 	FUSE_OPT=""
 	if [[ x"$OSTYPE" == "xdarwin"* ]]; then
         # Setting 'noapplexattr' prevents 'finder' from copying.
-        FUSE_OPT=",async,local,iosize=65536,noappledouble,volname=THC-"$(basename "${1}")
+        FUSE_OPT+=",async,local,iosize=65536,noappledouble,volname=THC-"$(basename "${1}")
 	fi
 fi
 
-env_arg_init
-
 if [[ -n ${IS_SERVER} ]]; then
+	# SERVER
 	sftp_server_start
 else
 	# CLIENT
 	ARGS=" -q"
 	[[ -n ${ARGS_NEW[*]} ]] && ARGS=" ${ARGS_NEW[*]}"
 
-	GSOCKET_ARGS="${ENV_ARGS}" sshfs -o "${SSHFS_OPT}${FUSE_OPT}" -o ssh_command="${GS_NETCAT_BIN}${ARGS} --" x@127.1:. "${1}"
-	[[ $? -eq 0 ]] || exit 1
-	echo "Successfully mounted to ${1}."
-	command -v fusermount >/dev/null 2>&1
-	if [ $? -eq 0 ]; then
-		echo "To unmount use: fusermount -zu ${1}"
-	fi
+	GSOCKET_ARGS="${ENV_ARGS}" sshfs -o "${SSHFS_OPT}${FUSE_OPT}" -o ssh_command="${GS_NETCAT_BIN}${ARGS} --" x@127.1:. "${1}" || exit 1
+	echo "Successfully mounted on ${1}."
+	command -v fusermount >/dev/null 2>&1 && echo "To unmount use: fusermount -zu ${1}"
 fi

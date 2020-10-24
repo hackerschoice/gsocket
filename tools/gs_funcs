@@ -1,6 +1,6 @@
 #! /bin/bash
 
-# Find a sftp-serve binary
+# Find a sftp-server binary
 find_binary()
 {
 	bin=$1
@@ -19,7 +19,7 @@ find_binary()
 
 read_password()
 {
-	printf >&2 "Enter Secret (or press Enter to generate): "
+	echo -n >&2 "Enter Secret (or press Enter to generate): "
 	read -r password
 	if [[ -z "${password}" ]]; then
 		password=$(${GS_NETCAT_BIN} -g)
@@ -27,28 +27,111 @@ read_password()
 	echo "${password}" | tr -d "[:space:]"
 }
 
-uchroot_check_bin()
+# haystack1 haystack2 needle
+ucheck_fail()
 {
-	FUNC="${1}"
-	shift 1
-	# First test if binary completed nicely without hijacking...
-	LD_PRELOAD="" $* &>/dev/null
-	[[ $? -eq 0 ]] || { echo >&2 "LD_PRELOAD failed. ${FUNC}() got caught. Contact us."; exit 1; }
-	rmdir "/tmp/thc-testdir-${$}" &>/dev/null
-
-	# Then test if binary fails when hijacking....(it should!)...
-	LD_PRELOAD="${UCHROOT_BIN}" $* &>/dev/null 
-	[[ $? -eq 0 ]] && { echo >&2 "LD_PRELOAD failed. ${FUNC}() not caught. Contact us."; exit 1; }
+	[[ "$1" =~ "$3" ]] || { echo >&2 "Symbol $3 not found."; exit 255; }
+	[[ "$2" =~ "$3" ]] || { echo >&2 "Symbol $3 not found (2)."; exit 255; }
 }
 
-# Check that stat()/lstat() hijacking is working.
+test_sftp()
+{
+	echo "${1}" | ./gs-sftp -k id_sec.txt -wq 2>&1 | grep -c "Permission denied"
+}
+
+# Verify that all symboles will get hijacked. exit on failure.
+# 			linux      osx
+# sftp		-Du			-pu
+# .so		-D|T		-p|T
 uchroot_check()
 {
-	[[ -f /etc/hosts ]] || { echo >&2 "/etc/hosts not found. Odd Unix tis is...."; exit 1; }
-	rmdir "/tmp/thc-testdir-${$}" &>/dev/null
-	uchroot_check_bin open cat /etc/hosts
-	uchroot_check_bin __xstat ls /etc/hosts
-	uchroot_check_bin mkdir mkdir "/tmp/thc-testdir-${$}" 
+	local VALID_CMD
+	local FAIL_CMD
+
+	command -v nm >/dev/null 2>&1 || { echo >&2 "chroot self test failed (nm not found). Try -U to disable."; exit 255; }
+
+	# Extract symbols from .so and sftp-server binary
+	if [[ x"$OSTYPE" == "xdarwin"* ]]; then
+		# on OSX remove the starting "_" from symboles
+		sym_sftp="$(nm -pu "${SFTP_SERVER_BIN}" | sed 's/^_//g')"
+		sym_uchr="$(nm -p "${UCHROOT_BIN}" | grep " T " | sed 's/^_//g')"
+	else
+		sym_sftp="$(nm -Du "${SFTP_SERVER_BIN}")"
+		sym_uchr="$(nm -D "${UCHROOT_BIN}" | grep " T ")"
+	fi
+
+	[[ -n "$sym_uchr" ]] || { echo >&2 "chroot self-test failed (nm bad1). Try -U to disable."; exit 255; }
+	[[ -n "$sym_sftp" ]] || { echo >&2 "chroot self-test failed (nm bad2). Try -U to disable."; exit 255; }
+	if [[ x"$OSTYPE" == "xdarwin"* ]]; then
+		ucheck_fail "${sym_sftp}" "${sym_uchr}" "lstat\$INODE64"
+		ucheck_fail "${sym_sftp}" "${sym_uchr}" "stat\$INODE64"
+		ucheck_fail "${sym_sftp}" "${sym_uchr}" "opendir\$INODE64"
+	else
+		ucheck_fail "${sym_sftp}" "${sym_uchr}" "__lxstat"
+		ucheck_fail "${sym_sftp}" "${sym_uchr}" "__xstat"
+		ucheck_fail "${sym_sftp}" "${sym_uchr}" "opendir"
+	fi
+	for func in chmod link mkdir open rename rmdir statvfs symlink unlink; do
+		ucheck_fail "${sym_sftp}" "${sym_uchr}" "${func}"
+	done
+
+	# Run a self test (sftp -D sftp-server)
+	command -v sftp >/dev/null 2>&1 || { echo >&2 "chroot self-test failed (sftp not found). Try -U to disable."; exit 255; }
+	# echo "ROOTDIR=${ROOTDIR}"
+	mkdir -p "${ROOTDIR}/ok"
+	mkdir -p "${ROOTDIR}/denied"
+	echo hello exist-allowed.txt >"${ROOTDIR}/ok/exist-allowed.txt"
+	echo hello exist-denied.txt >"${ROOTDIR}/denied/exist-denied.txt"
+	dd if=/dev/urandom bs=1k count=1 2>/dev/null >"${ROOTDIR}/ok/test1k.dat"
+	echo "
+#! /bin/bash
+cd \"${ROOTDIR}\"/ok
+${PRELOAD} ${SFTP_SERVER_BIN} ${SFTP_ARGS[*]}" >"${ROOTDIR}/sftp-server.sh"
+	chmod 755 "${ROOTDIR}/sftp-server.sh"
+
+	# Run GOOD commands that should work
+	VALID_CMD="
+mkdir dir1
+cd dir1
+cd ..
+cd dir1
+cd ../
+ls ${ROOTDIR}/ok
+ls ${ROOTDIR}/ok/exist-allowed.txt
+put test1k.dat dir1
+mkdir ./dir2/
+"
+	[[ $(cd "${ROOTDIR}/ok"; echo "$VALID_CMD" | sftp -D "${ROOTDIR}/sftp-server.sh" 2>&1 | grep -c "Permission denied") -eq 0 ]] || { echo >&2 "Self test failed"; exit 255; }
+	[[ -d "${ROOTDIR}/ok/dir1" ]] || { echo >&2 "chroot self-test failed (valid-cmd 1). Try -U to disable."; exit 255; }
+	[[ -d "${ROOTDIR}/ok/dir2" ]] || { echo >&2 "chroot self-test failed (valid-cmd 2). Try -U to disable."; exit 255; }
+	[[ -f "${ROOTDIR}/ok/dir1/test1k.dat" ]] || { echo >&2 "chroot self-test failed (valid-cmd 3). Try -U to disable."; exit 255; }
+
+
+	FAIL_CMD="
+rename exist-allowed.txt ../denied/0wned.txt
+mkdir ./dir1/../../denied/0wned
+cd dir1/../../denied
+cd ./../denied
+ls ${ROOTDIR}
+cd ${ROOTDIR}
+cd ${ROOTDIR}/denied
+cd ${ROOTDIR}/ok/../denied
+rm ./../denied/exist-denied.txt
+put test1k.dat ../denied/0wned.dat
+put test1k.dat ../denied/exist-denied.txt
+rename exist-allowed.txt ../denied/0wned.txt
+rename exist-allowed.txt /0wned.txt
+"
+	[[ $(cd "${ROOTDIR}/ok"; echo "$FAIL_CMD" | sftp -D "${ROOTDIR}/sftp-server.sh" 2>&1 | grep -c "Permission denied") -eq 13 ]] || { echo >&2 "Self test failed (2)"; exit 255; }
+
+	FAIL_CMD="
+ls dir1/../../denied
+ls ./../denied/exist-denied.txt"
+	[[ $(cd "${ROOTDIR}/ok"; echo "$FAIL_CMD" | sftp -D "${ROOTDIR}/sftp-server.sh" 2>&1 | grep -c "not found") -eq 2 ]] || { echo >&2 "Self test failed (3)"; exit 255; }
+
+	rm -rf "${ROOTDIR}/ok" &>/dev/null
+	rm -rf "${ROOTDIR}/denied" &>/dev/null
+	rm -rf "${ROOTDIR}/sftp-server.sh" &>/dev/null
 }
 
 gs_init()
@@ -56,12 +139,14 @@ gs_init()
 	GS_NETCAT_BIN="gs-netcat"
 	BIN="${BASEDIR}/${GS_NETCAT_BIN}"
 	[[ -f "${BIN}" ]] && GS_NETCAT_BIN="${BIN}"
+	# shellcheck disable=SC2034 # appears unused. Verify use (or export if used externally).
+	GS_SFTP_BIN="${BASEDIR}/gs-sftp"
 	UCHROOT_BIN="${BASEDIR}/gs_uchroot_so"
 	[[ -f "${UCHROOT_BIN}" ]] || { echo >&2 "${UCHROOT_BIN} not found."; exit 2; }
 
 	# To find sftp-server in PREFIX/lib
 	PREFIX="$(cd "$(dirname "${0}")/../" || exit; pwd)"
-
+	# shellcheck disable=SC2034 # appears unused. Verify use (or export if used externally).
 	BIN_NAME="$(basename "${0}")"
 
 	command -v "${GS_NETCAT_BIN}" >/dev/null 2>&1 || { echo >&2 "${GS_NETCAT_BIN} not found. Check PATH=?"; exit 1; }
@@ -69,25 +154,27 @@ gs_init()
 
 usage()
 {
-	printf "\
-   -l           Server Mode.\n\
-   -R           Server in read-only mode\n\
-   -s <secret>  Secret (e.g. password).\n\
-   -k <file>    Read Secret from file.\n\
- \n\
-Example:\n\
-    $ ${1} -s MySecret -l             # Server\n\
-    $ ${1} -s MySecret                # Client\n\
-\n\
-See 'gs-netcat -h' for more options.\n"
+	echo "
+   -l           Server Mode.
+   -R           Server in read-only mode.
+   -s <secret>  Secret (e.g. password).
+   -k <file>    Read Secret from file.
+ 
+Example:
+    $ ${1} -s MySecret -l             # Server
+    $ ${1} -s MySecret                # Client
+
+See 'gs-netcat -h' for more options."
+
 }
 
 do_getopt()
 {
 	OPTERR=0
 	FL_NEED_PASSWORD=1
+	IS_UCHROOT=1
 	# shellcheck disable=SC2220 # Invalid flags are not handled. Add a *) case.
-	while getopts ":hRgls:k:L:" opt; do
+	while getopts ":hURgls:k:L:" opt; do
 		case ${opt} in
 			s )
 				GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-s"	# Add to end of array
@@ -96,7 +183,11 @@ do_getopt()
 				;;
 			k )
 				GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-k"	# Add to end of array
-				GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]=$(eval echo "$OPTARG")	# Add to end of array
+				KFILE=$(cd "$(dirname "$OPTARG")" && pwd)/$(basename "$OPTARG")
+				[[ -f "${KFILE}" ]] || { echo >&2 "File not found: ${KFILE}"; exit 255; }
+				GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="${KFILE}"	# Add to end of array
+				# KFILE=$(eval echo "$OPTARG")	# Add to end of array
+				# GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]=$(eval echo "$OPTARG")	# Add to end of array
 				unset FL_NEED_PASSWORD
 				;;
 			g )
@@ -107,12 +198,17 @@ do_getopt()
 				my_usage
 				;;
 			l )
+				# shellcheck disable=SC2034 # appears unused. Verify use (or export if used externally).
 				IS_SERVER=1
 				ARGS_NEW[${#ARGS_NEW[@]}]="-l"	# Add to end of array			
 				;;
 			R )
+				# shellcheck disable=SC2034 # appears unused. Verify use (or export if used externally).
 				IS_READONLY=1
 				SFTP_ARGS[${#SFTP_ARGS[@]}]="-R"
+				;;
+			U )
+				unset IS_UCHROOT
 				;;
 			\? )
 				# UNKNOWN option. Handle before '*' (e.g. -l)
@@ -134,7 +230,7 @@ env_arg_init()
 	if [[ -n "$FL_NEED_PASSWORD" ]]; then
 		password=$(read_password)
 		echo "=Secret         :\"${password}\""
-		GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-s"	# Add to end of array			
+		GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-s"		# Add to end of array			
 		GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="$password"	# Add to end of array			
 	fi
 	ENV_ARGS="${GSOCKET_ARGS}${GSNC_ENV_ARGS[*]}"
@@ -143,21 +239,44 @@ env_arg_init()
 sftp_server_start()
 {
 	# SERVER
-		# OSX does not allow PRELOAD of binaries in /usr/. Copy to /tmp...
 	if [[ x"$OSTYPE" == "xdarwin"* ]]; then
-		rm -f /tmp/sftp-server-* &>/dev/null
-		cp /usr/libexec/sftp-server /tmp/sftp-server-${$} &>/dev/null
-		SFTP_SERVER_BIN="/tmp/sftp-server-${$}"
+		# OSX does not allow LD_PRELOAD of binaries in /usr/. Copy to tmp...
+		ROOTDIR=$(mktemp -d -t thc-gs-sftp)
+		# FIXME: temp file only cleaned on reboot. Hmm...
+		cp /usr/libexec/sftp-server "${ROOTDIR}/sftp-server" &>/dev/null
+		SFTP_SERVER_BIN="${ROOTDIR}/sftp-server"
 		PRELOAD="DYLD_INSERT_LIBRARIES=${UCHROOT_BIN} DYLD_FORCE_FLAT_NAMESPACE=1"
 	else
-		uchroot_check
+		if [[ -n "${IS_UCHROOT}" ]]; then
+			ROOTDIR=$(mktemp -d -t thc-gs-sftp-XXXXXXXXXXXXXXX) 
+		fi
 		SFTP_SERVER_BIN=$(find_binary sftp-server "$PREFIX"/lib /usr/lib /usr/local/lib)
 		PRELOAD="LD_PRELOAD=${UCHROOT_BIN}"
 	fi
 	[[ -z "${SFTP_SERVER_BIN}" ]] && { echo >&2 "sftp-server binary not found."; exit 1; }
 
+	# SFTP_ARGS[${#SFTP_ARGS[@]}]="-l"
+	# SFTP_ARGS[${#SFTP_ARGS[@]}]="DEBUG3"	# tail /var/log/auth.log | grep 'Refusing non-whitelisted'
+
+	# Whitelist of commands sftp-server should allow (most are not needed
+	# by sftp but for sshfs)
+	# *** WARNING ***: If you add a string here you also must make sure that
+	# gs_uchroot checks the command for uchroot-escape.
+	SFTP_ARGS[${#SFTP_ARGS[@]}]="-p"
+	SFTP_ARGS[${#SFTP_ARGS[@]}]="open,opendir,mkdir,remove,rmdir,symlink,hardlink,stat,posix-rename,statvfs,setstat,fsetstat,fstat,lstat,readdir,realpath,write,read,close"
+
 	ENV_ARGS="${GSOCKET_ARGS}${GSNC_ENV_ARGS[*]}"
-	GSOCKET_ARGS="${ENV_ARGS}" exec "${GS_NETCAT_BIN}" "${ARGS_NEW[@]}" -e "${PRELOAD} ${SFTP_SERVER_BIN} ${SFTP_ARGS[*]}"
+
+	if [[ -n "${IS_UCHROOT}" ]]; then
+		[[ -z "${ROOTDIR}" ]] && { echo >&2 "chroot self test failed (mktemp). Try -U to disable."; exit 1; }
+		uchroot_check
+		# Try to delete temporary directory. OSX still has sftp-server bin in there and must be deleted
+		rmdir "${ROOTDIR}" &>/dev/null
+	else
+		echo -e >&2 "\033[1;31mWARNING\033[0m: uchroot disabled. Allowing access to *ALL* files on this host."
+		unset PRELOAD
+	fi
+	GSOCKET_ARGS="${ENV_ARGS}" exec "${GS_NETCAT_BIN}" "${ARGS_NEW[@]}" -e "${PRELOAD} ${SFTP_SERVER_BIN} ${SFTP_ARGS[*]} 2>/dev/null"
 }
 
 

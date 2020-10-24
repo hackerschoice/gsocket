@@ -7,7 +7,7 @@
 .Sh SYNOPSIS
 .Nm gs-sftp
 .Bk -words
-.Op Fl lT
+.Op Fl lTR
 .Op Fl s Ar secret
 .Op Fl k Ar keyfile
 .Ek
@@ -20,10 +20,12 @@ utility is a wrapper script for gs-netcat. It allows two users to establish a se
 .Bl -tag -width Ds
 .It Fl s Ar secret
 A password chosen by the user. Both users need to use the same password to connect.
-.It Fl k Ar file
+.It Fl k Ar FILE
 A file containing the password.
 .It Fl l
 Server mode. The default mode is client.
+.It Fl R
+Places server (-l) into a read-only mode. Attempts to open files for writing, as well as other operations that change the state of the filesystem, will be denied.
 .It Fl T
 Use TOR. The
 .Nm

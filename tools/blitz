@@ -5,7 +5,6 @@
 #     $ gs-netcat -s MySecret -l -e "/usr/bin/rsync --server -vlogDtpr --partial ."
 # Client:
 #     $ rsync -aP -e "gs-netcat -s MySecret --" test4k.dat 127.1:.
-
 GS_NETCAT_BIN="gs-netcat"
 RSYNC_SERVER_DEFAULTS="--server -logtprR --safe-links --partial"
 # -D special devices
@@ -19,7 +18,6 @@ RSYNC_SERVER_DEFAULTS="--server -logtprR --safe-links --partial"
 # RSYNC_SERVER_DEFAULTS="--server -lotpr --partial"
 # RSYNC_SERVER_DEFAULTS="--server -logDtprRe.iLsfxCIvu --partial"
 RSYNC_CLIENT_DEFAULTS="-ahPRv"
-
 # Try to use the gs-netcat that's in the same path as this binary first.
 BIN="$(cd "$(dirname "${0}")" || exit; pwd)/${GS_NETCAT_BIN}"
 [[ -f "${BIN}" ]] && GS_NETCAT_BIN="${BIN}"
@@ -29,20 +27,23 @@ command -v rsync >/dev/null 2>&1 || { echo >&2 "rsync not found. Try 'apt-get in
 
 usage()
 {
-	printf "\
-blitz [-k file] [-s password] [-l] [FILES]\n\
-   -l           Server Mode.\n\
-   -s <secret>  Secret (e.g. password).\n\
-   -k <file>    Read Secret from file.\n\
-   -o RSOPT=val Options passed to rsync.\n\
- \n\
- Example:\n\
-    $ blitz -s MySecret -l             # Server\n\
-    $ blitz -s MySecret *.dat          # Client\n\
-...another example to limit transfer rate to 10kB/sec\n\
-    $ blitz -s MySecret -o 'RSOPT=--bwlimit=10 -v' /./etc/*.conf *.dat\n\
-\n\
-See 'man gs-netcat' and 'man rsync' for more options.\n"
+	echo "blitz [-k file] [-s password] [-l] [FILES ...]
+   -l           Server Mode.
+   -s <secret>  Secret (e.g. password).
+   -k <file>    Read Secret from file.
+   -f <list>	Read list of file names from FILE [or - for stdin]
+   -o RSOPT=val Options passed to rsync.
+ 
+ Example:
+    $ blitz -s MySecret -l             # Server
+    $ blitz -s MySecret *.dat          # Client
+...example limiting transfer rate to 10kB/sec
+    $ blitz -s MySecret -o 'RSOPT=--bwlimit=10 -v' /./etc/*.conf *.dat
+...example reading the file list from standard-in
+    $ cd /etc
+    $ find . -name '*.mp3' | blitz -s MySecret -f -
+
+See 'man gs-netcat' and 'man rsync' for more options."
 	exit 0
 }
 
@@ -68,10 +69,11 @@ FL_NEED_PASSWORD=1
 # These are caught by '*'.
 # All single options (e.g. -w etc) are caught by '\?'.
 # shellcheck disable=SC2220 # Invalid flags are not handled. Add a *) case.
-while getopts ":hgls:k:o:L:" opt; do
+while getopts ":hgls:k:o:L:f:" opt; do
 	case ${opt} in
 		o )
-			RSYNC_ARGS=${OPTARG//RSOPT=/}
+			RSYNC_ARGS+=${OPTARG//RSOPT=/}
+			RSYNC_ARGS+=" "
 			;;
 		s )
 			GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-s"	# Add to end of array
@@ -80,7 +82,9 @@ while getopts ":hgls:k:o:L:" opt; do
 			;;
 		k )
 			GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-k"	# Add to end of array
-			GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]=$(eval echo "$OPTARG")	# Add to end of array
+			KFILE=$(cd "$(dirname "$OPTARG")" && pwd)/$(basename "$OPTARG")
+			[[ -f "${KFILE}" ]] || { echo >&2 "File not found: ${KFILE}"; exit 255; }
+			GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="${KFILE}"	# Add to end of array
 			unset FL_NEED_PASSWORD
 			;;
 		g )
@@ -89,6 +93,10 @@ while getopts ":hgls:k:o:L:" opt; do
 			;;
 		h )
 			usage
+			;;
+		f )
+			RSYNC_ARGS+="--files-from=${OPTARG} . "
+			IS_FILES_FROM=1
 			;;
 		l )
 			IS_SERVER=1
@@ -110,7 +118,8 @@ if [[ -z ${IS_SERVER} ]]; then
 	# CLIENT
 	shift $((OPTIND -1))	# list of files...
 	# echo "Remaining (files): $*"
-	[[ -z $* ]] && { echo >&2 "ERROR: No files specified."; usage; }
+	[[ -z $* ]] && [[ -z $IS_FILES_FROM ]] && { echo >&2 "ERROR: No files specified."; usage; }
+	[[ -n $* ]] && [[ -n $IS_FILES_FROM ]] && { echo >&2 "ERROR: Either -f FILE or FILES, but not both."; usage; }
 fi
 
 # Prepare existing GSOCKET_ARGS to take more arguments if there are any
@@ -139,6 +148,6 @@ else
 	# ARGS=""
 	[[ -n ${ARGS_NEW[*]} ]] && ARGS+=" ${ARGS_NEW[*]}"
 	# shellcheck disable=SC2086 # Double quote to prevent globbing and word splitting. ${RSYNC_ARGS} -> We want word splitting for multiple arugments.
-	GSOCKET_ARGS="${ENV_ARGS}" exec rsync ${RSYNC_CLIENT_DEFAULTS} ${RSYNC_ARGS} -e "${GS_NETCAT_BIN}${ARGS} --" "${@}" 127.1:.
+	GSOCKET_ARGS="${ENV_ARGS}" exec rsync ${RSYNC_CLIENT_DEFAULTS} -e "${GS_NETCAT_BIN}${ARGS} --" ${RSYNC_ARGS} "${@}" 127.1:.
 fi
 

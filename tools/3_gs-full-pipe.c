@@ -103,7 +103,7 @@ write_gs(GS_SELECT_CTX *ctx, GS *gs)
 
 
 	if (ret > 0)
-		ERREXIT("Partial write(). Should not happen\n");
+		ERREXIT("Partial write(%zd) == %d. Should not happen (%s)\n", stdin_len, ret, strerror(errno));
 
 	ERREXIT("Fatal write error. FIXME: reconnect?(%s)\n", strerror(errno));
 

@@ -8,19 +8,20 @@
 
 # Try to use the gs-netcat that's in the same directory as this executable.
 BASEDIR="$(cd "$(dirname "${0}")" || exit; pwd)"
+# shellcheck disable=SC1090 # Can't follow non-constant source. Use a directive to specify location.
 source "${BASEDIR}/gs_funcs" || exit 3
 
 my_usage()
 {
-	printf "${BIN_NAME} [-k file] [-s password] [-l]\n"
+	echo "${BIN_NAME} [-k file] [-s password] [-l]"
 	usage "${BIN_NAME}"
 	exit 0
 }
 
 command -v sftp >/dev/null 2>&1 || { echo >&2 "sftp not found. Try 'apt-get install openssh' or check PATH=?"; exit 1; }
 gs_init
-do_getopt $@
-
+do_getopt "$@"
+shift $((OPTIND -1))	# Mount Point
 env_arg_init
 
 if [[ -n ${IS_SERVER} ]]; then

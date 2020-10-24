@@ -835,7 +835,7 @@ GS_heartbeat(GS *gsocket)
 	if (gsocket->fd >= 0)
 		return;
 
-	// DEBUGF_M("GS_heartbeat()\n");
+	// DEBUGF_M("GS_heartbeat(%p, n_sox=%d)\n", gsocket, gsocket->net.n_sox);
 	/* Check if it is time to send a PING to keep the connection alive */
 	for (i = 0; i < gsocket->net.n_sox; i++)
 	{
@@ -1447,6 +1447,7 @@ gs_close(GS *gsocket)
 	/* HERE: There are GS-Net connections that need to be cleaned.*/
 	int i;
 	/* Close all TCP connections to GS-Network */
+	DEBUGF_B("Closing %d GSN connections\n", gsocket->net.n_sox);
 	for (i = 0; i < gsocket->net.n_sox; i++)
 	{
 		struct gs_sox * sox = &gsocket->net.sox[i];
@@ -1460,6 +1461,7 @@ gs_close(GS *gsocket)
 		XCLOSE(sox->fd);
 		sox->fd = -1;
 	}
+	gsocket->net.n_sox = 0;
 
 	return;
 }

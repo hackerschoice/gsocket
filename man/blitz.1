@@ -10,24 +10,27 @@
 .Op Fl lT
 .Op Fl s Ar secret
 .Op Fl k Ar keyfile
+.Op Fl f Ar list
 .Op Fl o Ar RSOPT=
-.Op Ar files
+.Op Ar files ...
 .Ek
 .Sh DESCRIPTION
 The
 .Nm
-utility is a wrapper script for gs-netcat and rsync. It allows a user to send files to another user via the Global Socket Relay Network (GSRN).
+utility is a wrapper script for gs-netcat and rsync. It allows to send files from one workstation to another workstation via the Global Socket Relay Network (GSRN).
 .Pp
-A typical use-case is when both users are separated by a Firewall or NAT without being able to establish a direct connection. 
+A typical use-case is where both workstations are separated by a Firewall or NAT and not able to establish a direct connection between each other. 
 .Pp
 .Sh OPTIONS
 .Bl -tag -width Ds
-.It Fl s Ar secret
-A password chosen by the user. Both users need to use the same password to connect.
-.It Fl k Ar file
-A file containing the password.
 .It Fl l
 Server mode. The default mode is client.
+.It Fl s Ar secret
+A password chosen by the user. Both users need to use the same password to connect.
+.It Fl k Ar FILE
+A file containing the password.
+.It Fl f Ar FILE
+Read list of file names from FILE. If FILE is -, the list will be read from standard input.
 .It Fl o Ar RSOPT=
 Options passed to rsync. See
 .Xr rsync(1) 
@@ -63,6 +66,9 @@ Copy recursively and limit bandwidth to 10kB/sec:
 Copy the entire root file-system:
 .Dl $ blitz -s MySecret -o \'RSOPT=-x\' /
 .Pp
+Copy specific files read from standard input:
+.Dl $ find\ . -name '*.conf' | blitz -s MySecret -f \-
+.Pp
 Run a permanent server (daemon) trough TOR:
 .Dl $ blitz -s MySecret -l -D -T
 .Pp
@@ -74,6 +80,7 @@ for a list of supported environment variables.
 .Sh SEE ALSO
 .Xr gs-netcat(1) ,
 .Xr gs-sftp(1) ,
+.Xr gs-mount(1) ,
 .Xr rsync(1)
 .Pp
 .Sh BUGS

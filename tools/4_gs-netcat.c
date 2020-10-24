@@ -197,7 +197,7 @@ write_fd(GS_SELECT_CTX *ctx, struct _peer *p)
 	ssize_t len;
 
 	len = write(p->fd_out, p->rbuf, p->rlen);
-	DEBUGF_G("write(fd = %d, len = %zd) == %zd, errno = %d\n", p->fd_out, p->rlen, len, errno);
+	DEBUGF_G("write(fd = %d, len = %zd) == %zd, errno = %d (%s)\n", p->fd_out, p->rlen, len, errno, strerror(errno));
 	
 	if ((len < 0) && (errno == EAGAIN))
 	{
@@ -244,7 +244,7 @@ cb_read_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	// XASSERT(p->rlen <= 0, "Already data in input buffer (%zd)\n", p->rlen);
 	XASSERT(p->rlen < sizeof p->rbuf, "rlen=%zd larger than buffer\n", p->rlen);
 	len = GS_read(gs, p->rbuf + p->rlen, sizeof p->rbuf - p->rlen);
-	// DEBUGF_G("GS_read(fd = %d) == %zd\n", gs->fd, len);
+	DEBUGF_G("GS_read(fd = %d) == %zd\n", gs->fd, len);
 	if (len == 0)
 		return GS_ECALLAGAIN;
 
@@ -362,7 +362,8 @@ completed_connect(GS_SELECT_CTX *ctx, struct _peer *p, int fd_in, int fd_out)
 	p->is_fd_connected = 1;
 
 	/* Write any data that is left in rbuf to fd */
-	write_fd(ctx, p);
+	if (p->rlen > 0)
+		write_fd(ctx, p);
 }
 
 /*
