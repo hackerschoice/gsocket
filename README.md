@@ -29,7 +29,7 @@ Man Page: [gs-netcat(1)](https://hackerschoice.github.io/gs-netcat.1.html), [gs-
 ---
 **TEST SERVER FOR TESTING = TRY ANY OF THESE COMMANDS**
 
-The Test-Server is running behind NAT/FIREWALL and your commands will use the GSRN to connect to the test-server.
+The Test-Server is running behind NAT/FIREWALL. The commands below will use the GSRN to connect to the Test-Server.
 ```
 ### Access the test-server
 $ gs-sftp -s THCWarezServer
@@ -47,7 +47,7 @@ $ find . -name '*.mp3' | blitz -s BLITZServer -f -
 ### Get a root-shell on the test-server
 $ gs-netcat -s AskUsForThePassword -i
 ```
-Run your own test-server by using *-l* and pick your own password (*-s*).
+Run your own test-server by using option *-l* and pick your own password (option *-s \<secret\>*).
 
 ---
 **Installation:**
@@ -108,8 +108,8 @@ $ gs-full-pipe -s MySecret -A               # Them
 
 8. Access entirety of Host's private LAN (Sock4/4a/5 proxy)
 ```
-$ gs-netcat -l -S                                  # Host
-$ gs-netcat -p 1080                                # Workstation
+$ gs-netcat -l -S          # Host
+$ gs-netcat -p 1080        # Workstation
 
 Access www.google.com via Host's private LAN from your Workstation:
 $ curl --socks4a 127.1:1080 http://www.google.com 
