@@ -34,9 +34,9 @@ $ gs-sftp -s THCWarezServer
 $ mkdir ~/mnt
 $ gs-mount -s THCWarezServer ~/mnt
 
-$ blitz -s BLITZServer mp3
+$ blitz -s BLITZServer directory-with-stuff
 
-$ find . -name "*.mp3' | blitz -s BLITZServer -f -
+$ find . -name '*.mp3' | blitz -s BLITZServer -f -
 ```
 ---
 **Installation:**
