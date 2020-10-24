@@ -25,7 +25,19 @@ Includes:
 Download: [gsocket-1.4.16.tar.gz](https://github.com/hackerschoice/gsocket/releases/download/v1.4.16/gsocket-1.4.16.tar.gz) <BR>
 Man Page: [gs-netcat(1)](https://hackerschoice.github.io/gs-netcat.1.html), [gs-mount(1)](https://hackerschoice.github.io/gs-mount.1.html), [gs-sftp(1)](https://hackerschoice.github.io/gs-sftp.1.html), [blitz(1)](https://hackerschoice.github.io/blitz.1.html)
 
-BETA BETA BETA. PRIVATE RELEASE ONLY.
+**BETA BETA BETA. PRIVATE RELEASE ONLY.**
+---
+**TEST SERVER FOR TESTING = TRY ANY OF THOSE COMMANDS**
+```
+$ gs-sftp -s THCWarezServer
+
+$ mkdir ~/mnt
+$ gs-mount -s THCWarezServer ~/mnt
+
+$ blitz -s BLITZServer mp3
+
+$ find . -name "*.mp3' | blitz -s BLITZServer -f -
+```
 ---
 **Installation:**
 ```
