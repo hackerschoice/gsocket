@@ -47,6 +47,8 @@ $ find . -name '*.mp3' | blitz -s BLITZServer -f -
 ### Get a root-shell on the test-server
 $ gs-netcat -s AskUsForThePassword -i
 ```
+Run your own test-server by using *-l* and pick your own password (*-s*).
+
 ---
 **Installation:**
 ```
