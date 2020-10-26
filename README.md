@@ -1,6 +1,8 @@
 # Global Socket
 **Moving data from here to there. Securely, Fast and trough NAT/Firewalls.**
 
+![Anim](https://hackerschoice.github.io/gsocket-anim1.gif)
+
 Global Socket allows two users behind NAT/Firewall to establish a TCP connection with each other. Securely.
 
 **Features:**
