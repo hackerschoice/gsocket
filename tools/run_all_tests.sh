@@ -34,6 +34,9 @@ OK="....[\033[1;32mOK\033[0m]"
 FAIL="[\033[1;31mFAILED\033[0m]"
 SKIP="[\033[1;33mskipping\033[0m]"
 ECHO="echo -e"
+NETSTATTCP(){ netstat -ant;}
+[[ x"$OSTYPE" == "xsolaris"* ]] && NETSTATTCP(){ netstat -an -f inet; }
+
 tests="1.1 "
 tests+="2.1 2.2 "
 tests+="3.1 "
@@ -47,13 +50,6 @@ tests+="7.1 7.2 7.3 7.4 "
 tests+="8.1 8.2 8.3 "
 tests+="9.1 9.2 9.3 9.4 "
 tests+="10.1 10.2 10.3 10.4 "		# blitz, gs-sftp, gs-mount
-
-# tests="2.1 "
-#tests="5.2"
-# tests="6.1"
-# tests="6.1 6.2 6.3 6.4 7.1 7.2"
-# tests="8.1 8.2 8.3"
-# tests="6.5 6.6"
 
 if [ x"$1" != x ]; then
 	tests="$@ "
@@ -169,7 +165,7 @@ waittcp()
 	x=0;
 	rounds=`bc <<<"$SLEEP_WD / 0.1"`
 	while :; do
-		netstat -ant 2>/dev/null | grep LISTEN | grep "$1" &>/dev/null
+		NETSTATTCP 2>/dev/null | grep LISTEN | grep "$1" &>/dev/null
 		if [ $? -eq 0 ]; then
 			return
 		fi
@@ -417,7 +413,7 @@ fi
 
 if [[ "$tests" =~ '6.8' ]]; then
 test_start -n "Running: netcat #6.8 (stdin, assymetric sizes, TOR)....."
-netstat -ant 2>/dev/null | grep LISTEN | grep 9050 &>/dev/null
+NETSTATTCP 2>/dev/null | grep LISTEN | grep 9050 &>/dev/null
 if [ $? -ne 0 ]; then
 	skip "(no TOR)"
 else
@@ -451,7 +447,7 @@ GSPID1="$(sh -c './gs-netcat -k id_sec.txt -l -e /bin/sh 2>server_err.txt >serve
 echo "date; echo Hello World; exit" | ./gs-netcat -k id_sec.txt -w 2>client_err.txt >client_out.dat
 sleep_ct
 kill $GSPID1
-if [ "${MDHELLOW}" != "$(tail -n1 client_out.dat | MD5 /dev/stdin)" ]; then fail 1; fi
+if [ "${MDHELLOW}" != "$(tail -1 client_out.dat | MD5 /dev/stdin)" ]; then fail 1; fi
 $ECHO "${OK}"
 fi
 
@@ -461,7 +457,7 @@ GSPID1="$(sh -c './gs-netcat -k id_sec.txt -l -i 2>server_err.txt >server_out.da
 echo "date; echo Hello World; exit" | ./gs-netcat -k id_sec.txt -w 2>client_err.txt >client_out.dat
 sleep_ct
 kill $GSPID1 
-tail -n2 client_out.dat | grep 'Hello World' &>/dev/null
+tail -2 client_out.dat | grep 'Hello World' &>/dev/null
 if [ $? -ne 0 ]; then fail 1; fi
 $ECHO "${OK}"
 fi
@@ -474,9 +470,9 @@ GSPID3="$(sh -c '(echo "date && echo Hello World && exit") | ./gs-netcat -k id_s
 GSPID4="$(sh -c '(echo "date && echo Hello World && exit") | ./gs-netcat -k id_sec.txt -iw 2>client3_err.txt >client3_out.dat & echo ${!}')"
 waitk $GSPID2 $GSPID3 $GSPID4
 kill $GSPID1
-if [ x"$(tail -n2 client1_out.dat | grep 'Hello World')" == x ]; then fail 1; fi
-if [ x"$(tail -n2 client2_out.dat | grep 'Hello World')" == x ]; then fail 1; fi
-if [ x"$(tail -n2 client3_out.dat | grep 'Hello World')" == x ]; then fail 1; fi
+if [ x"$(tail -2 client1_out.dat | grep 'Hello World')" == x ]; then fail 1; fi
+if [ x"$(tail -2 client2_out.dat | grep 'Hello World')" == x ]; then fail 1; fi
+if [ x"$(tail -2 client3_out.dat | grep 'Hello World')" == x ]; then fail 1; fi
 $ECHO "${OK}"
 fi
 
@@ -528,7 +524,7 @@ fi
 if [[ "$tests" =~ '9.1' ]]; then
 # SOCKS test socat -> port 1085 -> GS-NET -> Port 12345 -> nc -ln
 test_start -n "Running: netcat #9.1 (socat/socks5)......................."
-socat -h | grep socks5 &>/dev/null
+socat -h 2>/dev/null | grep socks5 &>/dev/null
 if [ $? -ne 0 ]; then
 	skip "(no socat2)"
 else
@@ -550,7 +546,7 @@ fi
 if [[ "$tests" =~ '9.2' ]]; then
 # SOCKS test socat -> port 1085 -> GS-NET -> Port 12345 -> nc -ln
 test_start -n "Running: netcat #9.2 (socat/socks4)......................."
-socat -h | grep socks4 &>/dev/null
+socat -h 2>/dev/null | grep socks4 &>/dev/null
 if [ $? -ne 0 ]; then
 	skip "(no socat)"
 else
@@ -572,7 +568,7 @@ fi
 if [[ "$tests" =~ '9.3' ]]; then
 # SOCKS test socat -> port 1085 -> GS-NET -> Port 12345 -> nc -ln
 test_start -n "Running: netcat #9.3 (socat/socks4a)......................"
-socat -h | grep socks4 &>/dev/null
+socat -h 2>/dev/null | grep socks4 &>/dev/null
 if [ $? -ne 0 ]; then
 	skip "(no socat)"
 else
@@ -594,7 +590,7 @@ fi
 if [[ "$tests" =~ '9.4' ]]; then
 # SOCKS test with cUrl
 test_start -n "Running: netcat #9.4 (curl/socks5, multi)................."
-curl -h | grep socks5-hostname &>/dev/null
+curl -h 2>/dev/null | grep socks5-hostname &>/dev/null
 if [ $? -ne 0 ]; then
 	skip "(no curl)"
 else
@@ -672,26 +668,30 @@ fi
 
 if [[ "${tests}" =~ '10.4' ]]; then
 test_start -n "Running: gs-mount #10.4 .................................."
-rm -rf test_client &>/dev/null
-rmdir test_mnt &>/dev/null
-mkdir -p test_client test_mnt &>/dev/null
-cp test1k.dat test4k.dat test_client
-GSPID1="$(sh -c './gs-mount -k id_sec.txt -w test_mnt 2>client1_err.txt >client1_out.dat & echo ${!}')"
-GSPID2="$(sh -c 'cd test_client; ../gs-mount -k ../id_sec.txt -l 2>../server1_err.txt >../server1_out.dat & echo ${!}')"
-waitk $GSPID1
-md5fail 1 test_mnt/test1k.dat test_client/test1k.dat
-md5fail 2 test_mnt/test4k.dat test_client/test4k.dat
-if command -v fusermount >/dev/null 2>&1; then
-	fusermount -zu test_mnt
+command -v sshfs  2>/dev/null 
+if [ $? -ne 0 ]; then
+	skip "(no sshfs)"
 else
-	umount test_mnt
+	rm -rf test_client &>/dev/null
+	rmdir test_mnt &>/dev/null
+	mkdir -p test_client test_mnt &>/dev/null
+	cp test1k.dat test4k.dat test_client
+	GSPID1="$(sh -c './gs-mount -k id_sec.txt -w test_mnt 2>client1_err.txt >client1_out.dat & echo ${!}')"
+	GSPID2="$(sh -c 'cd test_client; ../gs-mount -k ../id_sec.txt -l 2>../server1_err.txt >../server1_out.dat & echo ${!}')"
+	waitk $GSPID1
+	md5fail 1 test_mnt/test1k.dat test_client/test1k.dat
+	md5fail 2 test_mnt/test4k.dat test_client/test4k.dat
+	if command -v fusermount >/dev/null 2>&1; then
+		fusermount -zu test_mnt
+	else
+		umount test_mnt
+	fi
+	kill $GSPID2
+	rm -rf test_client
+	rmdir test_mnt
+	$ECHO "${OK}"
+	fi
 fi
-kill $GSPID2
-rm -rf test_client
-rmdir test_mnt
-$ECHO "${OK}"
-fi
-
 
 if [ x"$1" == x ]; then
 	### Clean-up

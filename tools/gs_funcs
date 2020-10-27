@@ -40,9 +40,9 @@ test_sftp()
 }
 
 # Verify that all symboles will get hijacked. exit on failure.
-# 			linux      osx
-# sftp		-Du			-pu
-# .so		-D|T		-p|T
+# 			linux      osx		solaris
+# sftp		-Du			-pu		-Du
+# .so		-D|T		-p|T	-p|T
 uchroot_check()
 {
 	local VALID_CMD
@@ -55,6 +55,9 @@ uchroot_check()
 		# on OSX remove the starting "_" from symboles
 		sym_sftp="$(nm -pu "${SFTP_SERVER_BIN}" | sed 's/^_//g')"
 		sym_uchr="$(nm -p "${UCHROOT_BIN}" | grep " T " | sed 's/^_//g')"
+	elif [[ x"$OSTYPE" == "xsolaris"* ]]; then
+		sym_sftp="$(nm -Du "${SFTP_SERVER_BIN}")"
+		sym_uchr="$(nm -p "${UCHROOT_BIN}" | grep " T ")"
 	else
 		sym_sftp="$(nm -Du "${SFTP_SERVER_BIN}")"
 		sym_uchr="$(nm -D "${UCHROOT_BIN}" | grep " T ")"
@@ -66,6 +69,10 @@ uchroot_check()
 		ucheck_fail "${sym_sftp}" "${sym_uchr}" "lstat\$INODE64"
 		ucheck_fail "${sym_sftp}" "${sym_uchr}" "stat\$INODE64"
 		ucheck_fail "${sym_sftp}" "${sym_uchr}" "opendir\$INODE64"
+	elif [[ x"$OSTYPE" == "xsolaris"* ]]; then
+		ucheck_fail "${sym_sftp}" "${sym_uchr}" "lstat"
+		ucheck_fail "${sym_sftp}" "${sym_uchr}" "stat"
+		ucheck_fail "${sym_sftp}" "${sym_uchr}" "opendir"
 	else
 		ucheck_fail "${sym_sftp}" "${sym_uchr}" "__lxstat"
 		ucheck_fail "${sym_sftp}" "${sym_uchr}" "__xstat"
@@ -77,7 +84,7 @@ uchroot_check()
 
 	# Run a self test (sftp -D sftp-server)
 	command -v sftp >/dev/null 2>&1 || { echo >&2 "chroot self-test failed (sftp not found). Try -U to disable."; exit 255; }
-	# echo "ROOTDIR=${ROOTDIR}"
+	echo "ROOTDIR=${ROOTDIR}"
 	mkdir -p "${ROOTDIR}/ok"
 	mkdir -p "${ROOTDIR}/denied"
 	echo hello exist-allowed.txt >"${ROOTDIR}/ok/exist-allowed.txt"
@@ -250,7 +257,7 @@ sftp_server_start()
 		if [[ -n "${IS_UCHROOT}" ]]; then
 			ROOTDIR=$(mktemp -d -t thc-gs-sftp-XXXXXXXXXXXXXXX) 
 		fi
-		SFTP_SERVER_BIN=$(find_binary sftp-server "$PREFIX"/lib /usr/lib /usr/local/lib)
+		SFTP_SERVER_BIN=$(find_binary sftp-server "$PREFIX"/lib /usr/lib /usr/local/lib /usr/lib/ssh)
 		PRELOAD="LD_PRELOAD=${UCHROOT_BIN}"
 	fi
 	[[ -z "${SFTP_SERVER_BIN}" ]] && { echo >&2 "sftp-server binary not found."; exit 1; }

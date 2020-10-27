@@ -429,6 +429,25 @@ lstat$INODE64(const char *path, void *buf)
 }
 
 /*
+ * Solaris
+ */
+int
+stat(const char *path, struct stat *buf)
+{
+	DEBUGF("%s(%s, %p) (no_hijack=%d)\n", __func__, path, buf, is_no_hijack);
+
+	return thc_funcintfv(__func__, path, buf, 1);
+}
+
+int
+lstat(const char *path, struct stat *buf)
+{
+	DEBUGF("%s(%s, %p) (no_hijack=%d)\n", __func__, path, buf, is_no_hijack);
+
+	return thc_funcintfv(__func__, path, buf, 0 /* ALLOW PARTIAL MATCH */);	
+}
+
+/*
  * Redirect stub of construct "void *func(const char *)"
  */
 typedef void *(*real_funcptrf_t)(const char *file);

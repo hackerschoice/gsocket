@@ -13,6 +13,9 @@
 #include <sys/ioctl.h>
 #include <sys/resource.h>
 #include <netinet/in.h>
+#ifdef HAVE_NETINET_IN_SYSTM_H
+# include <netinet/in_systm.h>
+#endif
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <netinet/udp.h>
