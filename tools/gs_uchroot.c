@@ -392,51 +392,32 @@ statvfs(const char *path, void *buf)
 /*
  * OSX
  */
-int
-stat$INODE64(const char *path, void *buf)
-{
-	DEBUGF("%s(%s, %p) (no_hijack=%d)\n", __func__, path, buf, is_no_hijack);
-
-	/* allow stat("/"); */
-	if (strcmp(path, "/") == 0)
-	{
-		int ret;
-		is_no_hijack = 1;
-		ret = real_funcintfv(__func__, path, buf);
-		is_no_hijack = 0;
-		return ret;
-	}
-
-	return thc_funcintfv(__func__, path, buf, 1);
-}
-
-int
-lstat$INODE64(const char *path, void *buf)
-{
-	DEBUGF("%s(%s, %p) (no_hijack=%d)\n", __func__, path, buf, is_no_hijack);
-
-	/* OSX accesses but does not need this... */
-	// if (strcmp(path, "/System/Volumes/Data") == 0)
-	// {
-	// 	int ret;
-	// 	is_no_hijack = 1;
-	// 	ret = real_funcintfv(__func__, path, buf);
-	// 	is_no_hijack = 0;
-	// 	return ret;
-	// }
-
-	return thc_funcintfv(__func__, path, buf, 0 /* ALLOW PARTIAL MATCH */);
-}
+#ifdef __APPLE__
+# define STATFNAME	"stat$INODE64"
+# define LSTATFNAME	"lstat$INODE64"
+#else /* Solaris. Linux uses __xstat() and __lxstat() */
+# define STATFNAME	"stat"
+# define LSTATFNAME	"lstat"
+#endif
 
 /*
- * Solaris
+ * OSX & Solaris
  */
 int
 stat(const char *path, struct stat *buf)
 {
 	DEBUGF("%s(%s, %p) (no_hijack=%d)\n", __func__, path, buf, is_no_hijack);
+		/* allow stat("/"); */
+	if (strcmp(path, "/") == 0)
+	{
+		int ret;
+		is_no_hijack = 1;
+		ret = real_funcintfv(STATFNAME, path, buf);
+		is_no_hijack = 0;
+		return ret;
+	}
 
-	return thc_funcintfv(__func__, path, buf, 1);
+	return thc_funcintfv(STATFNAME, path, buf, 1);
 }
 
 int
@@ -444,7 +425,7 @@ lstat(const char *path, struct stat *buf)
 {
 	DEBUGF("%s(%s, %p) (no_hijack=%d)\n", __func__, path, buf, is_no_hijack);
 
-	return thc_funcintfv(__func__, path, buf, 0 /* ALLOW PARTIAL MATCH */);	
+	return thc_funcintfv(LSTATFNAME, path, buf, 0 /* ALLOW PARTIAL MATCH */);	
 }
 
 /*

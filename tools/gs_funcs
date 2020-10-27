@@ -84,7 +84,6 @@ uchroot_check()
 
 	# Run a self test (sftp -D sftp-server)
 	command -v sftp >/dev/null 2>&1 || { echo >&2 "chroot self-test failed (sftp not found). Try -U to disable."; exit 255; }
-	echo "ROOTDIR=${ROOTDIR}"
 	mkdir -p "${ROOTDIR}/ok"
 	mkdir -p "${ROOTDIR}/denied"
 	echo hello exist-allowed.txt >"${ROOTDIR}/ok/exist-allowed.txt"

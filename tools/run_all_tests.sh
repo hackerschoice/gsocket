@@ -412,7 +412,7 @@ $ECHO "${OK}"
 fi
 
 if [[ "$tests" =~ '6.8' ]]; then
-test_start -n "Running: netcat #6.8 (stdin, assymetric sizes, TOR)....."
+test_start -n "Running: netcat #6.8 (stdin, assymetric sizes, TOR)......."
 NETSTATTCP 2>/dev/null | grep LISTEN | grep 9050 &>/dev/null
 if [ $? -ne 0 ]; then
 	skip "(no TOR)"
@@ -668,7 +668,7 @@ fi
 
 if [[ "${tests}" =~ '10.4' ]]; then
 test_start -n "Running: gs-mount #10.4 .................................."
-command -v sshfs  2>/dev/null 
+command -v sshfs  >/dev/null 2>&1
 if [ $? -ne 0 ]; then
 	skip "(no sshfs)"
 else
