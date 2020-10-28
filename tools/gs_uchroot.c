@@ -393,31 +393,41 @@ int statvfs(const char *path, void *buf)
 }
 
 /*
- * OSX
+ * define to which original functions the calls should be redirected to:
+ * OSX	: stat 		-> stat$INODE64
+ * SOL10: stat64()	-> stat64()
+ * SOL11: stat 		-> stat()
+ * Linux: __xstat() -> __xstat()
  */
 #ifdef __APPLE__
 # define STATFNAME		"stat$INODE64"
 # define LSTATFNAME		"lstat$INODE64"
 #else
-# ifdef HAVE_STAT64	// Solaris 10
-#  define STATFNAME		"stat64"
-#  define LSTATFNAME	"lstat64"
-# else				// Solaris 11 
-#  define STATFNAME		"stat"
-#  define LSTATFNAME	"lstat"
+# if defined(__sun)
+#  if defined(HAVE_STAT64)	// Solaris 10
+#   define STATFNAME	"stat64"
+#   define LSTATFNAME	"lstat64"
+#   define OPENFNAME	"open64"	// Solaris 10
+#   define IS_SOL64		1
+#  endif
 # endif
 #endif
 
-#ifdef HAVE_OPEN64
-# define OPENFNAME		"open64"	// Solaris 10
-#else
-# define OPENFNAME		"open"		// all others
+#ifndef OPENFNAME
+# define OPENFNAME	"open"		// all others
 #endif
+#ifndef STATFNAME
+# define STATFNAME	"stat"
+#endif
+#ifndef LSTATNAME
+# define LSTATFNAME	"lstat"
+#endif
+
 
 /*
  * OSX & Solaris
  */
-#ifdef HAVE_STAT64
+#ifdef IS_SOL64
 int stat64(const char *path, struct stat64 *buf)
 #else
 int stat(const char *path, struct stat *buf)
@@ -437,7 +447,7 @@ int stat(const char *path, struct stat *buf)
 	return thc_funcintfv(STATFNAME, path, buf, 1);
 }
 
-#ifdef HAVE_STAT64
+#ifdef IS_SOL64
 int lstat64(const char *path, struct stat64 *buf)
 #else
 int lstat(const char *path, struct stat *buf)
@@ -533,7 +543,7 @@ chmod(const char *file, mode_t mode)
 
 typedef int (*real_open_t)(const char *file, int flags, mode_t mode);
 static int real_open(const char *file, int flags, mode_t mode) {return ((real_open_t)dlsym(RTLD_NEXT, "open"))(file, flags, mode); }
-#ifdef HAVE_OPEN64
+#ifdef IS_SOL64
 int open64(const char *file, int flags, mode_t mode)
 #else
 int open(const char *file, int flags, mode_t mode)
