@@ -24,12 +24,17 @@ fi
 
 PATH=~/usr/bin:$PATH
 
-SLEEP_WD=15	# Max seconds to wait for a process to finish receiving...
+SLEEP_WD=20	# Max seconds to wait for a process to finish receiving...
 command -v md5 >/dev/null 2>&1 		&& MD5(){ md5 -q "${1}";}
 command -v md5sum >/dev/null 2>&1 	&& MD5() { md5sum "${1}" | cut -f1 -d' ';}
 command -v bc >/dev/null 2>&1 || { echo >&2 "bc not installed. apt-get install bc."; exit 255; }
 # Use traditional netcat that supports "netcat -nlp" for cross-platform comp.
-command -v netcat >/dev/null 2>&1 || { echo >&2 "netcat not installed. apt-get install netcat."; exit 255; }
+# on CentOS there is only nmpa's netcat as 'nc' but we are expecting 'netcat()'.
+if [[ "$(nc --version 2>&1)" =~ Ncat ]]; then
+	netcat() { nc $@;}
+else
+	command -v netcat >/dev/null 2>&1 || { echo >&2 "netcat not installed. apt-get install netcat."; exit 255; }
+fi
 sleep 0.1 &>/dev/null || { echo >&2 "sleep not accepting 0.1. PATH set correct?"; exit 255; }
 OK="....[\033[1;32mOK\033[0m]"
 FAIL="[\033[1;31mFAILED\033[0m]"
@@ -65,7 +70,12 @@ mk_dummy test4k.dat 4
 mk_dummy test50k.dat 50
 mk_dummy test1M.dat 1024
 mk_dummy test5M.dat 5120
-mk_dummy test50M.dat 51200
+if [[ -n "$QUICK" ]]; then
+	rm -rf test50M.dat &>/dev/null
+	mk_dummy test50M.dat 15
+else
+	mk_dummy test50M.dat 51200
+fi
 echo "Fubar" >>test50M.dat	# Make it an odd length
 MD50MB="$(MD5 test50M.dat)"
 MD5MB="$(MD5 test5M.dat)"

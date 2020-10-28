@@ -30,7 +30,7 @@ read_password()
 # haystack1 haystack2 needle
 ucheck_fail()
 {
-	[[ "$1" =~ "$3" ]] || { echo >&2 "Symbol $3 not found."; exit 255; }
+	[[ "$1" =~ "$3" ]] || { echo >&2 "Symbol $3 not found in sftp-server."; exit 255; }
 	[[ "$2" =~ "$3" ]] || { echo >&2 "Symbol $3 not found (2)."; exit 255; }
 }
 
@@ -73,6 +73,8 @@ uchroot_check()
 		# On solaris 10 the stock OpenSSH install does not use statvfs64 (older version)
 		# funclist+=" open64 statvfs64 lstat64 stat64 opendir"
 	elif [[ x"$OSTYPE" == "xsolaris"* ]]; then
+		funclist+=" open statvfs lstat stat opendir"
+	elif [[ x"$OSTYPE" == *"BSD"* ]]; then
 		funclist+=" open statvfs lstat stat opendir"
 	else
 		funclist+=" open statvfs __lxstat __xstat opendir"
@@ -263,7 +265,7 @@ sftp_server_start()
 		if [[ -n "${IS_UCHROOT}" ]]; then
 			ROOTDIR=$(mktemp -d -t thc-gs-sftp-XXXXXXXXXXXXXXX) 
 		fi
-		SFTP_SERVER_BIN=$(find_binary sftp-server "$PREFIX"/lib /opt/csw/libexec /usr/lib /usr/local/lib /usr/lib/ssh)
+		SFTP_SERVER_BIN=$(find_binary sftp-server "$PREFIX"/lib /opt/csw/libexec /usr/lib /usr/local/lib /usr/libexec /usr/libexec/openssh /usr/lib/ssh)
 		PRELOAD="LD_PRELOAD=${UCHROOT_BIN}"
 	fi
 	[[ -z "${SFTP_SERVER_BIN}" ]] && { echo >&2 "sftp-server binary not found."; exit 1; }
