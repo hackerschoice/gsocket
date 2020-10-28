@@ -392,6 +392,7 @@ thc_funcintfv(const char *fname, const char *file, void *ptr, int fullmatch)
 	if (err == 0)
 		err = real_funcintfv(fname, file, ptr);
 	is_no_hijack = 0;
+	DEBUGF("returning %d\n", err);
 	return err;
 }
 
@@ -572,7 +573,12 @@ mkdir(const char *path, mode_t mode)
 	 * "test"
 	 * "/tmp/test"
 	 */
-	return thc_funcintfm(__func__, path, mode);
+
+	int ret;
+	is_no_hijack = 1;
+	ret = thc_funcintfm(__func__, path, mode);
+	is_no_hijack = 0;
+	return ret;
 }
 
 int

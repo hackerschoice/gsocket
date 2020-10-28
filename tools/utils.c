@@ -559,6 +559,8 @@ pty_cmd(const char *cmd)
 		const char *args = "-il";	// bash, fish, zsh
 		if (strcmp(shell_name, "-sh") == 0)
 			args = "-i";	// solaris 10 /bin/sh does not like -l
+		if (strcmp(shell_name, "-csh") == 0)
+			execle(shell, shell_name, NULL, envp); // csh (fbsd) without any arguments
 
 		execle(shell, shell_name, args, NULL, envp);
 		ERREXIT("execlp(%s) failed: %s\n", shell, strerror(errno));

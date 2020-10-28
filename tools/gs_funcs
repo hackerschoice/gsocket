@@ -30,8 +30,8 @@ read_password()
 # haystack1 haystack2 needle
 ucheck_fail()
 {
-	[[ "$1" =~ "$3" ]] || { echo >&2 "Symbol $3 not found in sftp-server."; exit 255; }
-	[[ "$2" =~ "$3" ]] || { echo >&2 "Symbol $3 not found (2)."; exit 255; }
+	[[ "$1" =~ $3 ]] || { echo >&2 "Symbol $3 not found in sftp-server."; exit 255; }
+	[[ "$2" =~ $3 ]] || { echo >&2 "Symbol $3 not found (2)."; exit 255; }
 }
 
 test_sftp()
