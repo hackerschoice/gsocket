@@ -420,20 +420,14 @@ int statvfs(const char *path, void *buf)
 #ifdef __APPLE__
 # define STATFNAME		"stat$INODE64"
 # define LSTATFNAME		"lstat$INODE64"
-#else
-// # if defined(__sun)
-// #  if defined(HAVE_STAT64)	// Solaris 10
-// #   define STATFNAME	"stat64"
-// #   define LSTATFNAME	"lstat64"
-// #   define OPENFNAME	"open64"	// Solaris 10
-// #   define IS_SOL64		1
-// #  endif
-// # endif
 #endif
 
-// #ifndef OPENFNAME
-// # define OPENFNAME	"open"		// all others
-// #endif
+#ifdef __sun
+# ifdef HAVE_OPEN64
+#  define IS_SOL10	1	// Solaris 1
+# endif
+#endif
+
 #ifndef STATFNAME
 # define STATFNAME	"stat"
 #endif
@@ -441,6 +435,11 @@ int statvfs(const char *path, void *buf)
 # define LSTATFNAME	"lstat"
 #endif
 
+/*
+ * Solaris10 wants stat64
+ * Solaris11 wants stat()
+ * OSX wants stat()
+ */
 
 /*
  * OSX & Solaris
@@ -462,17 +461,22 @@ my_stat(const char *fname, const char *path, void *buf)
 	return thc_funcintfv(fname, path, buf, 1);
 }
 
+#if !defined(__sun) || defined(IS_SOL10)
 int
 stat64(const char *path, struct stat64 *buf)
 {
 	return my_stat(__func__, path, buf);
 }
+#endif
 
+#if !defined(IS_SOL10)
+/* Solaris cant have stat64() and stat() defined */
 int
 stat(const char *path, struct stat *buf)
 {
 	return my_stat(STATFNAME, path, buf);
 }
+#endif
 
 static int
 my_lstat(const char *fname, const char *path, void *buf)
@@ -481,17 +485,21 @@ my_lstat(const char *fname, const char *path, void *buf)
 	return thc_funcintfv(fname, path, buf, 0 /* ALLOW PARTIAL MATCH */);	
 }
 
+#if !defined(__sun) || defined(IS_SOL10)
 int
 lstat64(const char *path, struct stat64 *buf)
 {
 	return my_lstat(__func__, path, buf);
 }
+#endif
 
+#if !defined(IS_SOL10)
 int
 lstat(const char *path, struct stat *buf)
 {
 	return my_lstat(LSTATFNAME, path, buf);
 }
+#endif
 
 /*
  * Redirect stub of construct "void *func(const char *)"
