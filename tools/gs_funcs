@@ -88,7 +88,7 @@ uchroot_check()
 	[[ "${funclist}" =~ "NOT-FOUND"* ]] && { echo >&2 "Missing symbol...${funclist}"; exit 255; }
 
 	funclist+="chmod link mkdir rename rmdir symlink unlink"
-	# echo "funclist = $funclist"
+	echo "funclist = $funclist"
 	# if [[ x"$OSTYPE" == "xdarwin"* ]]; then
 	# 	true
 	# 	# funclist+=" open statvfs lstat\$INODE64 stat\$INODE64 opendir\$INODE64"
@@ -113,7 +113,7 @@ uchroot_check()
 	command -v sftp >/dev/null 2>&1 || { echo >&2 "chroot self-test failed (sftp not found). Try -U to disable."; exit 255; }
 	mkdir -p "${ROOTDIR}/ok"
 	mkdir -p "${ROOTDIR}/denied"
-	# echo "ROOTDIR=${ROOTDIR}"
+	echo "ROOTDIR=${ROOTDIR}"
 	echo hello exist-allowed.txt >"${ROOTDIR}/ok/exist-allowed.txt"
 	echo hello exist-denied.txt >"${ROOTDIR}/denied/exist-denied.txt"
 	dd if=/dev/urandom bs=1k count=1 2>/dev/null >"${ROOTDIR}/ok/test1k.dat"

@@ -407,8 +407,11 @@ int statvfs(const char *path, void *buf)
 }
 
 /*
- * define to which original functions the calls should be redirected to:
- * OSX	: stat 		-> stat$INODE64
+ * Oddity that on OSX any call to stat() can not be directed to the real stat()
+ * but needs to be directed to stat$INODE64().
+ *
+ * OSX	: stat 		-> stat$INODE64  <<<-- Special Case
+ * OSX	: lstat 	-> lstat$INODE64  <<<-- Special Case
  * SOL10: stat64()	-> stat64()
  * SOL11: stat 		-> stat()
  * Linux: __xstat() -> __xstat()
@@ -417,19 +420,19 @@ int statvfs(const char *path, void *buf)
 # define STATFNAME		"stat$INODE64"
 # define LSTATFNAME		"lstat$INODE64"
 #else
-# if defined(__sun)
-#  if defined(HAVE_STAT64)	// Solaris 10
-#   define STATFNAME	"stat64"
-#   define LSTATFNAME	"lstat64"
-#   define OPENFNAME	"open64"	// Solaris 10
-#   define IS_SOL64		1
-#  endif
-# endif
+// # if defined(__sun)
+// #  if defined(HAVE_STAT64)	// Solaris 10
+// #   define STATFNAME	"stat64"
+// #   define LSTATFNAME	"lstat64"
+// #   define OPENFNAME	"open64"	// Solaris 10
+// #   define IS_SOL64		1
+// #  endif
+// # endif
 #endif
 
-#ifndef OPENFNAME
-# define OPENFNAME	"open"		// all others
-#endif
+// #ifndef OPENFNAME
+// # define OPENFNAME	"open"		// all others
+// #endif
 #ifndef STATFNAME
 # define STATFNAME	"stat"
 #endif
@@ -458,14 +461,16 @@ my_stat(const char *fname, const char *path, void *buf)
 	return thc_funcintfv(fname, path, buf, 1);
 }
 
-int stat64(const char *path, struct stat64 *buf)
+int
+stat64(const char *path, struct stat64 *buf)
 {
 	return my_stat(__func__, path, buf);
 }
 
-int stat(const char *path, struct stat *buf)
+int
+stat(const char *path, struct stat *buf)
 {
-	return my_stat(__func__, path, buf);
+	return my_stat(STATFNAME, path, buf);
 }
 
 static int
@@ -480,10 +485,11 @@ lstat64(const char *path, struct stat64 *buf)
 {
 	return my_lstat(__func__, path, buf);
 }
+
 int
 lstat(const char *path, struct stat *buf)
 {
-	return my_lstat(__func__, path, buf);
+	return my_lstat(LSTATFNAME, path, buf);
 }
 
 /*
