@@ -65,20 +65,19 @@ uchroot_check()
 
 	[[ -n "$sym_uchr" ]] || { echo >&2 "chroot self-test failed (nm bad1). Try -U to disable."; exit 255; }
 	[[ -n "$sym_sftp" ]] || { echo >&2 "chroot self-test failed (nm bad2). Try -U to disable."; exit 255; }
+	funclist="chmod link mkdir rename rmdir symlink unlink"
 	if [[ x"$OSTYPE" == "xdarwin"* ]]; then
-		ucheck_fail "${sym_sftp}" "${sym_uchr}" "lstat\$INODE64"
-		ucheck_fail "${sym_sftp}" "${sym_uchr}" "stat\$INODE64"
-		ucheck_fail "${sym_sftp}" "${sym_uchr}" "opendir\$INODE64"
+		funclist+=" open statvfs lstat\$INODE64 stat\$INODE64 opendir\$INODE64"
+	elif [[ x"$OSTYPE" == "xsolaris2.10"* ]]; then
+		funclist+=" open64 lstat64 stat64 opendir"
+		# On solaris 10 the stock OpenSSH install does not use statvfs64 (older version)
+		# funclist+=" open64 statvfs64 lstat64 stat64 opendir"
 	elif [[ x"$OSTYPE" == "xsolaris"* ]]; then
-		ucheck_fail "${sym_sftp}" "${sym_uchr}" "lstat"
-		ucheck_fail "${sym_sftp}" "${sym_uchr}" "stat"
-		ucheck_fail "${sym_sftp}" "${sym_uchr}" "opendir"
+		funclist+=" open statvfs lstat stat opendir"
 	else
-		ucheck_fail "${sym_sftp}" "${sym_uchr}" "__lxstat"
-		ucheck_fail "${sym_sftp}" "${sym_uchr}" "__xstat"
-		ucheck_fail "${sym_sftp}" "${sym_uchr}" "opendir"
+		funclist+=" open statvfs __lxstat __xstat opendir"
 	fi
-	for func in chmod link mkdir open rename rmdir statvfs symlink unlink; do
+	for func in ${funclist}; do
 		ucheck_fail "${sym_sftp}" "${sym_uchr}" "${func}"
 	done
 
@@ -86,6 +85,7 @@ uchroot_check()
 	command -v sftp >/dev/null 2>&1 || { echo >&2 "chroot self-test failed (sftp not found). Try -U to disable."; exit 255; }
 	mkdir -p "${ROOTDIR}/ok"
 	mkdir -p "${ROOTDIR}/denied"
+	# echo "ROOTDIR=${ROOTDIR}"
 	echo hello exist-allowed.txt >"${ROOTDIR}/ok/exist-allowed.txt"
 	echo hello exist-denied.txt >"${ROOTDIR}/denied/exist-denied.txt"
 	dd if=/dev/urandom bs=1k count=1 2>/dev/null >"${ROOTDIR}/ok/test1k.dat"
@@ -227,6 +227,13 @@ do_getopt()
 				;;
 		esac
 	done
+	# Solaris 10 problems:
+	# - stock sftp-server does not allow -p <whitelist> -> Acceptable risk
+	# - LD_PRELOAD does not seem to work. Does anyone still use solaris10?
+	if [[ x"$OSTYPE" == "xsolaris2.10"* ]]; then
+		echo -e >&2 "\033[1;31mWARNING\033[0m: uchroot not (yet) supported on solaris 10."
+		unset IS_UCHROOT
+	fi
 }
 
 env_arg_init()
@@ -256,7 +263,7 @@ sftp_server_start()
 		if [[ -n "${IS_UCHROOT}" ]]; then
 			ROOTDIR=$(mktemp -d -t thc-gs-sftp-XXXXXXXXXXXXXXX) 
 		fi
-		SFTP_SERVER_BIN=$(find_binary sftp-server "$PREFIX"/lib /usr/lib /usr/local/lib /usr/lib/ssh)
+		SFTP_SERVER_BIN=$(find_binary sftp-server "$PREFIX"/lib /opt/csw/libexec /usr/lib /usr/local/lib /usr/lib/ssh)
 		PRELOAD="LD_PRELOAD=${UCHROOT_BIN}"
 	fi
 	[[ -z "${SFTP_SERVER_BIN}" ]] && { echo >&2 "sftp-server binary not found."; exit 1; }

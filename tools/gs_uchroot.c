@@ -382,8 +382,11 @@ thc_funcintfv(const char *fname, const char *file, void *ptr, int fullmatch)
 	return err;
 }
 
-int
-statvfs(const char *path, void *buf)
+#ifdef HAVE_STATVFS64
+int statvfs64(const char *path, void *buf)
+#else
+int statvfs(const char *path, void *buf)
+#endif
 {
 	DEBUGF("%s(%s, %p) (no_hijack=%d)\n", __func__, path, buf, is_no_hijack);
 	return thc_funcintfv(__func__, path, buf, 1);
@@ -393,18 +396,32 @@ statvfs(const char *path, void *buf)
  * OSX
  */
 #ifdef __APPLE__
-# define STATFNAME	"stat$INODE64"
-# define LSTATFNAME	"lstat$INODE64"
-#else /* Solaris. Linux uses __xstat() and __lxstat() */
-# define STATFNAME	"stat"
-# define LSTATFNAME	"lstat"
+# define STATFNAME		"stat$INODE64"
+# define LSTATFNAME		"lstat$INODE64"
+#else
+# ifdef HAVE_STAT64	// Solaris 10
+#  define STATFNAME		"stat64"
+#  define LSTATFNAME	"lstat64"
+# else				// Solaris 11 
+#  define STATFNAME		"stat"
+#  define LSTATFNAME	"lstat"
+# endif
+#endif
+
+#ifdef HAVE_OPEN64
+# define OPENFNAME		"open64"	// Solaris 10
+#else
+# define OPENFNAME		"open"		// all others
 #endif
 
 /*
  * OSX & Solaris
  */
-int
-stat(const char *path, struct stat *buf)
+#ifdef HAVE_STAT64
+int stat64(const char *path, struct stat64 *buf)
+#else
+int stat(const char *path, struct stat *buf)
+#endif
 {
 	DEBUGF("%s(%s, %p) (no_hijack=%d)\n", __func__, path, buf, is_no_hijack);
 		/* allow stat("/"); */
@@ -420,8 +437,11 @@ stat(const char *path, struct stat *buf)
 	return thc_funcintfv(STATFNAME, path, buf, 1);
 }
 
-int
-lstat(const char *path, struct stat *buf)
+#ifdef HAVE_STAT64
+int lstat64(const char *path, struct stat64 *buf)
+#else
+int lstat(const char *path, struct stat *buf)
+#endif
 {
 	DEBUGF("%s(%s, %p) (no_hijack=%d)\n", __func__, path, buf, is_no_hijack);
 
@@ -481,7 +501,7 @@ static int real_funcintfm(const char *fname, const char *file, mode_t mode) {ret
 static int
 thc_funcintfm(const char *fname, const char *file, mode_t mode)
 {
-	DEBUGF("%s(%s, %d)\n", fname, file, mode);
+	DEBUGF("%s(%s, %u)\n", fname, file, (unsigned int)mode);
 	thc_init();
 
 	if (thc_realfile(fname, file, rp_buf) == NULL)
@@ -513,8 +533,11 @@ chmod(const char *file, mode_t mode)
 
 typedef int (*real_open_t)(const char *file, int flags, mode_t mode);
 static int real_open(const char *file, int flags, mode_t mode) {return ((real_open_t)dlsym(RTLD_NEXT, "open"))(file, flags, mode); }
-int
-open(const char *file, int flags, mode_t mode)
+#ifdef HAVE_OPEN64
+int open64(const char *file, int flags, mode_t mode)
+#else
+int open(const char *file, int flags, mode_t mode)
+#endif
 {
 	int err = 0;
 	DEBUGF("open(%s)\n", file);

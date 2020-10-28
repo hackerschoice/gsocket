@@ -458,6 +458,78 @@ setup_cmd_child(void)
 	signal(SIGPIPE, SIG_DFL);
 }
 
+
+#ifndef HAVE_OPENPTY
+static int
+openpty(int *amaster, int *aslave, void *a, void *b, void *c)
+{
+	int master;
+	int slave;
+
+	master = posix_openpt(O_RDWR | O_NOCTTY);
+	if (master == -1)
+		return -1;
+	if (grantpt(master) != 0)
+		return -1;
+	if (unlockpt(master) != 0)
+		return -1;
+
+	slave = open(ptsname(master), O_RDWR | O_NOCTTY);
+	if (slave < 0)
+		return -1;
+
+# if defined __sun || defined __hpux /* Solaris, HP-UX */
+  if (ioctl (slave, I_PUSH, "ptem") < 0
+      || ioctl (slave, I_PUSH, "ldterm") < 0
+#  if defined __sun
+      || ioctl (slave, I_PUSH, "ttcompat") < 0
+#  endif
+     )
+    {
+      close (slave);
+      return -1;
+    }
+# endif	
+
+    *amaster = master;
+    *aslave = slave;
+
+    return 0;
+}
+#endif	/* HAVE_OPENPTY */
+
+#ifndef HAVE_FORKPTY
+static int
+forkpty(int *master, void *a, void *b, void *c)
+{
+	pid_t pid;
+	int slave;
+
+	if (openpty(master, &slave, NULL, NULL, NULL) == -1)
+		return -1;
+
+	pid = fork();
+	switch (pid)
+	{
+		case -1:
+			return -1;
+		case 0:
+			/* CHILD */
+			close(*master);
+			dup2(slave, 0);
+			dup2(slave, 1);
+			dup2(slave, 2);
+			return 0;	// CHILD
+		default:
+			/* PARENT */
+			close(slave);
+			return pid;
+	}
+
+	return -1; // NOT REACHED
+}
+#endif /* HAVE_FORKPTY */
+
 int
 pty_cmd(const char *cmd)
 {

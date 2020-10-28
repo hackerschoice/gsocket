@@ -79,8 +79,8 @@ esac
 
 AC_CHECK_LIB(util, forkpty)
 dnl AC_CHECK_LIB(bsd, main)
-dnl AC_CHECK_LIB(socket, socket)
-dnl AC_CHECK_LIB(nsl, gethostbyname)
+AC_CHECK_LIB(socket, socket)
+AC_CHECK_LIB(nsl, gethostbyname)
 dnl AC_CHECK_LIB([m], [sqrt])
 dnl AC_CHECK_LIB([net], [libnet_name_resolve], [AC_MSG_ERROR([libnet 1.0.x found. Requires libnet 1.1 or newer])])
 dnl AC_CHECK_LIB([net], [libnet_init], ,[AC_MSG_ERROR([libnet 1.1.x not found])])
@@ -110,7 +110,7 @@ AC_TYPE_SIZE_T
 dnl If uid_t is not defined, define uid_t to be int and gid_t to be int.
 AC_TYPE_UID_T
 
-AC_CHECK_FUNCS(gettimeofday memcpy strchr strlcat)
+AC_CHECK_FUNCS(gettimeofday memcpy strchr strlcat forkpty openpty getline stat64 open64 statvfs64)
 
 AC_ARG_ENABLE([31337],
 	AS_HELP_STRING([--enable-31337],

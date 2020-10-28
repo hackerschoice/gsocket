@@ -30,6 +30,7 @@ command -v md5sum >/dev/null 2>&1 	&& MD5() { md5sum "${1}" | cut -f1 -d' ';}
 command -v bc >/dev/null 2>&1 || { echo >&2 "bc not installed. apt-get install bc."; exit 255; }
 # Use traditional netcat that supports "netcat -nlp" for cross-platform comp.
 command -v netcat >/dev/null 2>&1 || { echo >&2 "netcat not installed. apt-get install netcat."; exit 255; }
+sleep 0.1 &>/dev/null || { echo >&2 "sleep not accepting 0.1. PATH set correct?"; exit 255; }
 OK="....[\033[1;32mOK\033[0m]"
 FAIL="[\033[1;31mFAILED\033[0m]"
 SKIP="[\033[1;33mskipping\033[0m]"
@@ -194,7 +195,7 @@ new_id
 
 if [[ "$tests" =~ '1.1 ' ]]; then
 ### 1 - Hello World
-test_start -n "Running: Hello world #1.1 ................................"
+test_start -n "Running: Hello World #1.1 ................................"
 GSPID="$(sh -c './gs-helloworld -k id_sec.txt -l 2>server_err.txt >server_out.dat & echo ${!}')"
 # sleep 0.5 required or otherwise kernel will send both strings in single
 # tcp and that would result in a single read() call on other side.
