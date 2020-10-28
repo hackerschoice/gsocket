@@ -269,13 +269,26 @@ thc_funcintifv(const char *fname, int ver, const char *path, void *buf, int full
 }
 
 int
+__xstat64(int ver, const char *path, struct stat64 *buf)
+{
+	return thc_funcintifv(__func__, ver, path, buf, 1 /* FULL MATCH */);
+}
+
+int
 __xstat(int ver, const char *path, struct stat *buf)
 {
 	return thc_funcintifv(__func__, ver, path, buf, 1 /* FULL MATCH */);
 }
 
+
 // E.g. we are in /home/user and do 'mkdir dir' then sftp-server will:
 // lxstat("/home") -> lxstat("/home/user") -> lxstat("/home/user/dir")
+int
+__lxstat64(int ver, const char *path, struct stat64 *buf)
+{
+	return thc_funcintifv(__func__, ver, path, buf, 0 /* ALLOW PARTIAL MATCH */);
+}
+
 int
 __lxstat(int ver, const char *path, struct stat *buf)
 {
@@ -382,11 +395,12 @@ thc_funcintfv(const char *fname, const char *file, void *ptr, int fullmatch)
 	return err;
 }
 
-#ifdef HAVE_STATVFS64
 int statvfs64(const char *path, void *buf)
-#else
+{
+	DEBUGF("%s(%s, %p) (no_hijack=%d)\n", __func__, path, buf, is_no_hijack);
+	return thc_funcintfv(__func__, path, buf, 1);
+}
 int statvfs(const char *path, void *buf)
-#endif
 {
 	DEBUGF("%s(%s, %p) (no_hijack=%d)\n", __func__, path, buf, is_no_hijack);
 	return thc_funcintfv(__func__, path, buf, 1);
@@ -427,35 +441,49 @@ int statvfs(const char *path, void *buf)
 /*
  * OSX & Solaris
  */
-#ifdef IS_SOL64
-int stat64(const char *path, struct stat64 *buf)
-#else
-int stat(const char *path, struct stat *buf)
-#endif
+static int
+my_stat(const char *fname, const char *path, void *buf)
 {
-	DEBUGF("%s(%s, %p) (no_hijack=%d)\n", __func__, path, buf, is_no_hijack);
+	DEBUGF("%s(%s, %p) (no_hijack=%d)\n", fname, path, buf, is_no_hijack);
 		/* allow stat("/"); */
 	if (strcmp(path, "/") == 0)
 	{
 		int ret;
 		is_no_hijack = 1;
-		ret = real_funcintfv(STATFNAME, path, buf);
+		ret = real_funcintfv(fname, path, buf);
 		is_no_hijack = 0;
 		return ret;
 	}
 
-	return thc_funcintfv(STATFNAME, path, buf, 1);
+	return thc_funcintfv(fname, path, buf, 1);
 }
 
-#ifdef IS_SOL64
-int lstat64(const char *path, struct stat64 *buf)
-#else
-int lstat(const char *path, struct stat *buf)
-#endif
+int stat64(const char *path, struct stat64 *buf)
 {
-	DEBUGF("%s(%s, %p) (no_hijack=%d)\n", __func__, path, buf, is_no_hijack);
+	return my_stat(__func__, path, buf);
+}
 
-	return thc_funcintfv(LSTATFNAME, path, buf, 0 /* ALLOW PARTIAL MATCH */);	
+int stat(const char *path, struct stat *buf)
+{
+	return my_stat(__func__, path, buf);
+}
+
+static int
+my_lstat(const char *fname, const char *path, void *buf)
+{
+	DEBUGF("%s(%s, %p) (no_hijack=%d)\n", fname, path, buf, is_no_hijack);
+	return thc_funcintfv(fname, path, buf, 0 /* ALLOW PARTIAL MATCH */);	
+}
+
+int
+lstat64(const char *path, struct stat64 *buf)
+{
+	return my_lstat(__func__, path, buf);
+}
+int
+lstat(const char *path, struct stat *buf)
+{
+	return my_lstat(__func__, path, buf);
 }
 
 /*
@@ -488,6 +516,12 @@ thc_funcptrf(const char *fname, const char *file)
 
 	is_no_hijack = 0;
 	return ret_ptr;
+}
+
+void *
+opendir64(const char *file)
+{
+	return thc_funcptrf(__func__, file);
 }
 
 void *
@@ -543,11 +577,8 @@ chmod(const char *file, mode_t mode)
 
 typedef int (*real_open_t)(const char *file, int flags, mode_t mode);
 static int real_open(const char *file, int flags, mode_t mode) {return ((real_open_t)dlsym(RTLD_NEXT, "open"))(file, flags, mode); }
-#ifdef IS_SOL64
-int open64(const char *file, int flags, mode_t mode)
-#else
-int open(const char *file, int flags, mode_t mode)
-#endif
+static int
+my_open(const char *fname, const char *file, int flags, mode_t mode)
 {
 	int err = 0;
 	DEBUGF("open(%s)\n", file);
@@ -555,9 +586,9 @@ int open(const char *file, int flags, mode_t mode)
 	is_no_hijack = 1;
 	thc_init();
 
-	if (thc_realfile(__func__, file, rp_buf) == NULL)
+	if (thc_realfile(fname, file, rp_buf) == NULL)
 		err = -1;
-	else if (thc_access(rp_buf, __func__, 1) != 0)
+	else if (thc_access(rp_buf, fname, 1) != 0)
 		err = -1;
 
 	if (err == 0)
@@ -566,5 +597,16 @@ int open(const char *file, int flags, mode_t mode)
 	return err;
 }
 
+int
+open64(const char *file, int flags, mode_t mode)
+{
+	return my_open(__func__, file, flags, mode);
+}
+
+int
+open(const char *file, int flags, mode_t mode)
+{
+	return my_open(__func__, file, flags, mode);
+}
 
 

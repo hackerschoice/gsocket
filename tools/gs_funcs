@@ -39,6 +39,17 @@ test_sftp()
 	echo "${1}" | ./gs-sftp -k id_sec.txt -wq 2>&1 | grep -c "Permission denied"
 }
 
+first_symbol()
+{
+	for func in $@; do
+		if [[ "$sym_sftp" =~ "$func" ]]; then
+			echo "$func "
+			return
+		fi
+	done
+	echo ">>>$*-NOT-FOUND<<< "
+}
+
 # Verify that all symboles will get hijacked. exit on failure.
 # 			linux      osx		solaris
 # sftp		-Du			-pu		-Du
@@ -65,20 +76,35 @@ uchroot_check()
 
 	[[ -n "$sym_uchr" ]] || { echo >&2 "chroot self-test failed (nm bad1). Try -U to disable."; exit 255; }
 	[[ -n "$sym_sftp" ]] || { echo >&2 "chroot self-test failed (nm bad2). Try -U to disable."; exit 255; }
-	funclist="chmod link mkdir rename rmdir symlink unlink"
-	if [[ x"$OSTYPE" == "xdarwin"* ]]; then
-		funclist+=" open statvfs lstat\$INODE64 stat\$INODE64 opendir\$INODE64"
-	elif [[ x"$OSTYPE" == "xsolaris2.10"* ]]; then
-		funclist+=" open64 lstat64 stat64 opendir"
+	echo "$sym_sftp"
+	funclist+=$(first_symbol "lstat\$INODE64 __lxstat64 __lxstat lstat64 lstat")
+	funclist+=$(first_symbol "stat\$INODE64 __xstat64 __xstat stat64 stat")
+	funclist+=$(first_symbol "opendir\$INODE64 opendir64 opendir")
+	funclist+=$(first_symbol "open64 open")
+	if [[ ! x"$OSTYPE" == "xsolaris2.10"* ]]; then
 		# On solaris 10 the stock OpenSSH install does not use statvfs64 (older version)
-		# funclist+=" open64 statvfs64 lstat64 stat64 opendir"
-	elif [[ x"$OSTYPE" == "xsolaris"* ]]; then
-		funclist+=" open statvfs lstat stat opendir"
-	elif [[ x"$OSTYPE" == *"BSD"* ]]; then
-		funclist+=" open statvfs lstat stat opendir"
-	else
-		funclist+=" open statvfs __lxstat __xstat opendir"
+		funclist+=$(first_symbol "statvfs64 statvfs")
 	fi
+	[[ "${funclist}" =~ "NOT-FOUND"* ]] && { echo >&2 "Missing symbol...${funclist}"; exit 255; }
+
+	funclist+="chmod link mkdir rename rmdir symlink unlink"
+	# echo "funclist = $funclist"
+	# if [[ x"$OSTYPE" == "xdarwin"* ]]; then
+	# 	true
+	# 	# funclist+=" open statvfs lstat\$INODE64 stat\$INODE64 opendir\$INODE64"
+	# elif [[ x"$OSTYPE" == "xsolaris2.10"* ]]; then
+	# 	true
+	# 	# funclist+=" open64 lstat64 stat64 opendir"
+	# elif [[ x"$OSTYPE" == "xsolaris"* ]]; then
+	# 	true
+	# 	# funclist+=" open statvfs lstat stat opendir"
+	# elif [[ x"$OSTYPE" == *"BSD"* ]]; then
+	# 	true
+	# 	# funclist+=" open statvfs lstat stat opendir"
+	# else
+	# 	true
+	# 	# funclist+=" open statvfs __lxstat __xstat opendir"
+	# fi
 	for func in ${funclist}; do
 		ucheck_fail "${sym_sftp}" "${sym_uchr}" "${func}"
 	done
