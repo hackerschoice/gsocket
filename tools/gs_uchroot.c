@@ -419,7 +419,7 @@ int statvfs(const char *path, void *buf)
 #ifndef STATFNAME
 # define STATFNAME	"stat"
 #endif
-#ifndef LSTATNAME
+#ifndef LSTATFNAME
 # define LSTATFNAME	"lstat"
 #endif
 
