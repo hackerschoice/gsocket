@@ -41,8 +41,8 @@ test_sftp()
 
 first_symbol()
 {
-	for func in $@; do
-		if [[ "$sym_sftp" =~ "$func" ]]; then
+	for func in "$@"; do
+		if [[ "$sym_sftp" =~ $func ]]; then
 			echo "$func "
 			return
 		fi
@@ -76,35 +76,18 @@ uchroot_check()
 
 	[[ -n "$sym_uchr" ]] || { echo >&2 "chroot self-test failed (nm bad1). Try -U to disable."; exit 255; }
 	[[ -n "$sym_sftp" ]] || { echo >&2 "chroot self-test failed (nm bad2). Try -U to disable."; exit 255; }
-	echo "$sym_sftp"
-	funclist+=$(first_symbol "lstat\$INODE64 __lxstat64 __lxstat lstat64 lstat")
-	funclist+=$(first_symbol "stat\$INODE64 __xstat64 __xstat stat64 stat")
-	funclist+=$(first_symbol "opendir\$INODE64 opendir64 opendir")
-	funclist+=$(first_symbol "open64 open")
+	funclist+=$(first_symbol lstat\$INODE64 __lxstat64 __lxstat lstat64 lstat)
+	funclist+=$(first_symbol stat\$INODE64 __xstat64 __xstat stat64 stat)
+	funclist+=$(first_symbol opendir\$INODE64 opendir64 opendir)
+	funclist+=$(first_symbol open64 open)
 	if [[ ! x"$OSTYPE" == "xsolaris2.10"* ]]; then
 		# On solaris 10 the stock OpenSSH install does not use statvfs64 (older version)
-		funclist+=$(first_symbol "statvfs64 statvfs")
+		funclist+=$(first_symbol statvfs64 statvfs)
 	fi
 	[[ "${funclist}" =~ "NOT-FOUND"* ]] && { echo >&2 "Missing symbol...${funclist}"; exit 255; }
 
 	funclist+="chmod link mkdir rename rmdir symlink unlink"
-	echo "funclist = $funclist"
-	# if [[ x"$OSTYPE" == "xdarwin"* ]]; then
-	# 	true
-	# 	# funclist+=" open statvfs lstat\$INODE64 stat\$INODE64 opendir\$INODE64"
-	# elif [[ x"$OSTYPE" == "xsolaris2.10"* ]]; then
-	# 	true
-	# 	# funclist+=" open64 lstat64 stat64 opendir"
-	# elif [[ x"$OSTYPE" == "xsolaris"* ]]; then
-	# 	true
-	# 	# funclist+=" open statvfs lstat stat opendir"
-	# elif [[ x"$OSTYPE" == *"BSD"* ]]; then
-	# 	true
-	# 	# funclist+=" open statvfs lstat stat opendir"
-	# else
-	# 	true
-	# 	# funclist+=" open statvfs __lxstat __xstat opendir"
-	# fi
+	# echo "funclist = $funclist"	# DEBUG
 	for func in ${funclist}; do
 		ucheck_fail "${sym_sftp}" "${sym_uchr}" "${func}"
 	done
@@ -113,7 +96,7 @@ uchroot_check()
 	command -v sftp >/dev/null 2>&1 || { echo >&2 "chroot self-test failed (sftp not found). Try -U to disable."; exit 255; }
 	mkdir -p "${ROOTDIR}/ok"
 	mkdir -p "${ROOTDIR}/denied"
-	echo "ROOTDIR=${ROOTDIR}"
+	# echo "ROOTDIR=${ROOTDIR}"		# DEBUG
 	echo hello exist-allowed.txt >"${ROOTDIR}/ok/exist-allowed.txt"
 	echo hello exist-denied.txt >"${ROOTDIR}/denied/exist-denied.txt"
 	dd if=/dev/urandom bs=1k count=1 2>/dev/null >"${ROOTDIR}/ok/test1k.dat"
@@ -135,7 +118,7 @@ ls ${ROOTDIR}/ok/exist-allowed.txt
 put test1k.dat dir1
 mkdir ./dir2/
 "
-	[[ $(cd "${ROOTDIR}/ok"; echo "$VALID_CMD" | sftp -D "${ROOTDIR}/sftp-server.sh" 2>&1 | grep -c "Permission denied") -eq 0 ]] || { echo >&2 "Self test failed"; exit 255; }
+	[[ $(cd "${ROOTDIR}/ok"; echo "$VALID_CMD" | sftp -D "${ROOTDIR}/sftp-server.sh" 2>&1 | grep -c "Permission denied") -eq 0 ]] || { echo >&2 "Self test failed (valid cmd)"; exit 255; }
 	[[ -d "${ROOTDIR}/ok/dir1" ]] || { echo >&2 "chroot self-test failed (valid-cmd 1). Try -U to disable."; exit 255; }
 	[[ -d "${ROOTDIR}/ok/dir2" ]] || { echo >&2 "chroot self-test failed (valid-cmd 2). Try -U to disable."; exit 255; }
 	[[ -f "${ROOTDIR}/ok/dir1/test1k.dat" ]] || { echo >&2 "chroot self-test failed (valid-cmd 3). Try -U to disable."; exit 255; }
