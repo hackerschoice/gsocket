@@ -469,6 +469,7 @@ openpty(int *amaster, int *aslave, void *a, void *b, void *c)
 	master = posix_openpt(O_RDWR | O_NOCTTY);
 	if (master == -1)
 		return -1;
+
 	if (grantpt(master) != 0)
 		return -1;
 	if (unlockpt(master) != 0)
@@ -515,6 +516,10 @@ forkpty(int *master, void *a, void *b, void *c)
 			return -1;
 		case 0:
 			/* CHILD */
+		#ifdef TIOCNOTTY
+			ioctl(slave, TIOCNOTTY, NULL);
+		#endif
+			setsid();
 			close(*master);
 			dup2(slave, 0);
 			dup2(slave, 1);
@@ -551,7 +556,11 @@ pty_cmd(const char *cmd)
 		const char *shell;
 		shell = mk_shellname(shell_name, sizeof shell_name);
 
-		execle(shell, shell_name, "-il", NULL, envp);
+		const char *args = "-il";	// bash, fish, zsh
+		if (strcmp(shell_name, "-sh") == 0)
+			args = "-i";	// solaris 10 /bin/sh does not like -l
+
+		execle(shell, shell_name, args, NULL, envp);
 		ERREXIT("execlp(%s) failed: %s\n", shell, strerror(errno));
 	}
 	/* HERE: Parent */
