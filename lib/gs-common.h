@@ -14,6 +14,9 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <netinet/in.h>
+#ifdef HAVE_NETINET_IN_SYSTM_H
+# include <netinet/in_systm.h>
+#endif
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <netinet/udp.h>

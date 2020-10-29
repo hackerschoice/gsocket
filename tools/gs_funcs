@@ -30,8 +30,8 @@ read_password()
 # haystack1 haystack2 needle
 ucheck_fail()
 {
-	[[ "$1" =~ "$3" ]] || { echo >&2 "Symbol $3 not found."; exit 255; }
-	[[ "$2" =~ "$3" ]] || { echo >&2 "Symbol $3 not found (2)."; exit 255; }
+	[[ "$1" =~ $3 ]] || { echo >&2 "Symbol $3 not found in sftp-server."; exit 255; }
+	[[ "$2" =~ $3 ]] || { echo >&2 "Symbol $3 not found (2)."; exit 255; }
 }
 
 test_sftp()
@@ -39,10 +39,21 @@ test_sftp()
 	echo "${1}" | ./gs-sftp -k id_sec.txt -wq 2>&1 | grep -c "Permission denied"
 }
 
+first_symbol()
+{
+	for func in "$@"; do
+		if [[ "$sym_sftp" =~ $func ]]; then
+			echo "$func "
+			return
+		fi
+	done
+	echo ">>>$*-NOT-FOUND<<< "
+}
+
 # Verify that all symboles will get hijacked. exit on failure.
-# 			linux      osx
-# sftp		-Du			-pu
-# .so		-D|T		-p|T
+# 			linux      osx		solaris
+# sftp		-Du			-pu		-Du
+# .so		-D|T		-p|T	-p|T
 uchroot_check()
 {
 	local VALID_CMD
@@ -55,6 +66,9 @@ uchroot_check()
 		# on OSX remove the starting "_" from symboles
 		sym_sftp="$(nm -pu "${SFTP_SERVER_BIN}" | sed 's/^_//g')"
 		sym_uchr="$(nm -p "${UCHROOT_BIN}" | grep " T " | sed 's/^_//g')"
+	elif [[ x"$OSTYPE" == "xsolaris"* ]]; then
+		sym_sftp="$(nm -Du "${SFTP_SERVER_BIN}")"
+		sym_uchr="$(nm -p "${UCHROOT_BIN}" | grep " T ")"
 	else
 		sym_sftp="$(nm -Du "${SFTP_SERVER_BIN}")"
 		sym_uchr="$(nm -D "${UCHROOT_BIN}" | grep " T ")"
@@ -62,24 +76,27 @@ uchroot_check()
 
 	[[ -n "$sym_uchr" ]] || { echo >&2 "chroot self-test failed (nm bad1). Try -U to disable."; exit 255; }
 	[[ -n "$sym_sftp" ]] || { echo >&2 "chroot self-test failed (nm bad2). Try -U to disable."; exit 255; }
-	if [[ x"$OSTYPE" == "xdarwin"* ]]; then
-		ucheck_fail "${sym_sftp}" "${sym_uchr}" "lstat\$INODE64"
-		ucheck_fail "${sym_sftp}" "${sym_uchr}" "stat\$INODE64"
-		ucheck_fail "${sym_sftp}" "${sym_uchr}" "opendir\$INODE64"
-	else
-		ucheck_fail "${sym_sftp}" "${sym_uchr}" "__lxstat"
-		ucheck_fail "${sym_sftp}" "${sym_uchr}" "__xstat"
-		ucheck_fail "${sym_sftp}" "${sym_uchr}" "opendir"
+	funclist+=$(first_symbol lstat\$INODE64 __lxstat64 __lxstat lstat64 lstat)
+	funclist+=$(first_symbol stat\$INODE64 __xstat64 __xstat stat64 stat)
+	funclist+=$(first_symbol opendir\$INODE64 opendir64 opendir)
+	funclist+=$(first_symbol open64 open)
+	if [[ ! x"$OSTYPE" == "xsolaris2.10"* ]]; then
+		# On solaris 10 the stock OpenSSH install does not use statvfs64 (older version)
+		funclist+=$(first_symbol statvfs64 statvfs)
 	fi
-	for func in chmod link mkdir open rename rmdir statvfs symlink unlink; do
+	[[ "${funclist}" =~ "NOT-FOUND"* ]] && { echo >&2 "Missing symbol...${funclist}"; exit 255; }
+
+	funclist+="chmod link mkdir rename rmdir symlink unlink"
+	# echo "funclist = $funclist"	# DEBUG
+	for func in ${funclist}; do
 		ucheck_fail "${sym_sftp}" "${sym_uchr}" "${func}"
 	done
 
 	# Run a self test (sftp -D sftp-server)
 	command -v sftp >/dev/null 2>&1 || { echo >&2 "chroot self-test failed (sftp not found). Try -U to disable."; exit 255; }
-	# echo "ROOTDIR=${ROOTDIR}"
 	mkdir -p "${ROOTDIR}/ok"
 	mkdir -p "${ROOTDIR}/denied"
+	# echo "ROOTDIR=${ROOTDIR}"		# DEBUG
 	echo hello exist-allowed.txt >"${ROOTDIR}/ok/exist-allowed.txt"
 	echo hello exist-denied.txt >"${ROOTDIR}/denied/exist-denied.txt"
 	dd if=/dev/urandom bs=1k count=1 2>/dev/null >"${ROOTDIR}/ok/test1k.dat"
@@ -101,7 +118,7 @@ ls ${ROOTDIR}/ok/exist-allowed.txt
 put test1k.dat dir1
 mkdir ./dir2/
 "
-	[[ $(cd "${ROOTDIR}/ok"; echo "$VALID_CMD" | sftp -D "${ROOTDIR}/sftp-server.sh" 2>&1 | grep -c "Permission denied") -eq 0 ]] || { echo >&2 "Self test failed"; exit 255; }
+	[[ $(cd "${ROOTDIR}/ok"; echo "$VALID_CMD" | sftp -D "${ROOTDIR}/sftp-server.sh" 2>&1 | grep -c "Permission denied") -eq 0 ]] || { echo >&2 "Self test failed (valid cmd)"; exit 255; }
 	[[ -d "${ROOTDIR}/ok/dir1" ]] || { echo >&2 "chroot self-test failed (valid-cmd 1). Try -U to disable."; exit 255; }
 	[[ -d "${ROOTDIR}/ok/dir2" ]] || { echo >&2 "chroot self-test failed (valid-cmd 2). Try -U to disable."; exit 255; }
 	[[ -f "${ROOTDIR}/ok/dir1/test1k.dat" ]] || { echo >&2 "chroot self-test failed (valid-cmd 3). Try -U to disable."; exit 255; }
@@ -221,6 +238,13 @@ do_getopt()
 				;;
 		esac
 	done
+	# Solaris 10 problems:
+	# - stock sftp-server does not allow -p <whitelist> -> Acceptable risk
+	# - LD_PRELOAD does not seem to work. Does anyone still use solaris10?
+	if [[ x"$OSTYPE" == "xsolaris2.10"* ]]; then
+		echo -e >&2 "\033[1;31mWARNING\033[0m: uchroot not (yet) supported on solaris 10."
+		unset IS_UCHROOT
+	fi
 }
 
 env_arg_init()
@@ -250,7 +274,7 @@ sftp_server_start()
 		if [[ -n "${IS_UCHROOT}" ]]; then
 			ROOTDIR=$(mktemp -d -t thc-gs-sftp-XXXXXXXXXXXXXXX) 
 		fi
-		SFTP_SERVER_BIN=$(find_binary sftp-server "$PREFIX"/lib /usr/lib /usr/local/lib)
+		SFTP_SERVER_BIN=$(find_binary sftp-server "$PREFIX"/lib /opt/csw/libexec /usr/lib /usr/local/lib /usr/libexec /usr/libexec/openssh /usr/lib/ssh)
 		PRELOAD="LD_PRELOAD=${UCHROOT_BIN}"
 	fi
 	[[ -z "${SFTP_SERVER_BIN}" ]] && { echo >&2 "sftp-server binary not found."; exit 1; }
