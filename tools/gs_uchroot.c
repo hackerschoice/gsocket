@@ -269,13 +269,26 @@ thc_funcintifv(const char *fname, int ver, const char *path, void *buf, int full
 }
 
 int
+__xstat64(int ver, const char *path, struct stat64 *buf)
+{
+	return thc_funcintifv(__func__, ver, path, buf, 1 /* FULL MATCH */);
+}
+
+int
 __xstat(int ver, const char *path, struct stat *buf)
 {
 	return thc_funcintifv(__func__, ver, path, buf, 1 /* FULL MATCH */);
 }
 
+
 // E.g. we are in /home/user and do 'mkdir dir' then sftp-server will:
 // lxstat("/home") -> lxstat("/home/user") -> lxstat("/home/user/dir")
+int
+__lxstat64(int ver, const char *path, struct stat64 *buf)
+{
+	return thc_funcintifv(__func__, ver, path, buf, 0 /* ALLOW PARTIAL MATCH */);
+}
+
 int
 __lxstat(int ver, const char *path, struct stat *buf)
 {
@@ -379,54 +392,114 @@ thc_funcintfv(const char *fname, const char *file, void *ptr, int fullmatch)
 	if (err == 0)
 		err = real_funcintfv(fname, file, ptr);
 	is_no_hijack = 0;
+	DEBUGF("returning %d\n", err);
 	return err;
 }
 
-int
-statvfs(const char *path, void *buf)
+int statvfs64(const char *path, void *buf)
+{
+	DEBUGF("%s(%s, %p) (no_hijack=%d)\n", __func__, path, buf, is_no_hijack);
+	return thc_funcintfv(__func__, path, buf, 1);
+}
+int statvfs(const char *path, void *buf)
 {
 	DEBUGF("%s(%s, %p) (no_hijack=%d)\n", __func__, path, buf, is_no_hijack);
 	return thc_funcintfv(__func__, path, buf, 1);
 }
 
 /*
- * OSX
+ * Oddity that on OSX any call to stat() can not be directed to the real stat()
+ * but needs to be directed to stat$INODE64().
+ *
+ * OSX	: stat 		-> stat$INODE64  <<<-- Special Case
+ * OSX	: lstat 	-> lstat$INODE64  <<<-- Special Case
+ * SOL10: stat64()	-> stat64()
+ * SOL11: stat 		-> stat()
+ * Linux: __xstat() -> __xstat()
  */
-int
-stat$INODE64(const char *path, void *buf)
-{
-	DEBUGF("%s(%s, %p) (no_hijack=%d)\n", __func__, path, buf, is_no_hijack);
+#ifdef __APPLE__
+# define STATFNAME		"stat$INODE64"
+# define LSTATFNAME		"lstat$INODE64"
+#endif
 
-	/* allow stat("/"); */
+#ifdef __sun
+# ifdef HAVE_OPEN64
+#  define IS_SOL10	1	// Solaris 1
+# endif
+#endif
+
+#ifndef STATFNAME
+# define STATFNAME	"stat"
+#endif
+#ifndef LSTATFNAME
+# define LSTATFNAME	"lstat"
+#endif
+
+/*
+ * Solaris10 wants stat64
+ * Solaris11 wants stat()
+ * OSX wants stat()
+ */
+
+/*
+ * OSX & Solaris
+ */
+static int
+my_stat(const char *fname, const char *path, void *buf)
+{
+	DEBUGF("%s(%s, %p) (no_hijack=%d)\n", fname, path, buf, is_no_hijack);
+		/* allow stat("/"); */
 	if (strcmp(path, "/") == 0)
 	{
 		int ret;
 		is_no_hijack = 1;
-		ret = real_funcintfv(__func__, path, buf);
+		ret = real_funcintfv(fname, path, buf);
 		is_no_hijack = 0;
 		return ret;
 	}
 
-	return thc_funcintfv(__func__, path, buf, 1);
+	return thc_funcintfv(fname, path, buf, 1);
 }
 
+#if !defined(__sun) || defined(IS_SOL10)
 int
-lstat$INODE64(const char *path, void *buf)
+stat64(const char *path, struct stat64 *buf)
 {
-	DEBUGF("%s(%s, %p) (no_hijack=%d)\n", __func__, path, buf, is_no_hijack);
-
-	/* OSX accesses but does not need this... */
-	// if (strcmp(path, "/System/Volumes/Data") == 0)
-	// {
-	// 	int ret;
-	// 	is_no_hijack = 1;
-	// 	ret = real_funcintfv(__func__, path, buf);
-	// 	is_no_hijack = 0;
-	// 	return ret;
-	// }
-
-	return thc_funcintfv(__func__, path, buf, 0 /* ALLOW PARTIAL MATCH */);
+	return my_stat(__func__, path, buf);
 }
+#endif
+
+#if !defined(IS_SOL10)
+/* Solaris cant have stat64() and stat() defined */
+int
+stat(const char *path, struct stat *buf)
+{
+	return my_stat(STATFNAME, path, buf);
+}
+#endif
+
+static int
+my_lstat(const char *fname, const char *path, void *buf)
+{
+	DEBUGF("%s(%s, %p) (no_hijack=%d)\n", fname, path, buf, is_no_hijack);
+	return thc_funcintfv(fname, path, buf, 0 /* ALLOW PARTIAL MATCH */);	
+}
+
+#if !defined(__sun) || defined(IS_SOL10)
+int
+lstat64(const char *path, struct stat64 *buf)
+{
+	return my_lstat(__func__, path, buf);
+}
+#endif
+
+#if !defined(IS_SOL10)
+int
+lstat(const char *path, struct stat *buf)
+{
+	return my_lstat(LSTATFNAME, path, buf);
+}
+#endif
 
 /*
  * Redirect stub of construct "void *func(const char *)"
@@ -461,6 +534,12 @@ thc_funcptrf(const char *fname, const char *file)
 }
 
 void *
+opendir64(const char *file)
+{
+	return thc_funcptrf(__func__, file);
+}
+
+void *
 opendir(const char *file)
 {
 	return thc_funcptrf(__func__, file);
@@ -481,7 +560,7 @@ static int real_funcintfm(const char *fname, const char *file, mode_t mode) {ret
 static int
 thc_funcintfm(const char *fname, const char *file, mode_t mode)
 {
-	DEBUGF("%s(%s, %d)\n", fname, file, mode);
+	DEBUGF("%s(%s, %u)\n", fname, file, (unsigned int)mode);
 	thc_init();
 
 	if (thc_realfile(fname, file, rp_buf) == NULL)
@@ -502,7 +581,12 @@ mkdir(const char *path, mode_t mode)
 	 * "test"
 	 * "/tmp/test"
 	 */
-	return thc_funcintfm(__func__, path, mode);
+
+	int ret;
+	is_no_hijack = 1;
+	ret = thc_funcintfm(__func__, path, mode);
+	is_no_hijack = 0;
+	return ret;
 }
 
 int
@@ -513,8 +597,8 @@ chmod(const char *file, mode_t mode)
 
 typedef int (*real_open_t)(const char *file, int flags, mode_t mode);
 static int real_open(const char *file, int flags, mode_t mode) {return ((real_open_t)dlsym(RTLD_NEXT, "open"))(file, flags, mode); }
-int
-open(const char *file, int flags, mode_t mode)
+static int
+my_open(const char *fname, const char *file, int flags, mode_t mode)
 {
 	int err = 0;
 	DEBUGF("open(%s)\n", file);
@@ -522,9 +606,9 @@ open(const char *file, int flags, mode_t mode)
 	is_no_hijack = 1;
 	thc_init();
 
-	if (thc_realfile(__func__, file, rp_buf) == NULL)
+	if (thc_realfile(fname, file, rp_buf) == NULL)
 		err = -1;
-	else if (thc_access(rp_buf, __func__, 1) != 0)
+	else if (thc_access(rp_buf, fname, 1) != 0)
 		err = -1;
 
 	if (err == 0)
@@ -533,5 +617,16 @@ open(const char *file, int flags, mode_t mode)
 	return err;
 }
 
+int
+open64(const char *file, int flags, mode_t mode)
+{
+	return my_open(__func__, file, flags, mode);
+}
+
+int
+open(const char *file, int flags, mode_t mode)
+{
+	return my_open(__func__, file, flags, mode);
+}
 
 

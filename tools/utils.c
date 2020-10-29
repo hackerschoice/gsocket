@@ -326,11 +326,32 @@ stty_set_raw(void)
     if (ret != 0)
     	return;
     memcpy(&tios_saved, &tios, sizeof tios_saved);
-    tios.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
-	tios.c_oflag &= ~(OPOST);
-	tios.c_cflag |= (CS8);
-	tios.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &tios);
+    // -----BEGIN ORIG-----
+ //    tios.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+	// tios.c_oflag &= ~(OPOST);
+	// tios.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+	// tios.c_cflag |= (CS8);
+	// -----BEGIN NEW-----
+    // tios.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON);
+	// tios.c_oflag &= ~(OPOST);
+	// tios.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
+	// tios.c_cflag &= ~(CSIZE | PARENB);	// stty -a shows rows/columns correctly
+	// tios.c_cflag |= (CS8);
+	// -----BEGIN SSH-----
+    tios.c_iflag |= IGNPAR;
+    tios.c_iflag &= ~(ISTRIP | INLCR | IGNCR | ICRNL | IXON | IXANY | IXOFF);
+#ifdef IUCLC
+    tios.c_iflag &= ~IUCLC;
+#endif
+    tios.c_lflag &= ~(ISIG | ICANON | ECHO | ECHOE | ECHOK | ECHONL);
+#ifdef IEXTEN
+    tios.c_lflag &= ~IEXTEN;
+#endif
+    tios.c_oflag &= ~OPOST;
+    tios.c_cc[VMIN] = 1;
+    tios.c_cc[VTIME] = 0;
+    tcsetattr(STDIN_FILENO, TCSADRAIN, &tios);
+    // tcsetattr(STDIN_FILENO, TCSAFLUSH, &tios);
 
 	is_stty_set_raw = 1;
 }
@@ -458,8 +479,85 @@ setup_cmd_child(void)
 	signal(SIGPIPE, SIG_DFL);
 }
 
+
+#ifndef HAVE_OPENPTY
+static int
+openpty(int *amaster, int *aslave, void *a, void *b, void *c)
+{
+	int master;
+	int slave;
+
+	master = posix_openpt(O_RDWR | O_NOCTTY);
+	if (master == -1)
+		return -1;
+
+	if (grantpt(master) != 0)
+		return -1;
+	if (unlockpt(master) != 0)
+		return -1;
+
+	slave = open(ptsname(master), O_RDWR | O_NOCTTY);
+	if (slave < 0)
+		return -1;
+
+# if defined __sun || defined __hpux /* Solaris, HP-UX */
+  if (ioctl (slave, I_PUSH, "ptem") < 0
+      || ioctl (slave, I_PUSH, "ldterm") < 0
+#  if defined __sun
+      || ioctl (slave, I_PUSH, "ttcompat") < 0
+#  endif
+     )
+    {
+      close (slave);
+      return -1;
+    }
+# endif	
+
+    *amaster = master;
+    *aslave = slave;
+
+    return 0;
+}
+#endif	/* HAVE_OPENPTY */
+
+#ifndef HAVE_FORKPTY
+static int
+forkpty(int *master, void *a, void *b, void *c)
+{
+	pid_t pid;
+	int slave;
+
+	if (openpty(master, &slave, NULL, NULL, NULL) == -1)
+		return -1;
+
+	pid = fork();
+	switch (pid)
+	{
+		case -1:
+			return -1;
+		case 0:
+			/* CHILD */
+		#ifdef TIOCNOTTY
+			ioctl(slave, TIOCNOTTY, NULL);
+		#endif
+			setsid();
+			close(*master);
+			dup2(slave, 0);
+			dup2(slave, 1);
+			dup2(slave, 2);
+			return 0;	// CHILD
+		default:
+			/* PARENT */
+			close(slave);
+			return pid;
+	}
+
+	return -1; // NOT REACHED
+}
+#endif /* HAVE_FORKPTY */
+
 int
-pty_cmd(const char *cmd)
+pty_cmd(const char *cmdUNUSED)
 {
 	pid_t pid;
 	int fd;
@@ -479,7 +577,13 @@ pty_cmd(const char *cmd)
 		const char *shell;
 		shell = mk_shellname(shell_name, sizeof shell_name);
 
-		execle(shell, shell_name, "-il", NULL, envp);
+		const char *args = "-il";	// bash, fish, zsh
+		if (strcmp(shell_name, "-sh") == 0)
+			args = "-i";	// solaris 10 /bin/sh does not like -l
+		if (strcmp(shell_name, "-csh") == 0)
+			execle(shell, shell_name, NULL, envp); // csh (fbsd) without any arguments
+
+		execle(shell, shell_name, args, NULL, envp);
 		ERREXIT("execlp(%s) failed: %s\n", shell, strerror(errno));
 	}
 	/* HERE: Parent */

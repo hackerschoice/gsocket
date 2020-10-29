@@ -13,6 +13,9 @@
 #include <sys/ioctl.h>
 #include <sys/resource.h>
 #include <netinet/in.h>
+#ifdef HAVE_NETINET_IN_SYSTM_H
+# include <netinet/in_systm.h>
+#endif
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <netinet/udp.h>
@@ -42,13 +45,17 @@
 #ifdef HAVE_UTIL_H
 # include <util.h>		/* MacOS */
 #endif
+#if defined __sun || defined __hpux /* Solaris, HP-UX */
+# include <stropts.h>
+#endif
 #include <openssl/ssl.h>
 #include <openssl/srp.h>
 #include <gsocket/gsocket.h>
 #include <gsocket/gs-select.h>
 
 #ifndef O_NOCTTY
-#define O_NOCTTY 0
+# warning "O_NOCTTY not defined. Using 0."
+# define O_NOCTTY 0
 #endif
 
 struct _gopt
@@ -118,6 +125,7 @@ struct _peer
 	int is_stdin_forward;
 	int is_app_forward;
 	int is_fd_connected;
+	int is_pty_first_read;		/* send stty hack */
 	/* For Statistics */
 	int id;			/* Stats: assign an ID to each pere */
 	struct _socks socks;

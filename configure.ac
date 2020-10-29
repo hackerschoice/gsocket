@@ -1,6 +1,6 @@
 dnl Process this file with autoconf to produce a configure script.
 AC_PREREQ(2.61)
-AC_INIT([gsocket], 1.4.19)
+AC_INIT([gsocket], 1.4.20)
 dnl AC_CONFIG_AUX_DIR(config-x86_64-apple-darwin19.6.0)
 AC_CONFIG_AUX_DIR(config)
 AC_CANONICAL_SYSTEM
@@ -79,8 +79,8 @@ esac
 
 AC_CHECK_LIB(util, forkpty)
 dnl AC_CHECK_LIB(bsd, main)
-dnl AC_CHECK_LIB(socket, socket)
-dnl AC_CHECK_LIB(nsl, gethostbyname)
+AC_CHECK_LIB(socket, socket)
+AC_CHECK_LIB(nsl, gethostbyname)
 dnl AC_CHECK_LIB([m], [sqrt])
 dnl AC_CHECK_LIB([net], [libnet_name_resolve], [AC_MSG_ERROR([libnet 1.0.x found. Requires libnet 1.1 or newer])])
 dnl AC_CHECK_LIB([net], [libnet_init], ,[AC_MSG_ERROR([libnet 1.1.x not found])])
@@ -92,7 +92,7 @@ AC_CHECK_LIB([ssl], [SSL_new], [], [AC_MSG_ERROR([libssl not found])])
 dnl Checks for header files.
 AC_HEADER_STDC
 AC_HEADER_SYS_WAIT
-AC_CHECK_HEADERS(sys/time.h unistd.h string.h pty.h openssl/srp.h util.h libutil.h)
+AC_CHECK_HEADERS(sys/time.h unistd.h string.h pty.h openssl/srp.h util.h libutil.h netinet/in_systm.h)
 
 AC_CHECK_HEADER(openssl/srp.h, [], [AC_MSG_ERROR([openssl/srp.h not found. Update OpenSSL?])])
 
@@ -110,7 +110,7 @@ AC_TYPE_SIZE_T
 dnl If uid_t is not defined, define uid_t to be int and gid_t to be int.
 AC_TYPE_UID_T
 
-AC_CHECK_FUNCS(gettimeofday memcpy strchr strlcat)
+AC_CHECK_FUNCS(gettimeofday memcpy strchr strlcat forkpty openpty getline stat64 open64 statvfs64)
 
 AC_ARG_ENABLE([31337],
 	AS_HELP_STRING([--enable-31337],

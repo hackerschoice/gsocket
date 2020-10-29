@@ -45,6 +45,7 @@ static struct _peer *peers[FD_SETSIZE];
 static int write_gs(GS_SELECT_CTX *ctx, struct _peer *p);
 static int peer_forward_connect(struct _peer *p, uint32_t ip, uint16_t port);
 static void vlog_hostname(struct _peer *p, const char *desc, uint16_t port);
+static void stty_set_remote_size(GS_SELECT_CTX *ctx, struct _peer *p);
 
 
 /*
@@ -269,6 +270,22 @@ cb_read_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 		peer_free(ctx, p);	// Will exit() if reading from stdin.
 		return GS_SUCCESS;	/* Successfully removed peer */
 	}
+
+#if 0
+	/* FBSD Client hack: FBSD negotiates term sizes we do not have to send
+	 * stty command to set rows/columns [it would confuse fbsd]
+	 */
+	if ((p->is_stdin_forward) && (gopt.is_interactive))
+	{
+		if (p->is_pty_first_read == 0)
+		{
+			p->is_pty_first_read = 1;
+			/* If server negotiates window size then do not send stty-hack command */
+			if (memcmp(p->rbuf, "\x1b\x37", 2) != 0)
+				stty_set_remote_size(ctx, p);
+		}
+	}
+#endif
 
 	p->rlen += len;
 
