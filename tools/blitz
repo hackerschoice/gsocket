@@ -37,11 +37,16 @@ usage()
  Example:
     $ blitz -s MySecret -l             # Server
     $ blitz -s MySecret *.dat          # Client
-...example limiting transfer rate to 10kB/sec
-    $ blitz -s MySecret -o 'RSOPT=--bwlimit=10 -v' /./etc/*.conf *.dat
-...example reading the file list from standard-in
+
+...limiting transfer rate to 10kB/sec
+    $ blitz -s MySecret -o 'RSOPT=--bwlimit=10 -v' /etc/*.conf *.dat
+
+...reading the file list from standard-in
     $ cd /etc
     $ find . -name '*.mp3' | blitz -s MySecret -f -
+
+...limit the amount of path information by inserting a dot and slash
+    $ blitz -s MySecret ~/tools/./upx/mp3
 
 See 'man gs-netcat' and 'man rsync' for more options."
 	exit 0
