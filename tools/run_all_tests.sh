@@ -42,6 +42,7 @@ SKIP="[\033[1;33mskipping\033[0m]"
 ECHO="echo -e"
 NETSTATTCP(){ netstat -ant;}
 [[ x"$OSTYPE" == "xsolaris"* ]] && NETSTATTCP(){ netstat -an -f inet; }
+[[ x"$OSTYPE" == *BSD* ]] && NETSTATTCP(){ netstat -an -f inet; }
 
 tests="1.1 "
 tests+="2.1 2.2 "
@@ -465,7 +466,11 @@ fi
 if [[ "$tests" =~ '7.3' ]]; then
 test_start -n "Running: netcat #7.3 (pty shell, exit)...................."
 GSPID1="$(sh -c './gs-netcat -k id_sec.txt -l -i 2>server_err.txt >server_out.dat & echo ${!}')"
-echo "date; echo Hello World; exit" | ./gs-netcat -k id_sec.txt -w 2>client_err.txt >client_out.dat
+if [[ "$OSTYPE" == *"BSD"* ]]; then
+	(sleep 3; echo "date; echo Hello World; exit") | ./gs-netcat -k id_sec.txt -w 2>client_err.txt >client_out.dat
+else
+	(echo "date; echo Hello World; exit") | ./gs-netcat -k id_sec.txt -w 2>client_err.txt >client_out.dat
+fi
 sleep_ct
 kill $GSPID1 
 tail -2 client_out.dat | grep 'Hello World' &>/dev/null
@@ -476,9 +481,15 @@ fi
 if [[ "$tests" =~ '7.4' ]]; then
 test_start -n "Running: netcat #7.4 (multi pty shell, exit).............."
 GSPID1="$(sh -c './gs-netcat -k id_sec.txt -l -i 2>server_err.txt >server_out.dat & echo ${!}')"
-GSPID2="$(sh -c '(echo "date && echo Hello World && exit") | ./gs-netcat -k id_sec.txt -iw 2>client1_err.txt >client1_out.dat & echo ${!}')"
-GSPID3="$(sh -c '(echo "date && echo Hello World && exit") | ./gs-netcat -k id_sec.txt -iw 2>client2_err.txt >client2_out.dat & echo ${!}')"
-GSPID4="$(sh -c '(echo "date && echo Hello World && exit") | ./gs-netcat -k id_sec.txt -iw 2>client3_err.txt >client3_out.dat & echo ${!}')"
+if [[ "$OSTYPE" == *"BSD"* ]]; then
+	GSPID2="$(sh -c '(sleep 3; echo "date && echo Hello World && exit") | ./gs-netcat -k id_sec.txt -iw 2>client1_err.txt >client1_out.dat & echo ${!}')"
+	GSPID3="$(sh -c '(sleep 3; echo "date && echo Hello World && exit") | ./gs-netcat -k id_sec.txt -iw 2>client2_err.txt >client2_out.dat & echo ${!}')"
+	GSPID4="$(sh -c '(sleep 3; echo "date && echo Hello World && exit") | ./gs-netcat -k id_sec.txt -iw 2>client3_err.txt >client3_out.dat & echo ${!}')"
+else
+	GSPID2="$(sh -c '(echo "date && echo Hello World && exit") | ./gs-netcat -k id_sec.txt -iw 2>client1_err.txt >client1_out.dat & echo ${!}')"
+	GSPID3="$(sh -c '(echo "date && echo Hello World && exit") | ./gs-netcat -k id_sec.txt -iw 2>client2_err.txt >client2_out.dat & echo ${!}')"
+	GSPID4="$(sh -c '(echo "date && echo Hello World && exit") | ./gs-netcat -k id_sec.txt -iw 2>client3_err.txt >client3_out.dat & echo ${!}')"
+fi
 waitk $GSPID2 $GSPID3 $GSPID4
 kill $GSPID1
 if [ x"$(tail -2 client1_out.dat | grep 'Hello World')" == x ]; then fail 1; fi
@@ -490,7 +501,11 @@ fi
 if [[ "$tests" =~ '8.1' ]]; then
 test_start -n "Running: netcat #8.1 (port forward server side)..........."
 GSPID1="$(sh -c './gs-netcat -k id_sec.txt -l -d 127.0.0.1 -p 12345 2>server_err.txt >server_out.dat & echo ${!}')"
-GSPID2="$(sh -c '(sleep 10) | netcat -nlp 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
+if [[ "$OSTYPE" == *"BSD"* ]]; then
+	GSPID2="$(sh -c '(sleep 10) | netcat -nl 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
+else
+	GSPID2="$(sh -c '(sleep 10) | netcat -nlp 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
+fi
 waittcp 12345
 GSPID3="$(sh -c './gs-netcat -k id_sec.txt -w <test50k.dat 2>client_err.txt >client_out.dat & echo ${!}')"
 waitf test50k.dat nc1_out.dat
@@ -503,7 +518,11 @@ if [[ "$tests" =~ '8.2' ]]; then
 # nc -> Port 12344 -> GS-NET -> Port 12345 -> nc -ln
 test_start -n "Running: netcat #8.2 (port forward both sides)............"
 GSPID1="$(sh -c './gs-netcat -k id_sec.txt -l -d 127.0.0.1 -p 12345 2>server_err.txt >server_out.dat & echo ${!}')"
-GSPID2="$(sh -c '(sleep 10) | netcat -nlp 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
+if [[ "$OSTYPE" == *"BSD"* ]]; then
+	GSPID2="$(sh -c '(sleep 10) | netcat -nl 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
+else
+	GSPID2="$(sh -c '(sleep 10) | netcat -nlp 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
+fi
 GSPID3="$(sh -c './gs-netcat -k id_sec.txt -w -p 12344 2>server_err.txt >server_out.dat & echo ${!}')"
 waittcp 12344
 waittcp 12345
@@ -519,7 +538,11 @@ if [[ "$tests" =~ '8.3' ]]; then
 # Bi-Directional
 test_start -n "Running: netcat #8.3 (port forward both sides, bi-dir)...."
 GSPID1="$(sh -c './gs-netcat -k id_sec.txt -l -d 127.0.0.1 -p 12345 2>server1_err.txt >server1_out.dat & echo ${!}')"
-GSPID2="$(sh -c '(cat test4k.dat; sleep 15) | netcat -nlp 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
+if [[ "$OSTYPE" == *"BSD"* ]]; then
+	GSPID2="$(sh -c '(cat test4k.dat; sleep 15) | netcat -nl 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
+else
+	GSPID2="$(sh -c '(cat test4k.dat; sleep 15) | netcat -nlp 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
+fi
 GSPID3="$(sh -c './gs-netcat -k id_sec.txt -w -p 12344 2>client_err.txt >client_out.dat & echo ${!}')"
 waittcp 12344
 waittcp 12345
@@ -540,7 +563,11 @@ if [ $? -ne 0 ]; then
 	skip "(no socat2)"
 else
 	GSPID1="$(sh -c './gs-netcat -k id_sec.txt -lS 2>server1_err.txt >server1_out.dat & echo ${!}')"
-	GSPID2="$(sh -c '(cat test4k.dat; sleep 15) | netcat -nlp 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
+	if [[ "$OSTYPE" == *"BSD"* ]]; then
+		GSPID2="$(sh -c '(cat test4k.dat; sleep 15) | netcat -nl 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
+	else
+		GSPID2="$(sh -c '(cat test4k.dat; sleep 15) | netcat -nlp 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
+	fi
 	GSPID3="$(sh -c './gs-netcat -k id_sec.txt -p 1085 2>client_err.txt >client_out.dat & echo ${!}')"
 	waittcp 1085
 	waittcp 12345
@@ -562,7 +589,11 @@ if [ $? -ne 0 ]; then
 	skip "(no socat)"
 else
 	GSPID1="$(sh -c './gs-netcat -k id_sec.txt -lS 2>server1_err.txt >server1_out.dat & echo ${!}')"
-	GSPID2="$(sh -c '(cat test4k.dat; sleep 15) | netcat -nlp 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
+	if [[ "$OSTYPE" == *"BSD"* ]]; then
+		GSPID2="$(sh -c '(cat test4k.dat; sleep 15) | netcat -nl 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
+	else
+		GSPID2="$(sh -c '(cat test4k.dat; sleep 15) | netcat -nlp 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
+	fi
 	GSPID3="$(sh -c './gs-netcat -k id_sec.txt -p 1085 2>client_err.txt >client_out.dat & echo ${!}')"
 	waittcp 1085
 	waittcp 12345
@@ -584,7 +615,11 @@ if [ $? -ne 0 ]; then
 	skip "(no socat)"
 else
 	GSPID1="$(sh -c './gs-netcat -k id_sec.txt -lS 2>server1_err.txt >server1_out.dat & echo ${!}')"
-	GSPID2="$(sh -c '(cat test4k.dat; sleep 15) | netcat -nlp 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
+	if [[ "$OSTYPE" == *"BSD"* ]]; then
+		GSPID2="$(sh -c '(cat test4k.dat; sleep 15) | netcat -nl 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
+	else
+		GSPID2="$(sh -c '(cat test4k.dat; sleep 15) | netcat -nlp 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
+	fi
 	GSPID3="$(sh -c './gs-netcat -k id_sec.txt -p 1085 2>client_err.txt >client_out.dat & echo ${!}')"
 	waittcp 1085
 	waittcp 12345

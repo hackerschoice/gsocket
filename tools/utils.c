@@ -326,11 +326,32 @@ stty_set_raw(void)
     if (ret != 0)
     	return;
     memcpy(&tios_saved, &tios, sizeof tios_saved);
-    tios.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
-	tios.c_oflag &= ~(OPOST);
-	tios.c_cflag |= (CS8);
-	tios.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &tios);
+    // -----BEGIN ORIG-----
+ //    tios.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+	// tios.c_oflag &= ~(OPOST);
+	// tios.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+	// tios.c_cflag |= (CS8);
+	// -----BEGIN NEW-----
+    // tios.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON);
+	// tios.c_oflag &= ~(OPOST);
+	// tios.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
+	// tios.c_cflag &= ~(CSIZE | PARENB);	// stty -a shows rows/columns correctly
+	// tios.c_cflag |= (CS8);
+	// -----BEGIN SSH-----
+    tios.c_iflag |= IGNPAR;
+    tios.c_iflag &= ~(ISTRIP | INLCR | IGNCR | ICRNL | IXON | IXANY | IXOFF);
+#ifdef IUCLC
+    tios.c_iflag &= ~IUCLC;
+#endif
+    tios.c_lflag &= ~(ISIG | ICANON | ECHO | ECHOE | ECHOK | ECHONL);
+#ifdef IEXTEN
+    tios.c_lflag &= ~IEXTEN;
+#endif
+    tios.c_oflag &= ~OPOST;
+    tios.c_cc[VMIN] = 1;
+    tios.c_cc[VTIME] = 0;
+    tcsetattr(STDIN_FILENO, TCSADRAIN, &tios);
+    // tcsetattr(STDIN_FILENO, TCSAFLUSH, &tios);
 
 	is_stty_set_raw = 1;
 }
@@ -536,7 +557,7 @@ forkpty(int *master, void *a, void *b, void *c)
 #endif /* HAVE_FORKPTY */
 
 int
-pty_cmd(const char *cmd)
+pty_cmd(const char *cmdUNUSED)
 {
 	pid_t pid;
 	int fd;

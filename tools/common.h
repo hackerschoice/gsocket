@@ -54,7 +54,8 @@
 #include <gsocket/gs-select.h>
 
 #ifndef O_NOCTTY
-#define O_NOCTTY 0
+# warning "O_NOCTTY not defined. Using 0."
+# define O_NOCTTY 0
 #endif
 
 struct _gopt
@@ -124,6 +125,7 @@ struct _peer
 	int is_stdin_forward;
 	int is_app_forward;
 	int is_fd_connected;
+	int is_pty_first_read;		/* send stty hack */
 	/* For Statistics */
 	int id;			/* Stats: assign an ID to each pere */
 	struct _socks socks;
