@@ -666,7 +666,7 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd_notused, void *arg, int val)
 		DEBUGF_M("Setting tty\n");
 		XASSERT(p->fd_in == STDIN_FILENO, "p->fd_in = %d, not STDIN\n", p->fd_in);
 		stty_set_raw();
-		stty_set_remote_size(ctx, p);
+		// stty_set_remote_size(ctx, p);
 	}
 
 	return GS_SUCCESS;

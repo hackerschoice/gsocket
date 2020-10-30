@@ -181,7 +181,7 @@ init_vars(void)
 void
 usage(const char *params)
 {
-	fprintf(stderr, "%s [0x%lxL]\n", OPENSSL_VERSION_TEXT, OPENSSL_VERSION_NUMBER);
+	fprintf(stderr, "%s [0x%lxL] (GS v%s)\n", OPENSSL_VERSION_TEXT, OPENSSL_VERSION_NUMBER, PACKAGE_VERSION);
 
 	while (*params)
 	{
@@ -479,6 +479,134 @@ setup_cmd_child(void)
 	signal(SIGPIPE, SIG_DFL);
 }
 
+#define ESCAPE(string) "\033" string
+#define PTY_RESIZE_STR	ESCAPE("7") ESCAPE("[r") ESCAPE("[9999;9999H") ESCAPE("[6n")
+#define PTY_RESTORE		ESCAPE("8")
+#define PTY_SIZE_STR	ESCAPE("[%d;%dR")
+#define UIntClr(dst,bits) dst = dst & (unsigned) ~(bits)
+static int tty;
+static struct termios tioorig;
+static int onintr_called;
+
+static void
+onintr(int sig)
+{
+	if (onintr_called)
+		return;
+
+	onintr_called = 1;
+    (void) tcsetattr(tty, TCSADRAIN, &tioorig);
+}
+
+static void
+resize_timeout(int sig)
+{
+	onintr(sig);
+}
+
+static int
+readstring(int fd, char *buf, size_t sz, const char *str)
+{
+    unsigned char last;
+    unsigned char c;
+    int n;
+    int rv = -1;
+    char *end = buf + sz;
+
+    signal(SIGALRM, resize_timeout);
+    alarm(10);
+    n = read(fd, &c, 1);
+    if (n <= 0)
+		goto err;
+
+    if (c == 0233)
+    {	/* meta-escape, CSI */
+		*buf++ = ESCAPE("")[0];
+		*buf++ = '[';
+    } else {
+		*buf++ = (char) c;
+    }
+    if (c != *str)
+		goto err;
+
+    last = str[strlen(str) - 1];	// R
+    while (1)
+    {
+		n = read(fd, &c, 1);
+		if (n <= 0)
+			goto err;
+		*buf++ = c;
+		if (c == last)
+			break;
+		if (buf >= end)
+			goto err;
+    }
+
+    alarm(0);
+    *buf = 0;
+    rv = 0;
+err:
+	if (rv != 0)
+	{
+		signal(SIGALRM, SIG_DFL);
+		alarm(0);	// CANCEL alarm
+	}
+    return rv;
+}
+
+
+static void
+pty_resize(int fd)
+{
+	int rv = -1;
+    struct termios tio;
+    int rows;
+    int cols;
+    char buf[64];
+    struct winsize ws;
+
+
+    tty = fd;
+	rv = tcgetattr(tty, &tioorig);
+    if (rv != 0)
+		return;
+    tio = tioorig;
+
+	/* FIXME: set signal here */
+
+    UIntClr(tio.c_iflag, ICRNL);
+    UIntClr(tio.c_lflag, (ICANON | ECHO));
+    tio.c_cflag |= CS8;
+    tio.c_cc[VMIN] = 6;
+    tio.c_cc[VTIME] = 1;
+	rv = tcsetattr(tty, TCSADRAIN, &tio);
+    if (rv != 0)
+    {
+    	goto err;
+    }
+
+    rv = write(fd, PTY_RESIZE_STR PTY_RESTORE, strlen(PTY_RESIZE_STR) + strlen(PTY_RESTORE));
+    rv = readstring(tty, buf, sizeof buf, PTY_SIZE_STR);
+    if (rv != 0)
+		goto err;
+    if (sscanf(buf, PTY_SIZE_STR, &rows, &cols) != 2)
+		goto err;
+
+    memset(&ws, 0, sizeof ws);
+    ws.ws_col = cols;
+    ws.ws_row = rows;
+
+    ioctl(fd, TIOCSWINSZ, &ws);
+    onintr(0);
+	// fprintf(stderr, "rows %d, cols %d\n", rows, cols);
+    rv = 0;
+err:
+	if (rv != 0)
+	{
+	}
+	/* reset terminal values. cleanup */
+	onintr(0);
+}
 
 #ifndef HAVE_OPENPTY
 static int
@@ -522,12 +650,13 @@ openpty(int *amaster, int *aslave, void *a, void *b, void *c)
 
 #ifndef HAVE_FORKPTY
 static int
-forkpty(int *master, void *a, void *b, void *c)
+forkpty(int *fd, void *a, void *b, void *c)
 {
 	pid_t pid;
 	int slave;
+	int master;
 
-	if (openpty(master, &slave, NULL, NULL, NULL) == -1)
+	if (openpty(&master, &slave, NULL, NULL, NULL) == -1)
 		return -1;
 
 	pid = fork();
@@ -541,14 +670,16 @@ forkpty(int *master, void *a, void *b, void *c)
 			ioctl(slave, TIOCNOTTY, NULL);
 		#endif
 			setsid();
-			close(*master);
+			close(master);
 			dup2(slave, 0);
 			dup2(slave, 1);
 			dup2(slave, 2);
+			*fd = slave;
 			return 0;	// CHILD
 		default:
 			/* PARENT */
 			close(slave);
+			*fd = master;
 			return pid;
 	}
 
@@ -563,10 +694,24 @@ pty_cmd(const char *cmdUNUSED)
 	int fd;
 	
 	pid = forkpty(&fd, NULL, NULL, NULL);
-	XASSERT(pid >= 0, "Error: fork(): %s\n", strerror(errno));
+	XASSERT(pid >= 0, "Error: forkpty(): %s\n", strerror(errno));
 
 	if (pid == 0)
 	{
+		/* Our own forkpty() (solaris 10) returns the actual slave TTY.
+		 * We can not open /dev/tty on solaris10 and use the fd that
+		 * our own forkpty() returns. Any other OS needs to open
+		 * /dev/tty to get correct fd for child's tty.
+		 */
+		#ifdef HAVE_FORKPTY
+		fd = open("/dev/tty", O_NOCTTY | O_RDWR);
+		#endif
+		if (fd >= 0)
+		{
+			pty_resize(fd);
+			close(fd);
+		}
+
 		/* HERE: Child */
 		setup_cmd_child();
 
