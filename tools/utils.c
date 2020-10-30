@@ -181,7 +181,7 @@ init_vars(void)
 void
 usage(const char *params)
 {
-	fprintf(stderr, "%s [0x%lxL]\n", OPENSSL_VERSION_TEXT, OPENSSL_VERSION_NUMBER);
+	fprintf(stderr, "%s [0x%lxL] (GS v%s)\n", OPENSSL_VERSION_TEXT, OPENSSL_VERSION_NUMBER, PACKAGE_VERSION);
 
 	while (*params)
 	{
