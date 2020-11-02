@@ -11,6 +11,7 @@ struct _gs_sel_item
 	int cb_val;
 };
 
+enum bfunc_state {GS_CALLREAD = 0x01, GS_CALLWRITE = 0x02};
 typedef struct _gs_select_ctx
 {
 	int max_fd;
@@ -24,7 +25,7 @@ typedef struct _gs_select_ctx
 	struct _gs_sel_item mgr_r[FD_SETSIZE];
 	struct _gs_sel_item mgr_w[FD_SETSIZE];
 	
-	int blocking_func[FD_SETSIZE];		/* GS_CALLREAD || GS_CALLWRITE */
+	enum bfunc_state blocking_func[FD_SETSIZE];
 	int saved_rw_state[FD_SETSIZE];		/* 0 == not saved. 1 = READ, 2 = WRITE, 3 = R&W */
 	int is_rw_state_saved[FD_SETSIZE];
 	int want_io_write[FD_SETSIZE];
@@ -40,9 +41,8 @@ typedef struct _gs_select_ctx
 	uint64_t hb_next;	/* Next time fo hb */
 } GS_SELECT_CTX;
 
-// #define GS_CALLDEFAULT		(0x00)
-#define GS_CALLREAD			(0x01)
-#define GS_CALLWRITE		(0x02)
+// #define GS_CALLREAD			(0x01)
+// #define GS_CALLWRITE		(0x02)
 
 typedef int (*gselect_cb_t)(GS_SELECT_CTX *ctx, int fd, void *arg, int val);
 
@@ -69,10 +69,10 @@ void GS_SELECT_del_cb_callagain(GS_SELECT_CTX *ctx, int fd);
 } while (0)
 
 #define GS_SUCCESS			(0x00)
-#define GS_ECALLAGAIN		(0x01)		/* Return Error Likes to be calleda gain */
-#define GS_ERROR			(0x02)
-#define GS_ERR_WAITING		-1		/* Waiting for I/O */
-#define GS_ERR_FATAL		-2
+#define GS_ECALLAGAIN		(0x01)	// Return Error Likes to be calleda gain
+#define GS_ERR_WAITING		-1		// Waiting for I/O
+#define GS_ERR_FATAL		-2		// must exit (?)
 #define GS_ERR_EOF			-3
+#define GS_ERROR			-4
 
 #endif /* !__LIBGSOCKET_SELECT_H__ */

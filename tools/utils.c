@@ -145,6 +145,9 @@ init_vars(void)
 	if (gopt.is_blocking == 1)
 		GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_BLOCK, NULL, 0);
 
+	if (gopt.is_multi_peer == 0)
+		GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_SINGLESHOT, NULL, 0);
+
 	char *str = getenv("GSOCKET_ARGS");
 	if ((str != NULL) && (strlen(str) > 0))
 		VLOG("=Extra arguments: '%s'\n", str);
@@ -174,8 +177,6 @@ init_vars(void)
 		gopt.winsize.ws_col = 80;
 		gopt.winsize.ws_row = 24;
 	}
-
-
 }
 
 void

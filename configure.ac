@@ -1,6 +1,6 @@
 dnl Process this file with autoconf to produce a configure script.
 AC_PREREQ(2.61)
-AC_INIT([gsocket], 1.4.21)
+AC_INIT([gsocket], 1.4.22)
 dnl AC_CONFIG_AUX_DIR(config-x86_64-apple-darwin19.6.0)
 AC_CONFIG_AUX_DIR(config)
 AC_CANONICAL_SYSTEM
@@ -84,7 +84,7 @@ AC_CHECK_LIB(nsl, gethostbyname)
 dnl AC_CHECK_LIB([m], [sqrt])
 dnl AC_CHECK_LIB([net], [libnet_name_resolve], [AC_MSG_ERROR([libnet 1.0.x found. Requires libnet 1.1 or newer])])
 dnl AC_CHECK_LIB([net], [libnet_init], ,[AC_MSG_ERROR([libnet 1.1.x not found])])
-AC_CHECK_LIB(dl,dlopen)
+AC_CHECK_LIB(dl, dlopen)
 AC_CHECK_LIB([crypto], [ENGINE_init], [], [AC_MSG_ERROR([libcrypto not found])])
 AC_CHECK_LIB([ssl], [SSL_new], [], [AC_MSG_ERROR([libssl not found])])
 
