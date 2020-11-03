@@ -904,8 +904,10 @@ GS_heartbeat(GS *gsocket)
 		struct gs_sox *sox = &gsocket->net.sox[i];
 
 		XASSERT(sox->state != GS_STATE_APP_CONNECTED, "fd = %d but APP already CONNECTED state\n", gsocket->fd);
+
+		/* if connect() fails then fd is -1 */
 		/* Skip if 'want-write' is already set. We are already trying to write data. */
-		if (FD_ISSET(sox->fd, gsocket->ctx->wfd))
+		if ((sox->fd >= 0) && (FD_ISSET(sox->fd, gsocket->ctx->wfd)))
 			continue;
 
 		/* Skip if oustanding PONG..*/
