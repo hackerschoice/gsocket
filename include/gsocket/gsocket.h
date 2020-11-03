@@ -154,6 +154,7 @@ struct _gs_status
 
 #define GS_STATUS_CODE_BAD_AUTH		(0x01)	// Auth Token mismatch
 #define GS_STATUS_CODE_CONNREFUSED	(0x02)	// No server listening
+#define GS_STATUS_CODE_IDLE_TIMEOUT (0x03)	// Timeout
 
 /*
  * all2GN: Accepting incoming connection.
@@ -280,7 +281,8 @@ typedef struct
 enum ssl_state_t {
 	GS_SSL_STATE_ACCEPT,	/* Call SSL_accpet() again */
 	GS_SSL_STATE_CONNECT,	/* Call SSL_connect() again */
-	GS_SSL_STATE_RW			/* Call SSL_read/SSL_write again */
+	GS_SSL_STATE_RW,		/* Call SSL_read/SSL_write again */
+	GS_SSL_STATE_SHUTDOWN   /* Call SSL_shutdown() again */
 };
 #endif
 
@@ -359,6 +361,7 @@ GS_ADDR *GS_ADDR_bin2addr(GS_ADDR *addr, const void *data, size_t len);
 GS_ADDR *GS_ADDR_str2addr(GS_ADDR *addr, const char *str);
 GS_ADDR *GS_ADDR_ipport2addr(GS_ADDR *addr, uint32_t ip, uint16_t port);
 uint32_t GS_hton(const char *hostname);
+void GS_FD_SET_W(GS *gs);
 
 void GS_daemonize(FILE *logfp);
 

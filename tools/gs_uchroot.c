@@ -250,7 +250,7 @@ thc_realfile(const char *fname, const char *file, char *dst)
 	return dst;
 }
 
-
+#ifdef linux
 // Construct "int func(int, const char *, void *)"
 typedef int (*real_funcintifv_t)(int ver, const char *path, void *buf);
 static int real_funcintifv(const char *fname, int ver, const char *path, void *buf) {return ((real_funcintifv_t)dlsym(RTLD_NEXT, fname))(ver, path, buf);}
@@ -294,7 +294,7 @@ __lxstat(int ver, const char *path, struct stat *buf)
 {
 	return thc_funcintifv(__func__, ver, path, buf, 0 /* ALLOW PARTIAL MATCH */);
 }
-
+#endif
 
 /*
  * Redirect stub of construct "int func(const char *)"
@@ -424,7 +424,9 @@ int statvfs(const char *path, void *buf)
 
 #ifdef __sun
 # ifdef HAVE_OPEN64
-#  define IS_SOL10	1	// Solaris 1
+#  define IS_SOL10	1	// Solaris 10
+# else
+#  define IS_SOL11  1	// Solaris 11
 # endif
 #endif
 
@@ -461,7 +463,7 @@ my_stat(const char *fname, const char *path, void *buf)
 	return thc_funcintfv(fname, path, buf, 1);
 }
 
-#if !defined(__sun) || defined(IS_SOL10)
+#if !defined(IS_SOL11) && !defined(__FreeBSD__)
 int
 stat64(const char *path, struct stat64 *buf)
 {
@@ -485,7 +487,7 @@ my_lstat(const char *fname, const char *path, void *buf)
 	return thc_funcintfv(fname, path, buf, 0 /* ALLOW PARTIAL MATCH */);	
 }
 
-#if !defined(__sun) || defined(IS_SOL10)
+#if !defined(IS_SOL11) && !defined(__FreeBSD__)
 int
 lstat64(const char *path, struct stat64 *buf)
 {

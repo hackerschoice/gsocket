@@ -254,6 +254,7 @@ do_getopt(int argc, char *argv[])
 				gopt.log_fp = fopen(optarg, "a");
 				if (gopt.log_fp == NULL)
 					ERREXIT("fopen(%s): %s\n", optarg, strerror(errno));
+				gopt.err_fp = gopt.log_fp;
 				break;
 			case 'T':
 				gopt.is_use_tor = 1;
@@ -381,7 +382,7 @@ stty_check_esc(GS *gs, char c)
 	if (is_stty_set_raw == 0)
 		return;
 
-	// DEBUGF_R("chekcing %d on esc_pos %d == %d\n", c, esc_pos, esc_seq[esc_pos]);
+	DEBUGF_R("chekcing %d on esc_pos %d == %d\n", c, esc_pos, esc_seq[esc_pos]);
 	if (c == esc_seq[esc_pos])
 	{
 		esc_pos++;
@@ -689,7 +690,7 @@ forkpty(int *fd, void *a, void *b, void *c)
 #endif /* HAVE_FORKPTY */
 
 int
-pty_cmd(const char *cmdUNUSED)
+pty_cmd(const char *cmd)
 {
 	pid_t pid;
 	int fd;
@@ -715,11 +716,17 @@ pty_cmd(const char *cmdUNUSED)
 
 		/* HERE: Child */
 		setup_cmd_child();
-
-		char *env_blacklist[] = {"STY", NULL};
+		char *env_blacklist[] = {"STY", NULL}; // Remove 'screen' tty
 		char **envp = mk_env(env_blacklist);
 
+		if (cmd != NULL)
+		{
+			execle("/bin/sh", cmd, "-c", cmd, NULL, envp);
+			ERREXIT("exec(%s) failed: %s\n", cmd, strerror(errno));
+		} 
+
 		char shell_name[64];
+
 		const char *shell;
 		shell = mk_shellname(shell_name, sizeof shell_name);
 
@@ -747,12 +754,12 @@ fd_cmd(const char *cmd)
 	int fds[2];
 	int ret;
 
-#if 1
+	DEBUGF("cmd == %s\n", cmd);
+
 	if (gopt.is_interactive)
 	{
 		return pty_cmd(cmd);
 	}
-#endif
 
 	ret = socketpair(AF_UNIX, SOCK_STREAM, 0, fds);
 	if (ret != 0)
