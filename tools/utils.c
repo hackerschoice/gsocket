@@ -716,7 +716,12 @@ pty_cmd(const char *cmd)
 
 		/* HERE: Child */
 		setup_cmd_child();
-		char *env_blacklist[] = {"STY", NULL}; // Remove 'screen' tty
+		/* Remove some environment variables:
+		 * STY = screen specific.
+		 * GSOCKET_ARGS = Otherwise any further gs-netcat command would use
+		 *    execute with same (hidden) commands as the current shell.
+		 */
+		char *env_blacklist[] = {"STY", "GSOCKET_ARGS", NULL}; // Remove 'screen' tty
 		char **envp = mk_env(env_blacklist);
 
 		if (cmd != NULL)

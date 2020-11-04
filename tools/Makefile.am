@@ -20,5 +20,5 @@ gs_uchroot_so_CFLAGS = -shared -fPIC
 gs_uchroot_so_LDFLAGS = -ldl
 
 EXTRA_DIST = run_all_tests.sh
-noinst_HEADERS = common.h utils.h socks.h
+noinst_HEADERS = common.h utils.h socks.h man_gs-netcat.h
 CFLAGS += -I../include

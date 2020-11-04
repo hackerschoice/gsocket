@@ -37,6 +37,7 @@
 #include "common.h"
 #include "utils.h"
 #include "socks.h"
+#include "man_gs-netcat.h"
 
 /* All connected gs-peers indexed by gs->fd */
 static struct _peer *peers[FD_SETSIZE];
@@ -764,6 +765,7 @@ my_usage(void)
 "  -p <port>    TCP Port to listen on or forward to\n"
 "  -i           Interactive login shell (TTY) [~. to terminate]\n"
 "  -e <cmd>     Execute command [e.g. \"bash -il\" or \"id\"]\n"
+"  -m           Display man page\n"
 "   "
 "\n"
 "Example to forward traffic from port 2222 to 192.168.6.7:22:\n"
@@ -789,10 +791,14 @@ my_getopt(int argc, char *argv[])
 
 	do_getopt(argc, argv);	/* from utils.c */
 	optind = 1;	/* Start from beginning */
-	while ((c = getopt(argc, argv, UTILS_GETOPT_STR)) != -1)
+	while ((c = getopt(argc, argv, UTILS_GETOPT_STR "m")) != -1)
 	{
 		switch (c)
 		{
+			case 'm':
+				printf("%s", man_str);
+				exit(0);
+				break;	// NOT REACHED
 			case 'D':
 				gopt.is_daemon = 1;
 				break;
@@ -856,15 +862,18 @@ my_getopt(int argc, char *argv[])
 		}
 	}
 
-	init_vars();			/* from utils.c */
-	VLOG("=Encryption     : %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
-
-	/* Become a daemon & watchdog (auto-restart) */
+	/* Become a daemon & watchdog (auto-restart)
+	 * Do this before init_vars() so that any error in resolving
+	 * is re-tried by watchdog.
+	 */
 	if (gopt.is_daemon)
 	{
 		gopt.err_fp = gopt.log_fp;	// Errors to logfile or NULL
 		GS_daemonize(gopt.log_fp);
 	}
+
+	init_vars();			/* from utils.c */
+	VLOG("=Encryption     : %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
 }
 
 int

