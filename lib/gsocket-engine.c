@@ -33,10 +33,13 @@ FILE *gs_errfp;
 #define GS_NET_DEFAULT_PORT			7350
 #define GS_SOCKS_DFL_IP				"127.0.0.1"
 #define GS_SOCKS_DFL_PORT			9050
+#define GS_GS_HTON_DELAY			(12 * 60 * 60)	// every 12h 
 #ifdef WITH_DEBUG
 # define GS_DEFAULT_PING_INTERVAL	(30)
+# define GS_RECONNECT_DELAY			(3)
 #else
-# define GS_DEFAULT_PING_INTERVAL	(2*60)	/* Every n minutes */
+# define GS_DEFAULT_PING_INTERVAL	(2*60)	// Every 2 minutes
+# define GS_RECONNECT_DELAY			(15)	// connect() not more than every 15s
 #endif
 
 // #define STRESSTEST	1
@@ -51,6 +54,10 @@ static int gs_pkt_connect_write(GS *gsocket, struct gs_sox *sox);
 static int gs_pkt_connect_socks(GS *gsocket, struct gs_sox *sox);
 static void gs_close(GS *gsocket);
 static void gs_listen_add_gs_select_by_sox(GS_SELECT_CTX *ctx, gselect_cb_t func, int fd, void *arg, int val);
+static void gs_net_try_reconnect_by_sox(GS *gs, struct gs_sox *sox);
+static void gs_net_init_by_sox(GS_CTX *ctx, struct gs_sox *sox);
+static int gs_net_connect_new_socket(GS *gs, struct gs_sox *sox);
+
 
 #ifndef int_ntoa
 const char *
@@ -105,7 +112,7 @@ gs_fds_out(fd_set *fdset, int max, char id)
 
 	}
 	buf[i] = '\0';
-	xfprintf(gs_dout, "%s (Tracking: %d)\n", buf, n);
+	xfprintf(gs_dout, "%s (Tracking: %d, max = %d)\n", buf, n, max);
 #endif
 }
 
@@ -150,7 +157,7 @@ gs_fds_out_rwfd(GS_SELECT_CTX *ctx)
 		n++;
 	}
 	buf[i] = '\0';
-	xfprintf(gs_dout, "%s (Tracking: %d)\n", buf, n);
+	xfprintf(gs_dout, "%s (Tracking: %d, max = %d)\n", buf, n, ctx->max_fd);
 #endif
 }
 
@@ -264,6 +271,29 @@ gs_instantiate(GS *gsocket, GS *new_gs, int new_fd)
 #endif
 }
 
+static int
+gs_set_ip_by_hostname(GS *gs, const char *hostname)
+{
+	/* No hostname specified. Perhaps using env var GSOCKET_IP */
+	if (hostname == NULL)
+		return GS_SUCCESS;
+
+	/* When Socks5 is used then TCP goes to Socks5 server */
+	if (gs->ctx->socks_ip != 0)
+		return GS_SUCCESS;
+
+	/* HERE: Socks5 not used */
+	uint32_t gs_ip;
+	gs_ip = GS_hton(hostname);
+	if (gs_ip == 0xFFFFFFFF)
+		return GS_ERROR;
+
+	gs->net.tv_gs_hton = GS_TV_TO_USEC(gs->ctx->tv_now);
+	gs->net.addr = gs_ip;
+
+	return GS_SUCCESS;
+}
+
 GS *
 GS_new(GS_CTX *ctx, GS_ADDR *addr)
 {
@@ -274,6 +304,7 @@ GS_new(GS_CTX *ctx, GS_ADDR *addr)
 	gsocket = calloc(1, sizeof *gsocket);
 	XASSERT(gsocket != NULL, "calloc(): %s\n", strerror(errno));
 
+	gsocket->ctx = ctx;
 	gsocket->fd = -1;
 
 	uint16_t gs_port;
@@ -283,16 +314,16 @@ GS_new(GS_CTX *ctx, GS_ADDR *addr)
 	else
 		gs_port = htons(GS_NET_DEFAULT_PORT);
 
-	ctx->gs_port = gs_port;
+	ctx->gs_port = gs_port;	// Socks5 needs to know
+	gsocket->net.port = gs_port;
 
-	uint32_t gs_ip = 0;
 	ptr = getenv("GSOCKET_IP");
 	if (ptr != NULL)
 	{
-		gs_ip = inet_addr(ptr);
+		gsocket->net.addr = inet_addr(ptr);
 	}
 
-	if ((ctx->socks_ip != 0) || (gs_ip == 0))
+	if ((ctx->socks_ip != 0) || (gsocket->net.addr == 0))
 	{
 		/* HERE: Use Socks5 -or- GSOCKET_IP not available */
 		char buf[256];
@@ -311,34 +342,26 @@ GS_new(GS_CTX *ctx, GS_ADDR *addr)
 
 		gsocket->net.hostname = strdup(hostname);
 
-		/* When Socks5 is used then TCP goes to Socks5 server */
-		if (ctx->socks_ip == 0)
+		int ret;
+		ret = gs_set_ip_by_hostname(gsocket, gsocket->net.hostname);
+		if (ret != GS_SUCCESS)
 		{
-			gs_ip = GS_hton(hostname);
-			if (gs_ip == 0xFFFFFFFF)
-			{
-				free(gsocket);
-				gs_set_error(ctx, "Failed to resolve '%s'", hostname);
-				return NULL;
-			}
+			free(gsocket);
+			gs_set_error(ctx, "Failed to resolve '%s'", hostname);
+			return NULL;
 		}
 	}
 
 	if (ctx->socks_ip != 0)
 	{
+		/* HERE: Socks5 is used */
 		gsocket->net.addr = ctx->socks_ip;
 		gsocket->net.port = ctx->socks_port;
 		XASSERT(gsocket->net.hostname != NULL, "Socks5 but hostname not set\n");
-	} else {
-		gsocket->net.addr = gs_ip;
-		gsocket->net.port = gs_port;
 	}
 	gsocket->net.fd_accepted = -1;
 
-	gsocket->ctx = ctx;
-
-	gsocket->net.n_sox = 5;
-
+	gsocket->net.n_sox = 1;
 	gsocket->flags = ctx->gs_flags;
 
 	memcpy(&gsocket->gs_addr, addr, sizeof gsocket->gs_addr);
@@ -379,7 +402,8 @@ gs_net_connect_by_sox(GS *gsocket, struct gs_sox *sox)
 	addr.sin_addr.s_addr = gsocket->net.addr;
 	addr.sin_port = gsocket->net.port;
 	ret = connect(sox->fd, (struct sockaddr *)&addr, sizeof addr);
-	DEBUGF("connect(%s, fd = %d): %d (errno = %d)\n", int_ntoa(gsocket->net.addr), sox->fd, ret, errno);
+	DEBUGF("connect(%s:%d, fd = %d): %d (errno = %d)\n", int_ntoa(gsocket->net.addr), ntohs(addr.sin_port), sox->fd, ret, errno);
+	gsocket->net.tv_connect = GS_TV_TO_USEC(gsocket->ctx->tv_now);
 	if (ret != 0)
 	{
 		if ((errno == EINPROGRESS) || (errno == EAGAIN) || (errno == EINTR))
@@ -583,7 +607,7 @@ gs_pkt_dispatch(GS *gsocket, struct gs_sox *sox)
 	{
 		DEBUGF("PONG received\n");
 		sox->flags &= ~GS_SOX_FL_AWAITING_PONG;
-		return 0;
+		return GS_SUCCESS;
 	}
 
 	if (sox->rbuf[0] == GS_PKT_TYPE_START)
@@ -605,16 +629,42 @@ gs_pkt_dispatch(GS *gsocket, struct gs_sox *sox)
 		gsocket->net.fd_accepted = sox->fd;
 
 		gs_pkt_accept_write(gsocket, sox);
-		return 0;
+		return GS_SUCCESS;
+	}
+
+	if (sox->rbuf[0] == GS_PKT_TYPE_STATUS)
+	{
+		struct _gs_status *status = (struct _gs_status *)sox->rbuf;
+		DEBUGF("STATUS received. (type=%d, code=%d)\n", status->err_type, status->code);
+		if (status->err_type == GS_STATUS_TYPE_FATAL)
+		{
+			const char *err_str = "FATAL";	// *Unknown* default
+			switch (status->code)
+			{
+				case GS_STATUS_CODE_BAD_AUTH:
+					err_str = "Address already in use.";
+					break;
+				case GS_STATUS_CODE_CONNREFUSED:
+					err_str = "Connection refused (no server listening)";
+					break;
+				case GS_STATUS_CODE_IDLE_TIMEOUT:
+					err_str = "Idle-Timeout. Server did not receive any data";
+					break;
+			}
+			gs_set_errorf(gsocket, "(%u) %s", status->code, err_str);
+			return GS_ERR_FATAL;
+		}
+		return GS_SUCCESS;
 	}
 
 	DEBUGF("Invalid Packet Type %d - Ignoring..\n", sox->rbuf[0]);
 
-	return 0;
+	return GS_SUCCESS;
 }
 
 /*
- * Return length of bytes read or -1 on error (treat EOF as ECONNRESET & return -1)
+ * Return length of bytes read, 0 for waiting and otherwise ERROR
+ * (treat EOF as GS_ERROR (and eventually reconnect if this is a listening socket)
  */
 static ssize_t
 sox_read(struct gs_sox *sox, size_t len)
@@ -629,7 +679,7 @@ sox_read(struct gs_sox *sox, size_t len)
 		 */
 		DEBUGF_R("EOF on GS TCP connection -> treat as ECONNRESET\n");
 		errno = ECONNRESET;
-		return -1;	// ERROR
+		return GS_ERROR;	// ERROR
 	}
 	if (ret < 0)
 	{
@@ -646,7 +696,7 @@ sox_read(struct gs_sox *sox, size_t len)
 			DEBUGF_R("EAGAIN [would block], wanting %zd\n", len);
 			return 0;	// Waiting. No data read.
 		}
-		return -1;
+		return GS_ERROR;
 	}
 
 	sox->rlen += ret;
@@ -657,8 +707,9 @@ sox_read(struct gs_sox *sox, size_t len)
 /*
  * Read at least 'min' bytes or return error if waiting.
  * Return min on SUCCESS (min bytes available in buffer)
- * Return -1 on WAITING
- * Return -2 on error.
+ * Return GS_ERR_WAITING when waiting for more data.
+ * Return GS_ERROR on error (recoverable. re-connect)
+ * Return GS_ERR_FATAL on non-recoverable errors (never?)
  */
 static ssize_t
 sox_read_min(struct gs_sox *sox, size_t min)
@@ -670,8 +721,10 @@ sox_read_min(struct gs_sox *sox, size_t min)
 
 	len_rem = min - sox->rlen;
 	ret = sox_read(sox, len_rem);
-	if (ret < 0)
-		return GS_ERR_FATAL;
+	if (ret == GS_ERROR)
+		return GS_ERROR;
+	if (ret == GS_ERR_FATAL)
+		return GS_ERR_FATAL;	// never happens
 
 	if (sox->rlen < min)
 		return GS_ERR_WAITING;
@@ -690,25 +743,35 @@ gs_read_pkt(GS *gs, struct gs_sox *sox)
 	{
 		ret = sox_read(sox, 1);
 		if (ret != 1)
-			return -1;
+			return GS_ERROR;
 	}
 
-	size_t len_pkt;
-	if (sox->rbuf[0] == GS_PKT_TYPE_LISTEN)
-		len_pkt = sizeof (struct _gs_listen);
-	else
-		len_pkt = sizeof (struct _gs_ping);
+	size_t len_pkt = sizeof (struct _gs_pong);
+	/* Client only allowed to receive START, STATUS and PONG */
+	switch (sox->rbuf[0])
+	{
+		case GS_PKT_TYPE_PONG:
+		case GS_PKT_TYPE_START:
+		case GS_PKT_TYPE_STATUS:
+			break;
+		case GS_PKT_TYPE_LISTEN:
+		case GS_PKT_TYPE_CONNECT:
+			len_pkt = sizeof (struct _gs_listen);
+		case GS_PKT_TYPE_PING:
+		default:
+			DEBUGF_R("Packet type=%d not valid (for client)\n", sox->rbuf[0]);
+	}
 
 	ret = sox_read_min(sox, len_pkt);
 	if (ret == GS_ERR_WAITING)
 		return GS_SUCCESS;	// Not enough data yet
 	if (ret != len_pkt)
-		return -1;	// ERROR
+		return GS_ERROR;	// ERROR
 
-	gs_pkt_dispatch(gs, sox);
+	ret = gs_pkt_dispatch(gs, sox);
 	sox->rlen = 0;
 
-	return GS_SUCCESS;
+	return ret;
 }
 
 /* Accept Auth: 0x05 0x00
@@ -737,17 +800,16 @@ gs_read_socks(GS *gs, struct gs_sox *sox)
 
 	size_t len_pkt = sizeof (struct _socks5_pkt);
 
-	DEBUGF_B("reading..\n");
 	ret = sox_read_min(sox, len_pkt);
 	if (ret == GS_ERR_WAITING)
 		return GS_SUCCESS;
 	if (ret != len_pkt)
-		return -1;
+		return GS_ERROR;
 
-	HEXDUMPF(sox->rbuf, len_pkt, "Socks5 (%zu): ", len_pkt);
+	// HEXDUMPF(sox->rbuf, len_pkt, "Socks5 (%zu): ", len_pkt);
 	memcpy(&spkt, sox->rbuf, sizeof spkt);
 	if (spkt.code != 0)
-		return -1;
+		return GS_ERROR;
 
 	DEBUGF_M("Socks5 CONNECTED\n");
 	/* Socks5 completed. Start GS listen/connect */
@@ -779,37 +841,36 @@ gs_process_by_sox(GS *gsocket, struct gs_sox *sox)
 			if (ret != 0)
 			{
 				DEBUGF_R("will ret = %d, errno %s\n", ret, strerror(errno));
-				return -1;	/* ECONNREFUSED or other */
+				return GS_ERROR;	/* ECONNREFUSED or other */
 			}
 
 			DEBUGF("GS-NET Connection (TCP) ESTABLISHED (fd = %d)\n", sox->fd);
 			/* rfd is set in gs_net_connect_by_sox */
 			gs_fds_out_fd(gsocket->ctx->rfd, 'r', sox->fd);
 			gs_fds_out_fd(gsocket->ctx->wfd, 'w', sox->fd);
-			return 0;
+			return GS_SUCCESS;
 		}
 
 		/* Complete a failed write() */
 		if ((sox->state == GS_STATE_PKT_PING) || (sox->state == GS_STATE_PKT_LISTEN) || (sox->state == GS_STATE_SOCKS))
 		{
 			ret = write(sox->fd, sox->wbuf, sox->wlen);
-			/* Fatal if a single write fails even if wfd was set */
 			if (ret != sox->wlen)
 			{
 				DEBUGF("ret = %d, len = %zu, errno = %s\n", ret, sox->wlen, strerror(errno));
-				return -1;
+				return GS_ERROR;
 			}
 			FD_CLR(sox->fd, gs_ctx->wfd);
 			XFD_SET(sox->fd, gs_ctx->rfd);
 			sox->state = GS_STATE_SYS_NONE;
 
-			return 0;
+			return GS_SUCCESS;
 		}
 
 		/* write() data still in output buffer */
 		DEBUGF("Oops. WFD ready but not in SYS_CONNECT or PKT_PING? (fd = %d, state = %d)\n", sox->fd, sox->state);
-		return -1;
-	}
+		return GS_ERR_FATAL;
+	} /* gs_ctx->w was set */
 
 	/* HERE: rfd is set - ready to read */
 	DEBUGF_M("rfd is set (state == %d)\n", sox->state);
@@ -832,18 +893,21 @@ GS_heartbeat(GS *gsocket)
 {
 	int i;
 
+	if (gsocket == NULL)
+		return;
 	if (gsocket->fd >= 0)
 		return;
 
-	// DEBUGF_M("GS_heartbeat(%p, n_sox=%d)\n", gsocket, gsocket->net.n_sox);
 	/* Check if it is time to send a PING to keep the connection alive */
 	for (i = 0; i < gsocket->net.n_sox; i++)
 	{
 		struct gs_sox *sox = &gsocket->net.sox[i];
 
 		XASSERT(sox->state != GS_STATE_APP_CONNECTED, "fd = %d but APP already CONNECTED state\n", gsocket->fd);
+
+		/* if connect() fails then fd is -1 */
 		/* Skip if 'want-write' is already set. We are already trying to write data. */
-		if (FD_ISSET(sox->fd, gsocket->ctx->wfd))
+		if ((sox->fd >= 0) && (FD_ISSET(sox->fd, gsocket->ctx->wfd)))
 			continue;
 
 		/* Skip if oustanding PONG..*/
@@ -856,14 +920,67 @@ GS_heartbeat(GS *gsocket)
 		if (sox->state == GS_STATE_SYS_CONNECT)
 			continue;
 
-		uint64_t tv_diff = GS_TV_DIFF(&sox->tv_last_data, gsocket->ctx->tv_now);
-		// DEBUGF("diff = %llu\n", tv_diff);
-		if (tv_diff > GS_SEC_TO_USEC(GS_DEFAULT_PING_INTERVAL))
+		if (sox->state == GS_STATE_SYS_RECONNECT)
 		{
-			gs_pkt_ping_write(gsocket, sox);
-			memcpy(&sox->tv_last_data, gsocket->ctx->tv_now, sizeof sox->tv_last_data);
-		}	
+			gs_net_try_reconnect_by_sox(gsocket, sox);
+			continue;
+		}
+
+		if (sox->state == GS_STATE_SYS_NONE)
+		{
+			uint64_t tv_diff = GS_TV_DIFF(&sox->tv_last_data, gsocket->ctx->tv_now);
+			// DEBUGF("diff = %llu\n", tv_diff);
+			if (tv_diff > GS_SEC_TO_USEC(GS_DEFAULT_PING_INTERVAL))
+			{
+				gs_pkt_ping_write(gsocket, sox);
+				memcpy(&sox->tv_last_data, gsocket->ctx->tv_now, sizeof sox->tv_last_data);
+			}
+			continue;
+		}
+		ERREXIT("NOT REACHED\n");
 	}
+}
+
+static void
+gs_net_reconnect_by_sox(GS *gs, struct gs_sox *sox)
+{
+	gs_net_connect_new_socket(gs, sox);
+	/* FIXME: if a connect() call succeeds and this gsocket has more
+	 * than 1 'listen' TCP connections trying to connect() then we could
+	 * trigger a re-connect on all sox which are in state GS_STATE_SYS_RECONNECT
+	 * immediately without having to wait for RECONNECT_DELAY.
+	 */
+}
+
+
+/*
+ * Try to connect() again or if this is to soon since the failed attempt then
+ * wait and let GS_heartbeat() wake us up when it is time.
+ */
+static void
+gs_net_try_reconnect_by_sox(GS *gs, struct gs_sox *sox)
+{
+	sox->state = GS_STATE_SYS_RECONNECT;
+
+	if (GS_TV_TO_USEC(gs->ctx->tv_now) <= gs->net.tv_connect + GS_SEC_TO_USEC(GS_RECONNECT_DELAY))
+	{
+		DEBUGF_M("To many connect() attempts... Heartbeat will wake us later...\n");
+		return;
+	}
+	/* Ignore return value. If this fails then ignorning return value means
+	 * we will re-use old IP (which is what we want).
+	 */
+	/* Only update IP from hostname like every 12h or so (this should never change) */
+	if (GS_TV_TO_USEC(gs->ctx->tv_now) > gs->net.tv_gs_hton + GS_SEC_TO_USEC(GS_GS_HTON_DELAY))
+	{
+		if (gs->net.hostname != NULL)
+		{
+			DEBUGF_Y("Newly resolving %s\n", gs->net.hostname);
+			gs_set_ip_by_hostname(gs, gs->net.hostname);
+		}
+	}
+
+	gs_net_reconnect_by_sox(gs, sox);
 }
 
 /*
@@ -882,7 +999,7 @@ gs_process(GS *gsocket)
 	{
 		DEBUGF("*** WARNING ***: No more GS-Net messages after accept please..\n");
 		ERREXIT("Should not happen\n");
-		return 0;
+		return GS_ERR_FATAL;	// NOT REACHED
 	}
 
 	for (i = 0; i < gsocket->net.n_sox; i++)
@@ -902,11 +1019,34 @@ gs_process(GS *gsocket)
 		{
 			ret = gs_process_by_sox(gsocket, sox);
 			DEBUGF("gs_process_by_sox() = %d\n", ret);
-			if (ret != 0)
+			if (ret == GS_ERROR)
 			{
-				DEBUGF_R("errno(%d) = %s\n", errno, strerror(errno));
-				return -1;
+				/* GS_connect() shall not auto reconnect */
+				if (gsocket->flags & GS_FL_AUTO_RECONNECT)
+					DEBUGF_M("GS_FL_AUTO_RECONNECT is SET\n");
+				if (!(gsocket->flags & GS_FL_AUTO_RECONNECT))
+					return GS_ERR_FATAL;
+
+				/* HERE: Auto-Reconnect. Failed in connect() or write(). */
+				DEBUGF_M("GS-NET error. Re-connecting...\n");
+				if (!gsocket->net.is_connect_error_warned)
+				{
+					gsocket->net.is_connect_error_warned = 1;
+					xfprintf(gs_errfp, "%s GS-NET: %s. Re-connecting...\n", GS_logtime(), strerror(errno));
+				}
+				close(sox->fd);
+				gs_net_init_by_sox(gsocket->ctx, sox);
+				gs_net_try_reconnect_by_sox(gsocket, sox);
+				continue;
 			}
+			if (ret != GS_SUCCESS)
+			{
+				DEBUGF_R("FATAL errno(%d) = %s\n", errno, strerror(errno));
+				return GS_ERR_FATAL;
+			}
+
+			// HERE: connect() succeeded 
+			gsocket->net.is_connect_error_warned = 0;
 
 			memcpy(&sox->tv_last_data, gsocket->ctx->tv_now, sizeof sox->tv_last_data);
 			/* Immediatly let app know that a new gs-connection has been accepted */
@@ -981,6 +1121,56 @@ gs_net_new_socket(GS *gsocket, struct gs_sox *sox)
 }
 
 /*
+ * Create a new socket and connect to GS-NET.
+ */
+static int
+gs_net_connect_new_socket(GS *gs, struct gs_sox *sox)
+{
+	int ret;
+
+	if (sox->fd >= 0)
+		return GS_SUCCESS;	// Skip existing (valid) TCP sockets
+
+	/*
+	 * If we use the GS_select() subsystem:
+	 * After GS_accept() a new TCP connection is established to
+	 * the GS-NET. We must track the new fd of that new TCP connection
+	 * with GS_select(). Here: Find out the call-back for original listening
+	 * socket and assign it to new TCP connection (GS-NET).
+	 */
+	/* GS_select-HACK-1-START */
+	gselect_cb_t func;
+	int cb_val;
+	func = gs->ctx->func_listen;
+	cb_val = gs->ctx->cb_val_listen;
+	DEBUGF("gs_net_connect called (GS_select() cb_func = %p\n", func);
+	GS_SELECT_CTX *gselect_ctx = gs->ctx->gselect_ctx;
+	/* GS_select_HACK-1-END */
+
+	/* HERE: socket() does not exist yet. Create it. */
+	ret = gs_net_new_socket(gs, sox);
+	if (ret != 0)
+		return GS_ERROR;
+
+	/* Connect TCP */
+	ret = gs_net_connect_by_sox(gs, sox);
+	DEBUGF("gs_net_connect_by_sox(fd = %d): %d, %s\n", sox->fd, ret, strerror(errno));
+	if (ret == -2)
+		return GS_ERROR;
+
+	/* GS_select-HACK-1-START */
+	if (gs->ctx->gselect_ctx != NULL)
+	{
+		DEBUGF_B("Using GS_select() with new fd = %d, func = %p\n", sox->fd, func);
+		/* HERE: We are using GS_select(). Track new fd. */
+		gs_listen_add_gs_select_by_sox(gselect_ctx, func, sox->fd, gs, cb_val);
+	}
+	/* GS_select-HACK-1-END */
+
+	return GS_SUCCESS;
+}
+
+/*
  * Connect to the GS-NET (non-blocking). 
  * Return 0 on success.
  * Return -1 on fatal error (must exist).
@@ -1003,52 +1193,28 @@ gs_net_connect(GS *gsocket)
 	if (gsocket->flags & GS_FL_TCP_CONNECTED)
 		return 0;	/* Already connected */
 
-	/*
-	 * If we use the GS_select() subsystem:
-	 * After GS_accept() a new TCP connection is established to
-	 * the GS-NET. We must track the new fd of that new TCP connection
-	 * with GS_select(). Here: Find out the call-back for original listening
-	 * socket and assign it to new TCP connection (GS-NET).
-	 */
-	/* GS_select-HACK-1-START */
-	gselect_cb_t func;
-	int cb_val;
-	func = gsocket->ctx->func_listen;
-	cb_val = gsocket->ctx->cb_val_listen;
-	DEBUGF("gs_net_connect called (GS_select() cb_func = %p\n", func);
-	GS_SELECT_CTX *gselect_ctx = gsocket->ctx->gselect_ctx;
-	/* GS_select_HACK-1-END */
-
 	for (i = 0; i < gsocket->net.n_sox; i++)
 	{
 		struct gs_sox *sox = &gsocket->net.sox[i];
 
-		if (sox->fd >= 0)
-			continue;	// Skip existing (valid) TCP sockets
+		ret = gs_net_connect_new_socket(gsocket, sox);
 
-		/* HERE: socket() does not exist yet. Create it. */
-		ret = gs_net_new_socket(gsocket, sox);
-		if (ret != 0)
-			return -1;
-
-		/* Connect TCP */
-		ret = gs_net_connect_by_sox(gsocket, sox);
-		DEBUGF("gs_net_connect_by_sox(fd = %d): %d, %s\n", sox->fd, ret, strerror(errno));
-		if (ret == -2)
-			return -1;
-
-		/* GS_select-HACK-1-START */
-		if (gsocket->ctx->gselect_ctx != NULL)
-		{
-			DEBUGF_B("Using GS_select() with new fd = %d, func = %p\n", sox->fd, func);
-			/* HERE: We are using GS_select(). Track new fd. */
-			gs_listen_add_gs_select_by_sox(gselect_ctx, func, sox->fd, gsocket, cb_val);
-		}
-		/* GS_select-HACK-1-END */
-
+		if (ret != GS_SUCCESS)
+			return ret;
 	}	/* FOR loop over all sockets */
 
 	return 0;
+}
+
+static void
+gs_net_init_by_sox(GS_CTX *ctx, struct gs_sox *sox)
+{
+	FD_CLR(sox->fd, ctx->wfd);
+	FD_CLR(sox->fd, ctx->rfd);
+	// FD_CLR(sox->fd, ctx->w);
+	// FD_CLR(sox->fd, ctx->r);
+	memset(sox, 0, sizeof *sox);
+	sox->fd = -1;
 }
 
 static void
@@ -1060,8 +1226,7 @@ gs_net_init(GS *gsocket, int backlog)
 	gsocket->net.n_sox = backlog;
 	for (i = 0; i < gsocket->net.n_sox; i++)
 	{
-		struct gs_sox *sox = &gsocket->net.sox[i];
-		sox->fd = -1;
+		gs_net_init_by_sox(gsocket->ctx, &gsocket->net.sox[i]);
 	}
 }
 
@@ -1220,6 +1385,11 @@ GS_connect(GS *gsocket)
 		return GS_ERR_FATAL;
 	}
 
+	/* For auto-reconnecting client side (is it needed?) consider:
+	 * - How to handle when no listening server is available
+	 * - Warn user if GSRN is unavailable.
+	 */
+	// gsocket->flags |= GS_FL_AUTO_RECONNECT;
 	if (gsocket->flags & GSC_FL_NONBLOCKING)
 		ret = gs_connect(gsocket);
 	else
@@ -1249,6 +1419,7 @@ GS_connect(GS *gsocket)
 int
 GS_listen(GS *gsocket, int backlog)
 {
+	gsocket->flags |= GS_FL_AUTO_RECONNECT;
 	gs_net_init(gsocket, backlog);
 	gs_net_connect(gsocket);
 
@@ -1288,8 +1459,6 @@ GS_listen_add_gs_select(GS *gs, GS_SELECT_CTX *ctx, gselect_cb_t func, void *arg
 
 /*
  * Return a GS on accept or NULL if still waiting.
- * FIXME: How do we determine error after gs_process() to exit fully or when GS_accept()
- * was blocking???
  */
 /*
  * Return -1 on waiting
@@ -1301,7 +1470,7 @@ gs_accept(GS *gsocket, GS *new_gs)
 {
 	int ret;
 
-	//DEBUGF("Called GS_accept()\n");
+	DEBUGF("Called gs_accept(%p, %p)\n", gsocket, new_gs);
 	ret = gs_process(gsocket);
 	if (ret != 0)
 	{
@@ -1312,13 +1481,16 @@ gs_accept(GS *gsocket, GS *new_gs)
 	/* Check if there is a new gs-connection waiting */
 	if (gsocket->net.fd_accepted >= 0)
 	{
-		DEBUGF("New GS Connection accepted (fd = %d)\n", gsocket->net.fd_accepted);
+		DEBUGF("New GS Connection accepted (fd = %d, n_sox = %d)\n", gsocket->net.fd_accepted, gsocket->net.n_sox);
 
 		ret = gs_net_disengage_tcp_fd(gsocket, new_gs);
 		XASSERT(ret == 0, "ret = %d\n", ret);
 
-		/* Start new TCP to GS-Net to listen for more incoming connections */
-		gs_net_connect(gsocket);
+		if (!(gsocket->flags & GS_FL_SINGLE_SHOT))
+		{
+			/* Start new TCP to GS-Net to listen for more incoming connections */
+			gs_net_connect(gsocket);
+		}
 
 		return GS_SUCCESS;
 	}
@@ -1345,6 +1517,8 @@ gs_accept_blocking(GS *gsocket, GS *new_gs)
 		n = select(gsocket->ctx->max_sox + 1, gsocket->ctx->r, gsocket->ctx->w, NULL, &tv);
 		if ((n < 0) && (errno == EINTR))
 			continue;
+		if (n < 0)
+			DEBUGF_R("select(): %s\n", strerror(errno));
 		gettimeofday(gsocket->ctx->tv_now, NULL);
 		GS_heartbeat(gsocket);
 		if (n == 0)
@@ -1353,7 +1527,7 @@ gs_accept_blocking(GS *gsocket, GS *new_gs)
 		ret = gs_accept(gsocket, new_gs);
 		if (ret == -2)
 			return -2;
-		if (ret == -1)
+		if (ret == GS_ERR_WAITING)
 			continue;
 
 		/* Make tcp fd 'blocking' for caller. */
@@ -1604,6 +1778,8 @@ GS_CTX_setsockopt(GS_CTX *ctx, int level, const void *opt_value, size_t opt_len)
 		ctx->gs_flags &= ~GSC_FL_NONBLOCKING;
 	else if (level == GS_OPT_NO_ENCRYPTION)
 		ctx->gs_flags &= ~GSC_FL_USE_SRP;
+	else if (level == GS_OPT_SINGLESHOT)
+		ctx->gs_flags |= GS_FL_SINGLE_SHOT;
 	/* OPTIONS */
 	else if (level == GS_OPT_USE_SOCKS)
 	{
@@ -1650,8 +1826,6 @@ GS_read(GS *gsocket, void *buf, size_t count)
 	int err = 0;
 	// DEBUGF("GS_read(fd = %d)...\n", gsocket->fd);
 	GS_SELECT_CTX *sctx = gsocket->ctx->gselect_ctx;
-
-	// gsocket->ctx->gselect_ctx->current_func[gsocket->fd] = GS_CALLREAD;
 
 	if (gsocket->flags & GSC_FL_USE_SRP)
 	{
@@ -1786,15 +1960,17 @@ GS_write(GS *gsocket, const void *buf, size_t count)
 		/* HERE: *write() blocked previously or SSL_read() WANTS-WRITE */
 		if (gsocket->write_pending == 0)
 		{
-			/* HERE: GS_write() was called but SSL still busy with SSL_read().
+			/* HERE: GS_write() was called but SSL still busy with SSL_read/SSL_accpet/SSL_connect.
 			 * Set wfd in saved state so that when state is restored this function
 			 * is triggered.
 			 */
-			DEBUGF_R("*** WARNING **** Wanting to write app data (%zd) while SSL is busy..\n", count);
+			DEBUGF_R("*** WARNING **** Wanting to write app data (%zu) while SSL is busy..\n", count);
 			GS_FD_SET_W(gsocket);
+			/* This should never be called again because we disable cmd's FD-IN */
 
 			return 0;	/* WOULD BLOCK */
 		}
+		/* HERE: w-fd became writeable while in saved state */
 	}
 #endif 
 
@@ -1810,11 +1986,11 @@ GS_write(GS *gsocket, const void *buf, size_t count)
 			return len;
 
 		len = SSL_write(gsocket->ssl, buf, count);
-		// DEBUGF_M("SSL_write() == %zd\n", len);
+		DEBUGF_M("SSL_write(%zu) == %zd\n", count, len);
 		if (len <= 0)
 		{
 			err = SSL_get_error(gsocket->ssl, len);
-			DEBUGF_Y("fd=%d, SSL Error: ret = %zd, err = %d (%s)\n", gsocket->fd, len, err, GS_SSL_strerror(err));
+			DEBUGF_Y("fd=%d (count=%zu), SSL Error: ret = %zd, err = %d (%s)\n", gsocket->fd, count, len, err, GS_SSL_strerror(err));
 		}
 #endif
 	} else {
@@ -1847,10 +2023,8 @@ GS_write(GS *gsocket, const void *buf, size_t count)
 	ret = 0;
 #if 1
 	sctx->blocking_func[gsocket->fd] |= GS_CALLWRITE;
-
 	ret = gs_ssl_want_io_rw(sctx, gsocket->fd, err);
 #endif
-
 	gsocket->write_pending = 1;
 
 	// DEBUGF("write = %zd %s\n", len, strerror(errno));

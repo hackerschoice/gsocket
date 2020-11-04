@@ -37,6 +37,7 @@
 #include "common.h"
 #include "utils.h"
 #include "socks.h"
+#include "man_gs-netcat.h"
 
 /* All connected gs-peers indexed by gs->fd */
 static struct _peer *peers[FD_SETSIZE];
@@ -45,7 +46,7 @@ static struct _peer *peers[FD_SETSIZE];
 static int write_gs(GS_SELECT_CTX *ctx, struct _peer *p);
 static int peer_forward_connect(struct _peer *p, uint32_t ip, uint16_t port);
 static void vlog_hostname(struct _peer *p, const char *desc, uint16_t port);
-static void stty_set_remote_size(GS_SELECT_CTX *ctx, struct _peer *p);
+// static void stty_set_remote_size(GS_SELECT_CTX *ctx, struct _peer *p);
 
 
 /*
@@ -68,8 +69,6 @@ peer_mk_stats(char *dst, size_t len, struct _peer *p)
 	char wbuf[64];
 	GS_bytesstr_long(rbuf, sizeof rbuf, gs->bytes_read);
 	GS_bytesstr_long(wbuf, sizeof wbuf, gs->bytes_written);
-	// GS_bytesstr(rbuf, sizeof rbuf, gs->bytes_read);
-	// GS_bytesstr(wbuf, sizeof wbuf, gs->bytes_written);
 	char rbufps[64];
 	char wbufps[64];
 	int bps = ((gs->bytes_read * 1000) / msec);
@@ -77,7 +76,6 @@ peer_mk_stats(char *dst, size_t len, struct _peer *p)
 	bps = ((gs->bytes_written * 1000) / msec);
 	GS_bytesstr(wbufps, sizeof wbufps, bps==0?0:bps);
 
-	// snprintf(dst, len, "[ID=%d] Disconnected after %s\n    Up: %s Bytes [%s/s], Down: %s Bytes [%s/s]\n", p->id, dbuf, wbuf, wbufps, rbuf, rbufps);
 	snprintf(dst, len, 
 	"[ID=%d] Disconnected after %s\n"
 	"    Up: "D_MAG("%12s")" [%s/s], Down: "D_MAG("%12s")" [%s/s]\n", p->id, dbuf, wbuf, wbufps, rbuf, rbufps);
@@ -185,7 +183,9 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 
 	}
 	if ((gopt.is_interactive) && !(gopt.flags & GSC_FL_IS_SERVER))
+	{
 		stty_check_esc(gs, p->wbuf[0]);
+	}
 
 	write_gs(ctx, p);
 
@@ -198,7 +198,7 @@ write_fd(GS_SELECT_CTX *ctx, struct _peer *p)
 	ssize_t len;
 
 	len = write(p->fd_out, p->rbuf, p->rlen);
-	DEBUGF_G("write(fd = %d, len = %zd) == %zd, errno = %d (%s)\n", p->fd_out, p->rlen, len, errno, strerror(errno));
+	// DEBUGF_G("write(fd = %d, len = %zd) == %zd, errno = %d (%s)\n", p->fd_out, p->rlen, len, errno, errno==0?"":strerror(errno));
 	
 	if ((len < 0) && (errno == EAGAIN))
 	{
@@ -245,7 +245,7 @@ cb_read_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	// XASSERT(p->rlen <= 0, "Already data in input buffer (%zd)\n", p->rlen);
 	XASSERT(p->rlen < sizeof p->rbuf, "rlen=%zd larger than buffer\n", p->rlen);
 	len = GS_read(gs, p->rbuf + p->rlen, sizeof p->rbuf - p->rlen);
-	DEBUGF_G("GS_read(fd = %d) == %zd\n", gs->fd, len);
+	// DEBUGF_G("GS_read(fd = %d) == %zd\n", gs->fd, len);
 	if (len == 0)
 		return GS_ECALLAGAIN;
 
@@ -271,21 +271,6 @@ cb_read_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 		return GS_SUCCESS;	/* Successfully removed peer */
 	}
 
-#if 0
-	/* FBSD Client hack: FBSD negotiates term sizes we do not have to send
-	 * stty command to set rows/columns [it would confuse fbsd]
-	 */
-	if ((p->is_stdin_forward) && (gopt.is_interactive))
-	{
-		if (p->is_pty_first_read == 0)
-		{
-			p->is_pty_first_read = 1;
-			/* If server negotiates window size then do not send stty-hack command */
-			if (memcmp(p->rbuf, "\x1b\x37", 2) != 0)
-				stty_set_remote_size(ctx, p);
-		}
-	}
-#endif
 
 	p->rlen += len;
 
@@ -313,6 +298,14 @@ cb_read_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 			write_gs(ctx, p);
 		// DEBUGF_C("fd=%d in RFD is %s\n", gs->fd, FD_ISSET(gs->fd, ctx->rfd)?"set":"NOT SET");
 	} else {
+		/* First time we receive data we set tty to raw mode. */
+		if ((p->is_stdin_forward) && (gopt.is_interactive))
+		{
+			/* HERE: Client */
+			XASSERT(p->fd_in == STDIN_FILENO, "p->fd_in = %d, not STDIN\n", p->fd_in);
+			stty_set_raw();
+		}
+
 		write_fd(ctx, p);
 	}
 
@@ -330,8 +323,7 @@ write_gs(GS_SELECT_CTX *ctx, struct _peer *p)
 	if (len == 0)
 	{
 		/* GS_write() would block. */
-		FD_CLR(p->fd_in, ctx->rfd);	// Stop reading from input
-		XFD_SET(p->gs->fd, ctx->wfd);	// Mark for writing..
+		FD_CLR(p->fd_in, ctx->rfd);		// Stop reading from input
 		return GS_ECALLAGAIN;
 	}
 
@@ -559,6 +551,7 @@ cb_listen(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	if (gopt.is_multi_peer == 0) //(gopt.cmd == NULL) && (gopt.dst_ip == 0) && (!gopt.is_interactive))
 	{
 		GS_close(gopt.gsocket);
+		gopt.gsocket = NULL;
 	}
 	/* HERE: Success. A new GS connection. */
 	DEBUGF_B("Current max_fd %d (gs fd = %d)\n", ctx->max_fd, gs_new->fd);
@@ -587,6 +580,7 @@ do_server(void)
 	GS_CTX_use_gselect(&gopt.gs_ctx, &ctx);
 
 	GS_listen(gopt.gsocket, 1);
+
 	/* Add all listening fd's to select()-subsystem */
 	GS_listen_add_gs_select(gopt.gsocket, &ctx, cb_listen, gopt.gsocket, 0);
 
@@ -606,6 +600,7 @@ do_server(void)
  * A hack to set the remote window size without inband
  * communication. Only used with -i.
  */
+#if 0
 static void
 stty_set_remote_size(GS_SELECT_CTX *ctx, struct _peer *p)
 {
@@ -613,6 +608,7 @@ stty_set_remote_size(GS_SELECT_CTX *ctx, struct _peer *p)
 	p->wlen = (ssize_t)strlen((char *)p->wbuf);
 	write_gs(ctx, p);
 }
+#endif
 
 /*
  * CLIENT
@@ -639,7 +635,7 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd_notused, void *arg, int val)
 		 * -> Connection 2x to 127.1:1080 should keep 1st connection alive and 2nd
 		 * should (gracefully) fail.
 		 */
-		usleep(100 * 1000);
+		// usleep(100 * 1000);
 		peer_free(ctx, p);
 		return GS_SUCCESS;
 	}
@@ -660,14 +656,14 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd_notused, void *arg, int val)
 	/* -i specified and we are a client: Set TTY to raw for a real shell
 	 * experience. Ignore this for this example.
 	 */
-	if ((p->is_stdin_forward) && (gopt.is_interactive))
-	{
-		/* HERE: Client */
-		DEBUGF_M("Setting tty\n");
-		XASSERT(p->fd_in == STDIN_FILENO, "p->fd_in = %d, not STDIN\n", p->fd_in);
-		stty_set_raw();
-		// stty_set_remote_size(ctx, p);
-	}
+	// if ((p->is_stdin_forward) && (gopt.is_interactive))
+	// {
+	// 	/* HERE: Client */
+	// 	DEBUGF_M("Setting tty\n");
+	// 	XASSERT(p->fd_in == STDIN_FILENO, "p->fd_in = %d, not STDIN\n", p->fd_in);
+	// 	stty_set_raw();
+	// 	// stty_set_remote_size(ctx, p);
+	// }
 
 	return GS_SUCCESS;
 }
@@ -769,6 +765,7 @@ my_usage(void)
 "  -p <port>    TCP Port to listen on or forward to\n"
 "  -i           Interactive login shell (TTY) [~. to terminate]\n"
 "  -e <cmd>     Execute command [e.g. \"bash -il\" or \"id\"]\n"
+"  -m           Display man page\n"
 "   "
 "\n"
 "Example to forward traffic from port 2222 to 192.168.6.7:22:\n"
@@ -794,10 +791,14 @@ my_getopt(int argc, char *argv[])
 
 	do_getopt(argc, argv);	/* from utils.c */
 	optind = 1;	/* Start from beginning */
-	while ((c = getopt(argc, argv, UTILS_GETOPT_STR)) != -1)
+	while ((c = getopt(argc, argv, UTILS_GETOPT_STR "m")) != -1)
 	{
 		switch (c)
 		{
+			case 'm':
+				printf("%s", man_str);
+				exit(0);
+				break;	// NOT REACHED
 			case 'D':
 				gopt.is_daemon = 1;
 				break;
@@ -861,15 +862,18 @@ my_getopt(int argc, char *argv[])
 		}
 	}
 
-	init_vars();			/* from utils.c */
-	VLOG("=Encryption     : %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
-
-	/* Become a daemon & watchdog (auto-restart) */
+	/* Become a daemon & watchdog (auto-restart)
+	 * Do this before init_vars() so that any error in resolving
+	 * is re-tried by watchdog.
+	 */
 	if (gopt.is_daemon)
 	{
 		gopt.err_fp = gopt.log_fp;	// Errors to logfile or NULL
 		GS_daemonize(gopt.log_fp);
 	}
+
+	init_vars();			/* from utils.c */
+	VLOG("=Encryption     : %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
 }
 
 int

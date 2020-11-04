@@ -109,7 +109,7 @@ GS_hton(const char *hostname)
 	uint32_t ip;
 	/* Check if the string is an IP addres "1.2.3.4" */
 	ip = inet_addr(hostname);
-	if (ip != -1)
+	if (ip != 0xFFFFFFFF)
 		return ip;
 
 	he = gethostbyname(hostname);
@@ -201,8 +201,8 @@ GS_daemonize(FILE *logfp)
 
 	/* HERE: Child. */
 	setsid();
-	if (chdir("/") != 0)
-		ERREXIT("chdir(): %s\n", strerror(errno));
+	// if (chdir("/") != 0)
+	// 	ERREXIT("chdir(): %s\n", strerror(errno));
 	close(STDIN_FILENO);
 	close(STDOUT_FILENO);
 	close(STDERR_FILENO);

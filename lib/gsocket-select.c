@@ -102,10 +102,9 @@ gs_select_set_rdata_pending(GS_SELECT_CTX *ctx, int fd)
 static void
 call_item(GS_SELECT_CTX *ctx, struct _gs_sel_item *item, int fd)
 {
-	int wants = 0;
-	int ret;
+	// int ret;
 
-	ret = (*item->func)(ctx, fd, item->cb_arg, item->cb_val);
+	(*item->func)(ctx, fd, item->cb_arg, item->cb_val);
 	// DEBUGF("cb-func ret = %d (fd %d)\n", ret, fd);
 	/* 1. Think carefully: STDIN (fd=0) may have succesfully
 	 * 1024 bytes but GS_write (fd=3) failed (WANT-WRITE).
@@ -116,31 +115,6 @@ call_item(GS_SELECT_CTX *ctx, struct _gs_sel_item *item, int fd)
 	 * are called by callbacks: Reading from STDIN calls
 	 * GS_write() regardless if GS_write() would block or not.
 	 */ 
-	wants = ctx->want_io_write[fd];
-	wants += ctx->want_io_read[fd];
-	if (wants == 0)
-	{
-		// DEBUGF_B("ctx->want_io_write[fd=%d] == %d\n", fd, ctx->want_io_write[fd]);
-		// DEBUGF_Y("SSL has finished. App data...\n");
-		/* HERE: SSL has finished */
-		if (ret == GS_ECALLAGAIN)
-		{
-			#if 0
-			/* GS_read()/GS_write() has not finished */
-			DEBUGF_R("CB wants to be called again...\n");
-			if (ctx->blocking_func[fd] & GS_CALLWRITE)
-			{
-				XFD_SET(fd, ctx->wfd);
-				//gs_ssl_want_io_rw(ctx, fd, SSL_ERROR_WANT_WRITE);
-			} else if (ctx->blocking_func[fd] & GS_CALLREAD) {
-				XFD_SET(fd, ctx->rfd);
-				// gs_ssl_want_io_rw(ctx, fd, SSL_ERROR_WANT_READ);
-			} else {
-				DEBUGF_R("blocking_func[%d] not set. Not a Read/Write call?\n", fd);
-			}
-			#endif
-		}
-	}
 }
 
 /*

@@ -75,6 +75,7 @@ if [[ -n "$QUICK" ]]; then
 	rm -rf test50M.dat &>/dev/null
 	mk_dummy test50M.dat 15
 else
+	rm -rf test50M.dat &>/dev/null
 	mk_dummy test50M.dat 51200
 fi
 echo "Fubar" >>test50M.dat	# Make it an odd length
@@ -87,6 +88,7 @@ test_start()
 {
 	rm -f client_out.dat server_out.dat server_err.txt client_err.txt server[123]_out.dat client[12]_out.dat server[123]_err.txt client[12]_err.txt nc[123]_out.dat nc[123]_err.txt
 	[[ x"$1" != x ]] && $ECHO $*
+	new_id
 }
 
 fail()
@@ -202,7 +204,7 @@ new_id()
 }
 
 # killall -9 gs-helloworld gs-pipe gs-full-pipe gs-netcat &>/dev/null
-new_id
+# new_id
 
 if [[ "$tests" =~ '1.1 ' ]]; then
 ### 1 - Hello World
@@ -213,10 +215,6 @@ GSPID="$(sh -c './gs-helloworld -k id_sec.txt -l 2>server_err.txt >server_out.da
 sleep_ct && (echo "Hello World"; sleep 1; echo "That's the end") | ./gs-helloworld -k id_sec.txt 2>client_err.txt >client_out.dat
 waitk $GSPID
 if [ "$(MD5 client_out.dat)" != "628eca04c4cb6c8f539381be1c5cd325" ]; then fail 1; fi
-# if [ "$(MD5 server_out.dat)" != "333a867bef92d4712101e4a4b637740c" ]; then fail 2; fi
-# if [ "$(MD5 client_out.dat)" != "628eca04c4cb6c8f539381be1c5cd325" ]; then fail 1; fi
-# if [ "$(MD5 server_out.dat)" != "333a867bef92d4712101e4a4b637740c" ]; then fail 2; fi
-
 $ECHO "${OK}"
 fi
 
@@ -263,11 +261,14 @@ fi
 if [[ "$tests" =~ '4.1' ]]; then
 ### Client to become a server if no server is listening
 test_start -n "Running: pipe #4.1 (become server if possible)............"
-GSPID="$(sh -c './gs-pipe -k id_sec.txt -A 2>server_err.txt >server_out.dat & echo ${!}')"
+GSPID="$(sh -c './gs-pipe -k id_sec.txt -A <test1k.dat 2>server_err.txt >server_out.dat & echo ${!}')"
 sleep_ct
 ./gs-pipe -k id_sec.txt -A <test50k.dat 2>client_err.txt >client_out.dat
 waitk $GSPID
-if [ "$(MD5 test50k.dat)" != "$(MD5 server_out.dat)" ]; then fail 1; fi
+FC=0
+[[ "$(MD5 test50k.dat)" != "$(MD5 server_out.dat)" ]] && FC=$((FX+1))
+[[ "$(MD5 test1k.dat)" != "$(MD5 client_out.dat)" ]] && FC=$((FX+1))
+[[ "$FC" != 1 ]] && fail 1
 $ECHO "${OK}"
 fi
 
@@ -723,7 +724,7 @@ else
 	if command -v fusermount >/dev/null 2>&1; then
 		fusermount -zu test_mnt
 	else
-		umount test_mnt
+		umount -f test_mnt
 	fi
 	kill $GSPID2
 	rm -rf test_client

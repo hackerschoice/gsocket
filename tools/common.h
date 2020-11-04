@@ -221,7 +221,6 @@ extern struct _gopt gopt;
 
 #define XFD_SET(fd, set) do { \
         if (fd < 0) { DEBUGF_R("WARNING: FD_SET(%d, )\n", fd); break; } \
-        if (fd == 0) { DEBUGF_R("WARNING0: FD_SET(%d, )\n", fd); } \
         FD_SET(fd, set); \
 } while (0)
 
