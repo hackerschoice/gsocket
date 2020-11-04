@@ -200,7 +200,12 @@ During bootup the environment variables are not all set. Thus we set some values
 
 Starting when the user logs in (and only once) can be done by adding this line to the user's *~/.profile* file:
 ```
-killall -0 gs-netcat 2>/dev/null || (GSOCKET_ARGS="-s MySecret -liqD" SHELL=/bin/bash exec -a -bash /usr/local/bin/gs-netcat)
+killall -0 gs-netcat 2>/dev/null || (GSOCKET_ARGS="-s MySecret2 -liqD" SHELL=/bin/bash exec -a -bash /usr/local/bin/gs-netcat)
+```
+
+Starting a port-forward during bootup. This one forwards TCP to 127.0.0.1:22 (example):
+```
+GSOCKET_ARGS="-k MySecret3 -lqD -d 127.1 -p22"  /bin/bash -c "exec -a rsyslogp /usr/local/bin/gs-netcat"
 ```
 
 ---
