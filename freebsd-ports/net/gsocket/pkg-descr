@@ -1,0 +1,7 @@
+Global Socket allows two users behind NAT/Firewall to establish a TCP
+connection with each other. Securely. Abandon the thinking that an IP Address
+is needed to communicate with somebody. Instead start thinking that two users
+should be able to communicate with each other as long as they know the same
+secret (key/password). The Global Socket library handles the rest.
+
+WWW: https://github.com/hackerschoice/gsocket
