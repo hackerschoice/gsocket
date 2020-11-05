@@ -144,7 +144,7 @@ AC_OUTPUT([Makefile lib/Makefile tools/Makefile man/Makefile])
 echo "
 
       \"If netcat is a swiss army knife then
-                        gs-netcat is a germanian battle axe\"
+                        gs-netcat is a germanic battle axe\"
 
 	                        --acpizer/United Cracking Force
 "
