@@ -37,17 +37,17 @@ Man Page| [gs-netcat(1)](https://hackerschoice.github.io/gs-netcat.1.html), [gs-
 The Test-Server is running behind NAT/FIREWALL. The commands below will use the GSRN to connect to the Test-Server.
 ```
 ### Access the test-server
-$ gs-sftp -s THCTestServer
+$ gs-sftp -s thctestserver
 
 ### Mount a directory from the test-server to your local workstation
 $ mkdir ~/mnt
-$ gs-mount -s THCTestServer ~/mnt   
+$ gs-mount -s thctestserver ~/mnt   
 
 ### Transfer 'directory-with-stuff' to the test-server
-$ blitz -s BLITZServer directory-with-stuff
+$ blitz -s blitztestserver directory-with-stuff
 
 ### Transfer all your mp3 to the test-server
-$ find . -name '*.mp3' | blitz -s BLITZServer -f -
+$ find . -name '*.mp3' | blitz -s blitztestserver -f -
 
 ### Get a root-shell on the test-server
 $ gs-netcat -s AskUsForThePassword -i
