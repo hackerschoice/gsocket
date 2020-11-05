@@ -27,7 +27,7 @@ Includes:
 <A></A>|<A></A>
 ----------|-------------
 Download|[gsocket-1.4.22.tar.gz](https://github.com/hackerschoice/gsocket/releases/download/v1.4.22/gsocket-1.4.22.tar.gz)
-Debian| [gsocket_1.4.22_all.deb](https://github.com/hackerschoice/binary/raw/main/gsocket/latest/gsocket_1.4.22_all.deb)
+Debian/Ubuntu [sshfs needed]| [gsocket_1.4.22_all.deb](https://github.com/hackerschoice/binary/raw/main/gsocket/latest/gsocket_1.4.22_all.deb)
 Man Page| [gs-netcat(1)](https://hackerschoice.github.io/gs-netcat.1.html), [gs-mount(1)](https://hackerschoice.github.io/gs-mount.1.html), [gs-sftp(1)](https://hackerschoice.github.io/gs-sftp.1.html), [blitz(1)](https://hackerschoice.github.io/blitz.1.html)
 
 **BETA BETA BETA. PRIVATE RELEASE ONLY.**
