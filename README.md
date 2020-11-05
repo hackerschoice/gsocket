@@ -27,7 +27,7 @@ Includes:
 <A></A>|<A></A>
 ----------|-------------
 Download|[gsocket-1.4.22.tar.gz](https://github.com/hackerschoice/gsocket/releases/download/v1.4.22/gsocket-1.4.22.tar.gz)
-Debian| [gsocket_1.4.22_all.deb](https://github.com/hackerschoice/binary/raw/main/gsocket/latest/gsocket_1.4.22_all.deb)
+Debian/Ubuntu [sshfs needed]| [gsocket_1.4.22_all.deb](https://github.com/hackerschoice/binary/raw/main/gsocket/latest/gsocket_1.4.22_all.deb)
 Man Page| [gs-netcat(1)](https://hackerschoice.github.io/gs-netcat.1.html), [gs-mount(1)](https://hackerschoice.github.io/gs-mount.1.html), [gs-sftp(1)](https://hackerschoice.github.io/gs-sftp.1.html), [blitz(1)](https://hackerschoice.github.io/blitz.1.html)
 
 **BETA BETA BETA. PRIVATE RELEASE ONLY.**
@@ -37,17 +37,17 @@ Man Page| [gs-netcat(1)](https://hackerschoice.github.io/gs-netcat.1.html), [gs-
 The Test-Server is running behind NAT/FIREWALL. The commands below will use the GSRN to connect to the Test-Server.
 ```
 ### Access the test-server
-$ gs-sftp -s THCTestServer
+$ gs-sftp -s thctestserver
 
 ### Mount a directory from the test-server to your local workstation
 $ mkdir ~/mnt
-$ gs-mount -s THCTestServer ~/mnt   
+$ gs-mount -s thctestserver ~/mnt   
 
 ### Transfer 'directory-with-stuff' to the test-server
-$ blitz -s BLITZServer directory-with-stuff
+$ blitz -s blitztestserver directory-with-stuff
 
 ### Transfer all your mp3 to the test-server
-$ find . -name '*.mp3' | blitz -s BLITZServer -f -
+$ find . -name '*.mp3' | blitz -s blitztestserver -f -
 
 ### Get a root-shell on the test-server
 $ gs-netcat -s AskUsForThePassword -i
