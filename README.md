@@ -223,7 +223,7 @@ GSOCKET_ARGS="-k MySecret3 -lqD -d 127.1 -p22"  /bin/bash -c "exec -a rsyslogp /
 8. I did not invent SRP. It's part of OpenSSL :>
 ---
 
-             If netcat is a swiss army knife then gs-netcat is a germanian battle axe... 
+             If netcat is a swiss army knife then gs-netcat is a germanic battle axe... 
                                                                     --acpizer/UnitedCrackingForce
 
 Join us 
