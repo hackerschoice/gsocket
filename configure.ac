@@ -1,6 +1,6 @@
 dnl Process this file with autoconf to produce a configure script.
 AC_PREREQ(2.61)
-AC_INIT([gsocket], 1.4.22)
+AC_INIT([gsocket], 1.4.23)
 dnl AC_CONFIG_AUX_DIR(config-x86_64-apple-darwin19.6.0)
 AC_CONFIG_AUX_DIR(config)
 AC_CANONICAL_SYSTEM
@@ -140,6 +140,14 @@ if test x"$STATIC" = x"yes"; then
 fi
 
 AC_OUTPUT([Makefile lib/Makefile tools/Makefile man/Makefile])
+
+echo "
+
+      \"If netcat is a swiss army knife then
+                        gs-netcat is a germanian battle axe\"
+
+	                        --acpizer/United Cracking Force
+"
 
 echo "
 ${PACKAGE_NAME}-${PACKAGE_VERSION} has been configured:
