@@ -141,6 +141,7 @@ fi
 
 AC_OUTPUT([Makefile lib/Makefile tools/Makefile man/Makefile])
 
+
 echo "
 ${PACKAGE_NAME}-${PACKAGE_VERSION} has been configured:
 
