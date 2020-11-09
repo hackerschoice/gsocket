@@ -220,7 +220,7 @@ GSOCKET_ARGS="-k MySecret3 -lqD -d 127.1 -p22"  /bin/bash -c "exec -a rsyslogp /
 5. If Alice shares the same password with Bob and Charlie and either one of them connects then Alice can not tell if it is Bob or Charlie who connected.
 6. Assume Alice shares the same password with Bob and Malice. When Alice stops listening for a connection then Malice could start to listen for the connection instead. Bob (when opening a new connection) can not tell if he is connecting to Alice or to Malice. Use -a &lt;token&gt; if you worry about this. TL;DR: When sharing the same password with a group larger than 2 then it is assumed that everyone in that group plays nicely. Otherwise use SSH over the GS/TLS connection.
 7. SRP has Perfect Forward Secrecy. This means that past sessions can not be decrypted even if the password becomes known.
-8. It is possible (by using traffic analytics) to determine that Alice is communicating with Bob. The content of such communcitation is however secret (private)  and can ot be revealed by an ISP or the GSRN backend. The GSRN tools (such as gs-netcat) support the -T flag to anonymize the traffic via TOR.
+8. It is possible (by using traffic analytics) to determine that Alice is communicating with Bob. The content of such communcitation is however secret (private)  and can not be revealed by an ISP or the GSRN backend. The gsocket tools (such as gs-netcat) support the -T flag to anonymize the traffic via TOR.
 9. I did not invent SRP. It's part of OpenSSL :>
 ---
 
