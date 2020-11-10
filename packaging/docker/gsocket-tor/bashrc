@@ -1,9 +1,0 @@
-
-[[ -f /etc/gs-motd ]] && printf "$(cat /etc/gs-motd)"
-PS1='${debian_chroot:+($debian_chroot)}\u@\h-\e[0;32mTOR\e[0m:\e[0;33m\w\e[0m\$ '
-export GSOCKET_SOCKS_IP=127.0.0.1
-export GSOCKET_SOCKS_PORT=9050
-pidof tor >/dev/null || tor --quiet &
-echo -e "TOR     : \033[1;32menabled\033[0m - to disable execute 'unset GSOCKET_SOCKS_IP'"
-
-
