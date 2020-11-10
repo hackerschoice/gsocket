@@ -1,0 +1,17 @@
+# Use this command (from your host OS) to share your hosts's ~/hax directory
+# with this image (optional)
+    [\033[0:33mhost\033[0m  ] $ \033[1:34mdocker run --rm -it -v ~/hax:/hax hackerschoice/gsocket\033[0m
+
+Test your setup:
+    [\033[0:33mdocker\033[0m] $ \033[1:34mgs-sftp -s thctestserver\033[0m
+
+Transfer files to a friend who has 'blitz -s foobar -l' running:
+    [\033[0:33mdocker\033[0m] $ \033[1:34mblitz -s foobar /hax/./mp3/*\033[0m
+
+Login to a friend's computer who has 'gs-netcat -s foobar -il' running:
+    [\033[0:33mdocker\033[0m] $ \033[1:34mgs-netcat -s foobar -i\033[0m
+
+Help    : gs-netcat -m | more
+Commands: gs-netcat, gs-sftp, gs-mount, blitz
+Latest  : \033[1;35mhttps://github.com/hackerschoice/gsocket\033[0m
+Shoutz  : Yogee for ideas & testing\n

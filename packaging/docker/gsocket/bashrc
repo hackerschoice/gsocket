@@ -1,0 +1,4 @@
+
+[[ -f /etc/gs-motd ]] && printf "$(cat /etc/gs-motd)"
+echo -e "TOR     : \033[1;31mDISABLED\033[0m - use hackerschoice/gsocket-tor for TOR support."
+
