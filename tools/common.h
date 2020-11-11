@@ -36,6 +36,7 @@
 #include <signal.h>
 #include <libgen.h>		/* basename() */
 #include <termios.h>
+#include <pwd.h>
 #ifdef HAVE_LIBUTIL_H
 # include <libutil.h>	/* FreeBSD */
 #endif

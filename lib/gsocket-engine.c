@@ -208,6 +208,7 @@ GS_CTX_init(GS_CTX *ctx, fd_set *rfd, fd_set *wfd, fd_set *r, fd_set *w, struct 
 		ctx->flags |= GS_CTX_FL_RFD_INTERNAL;
 	} 
 
+	ctx->socks_port = htons(GS_SOCKS_DFL_PORT);
 	char *ptr;
 	ptr = getenv("GSOCKET_SOCKS_IP");
 	if (ptr != NULL)
@@ -411,7 +412,7 @@ gs_net_connect_by_sox(GS *gsocket, struct gs_sox *sox)
 			XFD_SET(sox->fd, gsocket->ctx->wfd);
 			sox->state = GS_STATE_SYS_CONNECT;
 
-			return -1;
+			return GS_ERR_WAITING;
 		}
 		if (errno != EISCONN)
 		{
@@ -420,7 +421,7 @@ gs_net_connect_by_sox(GS *gsocket, struct gs_sox *sox)
 				gs_set_error(gsocket->ctx, "connect(%s:%d)", int_ntoa(gsocket->net.addr), ntohs(gsocket->net.port));
 			else
 				gs_set_error(gsocket->ctx, "connect(%s:%d). Tor not running?", int_ntoa(gsocket->net.addr), ntohs(gsocket->net.port));
-			return -2;
+			return GS_ERR_FATAL;
 		}
 	}
 	/* HERRE: ret == 0 or errno == EISCONN (Socket is already connected) */
@@ -439,7 +440,7 @@ gs_net_connect_by_sox(GS *gsocket, struct gs_sox *sox)
 		gs_net_connect_complete(gsocket, sox);
 	}
 
-	return 0;
+	return GS_SUCCESS;
 }
 
 /*
@@ -642,7 +643,7 @@ gs_pkt_dispatch(GS *gsocket, struct gs_sox *sox)
 			switch (status->code)
 			{
 				case GS_STATUS_CODE_BAD_AUTH:
-					err_str = "Address already in use.";
+					err_str = "Address already in use";
 					break;
 				case GS_STATUS_CODE_CONNREFUSED:
 					err_str = "Connection refused (no server listening)";
@@ -651,7 +652,7 @@ gs_pkt_dispatch(GS *gsocket, struct gs_sox *sox)
 					err_str = "Idle-Timeout. Server did not receive any data";
 					break;
 			}
-			gs_set_errorf(gsocket, "(%u) %s", status->code, err_str);
+			gs_set_errorf(gsocket, "%s (%u)", err_str, status->code);
 			return GS_ERR_FATAL;
 		}
 		return GS_SUCCESS;
@@ -838,7 +839,7 @@ gs_process_by_sox(GS *gsocket, struct gs_sox *sox)
 		if (sox->state == GS_STATE_SYS_CONNECT)
 		{
 			ret = gs_net_connect_by_sox(gsocket, sox);
-			if (ret != 0)
+			if (ret != GS_SUCCESS)
 			{
 				DEBUGF_R("will ret = %d, errno %s\n", ret, strerror(errno));
 				return GS_ERROR;	/* ECONNREFUSED or other */
@@ -1022,8 +1023,6 @@ gs_process(GS *gsocket)
 			if (ret == GS_ERROR)
 			{
 				/* GS_connect() shall not auto reconnect */
-				if (gsocket->flags & GS_FL_AUTO_RECONNECT)
-					DEBUGF_M("GS_FL_AUTO_RECONNECT is SET\n");
 				if (!(gsocket->flags & GS_FL_AUTO_RECONNECT))
 					return GS_ERR_FATAL;
 
@@ -1149,14 +1148,14 @@ gs_net_connect_new_socket(GS *gs, struct gs_sox *sox)
 
 	/* HERE: socket() does not exist yet. Create it. */
 	ret = gs_net_new_socket(gs, sox);
-	if (ret != 0)
+	if (ret != GS_SUCCESS)
 		return GS_ERROR;
 
 	/* Connect TCP */
 	ret = gs_net_connect_by_sox(gs, sox);
 	DEBUGF("gs_net_connect_by_sox(fd = %d): %d, %s\n", sox->fd, ret, strerror(errno));
-	if (ret == -2)
-		return GS_ERROR;
+	if (ret == GS_ERR_FATAL)
+		ERREXIT("%s\n", GS_CTX_strerror(gs->ctx));
 
 	/* GS_select-HACK-1-START */
 	if (gs->ctx->gselect_ctx != NULL)
@@ -1786,8 +1785,6 @@ GS_CTX_setsockopt(GS_CTX *ctx, int level, const void *opt_value, size_t opt_len)
 		/* Set if not already set from GS_CTX_init() */
 		if (ctx->socks_ip == 0)
 			ctx->socks_ip = inet_addr(GS_SOCKS_DFL_IP);
-		if (ctx->socks_port == 0)
-			ctx->socks_port = htons(GS_SOCKS_DFL_PORT);
 	} else
 		return -1;
 

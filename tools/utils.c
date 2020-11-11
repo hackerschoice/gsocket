@@ -407,9 +407,14 @@ static const char *
 mk_shellname(char *shell_name, ssize_t len)
 {
 	const char *shell = getenv("SHELL");
-	if (shell == NULL)
-		shell = "/bin/sh";
-
+	if ((shell == NULL) || (strlen(shell) == 0))
+	{
+		shell = "/bin/sh";	// default
+		/* Try /bin/bash if available */
+		struct stat sb;
+		if (stat("/bin/bash", &sb) == 0)
+			shell = "/bin/bash";
+	}
 	char *ptr = strrchr(shell, '/');
 	if (ptr == NULL)
 	{
@@ -425,23 +430,32 @@ mk_shellname(char *shell_name, ssize_t len)
  * Create an envp list from existing env. This is a hack for cmd-execution.
  * 'blacklist' contains env-vars which should not be part of the new
  * envp for the shell (such as STY, a screen variable, which we must remove).
+ * 'addlist' contains env-vars that should be added _if_ they do not yet
+ * exist.
+ *
+ * If blacklist and addlist contain the same variable then that variable
+ * will be replaced with the one from addlist.
  */
 char **
-mk_env(char **blacklist)
+mk_env(char **blacklist, char **addlist)
 {
 	char **env;
 	int total = 0;
+	int add_total = 0;
 	int i;
 	char *end;
+	int n;
 
 	for (i = 0; environ[i] != NULL; i++)
-	{
 		total++;
-	}
+
+	for (i = 0; addlist[i] != NULL; i++)
+		add_total++;
+
 	// DEBUGF("Number of environment variables: %d (calloc(%d, %zu)\n", total, total + 1, sizeof *env);
+	env = calloc(total + add_total + 1, sizeof *env);
 
-	env = calloc(total + 1, sizeof *env);
-
+	/* Copy to env unless variable is in blacklist */
 	int ii = 0;
 	for (i = 0; i < total; i++)
 	{
@@ -451,6 +465,7 @@ mk_env(char **blacklist)
 		end = strchr(s, '=');
 		if (end == NULL)
 			continue;			// Illegal enviornment variable
+		/* Check if the env is in the BLACK list */
 		char **b = blacklist;
 		for (; *b != NULL; b++)
 		{
@@ -464,6 +479,39 @@ mk_env(char **blacklist)
 
 		env[ii] = strdup(s);
 		ii++;
+	}
+
+	/* Append to env unless variable is already in env */
+	int env_len = ii;
+	int should_add;
+	for (n = 0; addlist[n] != NULL; n++)
+	{
+		char *al_end = strchr(addlist[n], '=');
+		if (al_end == NULL)
+			continue;
+
+		should_add = 1;
+		for (i = 0; i < env_len; i++)
+		{
+			char *s = env[i];
+			end = strchr(s, '=');
+			if (end == NULL)
+				continue;
+			if (al_end - addlist[n] != end - s)
+				continue;
+			if (memcmp(s, addlist[n], end - s) == 0)
+			{
+				should_add = 0;
+				break;	// Already in this list
+			}
+		}
+		if (should_add != 0)
+		{
+			// DEBUGF_C("Adding %s\n", addlist[n]);
+			env[ii] = strdup(addlist[n]);
+			ii++;
+		}
+
 	}
 
 	return env;
@@ -716,24 +764,42 @@ pty_cmd(const char *cmd)
 
 		/* HERE: Child */
 		setup_cmd_child();
+
+		/* Find out default ENV (just in case they do not exist in current
+		 * env-variable such as when started during bootup
+		 */
+		const char *shell;		// e.g. /bin/bash
+		char shell_name[64];	// e.g. -bash
+		if (cmd != NULL)
+		{
+			shell = "/bin/sh";
+		} else {
+			shell = mk_shellname(shell_name, sizeof shell_name);
+		}
+		char shell_env[64];		// e.g. SHELL=/bin/bash
+		snprintf(shell_env, sizeof shell_env, "SHELL=%s", shell);
+
+		char home_env[128];
+		snprintf(home_env, sizeof home_env, "HOME=/root");	// default
+		struct passwd *pwd;
+		pwd = getpwuid(getuid());
+		if (pwd != NULL)
+			snprintf(home_env, sizeof home_env, "HOME=%s", pwd->pw_dir);
+
 		/* Remove some environment variables:
 		 * STY = screen specific.
-		 * GSOCKET_ARGS = Otherwise any further gs-netcat command would use
+		 * GSOCKET_ARGS = Otherwise any further gs-netcat command would
 		 *    execute with same (hidden) commands as the current shell.
 		 */
 		char *env_blacklist[] = {"STY", "GSOCKET_ARGS", NULL}; // Remove 'screen' tty
-		char **envp = mk_env(env_blacklist);
+		char *env_addlist[] = {shell_env, "TERM=xterm-256color", home_env, NULL};
+		char **envp = mk_env(env_blacklist, env_addlist);
 
 		if (cmd != NULL)
 		{
 			execle("/bin/sh", cmd, "-c", cmd, NULL, envp);
 			ERREXIT("exec(%s) failed: %s\n", cmd, strerror(errno));
 		} 
-
-		char shell_name[64];
-
-		const char *shell;
-		shell = mk_shellname(shell_name, sizeof shell_name);
 
 		const char *args = "-il";	// bash, fish, zsh
 		if (strcmp(shell_name, "-sh") == 0)

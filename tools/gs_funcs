@@ -59,7 +59,7 @@ uchroot_check()
 	local VALID_CMD
 	local FAIL_CMD
 
-	command -v nm >/dev/null 2>&1 || { echo >&2 "chroot self test failed (nm not found). Try -U to disable."; exit 255; }
+	command -v nm >/dev/null 2>&1 || { echo >&2 "chroot failed (nm not found. apt-get install binutils?). Try -U to disable."; exit 255; }
 
 	# Extract symbols from .so and sftp-server binary
 	if [[ x"$OSTYPE" == "xdarwin"* ]]; then

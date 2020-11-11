@@ -538,7 +538,7 @@ cb_listen(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	if (gs_new == NULL)
 	{
 		if (err <= -2)
-			ERREXIT("Another Server is already listening or Network error.\n");
+			ERREXIT("ERROR: %s.\n", GS_CTX_strerror(gs->ctx)); //Another Server is already listening or Network error.\n");
 		/* HERE: GS_accept() is not ready yet to accept() a new
 		 * gsocket. (May have processed GS-pkt data) or may have 
 		 * closed the socket and established a new one (to wait for
@@ -624,7 +624,7 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd_notused, void *arg, int val)
 	DEBUGF_M("GS_connect(fd=%d) == %d\n", gs->fd, ret);
 	if (ret == GS_ERR_FATAL)
 	{
-		VLOG("%s [ID=%d] Connection failed: %s\n", GS_logtime(), p->id, GS_strerror(gs));
+		VLOG("%s [ID=%d] %s\n", GS_logtime(), p->id, GS_strerror(gs));
 		if (gopt.is_multi_peer == 0)
 			exit(255);	// No server listening
 		/* This can happen if server accepts 1 connection only but client
