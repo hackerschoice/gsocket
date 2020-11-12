@@ -1,4 +1,4 @@
-#! /bin/bash
+#!/usr/bin/env bash
 
 # A wrapper script to do this (esentially):
 # Server:
