@@ -87,6 +87,7 @@ dnl AC_CHECK_LIB([net], [libnet_init], ,[AC_MSG_ERROR([libnet 1.1.x not found])]
 AC_CHECK_LIB(dl, dlopen)
 AC_CHECK_LIB([crypto], [ENGINE_init], [], [AC_MSG_ERROR([libcrypto not found])])
 AC_CHECK_LIB([ssl], [SSL_new], [], [AC_MSG_ERROR([libssl not found])])
+AC_CHECK_LIB([ssl], [SRP_VBASE_get1_by_user], [], [AC_MSG_ERROR([SRP not supported. Please upgrade OpenSSL lib])])
 
 
 dnl Checks for header files.

@@ -23,18 +23,33 @@ if [ x"$GSOCKET_IP" == "x127.0.0.1" ]; then
 fi
 
 PATH=~/usr/bin:$PATH
-
+printf "#! /bin/bash\nexec nc\n" >gs_nc
 SLEEP_WD=20	# Max seconds to wait for a process to finish receiving...
 command -v md5 >/dev/null 2>&1 		&& MD5(){ md5 -q "${1}";}
 command -v md5sum >/dev/null 2>&1 	&& MD5() { md5sum "${1}" | cut -f1 -d' ';}
 command -v bc >/dev/null 2>&1 || { echo >&2 "bc not installed. apt-get install bc."; exit 255; }
 # Use traditional netcat that supports "netcat -nlp" for cross-platform comp.
-# on CentOS there is only nmpa's netcat as 'nc' but we are expecting 'netcat()'.
+# on CentOS there is only nmap's netcat as 'nc' but we are expecting 'netcat()'.
 if [[ "$(nc --version 2>&1)" =~ Ncat ]]; then
-	netcat() { nc $@;}
+	export NC=nc
 else
-	command -v netcat >/dev/null 2>&1 || { echo >&2 "netcat not installed. apt-get install netcat."; exit 255; }
+	# Try traditional netcat first.
+	if command -v netcat >/dev/null 2>&1; then
+		export NC=netcat
+	else 
+		if command -v nc >/dev/null 2>&1; then
+			export NC=nc #cygwin
+		else
+			echo >&2 "netcat not installed. apt-get install netcat."; exit 255;
+		fi
+	fi
 fi
+if [[ "$OSTYPE" == *"BSD"* ]] || [[ "$OSTYPE" == *"cygwin"* ]]; then
+	export NC_LISTEN="${NC} -nl"
+else
+	export NC_LISTEN="${NC} -nlp"
+fi
+
 sleep 0.1 &>/dev/null || { echo >&2 "sleep not accepting 0.1. PATH set correct?"; exit 255; }
 OK="....[\033[1;32mOK\033[0m]"
 FAIL="[\033[1;31mFAILED\033[0m]"
@@ -464,10 +479,12 @@ if [ "${MDHELLOW}" != "$(tail -1 client_out.dat | MD5 /dev/stdin)" ]; then fail 
 $ECHO "${OK}"
 fi
 
+PTYSIM='\033[25;80R'
+[[ "$OSTYPE" == *"cygwin"* ]] && PTYSIM=""
+
 if [[ "$tests" =~ '7.3' ]]; then
 test_start -n "Running: netcat #7.3 (pty shell, exit)...................."
 GSPID1="$(sh -c './gs-netcat -k id_sec.txt -l -i 2>server_err.txt >server_out.dat & echo ${!}')"
-PTYSIM='\033[25;80R'
 # Can not start Client with -i because it's not a tty. Must 'fake' the terminal response.
 (printf "${PTYSIM}date; echo Hello World; exit\n") | ./gs-netcat -k id_sec.txt -w 2>client_err.txt >client_out.dat
 sleep_ct
@@ -480,7 +497,6 @@ fi
 if [[ "$tests" =~ '7.4' ]]; then
 test_start -n "Running: netcat #7.4 (multi pty shell, exit).............."
 GSPID1="$(sh -c './gs-netcat -k id_sec.txt -l -i 2>server_err.txt >server_out.dat & echo ${!}')"
-PTYSIM='\033[25;80R'
 GSPID2=$(sh -c "(printf \"${PTYSIM} date && echo Hello World && exit\n\") | ./gs-netcat -k id_sec.txt -w 2>client1_err.txt >client1_out.dat & echo \${!}")
 GSPID3=$(sh -c "(printf \"${PTYSIM} date && echo Hello World && exit\n\") | ./gs-netcat -k id_sec.txt -w 2>client2_err.txt >client2_out.dat & echo \${!}")
 GSPID4=$(sh -c "(printf \"${PTYSIM} date && echo Hello World && exit\n\") | ./gs-netcat -k id_sec.txt -w 2>client3_err.txt >client3_out.dat & echo \${!}")
@@ -495,11 +511,7 @@ fi
 if [[ "$tests" =~ '8.1' ]]; then
 test_start -n "Running: netcat #8.1 (port forward server side)..........."
 GSPID1="$(sh -c './gs-netcat -k id_sec.txt -l -d 127.0.0.1 -p 12345 2>server_err.txt >server_out.dat & echo ${!}')"
-if [[ "$OSTYPE" == *"BSD"* ]]; then
-	GSPID2="$(sh -c '(sleep 10) | netcat -nl 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
-else
-	GSPID2="$(sh -c '(sleep 10) | netcat -nlp 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
-fi
+GSPID2="$(sh -c '(sleep 10) | $NC_LISTEN 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
 waittcp 12345
 GSPID3="$(sh -c './gs-netcat -k id_sec.txt -w <test50k.dat 2>client_err.txt >client_out.dat & echo ${!}')"
 waitf test50k.dat nc1_out.dat
@@ -512,15 +524,11 @@ if [[ "$tests" =~ '8.2' ]]; then
 # nc -> Port 12344 -> GS-NET -> Port 12345 -> nc -ln
 test_start -n "Running: netcat #8.2 (port forward both sides)............"
 GSPID1="$(sh -c './gs-netcat -k id_sec.txt -l -d 127.0.0.1 -p 12345 2>server_err.txt >server_out.dat & echo ${!}')"
-if [[ "$OSTYPE" == *"BSD"* ]]; then
-	GSPID2="$(sh -c '(sleep 10) | netcat -nl 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
-else
-	GSPID2="$(sh -c '(sleep 10) | netcat -nlp 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
-fi
+GSPID2="$(sh -c '(sleep 10) | $NC_LISTEN 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
 GSPID3="$(sh -c './gs-netcat -k id_sec.txt -w -p 12344 2>server_err.txt >server_out.dat & echo ${!}')"
 waittcp 12344
 waittcp 12345
-GSPID4="$(sh -c '(cat test50k.dat; sleep 15) | netcat -vn 127.0.0.1 12344 >nc2_out.dat 2>nc2_err.txt & echo ${!}')"
+GSPID4="$(sh -c '(cat test50k.dat; sleep 15) | $NC -vn 127.0.0.1 12344 >nc2_out.dat 2>nc2_err.txt & echo ${!}')"
 waitf test50k.dat nc1_out.dat
 kill -9 $GSPID1 $GSPID2 $GSPID3 $GSPID4 &>/dev/null 
 if [ "$(MD5 test50k.dat)" != "$(MD5 nc1_out.dat)" ]; then fail 1; fi
@@ -532,15 +540,11 @@ if [[ "$tests" =~ '8.3' ]]; then
 # Bi-Directional
 test_start -n "Running: netcat #8.3 (port forward both sides, bi-dir)...."
 GSPID1="$(sh -c './gs-netcat -k id_sec.txt -l -d 127.0.0.1 -p 12345 2>server1_err.txt >server1_out.dat & echo ${!}')"
-if [[ "$OSTYPE" == *"BSD"* ]]; then
-	GSPID2="$(sh -c '(cat test4k.dat; sleep 15) | netcat -nl 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
-else
-	GSPID2="$(sh -c '(cat test4k.dat; sleep 15) | netcat -nlp 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
-fi
+GSPID2="$(sh -c '(cat test4k.dat; sleep 15) | $NC_LISTEN 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
 GSPID3="$(sh -c './gs-netcat -k id_sec.txt -w -p 12344 2>client_err.txt >client_out.dat & echo ${!}')"
 waittcp 12344
 waittcp 12345
-GSPID4="$(sh -c '(cat test50k.dat; sleep 15) | netcat -vn 127.0.0.1 12344 >nc2_out.dat 2>nc2_err.txt & echo ${!}')"
+GSPID4="$(sh -c '(cat test50k.dat; sleep 15) | $NC -vn 127.0.0.1 12344 >nc2_out.dat 2>nc2_err.txt & echo ${!}')"
 waitf test50k.dat nc1_out.dat
 waitf test4k.dat nc2_out.dat
 kill -9 $GSPID1 $GSPID2 $GSPID3 $GSPID4 &>/dev/null 
@@ -557,12 +561,8 @@ if [ $? -ne 0 ]; then
 	skip "(no socat2)"
 else
 	GSPID1="$(sh -c './gs-netcat -k id_sec.txt -lS 2>server1_err.txt >server1_out.dat & echo ${!}')"
-	if [[ "$OSTYPE" == *"BSD"* ]]; then
-		GSPID2="$(sh -c '(cat test4k.dat; sleep 15) | netcat -nl 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
-	else
-		GSPID2="$(sh -c '(cat test4k.dat; sleep 15) | netcat -nlp 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
-	fi
-	GSPID3="$(sh -c './gs-netcat -k id_sec.txt -p 1085 2>client_err.txt >client_out.dat & echo ${!}')"
+	GSPID2="$(sh -c '(cat test4k.dat; sleep 15) | $NC_LISTEN 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
+	GSPID3="$(sh -c './gs-netcat -k id_sec.txt -w -p 1085 2>client_err.txt >client_out.dat & echo ${!}')"
 	waittcp 1085
 	waittcp 12345
 	GSPID4="$(sh -c '(cat test50k.dat; sleep 15) | socat -  "SOCKS5:localhost:12345 | TCP:127.1:1085" >nc2_out.dat 2>nc2_err.txt & echo ${!}')"
@@ -583,15 +583,11 @@ if [ $? -ne 0 ]; then
 	skip "(no socat)"
 else
 	GSPID1="$(sh -c './gs-netcat -k id_sec.txt -lS 2>server1_err.txt >server1_out.dat & echo ${!}')"
-	if [[ "$OSTYPE" == *"BSD"* ]]; then
-		GSPID2="$(sh -c '(cat test4k.dat; sleep 15) | netcat -nl 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
-	else
-		GSPID2="$(sh -c '(cat test4k.dat; sleep 15) | netcat -nlp 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
-	fi
+	GSPID2="$(sh -c '(cat test4k.dat; sleep 15) | $NC_LISTEN 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
 	GSPID3="$(sh -c './gs-netcat -k id_sec.txt -p 1085 2>client_err.txt >client_out.dat & echo ${!}')"
 	waittcp 1085
 	waittcp 12345
-	GSPID4="$(sh -c '(cat test50k.dat; sleep 15) | socat -  "SOCKS4:127.1:127.1:12345,socksport=1085" >nc2_out.dat 2>nc2_err.txt & echo ${!}')"
+	GSPID4="$(sh -c '(cat test50k.dat; sleep 15) | socat -  "SOCKS4:127.0.0.1:127.0.0.1:12345,socksport=1085" >nc2_out.dat 2>nc2_err.txt & echo ${!}')"
 	waitf test50k.dat nc1_out.dat
 	waitf test4k.dat nc2_out.dat
 	kill -9 $GSPID1 $GSPID2 $GSPID3 $GSPID4 &>/dev/null 
@@ -609,15 +605,11 @@ if [ $? -ne 0 ]; then
 	skip "(no socat)"
 else
 	GSPID1="$(sh -c './gs-netcat -k id_sec.txt -lS 2>server1_err.txt >server1_out.dat & echo ${!}')"
-	if [[ "$OSTYPE" == *"BSD"* ]]; then
-		GSPID2="$(sh -c '(cat test4k.dat; sleep 15) | netcat -nl 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
-	else
-		GSPID2="$(sh -c '(cat test4k.dat; sleep 15) | netcat -nlp 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
-	fi
+	GSPID2="$(sh -c '(cat test4k.dat; sleep 15) | $NC_LISTEN 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
 	GSPID3="$(sh -c './gs-netcat -k id_sec.txt -p 1085 2>client_err.txt >client_out.dat & echo ${!}')"
 	waittcp 1085
 	waittcp 12345
-	GSPID4="$(sh -c '(cat test50k.dat; sleep 15) | socat -  "SOCKS4a:127.1:localhost:12345,socksport=1085" >nc2_out.dat 2>nc2_err.txt & echo ${!}')"
+	GSPID4="$(sh -c '(cat test50k.dat; sleep 15) | socat -  "SOCKS4a:127.0.0.1:127.0.0.1:12345,socksport=1085" >nc2_out.dat 2>nc2_err.txt & echo ${!}')"
 	waitf test50k.dat nc1_out.dat
 	waitf test4k.dat nc2_out.dat
 	kill -9 $GSPID1 $GSPID2 $GSPID3 $GSPID4 &>/dev/null 
@@ -630,7 +622,7 @@ fi
 if [[ "$tests" =~ '9.4' ]]; then
 # SOCKS test with cUrl
 test_start -n "Running: netcat #9.4 (curl/socks5, multi)................."
-curl -h 2>/dev/null | grep socks5-hostname &>/dev/null
+curl --help all 2>/dev/null | grep socks5-hostname &>/dev/null
 if [ $? -ne 0 ]; then
 	skip "(no curl)"
 else
@@ -638,8 +630,8 @@ else
 	GSPID3="$(sh -c './gs-netcat -k id_sec.txt -p 1085 2>client_err.txt >client_out.dat & echo ${!}')"
 	waittcp 1085
 	touch testmp3.dat testmp3-2.dat
-	GSPID4="$(sh -c 'curl --socks5-hostname 127.1:1085 --output testmp3.dat https://raw.githubusercontent.com/hackerschoice/thc-art/master/deep-phreakin.mp3 >client1_out.dat 2>client1_err.txt & echo ${!}')"
-	GSPID5="$(sh -c 'curl --socks5-hostname 127.1:1085 --output testmp3-2.dat https://raw.githubusercontent.com/hackerschoice/thc-art/master/deep-phreakin.mp3 >client2_out.dat 2>client2_err.txt & echo ${!}')"
+	GSPID4="$(sh -c 'curl --socks5-hostname 127.0.0.1:1085 --output testmp3.dat https://raw.githubusercontent.com/hackerschoice/thc-art/master/deep-phreakin.mp3 >client1_out.dat 2>client1_err.txt & echo ${!}')"
+	GSPID5="$(sh -c 'curl --socks5-hostname 127.0.0.1:1085 --output testmp3-2.dat https://raw.githubusercontent.com/hackerschoice/thc-art/master/deep-phreakin.mp3 >client2_out.dat 2>client2_err.txt & echo ${!}')"
 	waitk $GSPID4 $GSPID5
 	kill -9 $GSPID1 $GSPID3 &>/dev/null 
 	if [ "$(MD5 testmp3.dat)" != "171a9952951484d020ce1bef52b9eef5" ]; then fail 1; fi

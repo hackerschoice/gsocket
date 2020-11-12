@@ -78,22 +78,41 @@ that the client should not.
 #include <limits.h>
 #include <string.h>
 #include <libgen.h>
+#ifdef __CYGWIN__
+# include <sys/cygwin.h>
+# include <windows.h>
+#endif
 
 static size_t clen;
 static char rp_cwd[PATH_MAX + 1];
 static int is_init;
 static char rp_buf[PATH_MAX + 1];
-static int is_debug;
+static int is_debug = 1;
 static int is_no_hijack;
 
 #define DEBUGF(a...) do { if (is_debug == 0){break;} fprintf(stderr, "LDP %d:", __LINE__); fprintf(stderr, a); }while(0)
 #define D_BRED(a)	"\033[1;31m"a"\033[0m"
+
+#ifdef __CYGWIN__
+# define RTLD_NEXT dl_handle
+
+static void *dl_handle;
+static void
+thc_init_cyg(void)
+{
+	dl_handle = dlopen("cygwin1.dll", RTLD_LAZY);
+}
+#else	/* !__CYGWIN__ */
+static void thc_init_cyg(void) {}	// Do nothing.
+#endif
 
 static void
 thc_init(void)
 {
 	if (is_init)
 		return;
+
+	thc_init_cyg();
 
 	DEBUGF("%s called\n", __func__);
 	if (getenv("GSOCKET_DEBUG"))
@@ -251,7 +270,6 @@ thc_realfile(const char *fname, const char *file, char *dst)
 }
 
 #ifdef linux
-// Construct "int func(int, const char *, void *)"
 typedef int (*real_funcintifv_t)(int ver, const char *path, void *buf);
 static int real_funcintifv(const char *fname, int ver, const char *path, void *buf) {return ((real_funcintifv_t)dlsym(RTLD_NEXT, fname))(ver, path, buf);}
 static int
@@ -294,7 +312,7 @@ __lxstat(int ver, const char *path, struct stat *buf)
 {
 	return thc_funcintifv(__func__, ver, path, buf, 0 /* ALLOW PARTIAL MATCH */);
 }
-#endif
+#endif	/* !linux */
 
 /*
  * Redirect stub of construct "int func(const char *)"
@@ -315,6 +333,7 @@ thc_funcintf(const char *fname, const char *file)
 	return real_funcintf(fname, rp_buf);
 }
 
+#ifndef __CYGWIN__
 int
 unlink(const char *file)
 {
@@ -326,6 +345,7 @@ rmdir(const char *file)
 {
 	return thc_funcintf(__func__, file);
 }
+#endif
 
 /*
  * Redirect stub of construct "int func(const char *, const char *)"
@@ -351,6 +371,7 @@ thc_funcintff(const char *fname, const char *old, const char *new)
 	return real_funcintff(fname, old, new);
 }
 
+#ifndef __CYGWIN__
 int
 rename(const char *old, const char *new)
 {
@@ -368,12 +389,13 @@ symlink(const char *path1, const char *path2)
 {
 	return thc_funcintff(__func__, path1, path2);
 }
+#endif
 
 /*
  * Redirect stub of construct "int func(const char *, void *)"
  */
 typedef int (*real_funcintfv_t)(const char *file, void *ptr);
-static int real_funcintfv(const char *fname, const char *file, void *ptr) {return ((real_funcintff_t)dlsym(RTLD_NEXT, fname))(file, ptr); }
+static int real_funcintfv(const char *fname, const char *file, void *ptr) {return ((real_funcintfv_t)dlsym(RTLD_NEXT, fname))(file, ptr); }
 static int
 thc_funcintfv(const char *fname, const char *file, void *ptr, int fullmatch)
 {
@@ -396,14 +418,15 @@ thc_funcintfv(const char *fname, const char *file, void *ptr, int fullmatch)
 	return err;
 }
 
-int statvfs64(const char *path, void *buf)
+#ifndef __CYGWIN__
+int
+statvfs64(const char *path, void *buf)
 {
-	DEBUGF("%s(%s, %p) (no_hijack=%d)\n", __func__, path, buf, is_no_hijack);
 	return thc_funcintfv(__func__, path, buf, 1);
 }
-int statvfs(const char *path, void *buf)
+int
+statvfs(const char *path, void *buf)
 {
-	DEBUGF("%s(%s, %p) (no_hijack=%d)\n", __func__, path, buf, is_no_hijack);
 	return thc_funcintfv(__func__, path, buf, 1);
 }
 
@@ -445,9 +468,10 @@ int statvfs(const char *path, void *buf)
 
 /*
  * OSX & Solaris
+ * (linux and cygwin call thc_funcintfv() without thc_stat())
  */
 static int
-my_stat(const char *fname, const char *path, void *buf)
+thc_stat(const char *fname, const char *path, void *buf)
 {
 	DEBUGF("%s(%s, %p) (no_hijack=%d)\n", fname, path, buf, is_no_hijack);
 		/* allow stat("/"); */
@@ -464,44 +488,32 @@ my_stat(const char *fname, const char *path, void *buf)
 }
 
 #if !defined(IS_SOL11) && !defined(__FreeBSD__)
-int
-stat64(const char *path, struct stat64 *buf)
-{
-	return my_stat(__func__, path, buf);
-}
+int stat64(const char *path, struct stat64 *buf) {return thc_stat(__func__, path, buf); }
 #endif
 
 #if !defined(IS_SOL10)
 /* Solaris cant have stat64() and stat() defined */
-int
-stat(const char *path, struct stat *buf)
-{
-	return my_stat(STATFNAME, path, buf);
-}
-#endif
+int stat(const char *path, struct stat *buf) {return thc_stat(STATFNAME, path, buf); }
+#endif	/* !IS_SOL10 */
+#endif	/* !__CYGWIN__ */
 
 static int
-my_lstat(const char *fname, const char *path, void *buf)
+thc_lstat(const char *fname, const char *path, void *buf)
 {
 	DEBUGF("%s(%s, %p) (no_hijack=%d)\n", fname, path, buf, is_no_hijack);
 	return thc_funcintfv(fname, path, buf, 0 /* ALLOW PARTIAL MATCH */);	
 }
 
+#ifndef __CYGWIN__
 #if !defined(IS_SOL11) && !defined(__FreeBSD__)
-int
-lstat64(const char *path, struct stat64 *buf)
-{
-	return my_lstat(__func__, path, buf);
-}
+int lstat64(const char *path, struct stat64 *buf) {return thc_lstat(__func__, path, buf); }
 #endif
 
 #if !defined(IS_SOL10)
-int
-lstat(const char *path, struct stat *buf)
-{
-	return my_lstat(LSTATFNAME, path, buf);
-}
+int lstat(const char *path, struct stat *buf) {return thc_lstat(LSTATFNAME, path, buf); }
 #endif
+#endif	/* !__CYGWIN__ */
+
 
 /*
  * Redirect stub of construct "void *func(const char *)"
@@ -535,30 +547,17 @@ thc_funcptrf(const char *fname, const char *file)
 	return ret_ptr;
 }
 
-void *
-opendir64(const char *file)
-{
-	return thc_funcptrf(__func__, file);
-}
-
-void *
-opendir(const char *file)
-{
-	return thc_funcptrf(__func__, file);
-}
-
-/* OSX */
-void *
-opendir$INODE64(const char *file)
-{
-	return thc_funcptrf(__func__, file);
-}
+#ifndef __CYGWIN__
+void *opendir64(const char *file) {return thc_funcptrf(__func__, file); }
+void *opendir(const char *file) {return thc_funcptrf(__func__, file); }
+void *opendir$INODE64(const char *file) {return thc_funcptrf(__func__, file); }	// OSX
+#endif
 
 /*
  * Redirect stub of construct "int func(const char *, mode_t)"
  */
 typedef int (*real_funcintfm_t)(const char *file, mode_t mode);
-static int real_funcintfm(const char *fname, const char *file, mode_t mode) {return ((real_funcintfm_t)dlsym(RTLD_NEXT, fname))(file, mode);}
+static int real_funcintfm(const char *fname, const char *file, mode_t mode) {return ((real_funcintfm_t)dlsym(RTLD_NEXT, fname))(file, mode); }
 static int
 thc_funcintfm(const char *fname, const char *file, mode_t mode)
 {
@@ -572,10 +571,11 @@ thc_funcintfm(const char *fname, const char *file, mode_t mode)
 		return -1;
 
 	return real_funcintfm(fname, file, mode);
+	return -1;
 }
 
-int
-mkdir(const char *path, mode_t mode)
+static int
+fci_mkdir(const char *path, mode_t mode)
 {
 	/*
 	 * path could be absolute or relative (2x):
@@ -586,21 +586,20 @@ mkdir(const char *path, mode_t mode)
 
 	int ret;
 	is_no_hijack = 1;
-	ret = thc_funcintfm(__func__, path, mode);
+	ret = thc_funcintfm("mkdir", path, mode);
 	is_no_hijack = 0;
 	return ret;
 }
 
-int
-chmod(const char *file, mode_t mode)
-{
-	return thc_funcintfm(__func__, file, mode);
-}
+#ifndef __CYGWIN__
+int mkdir(const char *path, mode_t mode) {return fci_mkdir(path, mode); }
+int chmod(const char *file, mode_t mode) {return thc_funcintfm(__func__, file, mode); }
+#endif
 
 typedef int (*real_open_t)(const char *file, int flags, mode_t mode);
 static int real_open(const char *file, int flags, mode_t mode) {return ((real_open_t)dlsym(RTLD_NEXT, "open"))(file, flags, mode); }
 static int
-my_open(const char *fname, const char *file, int flags, mode_t mode)
+thc_open(const char *fname, const char *file, int flags, mode_t mode)
 {
 	int err = 0;
 	DEBUGF("open(%s)\n", file);
@@ -619,16 +618,42 @@ my_open(const char *fname, const char *file, int flags, mode_t mode)
 	return err;
 }
 
-int
-open64(const char *file, int flags, mode_t mode)
+#ifndef __CYGWIN__
+int open64(const char *file, int flags, mode_t mode) {return thc_open(__func__, file, flags, mode); }
+int open(const char *file, int flags, mode_t mode) {return thc_open(__func__, file, flags, mode); }
+#endif
+
+#ifdef __CYGWIN__
+static int fci_open(const char *file, int flags, mode_t mode) {return thc_open("open", file, flags, mode); }
+static int fci_chmod(const char *file, mode_t mode) {return thc_funcintfm("chmod", file, mode); }
+static void *fci_opendir(const char *file) {return thc_funcptrf("opendir", file); }
+static int fci_lstat(const char *path, void *buf) {return thc_lstat("lstat", path, buf); }
+static int fci_stat(const char *path, void *buf) {return thc_funcintfv("stat", path, buf, 1); }
+static int fci_statvfs(const char *path, void *buf) {return thc_funcintfv("statvfs", path, buf, 1); }
+static int fci_rename(const char *old, const char *new) {return thc_funcintff("rename", old, new); }
+static int fci_link(const char *path1, const char *path2) {return thc_funcintff("link", path1, path2); }
+static int fci_symlink(const char *path1, const char *path2) {return thc_funcintff("symlink", path1, path2); }
+static int fci_unlink(const char *file) {return thc_funcintf("unlink", file); }
+static int fci_rmdir(const char *file) {return thc_funcintf("rmdir", file); }
+
+/* 'constructors' are executed when lib is loaded */
+static void
+__attribute__((constructor))
+fci_init(void)
 {
-	return my_open(__func__, file, flags, mode);
+	cygwin_internal(CW_HOOK, "mkdir", fci_mkdir);
+	cygwin_internal(CW_HOOK, "chmod", fci_chmod);
+	cygwin_internal(CW_HOOK, "open", fci_open);
+	cygwin_internal(CW_HOOK, "opendir", fci_opendir);
+	cygwin_internal(CW_HOOK, "lstat", fci_lstat);
+	cygwin_internal(CW_HOOK, "stat", fci_stat);
+	cygwin_internal(CW_HOOK, "statvfs", fci_statvfs);
+	cygwin_internal(CW_HOOK, "rename", fci_rename);
+	cygwin_internal(CW_HOOK, "link", fci_link);
+	cygwin_internal(CW_HOOK, "symlink", fci_symlink);
+	cygwin_internal(CW_HOOK, "unlink", fci_unlink);
+	cygwin_internal(CW_HOOK, "rmdir", fci_rmdir);
 }
 
-int
-open(const char *file, int flags, mode_t mode)
-{
-	return my_open(__func__, file, flags, mode);
-}
-
+#endif
 
