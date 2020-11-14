@@ -119,6 +119,22 @@ cb_atexit(void)
 }
 
 void
+get_winsize(void)
+{
+	int ret;
+
+	ret = ioctl(STDOUT_FILENO, TIOCGWINSZ, &gopt.winsize);
+	if ((ret == 0) && (gopt.winsize.ws_col != 0))
+	{
+		/* SUCCESS */
+		DEBUGF_M("Columns: %d, Rows: %d\n", gopt.winsize.ws_col, gopt.winsize.ws_row);
+	} else {
+		gopt.winsize.ws_col = 80;
+		gopt.winsize.ws_row = 24;
+	}
+}
+
+void
 init_vars(void)
 {
 	int ret;
@@ -167,16 +183,6 @@ init_vars(void)
 
 	signal(SIGTERM, cb_sigterm);
 	atexit(cb_atexit);
-
-	ret = ioctl(STDOUT_FILENO, TIOCGWINSZ, &gopt.winsize);
-	if ((ret == 0) && (gopt.winsize.ws_col != 0))
-	{
-		/* SUCCESS */
-		DEBUGF_M("Columns: %d, Rows: %d\n", gopt.winsize.ws_col, gopt.winsize.ws_row);
-	} else {
-		gopt.winsize.ws_col = 80;
-		gopt.winsize.ws_row = 24;
-	}
 }
 
 void
@@ -307,9 +313,8 @@ do_getopt(int argc, char *argv[])
 	}
 }
 
-static int is_stty_set_raw;
-struct termios tios_saved;
-
+static struct termios tios_saved;
+static int is_stty_raw;
 /*
  * Client only: Save TTY state and set raw mode.
  */
@@ -317,7 +322,8 @@ void
 stty_set_raw(void)
 {
 	int ret;
-	if (is_stty_set_raw)
+
+	if (is_stty_raw != 0)
 		return;
 
 	if (!isatty(STDIN_FILENO))
@@ -354,8 +360,7 @@ stty_set_raw(void)
     tios.c_cc[VTIME] = 0;
     tcsetattr(STDIN_FILENO, TCSADRAIN, &tios);
     // tcsetattr(STDIN_FILENO, TCSAFLUSH, &tios);
-
-	is_stty_set_raw = 1;
+    is_stty_raw = 1;
 }
 
 /*
@@ -364,25 +369,24 @@ stty_set_raw(void)
 void
 stty_reset(void)
 {
-	if (is_stty_set_raw == 0)
+	if (is_stty_raw == 0)
 		return;
 
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &tios_saved);
+	is_stty_raw = 0;
+	DEBUGF_G("resetting TTY\n");
+    tcsetattr(STDIN_FILENO, TCSADRAIN, &tios_saved);
 }
 
 static const char esc_seq[] = "\r~.\r";
 static int esc_pos;
 /*
- * Check if interactive mode/Client mode and user typed '\n~.\n' escape
+ * In nteractive mode/Client mode check if User typed '\n~.\n' escape
  * sequence.
  */
 void
 stty_check_esc(GS *gs, char c)
 {
-	if (is_stty_set_raw == 0)
-		return;
-
-	DEBUGF_R("chekcing %d on esc_pos %d == %d\n", c, esc_pos, esc_seq[esc_pos]);
+	// DEBUGF_R("checking %d on esc_pos %d == %d\n", c, esc_pos, esc_seq[esc_pos]);
 	if (c == esc_seq[esc_pos])
 	{
 		esc_pos++;
@@ -529,6 +533,8 @@ setup_cmd_child(void)
 	signal(SIGPIPE, SIG_DFL);
 }
 
+#if 0
+/* 'resize' as per xterm() and using ANSI codes */
 #define ESCAPE(string) "\033" string
 #define PTY_RESIZE_STR	ESCAPE("7") ESCAPE("[r") ESCAPE("[9999;9999H") ESCAPE("[6n")
 #define PTY_RESTORE		ESCAPE("8")
@@ -658,6 +664,8 @@ err:
 	onintr(0);
 }
 
+#endif
+
 #ifndef HAVE_OPENPTY
 static int
 openpty(int *amaster, int *aslave, void *a, void *b, void *c)
@@ -758,7 +766,7 @@ pty_cmd(const char *cmd)
 		#endif
 		if (fd >= 0)
 		{
-			pty_resize(fd);
+			//pty_resize(fd);
 			close(fd);
 		}
 

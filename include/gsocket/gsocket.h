@@ -361,7 +361,7 @@ GS_ADDR *GS_ADDR_bin2addr(GS_ADDR *addr, const void *data, size_t len);
 GS_ADDR *GS_ADDR_str2addr(GS_ADDR *addr, const char *str);
 GS_ADDR *GS_ADDR_ipport2addr(GS_ADDR *addr, uint32_t ip, uint16_t port);
 uint32_t GS_hton(const char *hostname);
-void GS_FD_SET_W(GS *gs);
+void GS_SELECT_FD_SET_W(GS *gs);
 
 void GS_daemonize(FILE *logfp);
 

@@ -17,6 +17,7 @@ void stty_set_raw(void);
 void stty_reset(void);
 void stty_check_esc(GS *gs, char c);
 char **mk_env(char **blacklist, char **addlist);
+void get_winsize(void);
 
 #define VLOG(a...)	do{if (gopt.log_fp != NULL){ fprintf(gopt.log_fp, a); fflush(gopt.log_fp); } }while(0)
 

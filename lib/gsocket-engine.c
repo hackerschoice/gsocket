@@ -18,7 +18,10 @@
 #include "gsocket-sha256.h"	// Use internal SHA256 if no OpenSSL available
 
 #ifdef DEBUG
-# define WITH_DEBUG
+//# define DEBUG_SELECT	(1)
+#endif
+
+#ifdef DEBUG
 FILE *gs_dout;		/* DEBUG OUTPUT */
 int gs_debug_level;
 fd_set *gs_debug_rfd;
@@ -27,14 +30,13 @@ fd_set *gs_debug_r;
 fd_set *gs_debug_w;
 #endif
 FILE *gs_errfp;
-// #define WITH_DEBUG
 
 #define GS_NET_DEFAULT_HOST			"gs.thc.org"
 #define GS_NET_DEFAULT_PORT			7350
 #define GS_SOCKS_DFL_IP				"127.0.0.1"
 #define GS_SOCKS_DFL_PORT			9050
 #define GS_GS_HTON_DELAY			(12 * 60 * 60)	// every 12h 
-#ifdef WITH_DEBUG
+#ifdef DEBUG_SELECT
 # define GS_DEFAULT_PING_INTERVAL	(30)
 # define GS_RECONNECT_DELAY			(3)
 #else
@@ -77,7 +79,7 @@ int_ntoa(uint32_t ip)
 void
 gs_fds_out_fd(fd_set *fdset, char id, int fd)
 {
-#ifdef WITH_DEBUG
+#ifdef DEBUG_SELECT
 	if (FD_ISSET(fd, fdset))
 		DEBUGF("fd=%d %c (set)\n", fd, id);
 	else
@@ -90,10 +92,10 @@ static int gs_lib_init_called;
 void
 gs_fds_out(fd_set *fdset, int max, char id)
 {
+#ifdef DEBUG_SELECT
 	char buf[max + 1 + 1];
 
 	memset(buf, ' ', sizeof buf);
-#ifdef WITH_DEBUG
 	int i;
 
 	for (i = 0; i <= max; i++)
@@ -119,7 +121,7 @@ gs_fds_out(fd_set *fdset, int max, char id)
 void
 gs_fds_out_rwfd(GS_SELECT_CTX *ctx)
 {
-#ifdef DEBUG
+#ifdef DEBUG_SELECT
 	int i;
 	char buf[ctx->max_fd + 1 + 1];
 
@@ -176,7 +178,7 @@ GS_library_init(FILE *err_fp, FILE *dout_fp)
 	XASSERT(RAND_status() == 1, "RAND_status()");
 
 	gs_errfp = err_fp;
-#ifdef DEBUG
+#ifdef DEBUG_SELECT
 	gs_dout = dout_fp;
 #endif
 }
@@ -193,7 +195,7 @@ GS_CTX_init(GS_CTX *ctx, fd_set *rfd, fd_set *wfd, fd_set *r, fd_set *w, struct 
 	ctx->r = r;
 	ctx->w = w;
 	ctx->tv_now = tv_now;
-#ifdef DEBUG
+#ifdef DEBUG_SELECT
 	gs_debug_rfd = rfd;
 	gs_debug_wfd = wfd;
 	gs_debug_r = r;
@@ -1923,7 +1925,7 @@ GS_read(GS *gsocket, void *buf, size_t count)
 
 
 void
-GS_FD_SET_W(GS *gs)
+GS_SELECT_FD_SET_W(GS *gs)
 {
 	GS_SELECT_CTX *sctx = gs->ctx->gselect_ctx;
 	int fd = gs->fd;
@@ -1962,7 +1964,7 @@ GS_write(GS *gsocket, const void *buf, size_t count)
 			 * is triggered.
 			 */
 			DEBUGF_R("*** WARNING **** Wanting to write app data (%zu) while SSL is busy..\n", count);
-			GS_FD_SET_W(gsocket);
+			GS_SELECT_FD_SET_W(gsocket);
 			/* This should never be called again because we disable cmd's FD-IN */
 
 			return 0;	/* WOULD BLOCK */

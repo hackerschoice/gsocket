@@ -53,6 +53,7 @@
 #include <openssl/srp.h>
 #include <gsocket/gsocket.h>
 #include <gsocket/gs-select.h>
+#include "packet.h"
 
 #ifndef O_NOCTTY
 # warning "O_NOCTTY not defined. Using 0."
@@ -84,6 +85,7 @@ struct _gopt
 	int is_daemon;
 	int is_logfile;
 	int is_quite;
+	int is_win_resized;
 	fd_set rfd, r;
 	fd_set wfd, w;
 	struct timeval tv_now;
@@ -118,18 +120,23 @@ struct _peer
 	GS *gs;
 	int fd_in;
 	int fd_out;	/* Same as fd_in unless client reads from stdin/stdout */
-	uint8_t rbuf[2048];	/* from GS */
+	uint8_t rbuf[2048];	/* from GS, to fd */
+	size_t r_max;
 	ssize_t rlen;
-	uint8_t wbuf[2048];	/* to GS */
+	uint8_t wbuf[2048];	/* from fd, to GS */
+	size_t w_max;
 	ssize_t wlen;
+	uint8_t pbuf[2048];	/* for pkt-encode/decode */
 	int is_network_forward;
 	int is_stdin_forward;
 	int is_app_forward;
 	int is_fd_connected;
 	int is_pty_first_read;		/* send stty hack */
+	int is_stty_set_raw;		/* Client only */
 	/* For Statistics */
 	int id;			/* Stats: assign an ID to each pere */
 	struct _socks socks;
+	GS_PKT pkt;		/* In-band data for interactive shell */
 };
 
 #define GSC_FL_IS_SERVER		(0x01)

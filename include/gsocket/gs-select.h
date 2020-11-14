@@ -41,9 +41,6 @@ typedef struct _gs_select_ctx
 	uint64_t hb_next;	/* Next time fo hb */
 } GS_SELECT_CTX;
 
-// #define GS_CALLREAD			(0x01)
-// #define GS_CALLWRITE		(0x02)
-
 typedef int (*gselect_cb_t)(GS_SELECT_CTX *ctx, int fd, void *arg, int val);
 
 int GS_SELECT_CTX_init(GS_SELECT_CTX *ctx, fd_set *rfd, fd_set *wfd, fd_set *r, fd_set *w, struct timeval *tv_now, int frequency);
