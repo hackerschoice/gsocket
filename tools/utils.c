@@ -126,6 +126,7 @@ get_winsize(void)
 	ret = ioctl(STDOUT_FILENO, TIOCGWINSZ, &gopt.winsize);
 	if ((ret == 0) && (gopt.winsize.ws_col != 0))
 	{
+		// gopt.winsize.ws_row -= 5;
 		/* SUCCESS */
 		DEBUGF_M("Columns: %d, Rows: %d\n", gopt.winsize.ws_col, gopt.winsize.ws_row);
 	} else {
@@ -795,12 +796,13 @@ pty_cmd(const char *cmd)
 			snprintf(home_env, sizeof home_env, "HOME=%s", pwd->pw_dir);
 
 		/* Remove some environment variables:
-		 * STY = screen specific.
+		 * STY = Confuses screen if gs-netcat is started from within screen (OSX)
 		 * GSOCKET_ARGS = Otherwise any further gs-netcat command would
 		 *    execute with same (hidden) commands as the current shell.
+		 * HISTFILE= does not work on oh-my-zsh (it sets it again)
 		 */
-		char *env_blacklist[] = {"STY", "GSOCKET_ARGS", NULL}; // Remove 'screen' tty
-		char *env_addlist[] = {shell_env, "TERM=xterm-256color", home_env, NULL};
+		char *env_blacklist[] = {"STY", "GSOCKET_ARGS", "HISTFILE", NULL};
+		char *env_addlist[] = {shell_env, "TERM=xterm-256color", "HISTFILE=\"\"", home_env, NULL};
 		char **envp = mk_env(env_blacklist, env_addlist);
 
 		if (cmd != NULL)

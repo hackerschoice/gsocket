@@ -1,0 +1,38 @@
+#ifndef __GS_PACKET_H__
+#define __GS_PACKET_H__ 1
+
+#define GS_PKT_MAX_SIZE		(2048)
+#define GS_PKT_MAX_MSG		128  // type = 0..127
+#define GS_PKT_MAX_CHN		128  // type = 128..255 
+#define GS_PKT_ESC			'e'  // escape character
+
+typedef void (*gspkt_cb_t)(uint8_t type, const uint8_t *data, size_t len, void *arg);
+
+/*
+ * - msg are fixed length (e.g. window size)
+ * - channels are streams (e.g. file transfer)
+ */
+typedef struct
+{
+	size_t esc_len_rem;
+	uint8_t type;					// type 0..127 is msg's, 128..255 is chn
+	uint8_t inband[GS_PKT_MAX_SIZE];// in-band packet/stream chunk
+	size_t len;						// length of data in inband buffer
+	int is_got_chn_len;				//
+	gspkt_cb_t funcs[256];			// Dispatch functions for msg/chn type
+	void *args[256];
+} GS_PKT;
+
+#define GS_PKT_IS_CHANNEL(a)		(((a) >> 7) & 0x01)
+
+int GS_PKT_init(GS_PKT *pkt);
+int GS_PKT_close(GS_PKT *pkt);
+int GS_PKT_assign_msg(GS_PKT *pkt, uint8_t msg, gspkt_cb_t func, void *arg);
+int GS_PKT_assign_chn(GS_PKT *pkt, uint8_t chn, gspkt_cb_t func, void *arg);
+void GS_PKT_encode(GS_PKT *pkt, const uint8_t *src, size_t slen, uint8_t *dst, size_t *dlen);
+int GS_PKT_decode(GS_PKT *pkt, const uint8_t *src, size_t slen, uint8_t *dst, size_t *dlen);
+ssize_t GS_PKT_decode_single(GS_PKT *pkt, const uint8_t *src, size_t slen, uint8_t *dst, size_t *dlen);
+
+#define GS_PKT_TYPE_NONE		0x00
+
+#endif /* !__GS_PACKET_H__ */

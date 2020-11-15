@@ -50,6 +50,7 @@
 #define GS_DFL_CIPHER_STRENGTH         "4096"
 
 #include <gsocket/gs-select.h>
+#include <gsocket/packet.h>
 
 /* ###########################
  * ### PROTOCOL DEFINITION ###

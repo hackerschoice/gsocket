@@ -166,6 +166,7 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 
 	errno = 0;
 	p->wlen = read(fd, p->wbuf, p->w_max);
+	HEXDUMPF(p->wbuf, p->wlen, "read(): ");
 	// DEBUGF_M("Read %zd from fd_cmd = %d (errno %d)\n", p->wlen, fd, errno);
 	if (p->wlen <= 0)
 	{
@@ -536,7 +537,7 @@ peer_forward_connect(struct _peer *p, uint32_t ip, uint16_t port)
 
 
 static void
-pkt_cb_wsize(uint8_t type, const uint8_t *data, size_t len, void *ptr)
+pkt_cb_wsize(uint8_t msg, const uint8_t *data, size_t len, void *ptr)
 {
 	struct _peer *p = (struct _peer *)ptr;
 
@@ -561,6 +562,16 @@ pkt_cb_wsize(uint8_t type, const uint8_t *data, size_t len, void *ptr)
 		DEBUGF("ioctl()-2 %s\n", strerror(errno));
 }
 
+#if 0
+// FIXME: display alarm in xterm title if root logs in?
+static void
+pkt_cb_title(uint8_t msg, const uint8_t *data, size_t len, void *ptr)
+{
+	struct _peer *p = (struct _peer *)ptr;
+
+}
+#endif
+
 /*
  * SERVER
  */
@@ -572,7 +583,17 @@ peer_new(GS_SELECT_CTX *ctx, GS *gs)
 
 	p = peer_new_init(gs);
 
-	GS_PKT_assign_msg(&p->pkt, PKT_MSG_WSIZE, pkt_cb_wsize, p);
+	if (gopt.is_interactive)
+	{
+		if (gopt.flags & GSC_FL_IS_SERVER)
+		{
+			/* SERVER */
+			GS_PKT_assign_msg(&p->pkt, PKT_MSG_WSIZE, pkt_cb_wsize, p);
+		} else {
+			/* CLIENT, interactive */
+			// GS_PKT_assign_msg(&p->pkt, PKT_MSG_TITLE, pkt_cb_title, p);
+		}
+	}
 
 	/* Create a new fd to relay gs-traffic to/from */
 	if ((gopt.cmd != NULL) || (gopt.is_interactive))
@@ -719,7 +740,7 @@ static int
 stty_send_wsize(GS_SELECT_CTX *ctx, struct _peer *p)
 {
 	p->wbuf[0] = GS_PKT_ESC;
-	p->wbuf[1] = 0x01; //PKT_TYPE_WSIZE;
+	p->wbuf[1] = PKT_MSG_WSIZE;
 	uint16_t col, row;
 	col = htons(gopt.winsize.ws_col);
 	row = htons(gopt.winsize.ws_row);

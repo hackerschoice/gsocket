@@ -53,7 +53,6 @@
 #include <openssl/srp.h>
 #include <gsocket/gsocket.h>
 #include <gsocket/gs-select.h>
-#include "packet.h"
 
 #ifndef O_NOCTTY
 # warning "O_NOCTTY not defined. Using 0."
