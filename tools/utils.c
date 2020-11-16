@@ -126,7 +126,6 @@ get_winsize(void)
 	ret = ioctl(STDOUT_FILENO, TIOCGWINSZ, &gopt.winsize);
 	if ((ret == 0) && (gopt.winsize.ws_col != 0))
 	{
-		// gopt.winsize.ws_row -= 5;
 		/* SUCCESS */
 		DEBUGF_M("Columns: %d, Rows: %d\n", gopt.winsize.ws_col, gopt.winsize.ws_row);
 	} else {
@@ -361,6 +360,10 @@ stty_set_raw(void)
     tios.c_cc[VTIME] = 0;
     tcsetattr(STDIN_FILENO, TCSADRAIN, &tios);
     // tcsetattr(STDIN_FILENO, TCSAFLUSH, &tios);
+    
+    /* Set NON blocking */
+    // fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK | fcntl(STDIN_FILENO, F_GETFL, 0));
+
     is_stty_raw = 1;
 }
 

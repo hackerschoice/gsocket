@@ -37,6 +37,7 @@
 #include "common.h"
 #include "utils.h"
 #include "socks.h"
+#include "console.h"
 #include "man_gs-netcat.h"
 
 /* All connected gs-peers indexed by gs->fd */
@@ -46,7 +47,7 @@ static struct _peer *peers[FD_SETSIZE];
 static int write_gs(GS_SELECT_CTX *ctx, struct _peer *p);
 static int peer_forward_connect(struct _peer *p, uint32_t ip, uint16_t port);
 static void vlog_hostname(struct _peer *p, const char *desc, uint16_t port);
-static int stty_send_wsize(GS_SELECT_CTX *ctx, struct _peer *p);
+static int stty_send_wsize(GS_SELECT_CTX *ctx, struct _peer *p, int row);
 
 // static void stty_set_remote_size(GS_SELECT_CTX *ctx, struct _peer *p);
 
@@ -154,6 +155,68 @@ peer_free(GS_SELECT_CTX *ctx, struct _peer *p)
 
 /* *********************** FD READ / WRITE ******************************/
 
+/*
+ * read() but with detecting CTRL+b (console command)
+ */
+static ssize_t
+read_esc(int fd, uint8_t *buf, size_t len, uint8_t *key)
+{
+	size_t n = 0;
+	ssize_t sz;
+	uint8_t c;
+	int ret;
+
+	/* FIXME-PERFORMANCE: Implement buffered read for performance
+	 * when in interactive mode [but then how fast can you type?]
+	 */
+	/* FIXME-PERFORMANCE: Cant leave stdin as non-blocking. 'top' wont
+	 * work any more. xterm sends data to stdin (?) and expects
+	 * blocking stdout (my stdin)?
+	 */
+    fcntl(fd, F_SETFL, O_NONBLOCK | fcntl(fd, F_GETFL, 0));
+
+	while (n < len)
+	{
+		sz = read(fd, &c, 1);
+		if (sz <= 0)
+		{
+			/* EOF or ERROR */
+			if (errno == EWOULDBLOCK)
+				break;
+			if (n == 0)
+				n = -1;  // treat EOF as ERROR
+			break;
+		}
+		/* Check if this is an ESCAPE and stop reading */
+		ret = console_check_esc(c, &c);
+		DEBUGF_G("con = %d\n", ret);
+		if (ret != -1)
+		{
+			if (ret > 0)
+			{
+				*key = ret;
+				break;
+			}
+			continue;
+		} 
+
+		buf[n] = c;
+		n++;
+	}
+
+    fcntl(fd, F_SETFL, ~O_NONBLOCK & fcntl(fd, F_GETFL, 0));
+
+	return n;
+}
+
+// static ssize_t
+// read_noesc(int fd, uint8_t *buf, size_t len)
+// {
+// 	ssize_t sz = read(fd, buf, len);
+// 	if (sz == 0)
+// 		sz = -1;
+// 	return sz;
+// }
 
 static int
 cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
@@ -161,14 +224,28 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	struct _peer *p = (struct _peer *)arg;
 	GS *gs = p->gs;
 	int ret;
+	uint8_t key = 0;
 
 	XASSERT(p->wlen <= 0, "Already data in gs-write buffer (%zd)\n", p->wlen);
 
 	errno = 0;
-	p->wlen = read(fd, p->wbuf, p->w_max);
-	HEXDUMPF(p->wbuf, p->wlen, "read(): ");
+	if ((gopt.is_interactive) && (!(gopt.flags & GSC_FL_IS_SERVER)))
+	{
+		p->wlen = read_esc(fd, p->wbuf, p->w_max, &key);
+		if ((key == 0) && (p->wlen == 0))
+			return GS_SUCCESS;	// EWOULDBLOCK
+		// p->wlen = read(fd, p->wbuf, p->w_max);
+		// if (p->wlen == 0)
+			// p->wlen = -1;
+	} else {
+		p->wlen = read(fd, p->wbuf, p->w_max);
+		if (p->wlen == 0)
+			p->wlen = -1; // treat EOF as -1 (error)
+	}
+	HEXDUMPF(p->wbuf, p->wlen, "read(%zd): ", p->wlen);
+
 	// DEBUGF_M("Read %zd from fd_cmd = %d (errno %d)\n", p->wlen, fd, errno);
-	if (p->wlen <= 0)
+	if (p->wlen < 0)
 	{
 		if (p->is_stdin_forward)
 		{
@@ -188,10 +265,6 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 
 	if (gopt.is_interactive)
 	{
-		if (!(gopt.flags & GSC_FL_IS_SERVER))
-		{
-			stty_check_esc(gs, p->wbuf[0]);
-		}
 		size_t dsz;
 		GS_PKT_encode(&p->pkt, p->wbuf, p->wlen, p->pbuf, &dsz);
 		if (p->wlen != dsz)
@@ -203,6 +276,11 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	}
 
 	write_gs(ctx, p);
+	/*
+	 * Take action if a console key has been received
+	 */
+	if (key > 0)
+		console_action(p, key);
 
 	return GS_SUCCESS;
 }
@@ -385,9 +463,12 @@ write_gs(GS_SELECT_CTX *ctx, struct _peer *p)
 		if (gopt.is_win_resized)
 		{
 			get_winsize();
+			int row = gopt.winsize.ws_row;
+			if (gopt.is_console)
+				row -= GS_CONSOLE_ROWS; 
 			gopt.is_win_resized = 0;
 			/* Calls write_gs() */
-			return stty_send_wsize(ctx, p);
+			return stty_send_wsize(ctx, p, row);
 		}
 		return GS_SUCCESS;
 	}
@@ -737,15 +818,15 @@ stty_set_remote_size(GS_SELECT_CTX *ctx, struct _peer *p)
 }
 #endif
 static int
-stty_send_wsize(GS_SELECT_CTX *ctx, struct _peer *p)
+stty_send_wsize(GS_SELECT_CTX *ctx, struct _peer *p, int row)
 {
 	p->wbuf[0] = GS_PKT_ESC;
 	p->wbuf[1] = PKT_MSG_WSIZE;
-	uint16_t col, row;
-	col = htons(gopt.winsize.ws_col);
-	row = htons(gopt.winsize.ws_row);
-	memcpy(p->wbuf + 2, &col, 2);
-	memcpy(p->wbuf + 4, &row, 2);
+	uint16_t c, r;
+	c = htons(gopt.winsize.ws_col);
+	r = htons(row);
+	memcpy(p->wbuf + 2, &c, 2);
+	memcpy(p->wbuf + 4, &r, 2);
 	p->wlen = 1 + 1 + 2 + 2;
 	return write_gs(ctx, p);
 }
@@ -804,7 +885,7 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd_notused, void *arg, int val)
 	// 	stty_set_raw();
 	// 	// stty_set_remote_size(ctx, p);
 	// }
-	stty_send_wsize(ctx, p);
+	stty_send_wsize(ctx, p, gopt.winsize.ws_row);
 
 	return GS_SUCCESS;
 }

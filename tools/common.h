@@ -59,6 +59,7 @@
 # define O_NOCTTY 0
 #endif
 
+
 struct _gopt
 {
 	GS_CTX gs_ctx;
@@ -84,7 +85,8 @@ struct _gopt
 	int is_daemon;
 	int is_logfile;
 	int is_quite;
-	int is_win_resized;
+	int is_win_resized; // window size changed (signal)
+	int is_console;		// console is being displayed
 	fd_set rfd, r;
 	fd_set wfd, w;
 	struct timeval tv_now;
@@ -93,6 +95,7 @@ struct _gopt
 	uint16_t port;		/* NBO */
 	int listen_fd;
 	struct winsize winsize;
+	int row_total; // Rows including console
 	int peer_count;
 	int peer_id_counter;	
 };
