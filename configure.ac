@@ -6,7 +6,7 @@ AC_CONFIG_AUX_DIR(config)
 AC_CANONICAL_SYSTEM
 
 dnl we use automake
-AM_INIT_AUTOMAKE
+AM_INIT_AUTOMAKE([foreign])
 AM_CONFIG_HEADER(config.h)
 AM_PROG_AR
 dnl for --enable-maintainer-mode fun use:
