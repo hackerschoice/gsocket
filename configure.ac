@@ -25,7 +25,7 @@ dnl Use these compiler flags if we have gcc.
 dnl
 if test $ac_cv_prog_gcc = yes; then
   CCOPTS='-O2 -Wall'
-  CFLAGS="$CCOPTS"
+  CFLAGS="$CCOPTS $CFLAGS"
 fi
 test "x$prefix" != "xNONE" || prefix="/usr/local"
 test "x$exec_prefix" != "xNONE" || exec_prefix="${prefix}"
