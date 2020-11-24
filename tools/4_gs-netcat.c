@@ -98,6 +98,12 @@ peer_free(GS_SELECT_CTX *ctx, struct _peer *p)
 	int is_stdin_forward = p->is_stdin_forward;
 	int fd;
 
+	/* Reset console/stty before outputting stats */
+	if (is_stdin_forward)
+	{
+		CONSOLE_reset();
+		stty_reset();
+	}
 	/* A connecting fd (gs->net.sox[0].fd or a connected fd (gs->fd) */
 	fd = GS_get_fd(gs);
 	DEBUGF_R("GS_get_fd() == %d\n", GS_get_fd(gs));
@@ -153,10 +159,17 @@ peer_free(GS_SELECT_CTX *ctx, struct _peer *p)
 		exit(0);
 }
 
+static void
+cb_atexit(void)
+{
+	CONSOLE_reset();
+	stty_reset();
+}
+
 /* *********************** FD READ / WRITE ******************************/
 
 /*
- * read() but with detecting CTRL+b (console command)
+ * read() but with detecting CTRL+E (console command)
  */
 static ssize_t
 read_esc(int fd, uint8_t *buf, size_t len, uint8_t *key)
@@ -172,6 +185,8 @@ read_esc(int fd, uint8_t *buf, size_t len, uint8_t *key)
 	/* FIXME-PERFORMANCE: Cant leave stdin as non-blocking. 'top' wont
 	 * work any more. xterm sends data to stdin (?) and expects
 	 * blocking stdout (my stdin)?
+	 * FIXME-PERFORMANCE: Block-read while console is not being
+	 * displayed (?)
 	 */
     fcntl(fd, F_SETFL, O_NONBLOCK | fcntl(fd, F_GETFL, 0));
 
@@ -188,8 +203,8 @@ read_esc(int fd, uint8_t *buf, size_t len, uint8_t *key)
 			break;
 		}
 		/* Check if this is an ESCAPE and stop reading */
-		ret = console_check_esc(c, &c);
-		DEBUGF_G("con = %d\n", ret);
+		ret = CONSOLE_check_esc(c, &c);
+		// DEBUGF_G("con = %d\n", ret);
 		if (ret != -1)
 		{
 			if (ret > 0)
@@ -234,15 +249,12 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 		p->wlen = read_esc(fd, p->wbuf, p->w_max, &key);
 		if ((key == 0) && (p->wlen == 0))
 			return GS_SUCCESS;	// EWOULDBLOCK
-		// p->wlen = read(fd, p->wbuf, p->w_max);
-		// if (p->wlen == 0)
-			// p->wlen = -1;
 	} else {
 		p->wlen = read(fd, p->wbuf, p->w_max);
 		if (p->wlen == 0)
 			p->wlen = -1; // treat EOF as -1 (error)
 	}
-	HEXDUMPF(p->wbuf, p->wlen, "read(%zd): ", p->wlen);
+	// HEXDUMPF(p->wbuf, p->wlen, "read(%zd): ", p->wlen);
 
 	// DEBUGF_M("Read %zd from fd_cmd = %d (errno %d)\n", p->wlen, fd, errno);
 	if (p->wlen < 0)
@@ -263,24 +275,37 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 
 	}
 
-	if (gopt.is_interactive)
+	// First offer data to console
+	int was_data_for_console = 0;
+	if ((gopt.is_interactive) && (!(gopt.flags & GSC_FL_IS_SERVER)))
 	{
-		size_t dsz;
-		GS_PKT_encode(&p->pkt, p->wbuf, p->wlen, p->pbuf, &dsz);
-		if (p->wlen != dsz)
-		{
-			/* HERE: ESC found. Encoded. */
-			memcpy(p->wbuf, p->pbuf, dsz);
-			p->wlen = dsz;
-		}
+
+		was_data_for_console = CONSOLE_readline(p, p->wbuf, p->wlen);
+		if (was_data_for_console)
+			p->wlen = 0;
 	}
 
-	write_gs(ctx, p);
+	if (!(was_data_for_console))
+	{
+	 	if (gopt.is_interactive)
+	 	{
+			size_t dsz;
+			GS_PKT_encode(&p->pkt, p->wbuf, p->wlen, p->pbuf, &dsz);
+			if (p->wlen != dsz)
+			{
+				/* HERE: ESC found. Encoded. */
+				memcpy(p->wbuf, p->pbuf, dsz);
+				p->wlen = dsz;
+			}
+		}
+		write_gs(ctx, p);
+	}
+
 	/*
 	 * Take action if a console key has been received
 	 */
 	if (key > 0)
-		console_action(p, key);
+		CONSOLE_action(p, key);
 
 	return GS_SUCCESS;
 }
@@ -290,7 +315,10 @@ write_fd(GS_SELECT_CTX *ctx, struct _peer *p)
 {
 	ssize_t len;
 
-	len = write(p->fd_out, p->rbuf, p->rlen);
+	if ((gopt.is_interactive) && (!(gopt.flags & GSC_FL_IS_SERVER)))
+		len = CONSOLE_write(p->fd_out, p->rbuf, p->rlen);
+	else
+		len = write(p->fd_out, p->rbuf, p->rlen);
 	// DEBUGF_G("write(fd = %d, len = %zd) == %zd, errno = %d (%s)\n", p->fd_out, p->rlen, len, errno, errno==0?"":strerror(errno));
 	
 	if (len < 0)
@@ -1096,6 +1124,23 @@ my_getopt(int argc, char *argv[])
 
 	init_vars();			/* from utils.c */
 	VLOG("=Encryption     : %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
+
+	atexit(cb_atexit);
+}
+
+static void
+my_test(void)
+{
+	gopt.is_console = 1;
+
+	// const char *str = "asdc\x1B[J";
+	// const char *str = "asdc\x1B[2Jasdf";
+	const char *str = "asdc\x1B[";
+	CONSOLE_write(1, (uint8_t *)str, strlen(str));
+	str = "Jsafd";
+	str = "?1049hasdf";
+	CONSOLE_write(1, (uint8_t *)str, strlen(str));
+	exit(0);
 }
 
 int
@@ -1103,6 +1148,8 @@ main(int argc, char *argv[])
 {
 	init_defaults(&argc, &argv);
 	my_getopt(argc, argv);
+
+	// my_test();
 
 	if (gopt.flags & GSC_FL_IS_SERVER)
 		do_server();

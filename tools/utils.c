@@ -1,6 +1,7 @@
 
 #include "common.h"
 #include "utils.h"
+#include "console.h"
 
 struct _gopt gopt;
 
@@ -112,12 +113,6 @@ cb_sigterm(int sig)
 	exit(255);	// will call cb_atexit()
 }
 
-static void
-cb_atexit(void)
-{
-	stty_reset();
-}
-
 void
 get_winsize(void)
 {
@@ -182,7 +177,6 @@ init_vars(void)
 	DEBUGF("PID = %d\n", getpid());
 
 	signal(SIGTERM, cb_sigterm);
-	atexit(cb_atexit);
 }
 
 void

@@ -178,9 +178,7 @@ GS_library_init(FILE *err_fp, FILE *dout_fp)
 	XASSERT(RAND_status() == 1, "RAND_status()");
 
 	gs_errfp = err_fp;
-#ifdef DEBUG_SELECT
 	gs_dout = dout_fp;
-#endif
 }
 
 int
