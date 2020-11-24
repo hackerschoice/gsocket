@@ -48,10 +48,15 @@ static int write_gs(GS_SELECT_CTX *ctx, struct _peer *p);
 static int peer_forward_connect(struct _peer *p, uint32_t ip, uint16_t port);
 static void vlog_hostname(struct _peer *p, const char *desc, uint16_t port);
 static int stty_send_wsize(GS_SELECT_CTX *ctx, struct _peer *p, int row);
+static int send_pong(GS_SELECT_CTX *ctx, struct _peer *p);
+static int send_ping(GS_SELECT_CTX *ctx, struct _peer *p);
+
 
 // static void stty_set_remote_size(GS_SELECT_CTX *ctx, struct _peer *p);
 
-#define PKT_MSG_WSIZE		(0x01)
+#define PKT_MSG_WSIZE		(1)
+#define PKT_MSG_PING		(16)
+#define PKT_MSG_PONG		(16)
 
 /*
  * Make statistics and return them in 'dst'
@@ -279,7 +284,6 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	int was_data_for_console = 0;
 	if ((gopt.is_interactive) && (!(gopt.flags & GSC_FL_IS_SERVER)))
 	{
-
 		was_data_for_console = CONSOLE_readline(p, p->wbuf, p->wlen);
 		if (was_data_for_console)
 			p->wlen = 0;
@@ -442,6 +446,8 @@ cb_read_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 			/* HERE: Client Or Server. Interactive */
 			size_t dsz;
 			ret = GS_PKT_decode(&p->pkt, p->rbuf, p->rlen, p->rbuf, &dsz);
+			HEXDUMP(p->rbuf, MIN(24, p->rlen));
+			DEBUGF_B("decode; %zd %zd\n", p->rlen, dsz);
 			p->rlen = dsz;
 			if (ret != 0)
 			{
@@ -498,6 +504,17 @@ write_gs(GS_SELECT_CTX *ctx, struct _peer *p)
 			/* Calls write_gs() */
 			return stty_send_wsize(ctx, p, row);
 		}
+		if (gopt.is_pong_pending)
+		{
+			gopt.is_pong_pending = 0;
+			return send_pong(ctx, p);
+		}
+		if (gopt.is_want_ping)
+		{
+			gopt.is_want_ping = 0;
+			return send_ping(ctx, p);
+		}
+
 		return GS_SUCCESS;
 	}
 
@@ -644,7 +661,7 @@ peer_forward_connect(struct _peer *p, uint32_t ip, uint16_t port)
 	return 0;
 }
 
-
+/* SERVER - client changed window size. Adjust pty. */
 static void
 pkt_cb_wsize(uint8_t msg, const uint8_t *data, size_t len, void *ptr)
 {
@@ -668,7 +685,32 @@ pkt_cb_wsize(uint8_t msg, const uint8_t *data, size_t len, void *ptr)
 	ws.ws_row = row;
 	ret = ioctl(p->fd_in, TIOCSWINSZ, &ws);
 	if (ret != 0)
-		DEBUGF("ioctl()-2 %s\n", strerror(errno));
+		DEBUGF_R("ioctl()-2 %s\n", strerror(errno));
+}
+
+/* SERVER - answer to PING request on channel */
+static void
+pkt_cb_ping(uint8_t msg, const uint8_t *data, size_t len, void *ptr)
+{
+	struct _peer *p = (struct _peer *)ptr;
+
+	DEBUGF_C("PING received\n");
+	gopt.is_pong_pending = 1;
+	GS_SELECT_FD_SET_W(p->gs);
+}
+
+/* CLIENT - Answer to PING received */
+static void
+pkt_cb_pong(uint8_t msg, const uint8_t *data, size_t len, void *ptr)
+{
+	// Check if we were waiting at all!
+	if (gopt.ts_ping_sent == 0)
+		return;
+
+	float ms = (float)(GS_TV_TO_USEC(&gopt.tv_now) - gopt.ts_ping_sent) / 1000;
+	DEBUGF_C("PONG received (%.03f)\n", ms);
+
+	gopt.ts_ping_sent = 0;
 }
 
 #if 0
@@ -694,14 +736,9 @@ peer_new(GS_SELECT_CTX *ctx, GS *gs)
 
 	if (gopt.is_interactive)
 	{
-		if (gopt.flags & GSC_FL_IS_SERVER)
-		{
-			/* SERVER */
-			GS_PKT_assign_msg(&p->pkt, PKT_MSG_WSIZE, pkt_cb_wsize, p);
-		} else {
-			/* CLIENT, interactive */
-			// GS_PKT_assign_msg(&p->pkt, PKT_MSG_TITLE, pkt_cb_title, p);
-		}
+		/* SERVER */
+		GS_PKT_assign_msg(&p->pkt, PKT_MSG_WSIZE, pkt_cb_wsize, p);
+		GS_PKT_assign_msg(&p->pkt, PKT_MSG_PING, pkt_cb_ping, p);
 	}
 
 	/* Create a new fd to relay gs-traffic to/from */
@@ -845,6 +882,7 @@ stty_set_remote_size(GS_SELECT_CTX *ctx, struct _peer *p)
 	write_gs(ctx, p);
 }
 #endif
+
 static int
 stty_send_wsize(GS_SELECT_CTX *ctx, struct _peer *p, int row)
 {
@@ -855,7 +893,28 @@ stty_send_wsize(GS_SELECT_CTX *ctx, struct _peer *p, int row)
 	r = htons(row);
 	memcpy(p->wbuf + 2, &c, 2);
 	memcpy(p->wbuf + 4, &r, 2);
-	p->wlen = 1 + 1 + 2 + 2;
+	p->wlen = 2 + GS_PKT_MSG_size_by_type(PKT_MSG_WSIZE);
+	return write_gs(ctx, p);
+}
+
+static int
+send_pong(GS_SELECT_CTX *ctx, struct _peer *p)
+{
+	p->wbuf[0] = GS_PKT_ESC;
+	p->wbuf[1] = PKT_MSG_PONG;
+	p->wlen = 2 + GS_PKT_MSG_size_by_type(PKT_MSG_PONG);
+	return write_gs(ctx, p);
+}
+
+static int
+send_ping(GS_SELECT_CTX *ctx, struct _peer *p)
+{
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	gopt.ts_ping_sent = GS_TV_TO_USEC(&tv);
+	p->wbuf[0] = GS_PKT_ESC;
+	p->wbuf[1] = PKT_MSG_PING;
+	p->wlen = 2 + GS_PKT_MSG_size_by_type(PKT_MSG_PING);
 	return write_gs(ctx, p);
 }
 
@@ -913,7 +972,11 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd_notused, void *arg, int val)
 	// 	stty_set_raw();
 	// 	// stty_set_remote_size(ctx, p);
 	// }
-	stty_send_wsize(ctx, p, gopt.winsize.ws_row);
+	if (gopt.is_interactive)
+	{
+		stty_send_wsize(ctx, p, gopt.winsize.ws_row);
+		GS_PKT_assign_msg(&p->pkt, PKT_MSG_PONG, pkt_cb_pong, p);
+	}
 
 	return GS_SUCCESS;
 }
@@ -994,6 +1057,7 @@ do_client(void)
 	while (1)
 	{
 		n = GS_select(&ctx);
+		GS_heartbeat(gopt.gsocket);
 		if (n < 0)
 			break;
 	}

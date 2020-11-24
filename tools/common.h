@@ -85,8 +85,11 @@ struct _gopt
 	int is_daemon;
 	int is_logfile;
 	int is_quite;
-	int is_win_resized; // window size changed (signal)
-	int is_console;		// console is being displayed
+	int is_win_resized;     // window size changed (signal)
+	int is_console;		    // console is being displayed
+	int is_pong_pending;    // Server: Answer to PING waiting to be send
+	int is_want_ping;       // Client: Wants to send a ping
+	uint64_t ts_ping_sent;  // TimeStamp ping sent
 	fd_set rfd, r;
 	fd_set wfd, w;
 	struct timeval tv_now;

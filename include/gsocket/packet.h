@@ -35,6 +35,7 @@ int GS_PKT_assign_chn(GS_PKT *pkt, uint8_t chn, gspkt_cb_t func, void *arg);
 void GS_PKT_encode(GS_PKT *pkt, const uint8_t *src, size_t slen, uint8_t *dst, size_t *dlen);
 int GS_PKT_decode(GS_PKT *pkt, const uint8_t *src, size_t slen, uint8_t *dst, size_t *dlen);
 ssize_t GS_PKT_decode_single(GS_PKT *pkt, const uint8_t *src, size_t slen, uint8_t *dst, size_t *dlen);
+int GS_PKT_MSG_size_by_type(int type);
 
 #define GS_PKT_TYPE_NONE		0x00
 

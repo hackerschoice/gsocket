@@ -23,7 +23,7 @@
 
 static void console_start(void);
 static void console_stop(void);
-static int console_command(int fd, const char *cmd);
+static int console_command(struct _peer *p, const char *cmd);
 static void get_cursor_pos(int *row, int *col);
 // static void set_cursor_pos(int row, int col);
 
@@ -558,7 +558,7 @@ CONSOLE_write(int fd, void *data, size_t len)
 	sz = ansi_write(fd, data, len, &is_detected_clearscreen);
 
 	// if (len > 16)
-		// HEXDUMP(src + len - 16, 16);
+		HEXDUMP(data, MIN(16, len));
 
 	if (is_cursor_in_console)
 		tty_write("\x1B[s", 3);  // Save cursor position
@@ -638,7 +638,7 @@ CONSOLE_readline(struct _peer *p, void *data, size_t len)
 		// ptr += snprintf(ptr, end - ptr, "\x1B[%d;%luf%s", gopt.winsize.ws_row, GS_CONSOLE_PROMPT_LEN, rl.visible_line);
 	}
 	if (is_got_line)
-		console_command(fd, rl.line);
+		console_command(p, rl.line);
 	DEBUGF("final line: '%s'\n", rl.line);
 
 	// FIXME STOP HERE: Handle action characters
@@ -795,9 +795,20 @@ cmd_help(int fd)
 
 }
 
-static int
-console_command(int fd, const char *cmd)
+static void
+cmd_ping(struct _peer *p)
 {
+	if (gopt.is_want_ping != 0)
+		return;
+
+	gopt.is_want_ping = 1;
+	GS_SELECT_FD_SET_W(p->gs);
+}
+
+static int
+console_command(struct _peer *p, const char *cmd)
+{
+	int fd = p->fd_out;
 	char buf[GS_CONSOLE_BUF_SIZE];
 	char *end = buf + sizeof (buf);
 	char *ptr = buf;
@@ -808,6 +819,8 @@ console_command(int fd, const char *cmd)
 	{
 		cmd_help(fd);
 		is_repos_cursor = 1;
+	} else if (memcmp(cmd, "ping", 4) == 0) {
+		cmd_ping(p);
 	} else if (memcmp(cmd, "quit", 4) == 0) {
 		exit(0); // hard exit.
 	}
@@ -817,7 +830,6 @@ console_command(int fd, const char *cmd)
 		ptr += snprintf(ptr, end - ptr, "\x1B[%d;%luf", row + GS_CONSOLE_ROWS, GS_CONSOLE_PROMPT_LEN);
 		tty_write(buf, ptr - buf);
 	}
-
 
 	return 0;
 }
