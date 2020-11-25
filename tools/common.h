@@ -100,7 +100,8 @@ struct _gopt
 	struct winsize winsize;
 	int row_total; // Rows including console
 	int peer_count;
-	int peer_id_counter;	
+	int peer_id_counter;
+	GS_EVENT event_ping;
 };
 
 struct _socks

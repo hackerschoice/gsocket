@@ -43,12 +43,16 @@
 #define GS_TV_TO_USEC(tv)		((uint64_t)(tv)->tv_sec * 1000000 + (tv)->tv_usec)
 #define GS_TV_DIFF(tv_a, tv_b)	(GS_TV_TO_USEC(tv_b) - GS_TV_TO_USEC(tv_a))
 #define GS_SEC_TO_USEC(sec)		((uint64_t)sec * 1000000)
+#define GS_MSEC_TO_USEC(ms)		((uint64_t)ms * 1000)
 #define GS_USEC_TO_SEC(usec)	(usec / 1000000)
+#define GS_USEC_TO_TV(tv, usec)	do { (tv)->tv_sec = (usec) / 1000000; (tv)->tv_usec = (usec) % 1000000; } while(0)
 
 #define GS_SECRET_MAX_LEN               (256 / 8)       /* max length in bytes */
 #define GS_DFL_CIPHER                  "SRP-AES-256-CBC-SHA"
 #define GS_DFL_CIPHER_STRENGTH         "4096"
 
+#include <gsocket/list.h>
+#include <gsocket/event.h>
 #include <gsocket/gs-select.h>
 #include <gsocket/packet.h>
 #include <gsocket/gs-readline.h>
@@ -302,6 +306,7 @@ typedef struct
 	int fd;					/* Only set if this is a 'connected' tcp_fd (not listening socket) */
 	int64_t bytes_read;
 	int64_t bytes_written;
+	uint64_t ts_net_io;     // TimeStamp network I/O
 	struct timeval tv_connected;	/* TV when GS entered CONNECTED state */
 	int read_pending;
 	int write_pending;

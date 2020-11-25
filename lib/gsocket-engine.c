@@ -1872,6 +1872,7 @@ GS_read(GS *gsocket, void *buf, size_t count)
 	if ((len > 0) || (err == SSL_ERROR_ZERO_RETURN))
 	{
 		errno = 0;
+		gsocket->ts_net_io = GS_TV_TO_USEC(gsocket->ctx->tv_now);
 		gsocket->bytes_read += len;
 		if (gsocket->write_pending == 0)
 			gs_ssl_want_io_finished(gsocket);

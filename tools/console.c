@@ -11,6 +11,7 @@
  */
 #include "common.h"
 #include "console.h"
+#include "utils.h"
 
 #define ESCAPE(string) "\033" string
 #define PTY_RESIZE_STR	ESCAPE("7") ESCAPE("[r") ESCAPE("[9999;9999H") ESCAPE("[6n")
@@ -795,15 +796,7 @@ cmd_help(int fd)
 
 }
 
-static void
-cmd_ping(struct _peer *p)
-{
-	if (gopt.is_want_ping != 0)
-		return;
 
-	gopt.is_want_ping = 1;
-	GS_SELECT_FD_SET_W(p->gs);
-}
 
 static int
 console_command(struct _peer *p, const char *cmd)

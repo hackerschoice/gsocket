@@ -22,8 +22,11 @@ GS_SELECT_CTX_init(GS_SELECT_CTX *ctx, fd_set *rfd, fd_set *wfd, fd_set *r, fd_s
 	ctx->tv_now = tv_now;
 
 	gettimeofday(ctx->tv_now, NULL);
-	ctx->hb_init = GS_TV_TO_USEC(ctx->tv_now);
-	ctx->hb_freq = frequency;
+	GS_EVENT_MGR_init(&ctx->emgr);
+	GS_EVENT_add_by_ts(&ctx->emgr, &ctx->hb, 0, frequency, NULL, NULL, 0);
+
+	// ctx->hb_init = GS_TV_TO_USEC(ctx->tv_now);
+	// ctx->hb_freq = frequency;
 
 	int i;
 	for (i = 0; i < FD_SETSIZE; i++)
@@ -164,22 +167,12 @@ GS_select(GS_SELECT_CTX *ctx)
 		memcpy(ctx->r, ctx->rfd, sizeof *ctx->r);
 		memcpy(ctx->w, ctx->wfd, sizeof *ctx->w);
 		
-		/* Calculate timeout */
-		if (ctx->hb_freq > 0)
-		{
-			gettimeofday(ctx->tv_now, NULL);
-			uint64_t now = GS_TV_TO_USEC(ctx->tv_now);
-			uint64_t skip = (now - ctx->hb_init) / ctx->hb_freq;
-			uint64_t next = ctx->hb_init + skip * ctx->hb_freq + ctx->hb_freq;
-			ctx->hb_next = next;
-			uint64_t delta = next - now;
+		uint64_t wait;
+		wait = GS_EVENT_execute(&ctx->emgr);
 
-			tv.tv_sec = delta / 1000000;
-			tv.tv_usec = delta % 1000000;
-		} else {
-			tv.tv_sec = 10;
-			tv.tv_usec = 0;
-		}
+		gettimeofday(ctx->tv_now, NULL);
+		GS_USEC_TO_TV(&tv, wait);
+
 		gs_fds_out_rwfd(ctx);		// BUG-2-MAX-FD
 		n = select(max_fd + 1, ctx->r, ctx->w, NULL, &tv);
 		// DEBUGF_B("max-fd = %d, *************** select = %d\n", max_fd, n);
@@ -252,10 +245,15 @@ GS_select(GS_SELECT_CTX *ctx)
 		} /* select() */
 
 		/* Time to return control to caller? */
-		if (((ctx->hb_freq > 0) && GS_TV_TO_USEC(ctx->tv_now) > ctx->hb_next))
+		if (ctx->emgr.is_return_to_caller)
 		{
+			ctx->emgr.is_return_to_caller = 0;
 			return 0;
 		}
+		// if (((ctx->hb_freq > 0) && GS_TV_TO_USEC(ctx->tv_now) > ctx->hb_next))
+		// {
+			// return 0;
+		// }
 	} /* while (1) */
 
 	ERREXIT("NOT REACHED\n");

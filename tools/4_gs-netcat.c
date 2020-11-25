@@ -51,8 +51,10 @@ static int stty_send_wsize(GS_SELECT_CTX *ctx, struct _peer *p, int row);
 static int send_pong(GS_SELECT_CTX *ctx, struct _peer *p);
 static int send_ping(GS_SELECT_CTX *ctx, struct _peer *p);
 
-
 // static void stty_set_remote_size(GS_SELECT_CTX *ctx, struct _peer *p);
+
+#define GS_APP_KEEPALIVE	GS_SEC_TO_USEC(60 * 2) // If no activty send app-layer ping (-i needed)
+#define GS_APP_PINGFREQ		GS_SEC_TO_USEC(5)      // Send a ping every 5 sec (-i, in console)
 
 #define PKT_MSG_WSIZE		(1)
 #define PKT_MSG_PING		(16)
@@ -114,6 +116,7 @@ peer_free(GS_SELECT_CTX *ctx, struct _peer *p)
 	DEBUGF_R("GS_get_fd() == %d\n", GS_get_fd(gs));
 	XASSERT(peers[fd] == p, "Oops, %p != %p on fd = %d, cmd_fd = %d\n", peers[fd], p, fd, p->fd_in);
 
+	GS_EVENT_del(&gopt.event_ping);
 	GS_PKT_close(&p->pkt);
 	/* Exit() if we were reading from stdin/stdout. No other clients
 	 * in this case.
@@ -589,6 +592,29 @@ cb_sigwinch(int sig)
 	GS_SELECT_FD_SET_W(my_peer->gs);
 }
 
+
+/*
+ * When console is visible then send a ping more often. Otherwise
+ * only if there is no other network i/o for GS_APP_KEEPLIVE usec.
+ */
+static int
+cbe_ping(void *ptr)
+{
+	GS_EVENT *event = (GS_EVENT *)ptr;
+	struct _peer *p = (struct _peer *)event->data;
+
+	if (gopt.is_console == 0)
+	{
+		// Return if data was transmitted recently
+		if (p->gs->ts_net_io + GS_APP_KEEPALIVE >= GS_TV_TO_USEC(&gopt.tv_now))
+			return 0;
+	}
+
+	cmd_ping(event->data);
+
+	return 0;
+}
+
 /*
  * Server & Client
  */
@@ -610,7 +636,7 @@ peer_new_init(GS *gs)
 	p->r_max = sizeof p->rbuf;
 	if ((gopt.is_interactive))// && !(gopt.flags & GSC_FL_IS_SERVER))
 	{
-		/* -i: Do packet protocol */
+		/* -i: Use of packet protocol needs decoding space */
 		p->w_max = sizeof p->wbuf / 2;	/* from fd, to GS */
 		p->r_max = sizeof p->rbuf / 2;	/* from fd, to GS */
 		if (!(gopt.flags & GSC_FL_IS_SERVER))
@@ -619,6 +645,7 @@ peer_new_init(GS *gs)
 			my_peer = p;
 			signal(SIGWINCH, cb_sigwinch);
 			get_winsize();
+			GS_EVENT_add_by_ts(&gs->ctx->gselect_ctx->emgr, &gopt.event_ping, 0, GS_APP_PINGFREQ, cbe_ping, p, 0);
 		}
 	}
 	DEBUGF_M("[ID=%d] (fd=%d) Number of connected gs-peers: %d\n", p->id, fd, gopt.peer_count);

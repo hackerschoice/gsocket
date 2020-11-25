@@ -969,4 +969,14 @@ fd_new_socket(void)
 	return fd;
 }
 
+void
+cmd_ping(struct _peer *p)
+{
+	if (gopt.is_want_ping != 0)
+		return;
+
+	gopt.is_want_ping = 1;
+	GS_SELECT_FD_SET_W(p->gs);
+}
+
 
