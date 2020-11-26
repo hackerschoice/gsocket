@@ -37,6 +37,7 @@
 #include <libgen.h>		/* basename() */
 #include <termios.h>
 #include <pwd.h>
+#include <utmpx.h>
 #ifdef HAVE_LIBUTIL_H
 # include <libutil.h>	/* FreeBSD */
 #endif
@@ -102,6 +103,7 @@ struct _gopt
 	int peer_count;
 	int peer_id_counter;
 	GS_EVENT event_ping;
+	GS_EVENT event_bps;
 };
 
 struct _socks

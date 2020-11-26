@@ -22,11 +22,12 @@
 #define GS_CONSOLE_PROMPT		"#!ADM> "
 #define GS_CONSOLE_PROMPT_LEN	sizeof (GS_CONSOLE_PROMPT)
 
+#define GS_CON_SB_MAX_USERLEN	8  // StatusBar Max User Len
+
 static void console_start(void);
 static void console_stop(void);
 static int console_command(struct _peer *p, const char *cmd);
 static void get_cursor_pos(int *row, int *col);
-// static void set_cursor_pos(int row, int col);
 
 static uint8_t chr_last;
 static int tty_fd = -1;
@@ -37,12 +38,42 @@ static GS_RL_CTX rl;
 
 #define GS_CONSOLE_BUF_SIZE		(1024)
 
+struct _console_info
+{
+	char statusbar[512];
+	size_t sb_len;
+	float ping_ms;
+	int load;
+	char user[14];
+	int sec_idle;
+
+	// Bytes Per Second 
+	double last_usec;
+	int64_t last_pos;
+	double bps;
+	double last_bps;
+};
+
+struct _console_info ci;
+
+static double
+get_usec(void)
+{
+	struct timeval tv;
+
+	gettimeofday(&tv, NULL);
+
+	return (double)tv.tv_sec * 1000000 + tv.tv_usec;
+}
+
 static void
 console_init(int fd)
 {
 	if (is_init_called)
 		return;
 	is_init_called = 1;	// Set also if any of the calls below fail
+
+	ci.last_usec = get_usec();
 
 	GS_RL_init(&rl, 10);
 
@@ -162,43 +193,145 @@ console_cursor_on(void)
 	is_cursor_in_console = 1;
 }
 
+// Add to string and increase visual counter
+#define VSADDF(xptr, xend, xv, a...) do{ \
+	size_t n; \
+	n = snprintf(xptr, xend-xptr, a); \
+	xv += n; \
+	xptr += n; \
+} while(0)
+
+
+static void
+mk_statusbar(void)
+{
+	char *ptr = ci.statusbar;
+	char *end = ptr + sizeof ci.statusbar;
+	int row = gopt.winsize.ws_row - (GS_CONSOLE_ROWS - 1);
+	size_t vc = 0;  // visible characters
+
+	DEBUGF_C("mk_statusbar() called\n");
+	ptr += snprintf(ptr, end - ptr, "\x1B[%d;1f", row);
+	ptr += snprintf(ptr, end - ptr, "\x1B[44m\x1B[30m");
+
+	memset(ptr, ':', end - ptr);
+
+	float ms = ci.ping_ms;
+	if (ms >= 1000)
+		VSADDF(ptr, end, vc, "[%1.01fs ]", ms / 1000);
+	else
+		VSADDF(ptr, end, vc, "[%3dms]", (int)ms);
+
+	if (ci.load >= 1000)
+		VSADDF(ptr, end, vc, "[Load %02.02f][User ", (float)ci.load / 100);
+	else
+		VSADDF(ptr, end, vc, "[Load % 4.02f][User ", (float)ci.load / 100);
+
+	// User name
+	VSADDF(ptr, end, vc, "%*s ", GS_CON_SB_MAX_USERLEN, ci.user);
+
+	// IDLE timer
+	if (ci.sec_idle < 100)
+	{
+		ptr += snprintf(ptr, end - ptr, "\x1b[31m");
+		VSADDF(ptr, end, vc, "%2d sec", ci.sec_idle);
+		ptr += snprintf(ptr, end - ptr, "\x1B[30m");
+	}
+	else if (ci.sec_idle / 60 < 100)
+		VSADDF(ptr, end, vc, "%2d min", ci.sec_idle / 60);
+	else 
+		VSADDF(ptr, end, vc, "*idle*");
+	VSADDF(ptr, end, vc, "]");
+
+	char buf[8];
+	format_bps(buf, sizeof buf, (int64_t)ci.bps);
+	VSADDF(ptr, end, vc, "[%s/s]", buf);
+
+	// Fill until end
+	size_t v_left = gopt.winsize.ws_col - vc;
+	ptr += v_left + 1;
+
+	ptr += snprintf(ptr, end - ptr, "\x1B[0m");  // Reset color
+	ci.sb_len = ptr - ci.statusbar;
+}
+
+static void
+update_bps(struct _peer *p)
+{
+	double now_usec;
+	int64_t cur_pos;
+
+	now_usec = get_usec();
+	cur_pos = p->gs->bytes_read + p->gs->bytes_written;
+
+	ci.last_bps = ci.bps;
+
+	if (now_usec == ci.last_usec)
+		ci.bps = 0;
+	else
+		ci.bps = (cur_pos - ci.last_pos) * 1000000 / (now_usec - ci.last_usec);
+
+	// Slowly adjust BPS to make it appear less jumpy
+	ci.bps = ci.last_bps + (ci.bps - ci.last_bps) * 0.8;
+	if (ci.bps < 50)
+		ci.bps = 0;
+
+	ci.last_usec = now_usec;
+	ci.last_pos = cur_pos;
+}
+
+void
+CONSOLE_update_pinginfo(struct _peer *p, float ms, int load, char *user, int sec_idle)
+{
+	int fd = p->fd_out;
+	ci.ping_ms = ms;
+	ci.load = load;
+
+	if (strlen(user) > GS_CON_SB_MAX_USERLEN)
+		memcpy(user + GS_CON_SB_MAX_USERLEN - 2, "..", 3);
+
+	snprintf(ci.user, sizeof ci.user, "%s", user);
+	ci.sec_idle = sec_idle;
+
+	// update_bps(p);  // BPS is to jumpy if we update to often
+	mk_statusbar();
+	console_draw(fd);
+}
+
+void
+CONSOLE_update_bps(struct _peer *p)
+{
+	update_bps(p);
+
+	if (gopt.is_console == 0)
+		return;
+	
+	// Only redraw if there was a change
+	if (ci.last_bps != ci.bps)
+	{
+		mk_statusbar();
+		console_draw(p->fd_out);
+	}
+}
+
 static void
 console_draw(int fd)
 {
 	int row = gopt.winsize.ws_row - (GS_CONSOLE_ROWS - 1);
-	int col = gopt.winsize.ws_col;
-
 
 	// save. go to bottom. scrool up.
 	char buf[2048];
 	char *ptr = buf;
 	char *end = buf + sizeof (buf);
 
-	memset(buf, '.', sizeof buf);
+	if (gopt.is_console == 0)
+		return;
 
 	if (is_cursor_in_console == 0)
-		ptr += snprintf(ptr, end - ptr, "\x1B[s");
+		tty_write("\x1B[s", 3);
+		// ptr += snprintf(ptr, end - ptr, "\x1B[s");
 
-	// Move cursor to console start.
-	ptr += snprintf(ptr, end - ptr, "\x1B[%d;1f", row);
-
-	// START print headline
-	// Set funky color
-	// 44m 30m == BLACK == 44;1m 30;1m
-	// 37m == WHITE == 37;1m
-
-	ptr += snprintf(ptr, end - ptr, "\x1B[44m\x1B[30m");
-
-	snprintf(ptr, end - ptr, "LeftALigned");
-
-	char right[64];
-	snprintf(right, sizeof right, "AlignFooBarRight");
-	char *rptr = ptr + col - strlen(right) + 1;
-	rptr += snprintf(rptr, end - rptr, "%s", right);
-	ptr = rptr;
-
-	ptr += snprintf(ptr, end - ptr, "\x1B[0m");  // Reset color
-	tty_write(buf, ptr - buf);
+	tty_write(ci.statusbar, ci.sb_len);
 	// END print headline
 
 	// START print prompt
@@ -268,7 +401,7 @@ int
 CONSOLE_check_esc(uint8_t c, uint8_t *submit)
 {
 	int esc;
-	DEBUGF_B("Checking 0x%02x\n", c);
+
  	if (chr_last == GS_CONSOLE_ESC)
  	{
  		if (check_arrow(&esc, c) == 0)
@@ -559,7 +692,7 @@ CONSOLE_write(int fd, void *data, size_t len)
 	sz = ansi_write(fd, data, len, &is_detected_clearscreen);
 
 	// if (len > 16)
-		HEXDUMP(data, MIN(16, len));
+		// HEXDUMP(data, MIN(16, len));
 
 	if (is_cursor_in_console)
 		tty_write("\x1B[s", 3);  // Save cursor position
@@ -570,7 +703,7 @@ CONSOLE_write(int fd, void *data, size_t len)
 		is_console_before_sb = gopt.is_console;
 	}
 
-	DEBUGF_G("cls = %d before = %d, now %d\n", is_detected_clearscreen, is_console_before_sb, gopt.is_console);
+	// DEBUGF_G("cls = %d before = %d, now %d\n", is_detected_clearscreen, is_console_before_sb, gopt.is_console);
 	if (is_detected_clearscreen == 3)
 	{
 		// Switched to Normal Screen Buffer detected
@@ -772,6 +905,7 @@ CONSOLE_action(struct _peer *p, uint8_t key)
 		gopt.is_console = 1;
 
 		// Draw console neede? Resizing remote will trigger a CLEAR (=> re-draw)
+		mk_statusbar();
 		console_draw(p->fd_out);
 		console_cursor_on();
 	}

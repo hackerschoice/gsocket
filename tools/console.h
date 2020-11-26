@@ -13,9 +13,7 @@
 #define GS_CONSOLE_ESC_CHR  'E'
 #define GS_CONSOLE_ESC_STR  "^E"
 
-
 #define GS_CONSOLE_ROWS     (5)    // 1x Line + 4 real rows
-
 
 ssize_t CONSOLE_write(int fd, void *data, size_t len);
 int CONSOLE_check_esc(uint8_t c, uint8_t *submit);
@@ -23,5 +21,10 @@ int CONSOLE_action(struct _peer *p, uint8_t key);
 int CONSOLE_command(struct _peer *p, const char *cmd);
 void CONSOLE_reset(void);
 int CONSOLE_readline(struct _peer *p, void *data, size_t len);
+
+
+void CONSOLE_update_pinginfo(struct _peer *p, float ms, int load, char *active_user, int sec_idle);
+void CONSOLE_update_bps(struct _peer *p);
+
 
 #endif /* !__GST_CONSOLE_H__ */

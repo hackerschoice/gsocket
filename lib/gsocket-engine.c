@@ -1984,7 +1984,7 @@ GS_write(GS *gsocket, const void *buf, size_t count)
 			return len;
 
 		len = SSL_write(gsocket->ssl, buf, count);
-		DEBUGF_M("SSL_write(%zu) == %zd\n", count, len);
+		// DEBUGF_M("SSL_write(%zu) == %zd\n", count, len);
 		if (len <= 0)
 		{
 			err = SSL_get_error(gsocket->ssl, len);

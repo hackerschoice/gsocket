@@ -980,3 +980,106 @@ cmd_ping(struct _peer *p)
 }
 
 
+const char fname_valid_char[] = ""
+"................"
+"................"
+" !.#$%&.()*+,-.."	/* Dont allow " or / or ' */
+"0123456789:;.=.."	/* Dont allow < or > or ? */
+"@ABCDEFGHIJKLMNO"
+"PQRSTUVWXYZ[.]^_"	/* Dont allow \ */
+".abcdefghijklmno"	/* Dont allow ` */
+"pqrstuvwxyz{.}.." 	/* Dont allow | or ~ */
+"";
+
+void
+sanitize_fname_to_str(uint8_t *str, size_t len)
+{
+	int i;
+	uint8_t c;
+
+	for (i = 0; i <= len; i++)
+	{
+		c = str[i];
+		if (c < sizeof fname_valid_char)
+		{
+			if (c == fname_valid_char[c])
+				continue;
+		}
+		if (c == 0)
+		{
+			str[i] = 0x00;
+			break;
+		}
+		DEBUGF("san 0x%02x\n", c);
+		str[i] = '#'; // Change to # if invalid character
+	}
+
+	str[len] = 0x00; // Fingers crossed there is enough space
+}
+
+
+static const char unit[] = "BKMGT";
+void
+format_bps(char *buf, size_t size, int64_t bytes)
+{
+	int i;
+
+	if (bytes < 1000)
+	{
+		snprintf(buf, size, "%3d.0 B", (int)bytes);
+		return;
+	}
+	bytes *= 100;
+
+	for (i = 0; bytes >= 100*1000 && unit[i] != 'T'; i++)
+		bytes = (bytes + 512) / 1024;
+	snprintf(buf, size, "%3lld.%1lld%c%s",
+            (long long) (bytes + 5) / 100,
+            (long long) (bytes + 5) / 10 % 10,
+            unit[i],
+            i ? "B" : " ");
+}
+
+/*
+ * Find new username that showed up
+ * and user with lowest idle time.
+ */
+void
+utmp_monitor(void)
+{
+	struct utmpx *ut;
+
+	setutxent();
+
+	while ((ut = getutxent()) != NULL)
+	{
+		if (ut->ut_type != USER_PROCESS)
+			continue;
+		DEBUGF("user '%s' tty '%s'\n", ut->ut_user, ut->ut_line);
+
+	}
+	endutxent();
+
+// 	FILE *fp = fopen(_PATH_UTMPX, "r");
+	
+// 	DEBUGF("fp = %p %s\n", fp, _PATH_UTMPX);
+// 	if (fp == NULL)
+// 		return;
+
+// 	while (fread(&ut, sizeof ut, 1, fp) == 1)
+// 	{
+// 		DEBUGF("user '%s' tty '%s'\n", ut.ut_user, ut.ut_line);
+// 	}
+
+// 	fclose(fp);
+}
+
+
+
+
+
+
+
+
+
+

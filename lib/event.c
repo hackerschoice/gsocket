@@ -34,12 +34,14 @@ GS_EVENT_add_by_ts(GS_EVENT_MGR *mgr, GS_EVENT *gse, uint64_t start, uint64_t in
  	}
 
  	// Get start time if not specified
- 	if (start == 0)
+ 	// Start can also be an offset to current time if it is
+ 	// <1000.
+ 	if (start < 1000)
  	{
  		struct timeval tv;
  		gettimeofday(&tv, NULL);
- 		start = GS_TV_TO_USEC(&tv);
- 	}
+ 		start = GS_TV_TO_USEC(&tv) + GS_MS_TO_USEC(start);
+ 	} 
 
  	gse->data = data;
  	gse->len = len;

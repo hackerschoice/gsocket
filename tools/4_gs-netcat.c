@@ -55,10 +55,18 @@ static int send_ping(GS_SELECT_CTX *ctx, struct _peer *p);
 
 #define GS_APP_KEEPALIVE	GS_SEC_TO_USEC(60 * 2) // If no activty send app-layer ping (-i needed)
 #define GS_APP_PINGFREQ		GS_SEC_TO_USEC(5)      // Send a ping every 5 sec (-i, in console)
+#define GS_APP_BPSFREQ		GS_SEC_TO_USEC(2)      // Calculate BPS every second
 
 #define PKT_MSG_WSIZE		(1)
 #define PKT_MSG_PING		(16)
 #define PKT_MSG_PONG		(16)
+
+struct _app_pong
+{
+	uint16_t load;
+	uint16_t idle;
+	uint8_t user[12];
+} __attribute__((__packed__));
 
 /*
  * Make statistics and return them in 'dst'
@@ -117,6 +125,7 @@ peer_free(GS_SELECT_CTX *ctx, struct _peer *p)
 	XASSERT(peers[fd] == p, "Oops, %p != %p on fd = %d, cmd_fd = %d\n", peers[fd], p, fd, p->fd_in);
 
 	GS_EVENT_del(&gopt.event_ping);
+	GS_EVENT_del(&gopt.event_bps);
 	GS_PKT_close(&p->pkt);
 	/* Exit() if we were reading from stdin/stdout. No other clients
 	 * in this case.
@@ -449,8 +458,6 @@ cb_read_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 			/* HERE: Client Or Server. Interactive */
 			size_t dsz;
 			ret = GS_PKT_decode(&p->pkt, p->rbuf, p->rlen, p->rbuf, &dsz);
-			HEXDUMP(p->rbuf, MIN(24, p->rlen));
-			DEBUGF_B("decode; %zd %zd\n", p->rlen, dsz);
 			p->rlen = dsz;
 			if (ret != 0)
 			{
@@ -615,6 +622,18 @@ cbe_ping(void *ptr)
 	return 0;
 }
 
+// Called every second
+static int
+cbe_bps(void *ptr)
+{
+	GS_EVENT *event = (GS_EVENT *)ptr;
+
+	// Calculate BPS
+	CONSOLE_update_bps((struct _peer *)event->data);
+
+	return 0;
+}
+
 /*
  * Server & Client
  */
@@ -646,6 +665,7 @@ peer_new_init(GS *gs)
 			signal(SIGWINCH, cb_sigwinch);
 			get_winsize();
 			GS_EVENT_add_by_ts(&gs->ctx->gselect_ctx->emgr, &gopt.event_ping, 0, GS_APP_PINGFREQ, cbe_ping, p, 0);
+			GS_EVENT_add_by_ts(&gs->ctx->gselect_ctx->emgr, &gopt.event_bps, 0, GS_APP_BPSFREQ, cbe_bps, p, 0);
 		}
 	}
 	DEBUGF_M("[ID=%d] (fd=%d) Number of connected gs-peers: %d\n", p->id, fd, gopt.peer_count);
@@ -730,13 +750,23 @@ pkt_cb_ping(uint8_t msg, const uint8_t *data, size_t len, void *ptr)
 static void
 pkt_cb_pong(uint8_t msg, const uint8_t *data, size_t len, void *ptr)
 {
+	struct _peer *p = (struct _peer *)ptr;
+	struct _app_pong pong;
 	// Check if we were waiting at all!
 	if (gopt.ts_ping_sent == 0)
 		return;
 
-	float ms = (float)(GS_TV_TO_USEC(&gopt.tv_now) - gopt.ts_ping_sent) / 1000;
-	DEBUGF_C("PONG received (%.03f)\n", ms);
+	memcpy(&pong, data, sizeof pong);
 
+	float ms = (float)(GS_TV_TO_USEC(&gopt.tv_now) - gopt.ts_ping_sent) / 1000;
+
+	uint8_t buf[sizeof (pong.user) + 1];
+	memcpy(buf, pong.user, sizeof pong.user);
+	sanitize_fname_to_str(buf, sizeof buf - 1);
+
+	CONSOLE_update_pinginfo(p, ms, ntohs(pong.load), (char *)buf, ntohs(pong.idle));
+
+	DEBUGF_C("PONG received (% 6.03fms) (load % 4.02f, idle %u)\n", ms, (float)ntohs(pong.load) / 100, ntohs(pong.idle));
 	gopt.ts_ping_sent = 0;
 }
 
@@ -927,8 +957,26 @@ stty_send_wsize(GS_SELECT_CTX *ctx, struct _peer *p, int row)
 static int
 send_pong(GS_SELECT_CTX *ctx, struct _peer *p)
 {
+	double load;
+	uint16_t l = 0;
+	struct _app_pong pong;
+
 	p->wbuf[0] = GS_PKT_ESC;
 	p->wbuf[1] = PKT_MSG_PONG;
+
+	// Get system load.
+	if (getloadavg(&load, 1) == 1)
+		l = (uint16_t)(load * 100);
+
+	pong.load = htons(l);
+	pong.idle = htons(13);
+	for (int i = 0; i < sizeof pong.user; i++)
+		pong.user[i] = '0'+i%10;
+
+	// snprintf(ong.user, sizeof pong.user, "roottoor3");
+
+	memcpy(p->wbuf + 2, &pong, sizeof pong);
+
 	p->wlen = 2 + GS_PKT_MSG_size_by_type(PKT_MSG_PONG);
 	return write_gs(ctx, p);
 }
@@ -1224,13 +1272,57 @@ my_test(void)
 {
 	gopt.is_console = 1;
 
-	// const char *str = "asdc\x1B[J";
-	// const char *str = "asdc\x1B[2Jasdf";
-	const char *str = "asdc\x1B[";
-	CONSOLE_write(1, (uint8_t *)str, strlen(str));
-	str = "Jsafd";
-	str = "?1049hasdf";
-	CONSOLE_write(1, (uint8_t *)str, strlen(str));
+	utmp_monitor();
+	// double load;
+	// int ret = getloadavg(&load, 1);
+	// uint32_t l = (uint32_t)(load * 100);
+	// DEBUGF("%d: %f %.02f\n", ret, load, (float)l / 100);
+	// uint8_t buf[14];
+	// for (int i = 0; i < sizeof buf; i++)
+	// 	buf[i] = '0'+i%10;
+
+	// sanitize_fname_to_str(buf, sizeof (buf) - 1);
+	// DEBUGF("user = '%s'\n", buf);
+
+#if 0
+	char buf[8];
+	int64_t i;
+	i=3; format_bps(buf, sizeof buf, i); DEBUGF_Y("%12lld rate = '%s/s'\n", i, buf);
+	i=36; format_bps(buf, sizeof buf, i); DEBUGF_Y("%12lld rate = '%s/s'\n", i, buf);
+	i=999; format_bps(buf, sizeof buf, i); DEBUGF_Y("%12lld rate = '%s/s'\n", i, buf);
+	i=1000; format_bps(buf, sizeof buf, i); DEBUGF_Y("%12lld rate = '%s/s'\n", i, buf);
+	i=5000; format_bps(buf, sizeof buf, i); DEBUGF_Y("%12lld rate = '%s/s'\n", i, buf);
+	i=50000; format_bps(buf, sizeof buf, i); DEBUGF_Y("%12lld rate = '%s/s'\n", i, buf);
+	i=500000; format_bps(buf, sizeof buf, i); DEBUGF_Y("%12lld rate = '%s/s'\n", i, buf);
+	i=10*1024*1024; format_bps(buf, sizeof buf, i); DEBUGF_Y("%12lld rate = '%s/s'\n", i, buf);
+	i=10*(int64_t)1024*1024*1024; format_bps(buf, sizeof buf, i); DEBUGF_Y("%12lld rate = '%s/s'\n", i, buf);
+#endif
+#if 0
+	float ms = 23;
+	DEBUGF("[%3dms]\n", (int)ms);
+	ms = 987;
+	DEBUGF("[%3dms]\n", (int)ms);
+	ms = 4253;
+	DEBUGF("[%1.01fs ]\n---\n", ms / 1000);
+
+	int load = 45;
+	DEBUGF("[% -04.02f]\n", (float)5 / 100); // THIS
+	DEBUGF("[% 04.02f]\n", (float)5 / 100); // THIS
+	DEBUGF("[% -04.02f]\n", (float)45 / 100); // THIS
+	DEBUGF("[% 04.02f]\n", (float)45 / 100); // THIS
+	DEBUGF("[% -04.02f]\n", (float)145 / 100); // THIS
+	DEBUGF("[% 04.02f]\n", (float)145 / 100); // THIS
+	load = 3245;
+	// DEBUGF("[% 04.02f]\n", (float)load / 100); // 
+	DEBUGF("[% -02.02f]\n", (float)3245 / 100);
+	DEBUGF("[%02.02f]\n", (float)3245 / 100); // OK
+	DEBUGF("[%- 02.02f]\n", (float)245 / 100); 
+
+#endif
+	// DEBUGF("[%4.02f]\n", (float)load / 100); // THIS
+	// DEBUGF("[% 4.02f]\n", (float)load / 100);
+	// DEBUGF("[%4.02f]\n", (float)load / 100);
+	// DEBUGF("[% -4.02f]\n", (float)load / 100);
 	exit(0);
 }
 
