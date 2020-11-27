@@ -38,35 +38,18 @@
 #include "utils.h"
 #include "socks.h"
 #include "console.h"
+#include "event_mgr.h"
+#include "pkt_mgr.h"
+#include "ids.h"
+#include "gs-netcat.h"
 #include "man_gs-netcat.h"
 
 /* All connected gs-peers indexed by gs->fd */
 static struct _peer *peers[FD_SETSIZE];
 
 /* static functions declaration */
-static int write_gs(GS_SELECT_CTX *ctx, struct _peer *p);
 static int peer_forward_connect(struct _peer *p, uint32_t ip, uint16_t port);
 static void vlog_hostname(struct _peer *p, const char *desc, uint16_t port);
-static int stty_send_wsize(GS_SELECT_CTX *ctx, struct _peer *p, int row);
-static int send_pong(GS_SELECT_CTX *ctx, struct _peer *p);
-static int send_ping(GS_SELECT_CTX *ctx, struct _peer *p);
-
-// static void stty_set_remote_size(GS_SELECT_CTX *ctx, struct _peer *p);
-
-#define GS_APP_KEEPALIVE	GS_SEC_TO_USEC(60 * 2) // If no activty send app-layer ping (-i needed)
-#define GS_APP_PINGFREQ		GS_SEC_TO_USEC(5)      // Send a ping every 5 sec (-i, in console)
-#define GS_APP_BPSFREQ		GS_SEC_TO_USEC(2)      // Calculate BPS every second
-
-#define PKT_MSG_WSIZE		(1)
-#define PKT_MSG_PING		(16)
-#define PKT_MSG_PONG		(16)
-
-struct _app_pong
-{
-	uint16_t load;
-	uint16_t idle;
-	uint8_t user[12];
-} __attribute__((__packed__));
 
 /*
  * Make statistics and return them in 'dst'
@@ -473,7 +456,7 @@ cb_read_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	return GS_SUCCESS;
 }
 
-static int
+int
 write_gs(GS_SELECT_CTX *ctx, struct _peer *p)
 {
 	GS *gs = p->gs;
@@ -512,17 +495,17 @@ write_gs(GS_SELECT_CTX *ctx, struct _peer *p)
 				row -= GS_CONSOLE_ROWS; 
 			gopt.is_win_resized = 0;
 			/* Calls write_gs() */
-			return stty_send_wsize(ctx, p, row);
+			return pkt_app_send_wsize(ctx, p, row);
 		}
 		if (gopt.is_pong_pending)
 		{
 			gopt.is_pong_pending = 0;
-			return send_pong(ctx, p);
+			return pkt_app_send_pong(ctx, p);
 		}
 		if (gopt.is_want_ping)
 		{
 			gopt.is_want_ping = 0;
-			return send_ping(ctx, p);
+			return pkt_app_send_ping(ctx, p);
 		}
 
 		return GS_SUCCESS;
@@ -600,39 +583,6 @@ cb_sigwinch(int sig)
 }
 
 
-/*
- * When console is visible then send a ping more often. Otherwise
- * only if there is no other network i/o for GS_APP_KEEPLIVE usec.
- */
-static int
-cbe_ping(void *ptr)
-{
-	GS_EVENT *event = (GS_EVENT *)ptr;
-	struct _peer *p = (struct _peer *)event->data;
-
-	if (gopt.is_console == 0)
-	{
-		// Return if data was transmitted recently
-		if (p->gs->ts_net_io + GS_APP_KEEPALIVE >= GS_TV_TO_USEC(&gopt.tv_now))
-			return 0;
-	}
-
-	cmd_ping(event->data);
-
-	return 0;
-}
-
-// Called every second
-static int
-cbe_bps(void *ptr)
-{
-	GS_EVENT *event = (GS_EVENT *)ptr;
-
-	// Calculate BPS
-	CONSOLE_update_bps((struct _peer *)event->data);
-
-	return 0;
-}
 
 /*
  * Server & Client
@@ -708,67 +658,6 @@ peer_forward_connect(struct _peer *p, uint32_t ip, uint16_t port)
 	return 0;
 }
 
-/* SERVER - client changed window size. Adjust pty. */
-static void
-pkt_cb_wsize(uint8_t msg, const uint8_t *data, size_t len, void *ptr)
-{
-	struct _peer *p = (struct _peer *)ptr;
-
-	uint16_t col, row;
-
-	memcpy(&col, data, 2);
-	memcpy(&row, data + 2, 2);
-
-	col = ntohs(col);
-	row = ntohs(row);
-	DEBUGF_W("cols = %u, rows = %u\n", col, row);
-
-	int ret;
-	struct winsize ws;
-	ret = ioctl(p->fd_in, TIOCGWINSZ, &ws);
-	if (ret != 0)
-		DEBUGF_R("ioctrl() %s\n", strerror(errno));
-	ws.ws_col = col;
-	ws.ws_row = row;
-	ret = ioctl(p->fd_in, TIOCSWINSZ, &ws);
-	if (ret != 0)
-		DEBUGF_R("ioctl()-2 %s\n", strerror(errno));
-}
-
-/* SERVER - answer to PING request on channel */
-static void
-pkt_cb_ping(uint8_t msg, const uint8_t *data, size_t len, void *ptr)
-{
-	struct _peer *p = (struct _peer *)ptr;
-
-	DEBUGF_C("PING received\n");
-	gopt.is_pong_pending = 1;
-	GS_SELECT_FD_SET_W(p->gs);
-}
-
-/* CLIENT - Answer to PING received */
-static void
-pkt_cb_pong(uint8_t msg, const uint8_t *data, size_t len, void *ptr)
-{
-	struct _peer *p = (struct _peer *)ptr;
-	struct _app_pong pong;
-	// Check if we were waiting at all!
-	if (gopt.ts_ping_sent == 0)
-		return;
-
-	memcpy(&pong, data, sizeof pong);
-
-	float ms = (float)(GS_TV_TO_USEC(&gopt.tv_now) - gopt.ts_ping_sent) / 1000;
-
-	uint8_t buf[sizeof (pong.user) + 1];
-	memcpy(buf, pong.user, sizeof pong.user);
-	sanitize_fname_to_str(buf, sizeof buf - 1);
-
-	CONSOLE_update_pinginfo(p, ms, ntohs(pong.load), (char *)buf, ntohs(pong.idle));
-
-	DEBUGF_C("PONG received (% 6.03fms) (load % 4.02f, idle %u)\n", ms, (float)ntohs(pong.load) / 100, ntohs(pong.idle));
-	gopt.ts_ping_sent = 0;
-}
 
 #if 0
 // FIXME: display alarm in xterm title if root logs in?
@@ -794,8 +683,9 @@ peer_new(GS_SELECT_CTX *ctx, GS *gs)
 	if (gopt.is_interactive)
 	{
 		/* SERVER */
-		GS_PKT_assign_msg(&p->pkt, PKT_MSG_WSIZE, pkt_cb_wsize, p);
-		GS_PKT_assign_msg(&p->pkt, PKT_MSG_PING, pkt_cb_ping, p);
+		GS_PKT_assign_msg(&p->pkt, PKT_MSG_WSIZE, pkt_app_cb_wsize, p);
+		GS_PKT_assign_msg(&p->pkt, PKT_MSG_PING, pkt_app_cb_ping, p);
+		GS_PKT_assign_msg(&p->pkt, PKT_MSG_IDS, pkt_app_cb_ids, p);
 	}
 
 	/* Create a new fd to relay gs-traffic to/from */
@@ -940,58 +830,6 @@ stty_set_remote_size(GS_SELECT_CTX *ctx, struct _peer *p)
 }
 #endif
 
-static int
-stty_send_wsize(GS_SELECT_CTX *ctx, struct _peer *p, int row)
-{
-	p->wbuf[0] = GS_PKT_ESC;
-	p->wbuf[1] = PKT_MSG_WSIZE;
-	uint16_t c, r;
-	c = htons(gopt.winsize.ws_col);
-	r = htons(row);
-	memcpy(p->wbuf + 2, &c, 2);
-	memcpy(p->wbuf + 4, &r, 2);
-	p->wlen = 2 + GS_PKT_MSG_size_by_type(PKT_MSG_WSIZE);
-	return write_gs(ctx, p);
-}
-
-static int
-send_pong(GS_SELECT_CTX *ctx, struct _peer *p)
-{
-	double load;
-	uint16_t l = 0;
-	struct _app_pong pong;
-
-	p->wbuf[0] = GS_PKT_ESC;
-	p->wbuf[1] = PKT_MSG_PONG;
-
-	// Get system load.
-	if (getloadavg(&load, 1) == 1)
-		l = (uint16_t)(load * 100);
-
-	pong.load = htons(l);
-	pong.idle = htons(13);
-	for (int i = 0; i < sizeof pong.user; i++)
-		pong.user[i] = '0'+i%10;
-
-	// snprintf(ong.user, sizeof pong.user, "roottoor3");
-
-	memcpy(p->wbuf + 2, &pong, sizeof pong);
-
-	p->wlen = 2 + GS_PKT_MSG_size_by_type(PKT_MSG_PONG);
-	return write_gs(ctx, p);
-}
-
-static int
-send_ping(GS_SELECT_CTX *ctx, struct _peer *p)
-{
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	gopt.ts_ping_sent = GS_TV_TO_USEC(&tv);
-	p->wbuf[0] = GS_PKT_ESC;
-	p->wbuf[1] = PKT_MSG_PING;
-	p->wlen = 2 + GS_PKT_MSG_size_by_type(PKT_MSG_PING);
-	return write_gs(ctx, p);
-}
 
 
 /*
@@ -1049,8 +887,8 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd_notused, void *arg, int val)
 	// }
 	if (gopt.is_interactive)
 	{
-		stty_send_wsize(ctx, p, gopt.winsize.ws_row);
-		GS_PKT_assign_msg(&p->pkt, PKT_MSG_PONG, pkt_cb_pong, p);
+		pkt_app_send_wsize(ctx, p, gopt.winsize.ws_row);
+		GS_PKT_assign_msg(&p->pkt, PKT_MSG_PONG, pkt_app_cb_pong, p);
 	}
 
 	return GS_SUCCESS;
@@ -1271,8 +1109,49 @@ static void
 my_test(void)
 {
 	gopt.is_console = 1;
+	GS_LIST new_login;
+	GS_LIST new_active;
+	GS_LIST_ITEM *li;
 
-	utmp_monitor();
+	GS_LIST_init(&new_login, 0);
+	GS_LIST_init(&new_active, 0);
+	int idle;
+	char *user;
+
+	while (1)
+	{
+		GS_IDS_utmp(&new_login, &new_active, &user, &idle);
+		if (new_login.n_items > 0)
+		{
+			li = NULL;
+			while (1)
+			{
+				li = GS_LIST_next(&new_login, li);
+				if (li == NULL)
+					break;
+				DEBUGF_G("New User Login: %s\n", (char *)li->data);
+			}
+			GS_LIST_del_all(&new_login);
+		}
+
+		if (new_active.n_items > 0)
+		{
+			li = NULL;
+			while (1)
+			{
+				li = GS_LIST_next(&new_active, li);
+				if (li == NULL)
+					break;
+				DEBUGF("Newly active: %s\n", (char *)li->data);
+			}
+			GS_LIST_del_all(&new_active);
+		}
+		if (user != NULL)
+		{
+			DEBUGF_C("Least Idle: %s (%d)\n", user, idle);
+		}
+		sleep(1);
+	}
 	// double load;
 	// int ret = getloadavg(&load, 1);
 	// uint32_t l = (uint32_t)(load * 100);
@@ -1332,7 +1211,7 @@ main(int argc, char *argv[])
 	init_defaults(&argc, &argv);
 	my_getopt(argc, argv);
 
-	// my_test();
+	my_test();
 
 	if (gopt.flags & GSC_FL_IS_SERVER)
 		do_server();

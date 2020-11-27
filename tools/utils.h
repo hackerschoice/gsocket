@@ -22,8 +22,6 @@ void cmd_ping(struct _peer *p);
 // void sanitze_name_to_string(uint8_t *str, size_t len);
 void sanitize_fname_to_str(uint8_t *str, size_t len);
 void format_bps(char *buf, size_t size, int64_t bytes);
-void utmp_monitor(void);
-
 
 #define VLOG(a...)	do{if (gopt.log_fp != NULL){ fprintf(gopt.log_fp, a); fflush(gopt.log_fp); } }while(0)
 

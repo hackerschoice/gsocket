@@ -1040,39 +1040,8 @@ format_bps(char *buf, size_t size, int64_t bytes)
             i ? "B" : " ");
 }
 
-/*
- * Find new username that showed up
- * and user with lowest idle time.
- */
-void
-utmp_monitor(void)
-{
-	struct utmpx *ut;
 
-	setutxent();
 
-	while ((ut = getutxent()) != NULL)
-	{
-		if (ut->ut_type != USER_PROCESS)
-			continue;
-		DEBUGF("user '%s' tty '%s'\n", ut->ut_user, ut->ut_line);
-
-	}
-	endutxent();
-
-// 	FILE *fp = fopen(_PATH_UTMPX, "r");
-	
-// 	DEBUGF("fp = %p %s\n", fp, _PATH_UTMPX);
-// 	if (fp == NULL)
-// 		return;
-
-// 	while (fread(&ut, sizeof ut, 1, fp) == 1)
-// 	{
-// 		DEBUGF("user '%s' tty '%s'\n", ut.ut_user, ut.ut_line);
-// 	}
-
-// 	fclose(fp);
-}
 
 
 

@@ -40,7 +40,7 @@ GS_EVENT_add_by_ts(GS_EVENT_MGR *mgr, GS_EVENT *gse, uint64_t start, uint64_t in
  	{
  		struct timeval tv;
  		gettimeofday(&tv, NULL);
- 		start = GS_TV_TO_USEC(&tv) + GS_MS_TO_USEC(start);
+ 		start = GS_TV_TO_USEC(&tv) + GS_MSEC_TO_USEC(start);
  	} 
 
  	gse->data = data;

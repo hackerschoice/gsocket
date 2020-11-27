@@ -18,6 +18,7 @@ GS_LIST_init(GS_LIST *gsl, int opt)
 	return 0;	
 }
 
+
 GS_LIST_ITEM *
 GS_LIST_next(GS_LIST *gsl, GS_LIST_ITEM *li)
 {
@@ -163,3 +164,20 @@ GS_LIST_del(GS_LIST_ITEM *del_li)
 
 	return 0;
 }
+
+int
+GS_LIST_del_all(GS_LIST *gsl)
+{
+	GS_LIST_ITEM *li;
+
+	while (1)
+	{
+		li = GS_LIST_next(gsl, NULL);
+		if (li == NULL)
+			break;
+		GS_LIST_del(li);
+	}
+
+	return 0;
+}
+
