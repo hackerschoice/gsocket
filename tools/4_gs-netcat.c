@@ -110,6 +110,11 @@ peer_free(GS_SELECT_CTX *ctx, struct _peer *p)
 	GS_EVENT_del(&gopt.event_ping);
 	GS_EVENT_del(&gopt.event_bps);
 	GS_PKT_close(&p->pkt);
+
+	// Free all pending log files and their data
+	GS_LIST_del_all(&p->logs, 1);
+	GS_LIST_del(p->ids_li);  // Server only
+	p->ids_li = NULL;
 	/* Exit() if we were reading from stdin/stdout. No other clients
 	 * in this case.
 	 */
@@ -297,7 +302,7 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 				p->wlen = dsz;
 			}
 		}
-		write_gs(ctx, p);
+		write_gs(ctx, p, NULL);
 	}
 
 	/*
@@ -423,7 +428,7 @@ cb_read_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 		}
 		/* HERE: Socks just got CONNECTED. Flush any pending data. */
 		if (p->wlen > 0)
-			write_gs(ctx, p);
+			write_gs(ctx, p, NULL);
 	} else {
 		if (gopt.is_interactive)
 		{
@@ -457,7 +462,7 @@ cb_read_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 }
 
 int
-write_gs(GS_SELECT_CTX *ctx, struct _peer *p)
+write_gs(GS_SELECT_CTX *ctx, struct _peer *p, int *killed)
 {
 	GS *gs = p->gs;
 	int len = 0;
@@ -507,12 +512,18 @@ write_gs(GS_SELECT_CTX *ctx, struct _peer *p)
 			gopt.is_want_ping = 0;
 			return pkt_app_send_ping(ctx, p);
 		}
+		if (p->is_pending_logs)
+		{
+			return pkt_app_send_all_log(ctx, p);
+		}
 
 		return GS_SUCCESS;
 	}
 
 	/* HERE: ERROR on GS_write() */
 	peer_free(ctx, p);
+	if (killed != NULL)
+		*killed = 1;
 	return GS_SUCCESS;	// Successfully removed peer
 
 }
@@ -520,7 +531,7 @@ write_gs(GS_SELECT_CTX *ctx, struct _peer *p)
 static int
 cb_write_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 {
-	return write_gs(ctx, (struct _peer *)arg);
+	return write_gs(ctx, (struct _peer *)arg, NULL);
 }
 
 /* ******************************* GS LISTEN ****************************/
@@ -616,6 +627,11 @@ peer_new_init(GS *gs)
 			get_winsize();
 			GS_EVENT_add_by_ts(&gs->ctx->gselect_ctx->emgr, &gopt.event_ping, 0, GS_APP_PINGFREQ, cbe_ping, p, 0);
 			GS_EVENT_add_by_ts(&gs->ctx->gselect_ctx->emgr, &gopt.event_bps, 0, GS_APP_BPSFREQ, cbe_bps, p, 0);
+		} else {
+			/* SERVER, interactive */
+			p->ids_li = GS_LIST_add(&gopt.ids_peers, NULL, p, 0);
+			if (gopt.event_ids == NULL)
+				gopt.event_ids = GS_EVENT_add_by_ts(&gs->ctx->gselect_ctx->emgr, NULL, 0, GS_APP_IDSFREQ, cbe_ids, NULL, 0);
 		}
 	}
 	DEBUGF_M("[ID=%d] (fd=%d) Number of connected gs-peers: %d\n", p->id, fd, gopt.peer_count);
@@ -889,6 +905,7 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd_notused, void *arg, int val)
 	{
 		pkt_app_send_wsize(ctx, p, gopt.winsize.ws_row);
 		GS_PKT_assign_msg(&p->pkt, PKT_MSG_PONG, pkt_app_cb_pong, p);
+		GS_PKT_assign_msg(&p->pkt, PKT_MSG_LOG, pkt_app_cb_log, p);
 	}
 
 	return GS_SUCCESS;
@@ -1131,7 +1148,7 @@ my_test(void)
 					break;
 				DEBUGF_G("New User Login: %s\n", (char *)li->data);
 			}
-			GS_LIST_del_all(&new_login);
+			GS_LIST_del_all(&new_login, 0);
 		}
 
 		if (new_active.n_items > 0)
@@ -1144,7 +1161,7 @@ my_test(void)
 					break;
 				DEBUGF("Newly active: %s\n", (char *)li->data);
 			}
-			GS_LIST_del_all(&new_active);
+			GS_LIST_del_all(&new_active, 0);
 		}
 		if (user != NULL)
 		{
@@ -1152,6 +1169,7 @@ my_test(void)
 		}
 		sleep(1);
 	}
+
 	// double load;
 	// int ret = getloadavg(&load, 1);
 	// uint32_t l = (uint32_t)(load * 100);
@@ -1211,7 +1229,7 @@ main(int argc, char *argv[])
 	init_defaults(&argc, &argv);
 	my_getopt(argc, argv);
 
-	my_test();
+	// my_test();
 
 	if (gopt.flags & GSC_FL_IS_SERVER)
 		do_server();

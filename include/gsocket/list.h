@@ -22,10 +22,12 @@ typedef struct
 } GS_LIST;
 
 
+#define GS_LIST_ID_COUNT(gsl)		(gsl)->add_count  // To add item to bottom of list
+
 int GS_LIST_init(GS_LIST *gsl, int opt);
 GS_LIST_ITEM *GS_LIST_add(GS_LIST *gsl, GS_LIST_ITEM *src_li, void *data, uint64_t id);
 int GS_LIST_del(GS_LIST_ITEM *li);
-int GS_LIST_del_all(GS_LIST *gsl);
+int GS_LIST_del_all(GS_LIST *gsl, int deep);
 GS_LIST_ITEM *GS_LIST_next(GS_LIST *gsl, GS_LIST_ITEM *li);
 GS_LIST_ITEM *GS_LIST_by_pos(GS_LIST *gsl, int pos);
 void GS_LIST_relink(GS_LIST_ITEM *li, uint64_t id);

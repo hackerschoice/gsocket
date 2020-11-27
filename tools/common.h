@@ -104,6 +104,10 @@ struct _gopt
 	int peer_id_counter;
 	GS_EVENT event_ping;
 	GS_EVENT event_bps;
+	GS_EVENT *event_ids;
+	GS_LIST ids_peers;
+	char *ids_active_user;
+	int ids_idle;
 };
 
 struct _socks
@@ -144,7 +148,10 @@ struct _peer
 	/* For Statistics */
 	int id;			/* Stats: assign an ID to each pere */
 	struct _socks socks;
-	GS_PKT pkt;		/* In-band data for interactive shell */
+	GS_PKT pkt;		// In-band data for interactive shell (-i)
+	GS_LIST logs;   // Queue for log messages from Server to Client (-i)
+	int is_pending_logs; // Log files need to be send to peer.
+	GS_LIST_ITEM *ids_li;  // Peer is interested in global IDS logs
 };
 
 #define GSC_FL_IS_SERVER		(0x01)

@@ -61,6 +61,8 @@ GS_EVENT_add_by_ts(GS_EVENT_MGR *mgr, GS_EVENT *gse, uint64_t start, uint64_t in
 int
 GS_EVENT_del(GS_EVENT *gse)
 {
+	int is_calloc;
+
 	if (gse == NULL)
 		return -1;
 
@@ -70,10 +72,11 @@ GS_EVENT_del(GS_EVENT *gse)
 
 	GS_LIST_del(&gse->li);
 
-	if (gse->is_calloc)
-		XFREE(gse);
-
+	is_calloc = gse->is_calloc;
 	memset(gse, 0, sizeof *gse);
+
+	if (is_calloc)
+		XFREE(gse);
 
 	return 0;
 }

@@ -136,6 +136,8 @@ init_vars(void)
 
 	GS_library_init(gopt.err_fp, /* Debug Output */ gopt.err_fp);
 
+	GS_LIST_init(&gopt.ids_peers, 0);
+
 	ret = GS_CTX_init(&gopt.gs_ctx, &gopt.rfd, &gopt.wfd, &gopt.r, &gopt.w, &gopt.tv_now);
 
 	if (gopt.is_use_tor == 1)
@@ -997,7 +999,7 @@ sanitize_fname_to_str(uint8_t *str, size_t len)
 	int i;
 	uint8_t c;
 
-	for (i = 0; i <= len; i++)
+	for (i = 0; i + 1 < len; i++)
 	{
 		c = str[i];
 		if (c < sizeof fname_valid_char)
@@ -1006,15 +1008,12 @@ sanitize_fname_to_str(uint8_t *str, size_t len)
 				continue;
 		}
 		if (c == 0)
-		{
-			str[i] = 0x00;
 			break;
-		}
 		DEBUGF("san 0x%02x\n", c);
 		str[i] = '#'; // Change to # if invalid character
 	}
 
-	str[len] = 0x00; // Fingers crossed there is enough space
+	str[i] = 0x00; // always 0 terminate
 }
 
 

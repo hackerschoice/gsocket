@@ -158,6 +158,8 @@ GS_LIST_by_pos(GS_LIST *gsl, int pos)
 int
 GS_LIST_del(GS_LIST_ITEM *del_li)
 {
+	if (del_li == NULL)
+		return 0;
 	gs_list_unlink(del_li);
 	if (del_li->is_calloc)
 		XFREE(del_li);
@@ -166,7 +168,7 @@ GS_LIST_del(GS_LIST_ITEM *del_li)
 }
 
 int
-GS_LIST_del_all(GS_LIST *gsl)
+GS_LIST_del_all(GS_LIST *gsl, int deep)
 {
 	GS_LIST_ITEM *li;
 
@@ -175,6 +177,8 @@ GS_LIST_del_all(GS_LIST *gsl)
 		li = GS_LIST_next(gsl, NULL);
 		if (li == NULL)
 			break;
+		if (deep)
+			XFREE(li->data);
 		GS_LIST_del(li);
 	}
 
