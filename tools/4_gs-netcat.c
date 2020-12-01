@@ -125,7 +125,6 @@ peer_free(GS_SELECT_CTX *ctx, struct _peer *p)
 		// stats that GS_close() gives us...
 		//exit(0);	// this will close all fd's :>
 	} else {
-		/* is_stdin_forward == 0 */
 		/*. Not stdin/stdout. */
 		XCLOSE(p->fd_in);
 	}
@@ -497,7 +496,10 @@ write_gs(GS_SELECT_CTX *ctx, struct _peer *p, int *killed)
 			get_winsize();
 			int row = gopt.winsize.ws_row;
 			if (gopt.is_console)
+			{
+				CONSOLE_resize(p);
 				row -= GS_CONSOLE_ROWS; 
+			}
 			gopt.is_win_resized = 0;
 			/* Calls write_gs() */
 			return pkt_app_send_wsize(ctx, p, row);

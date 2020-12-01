@@ -3,7 +3,8 @@
 
 
 #ifdef DEBUG
-# define GS_RL_LINE_MAX		(32)
+# define GS_RL_LINE_MAX		(512)
+// # define GS_RL_LINE_MAX		(32)
 #else
 # define GS_RL_LINE_MAX		(512)
 #endif
@@ -12,8 +13,9 @@
 
 typedef struct
 {
-	char line[GS_RL_LINE_MAX + 1]; // Without ascii sequence
-	size_t pos;  // pointing to next unused field
+	char line[GS_RL_LINE_MAX + 1]; // Full Length without ascii sequence
+	char vline[GS_RL_VISIBLE_MAX + 1]; // Might be shorted with '..' at the end
+	size_t pos;  // pointing to next unused field in line.
 	size_t len;  // Set when '\n' encountered
 
 	size_t visible_len;
@@ -29,5 +31,7 @@ typedef struct
 
 int GS_RL_init(GS_RL_CTX *rl, int len_visible);
 int GS_RL_add(GS_RL_CTX *rl, uint8_t c, uint8_t *key, int row, int col);
+void GS_RL_reset(GS_RL_CTX *rl);
+void GS_RL_resize(GS_RL_CTX *rl, int len, int row, int col);
 
 #endif /* !__GS_READLINE_H__ */

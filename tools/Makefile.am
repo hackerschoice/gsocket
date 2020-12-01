@@ -1,4 +1,4 @@
-noinst_PROGRAMS = gs-helloworld gs-pipe gs-full-pipe packet-test readline-test
+noinst_PROGRAMS = gs-helloworld gs-pipe gs-full-pipe packet-test readline-test console-display-test
 bin_PROGRAMS = gs-netcat gs_uchroot_so
 
 gs_helloworld_SOURCES = 1_gs-helloworld.c utils.c
@@ -10,7 +10,7 @@ gs_pipe_LDADD = ../lib/libgsocket.a
 gs_full_pipe_SOURCES = 3_gs-full-pipe.c utils.c
 gs_full_pipe_LDADD = ../lib/libgsocket.a
 
-gs_netcat_SOURCES = 4_gs-netcat.c utils.c socks.c console.c ids.c event_mgr.c pkt_mgr.c
+gs_netcat_SOURCES = 4_gs-netcat.c utils.c socks.c console.c ids.c event_mgr.c pkt_mgr.c console_display.c
 gs_netcat_LDADD = ../lib/libgsocket.a
 
 dist_bin_SCRIPTS = blitz gs-sftp gs-mount gs_funcs
@@ -25,6 +25,9 @@ packet_test_LDADD = ../lib/libgsocket.a
 readline_test_SOURCES = readline-test.c utils.c
 readline_test_LDADD = ../lib/libgsocket.a
 
+console_display_test_SOURCES = console_display.c console_display-test.c utils.c
+console_display_test_LDADD = ../lib/libgsocket.a
+
 EXTRA_DIST = run_all_tests.sh
-noinst_HEADERS = common.h utils.h socks.h console.h ids.h event_mgr.h pkt_mgr.h gs-netcat.h man_gs-netcat.h
+noinst_HEADERS = common.h utils.h socks.h console.h ids.h event_mgr.h pkt_mgr.h gs-netcat.h console_display.h man_gs-netcat.h
 CFLAGS += -I../include

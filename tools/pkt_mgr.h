@@ -27,9 +27,13 @@ struct _pkt_app_log
 	uint8_t type;
 	uint8_t msg[63];
 } __attribute__((__packed__));
+
+#define GS_PKT_APP_LOG_TYPE_DEFAULT	(0x00)  // default color
 #define GS_PKT_APP_LOG_TYPE_ALERT	(0x01)  // RED
 #define GS_PKT_APP_LOG_TYPE_NOTICE	(0x02)  // Yellow
 #define GS_PKT_APP_LOG_TYPE_INFO	(0x03)  // green
+#define GS_PKT_APP_LOG_TYPE_MAX	    (0x03)  // set to highest color code
+
 
 
 void pkt_app_cb_wsize(uint8_t msg, const uint8_t *data, size_t len, void *ptr);
@@ -42,7 +46,6 @@ int pkt_app_send_wsize(GS_SELECT_CTX *ctx, struct _peer *p, int row);
 int pkt_app_send_pong(GS_SELECT_CTX *ctx, struct _peer *p);
 int pkt_app_send_ping(GS_SELECT_CTX *ctx, struct _peer *p);
 int pkt_app_send_ids(GS_SELECT_CTX *ctx, struct _peer *p);
-// int pkt_app_send_log(GS_SELECT_CTX *ctx, struct _peer *p);
 int pkt_app_send_all_log(GS_SELECT_CTX *ctx, struct _peer *p);
 
 

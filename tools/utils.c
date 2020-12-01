@@ -118,6 +118,8 @@ get_winsize(void)
 {
 	int ret;
 
+	memcpy(&gopt.winsize_prev, &gopt.winsize, sizeof gopt.winsize_prev);
+	
 	ret = ioctl(STDOUT_FILENO, TIOCGWINSZ, &gopt.winsize);
 	if ((ret == 0) && (gopt.winsize.ws_col != 0))
 	{

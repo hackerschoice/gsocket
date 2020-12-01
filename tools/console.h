@@ -20,6 +20,7 @@ int CONSOLE_check_esc(uint8_t c, uint8_t *submit);
 int CONSOLE_action(struct _peer *p, uint8_t key);
 int CONSOLE_command(struct _peer *p, const char *cmd);
 void CONSOLE_reset(void);
+void CONSOLE_resize(struct _peer *p);
 int CONSOLE_readline(struct _peer *p, void *data, size_t len);
 
 

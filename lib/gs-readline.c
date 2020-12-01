@@ -26,6 +26,14 @@ handle_backspace(GS_RL_CTX *rl)
 	rl->line[rl->pos] = 0x00;
 }
 
+/*
+ * Create visible characters based on normal 'key' input
+ * and limited to visible_len (may add '..' to start)
+ *
+ * Create esc-sequence to handle arrow/del/backspace
+ *
+ * Might be called with key == 0 on resize.
+ */
 static void
 visible_create(GS_RL_CTX *rl, int row, int col, uint8_t key)
 {
@@ -60,9 +68,7 @@ visible_create(GS_RL_CTX *rl, int row, int col, uint8_t key)
 		{
 			// From "..<string>" to "<string>"
 			rl->is_need_redraw = 1;
-		}
-		if (rl->pos < rl->visible_len)
-		{
+		} else if (rl->pos < rl->visible_len) {
 			if (key == GS_RL_DEL)
 			{
 				// Move left, print \s, move left
@@ -72,6 +78,7 @@ visible_create(GS_RL_CTX *rl, int row, int col, uint8_t key)
 			}
 			rl->esc_data[0] = key;
 			rl->esc_len = 1;
+			rl->vline[rl->v_pos] = key;
 			goto done;
 		}
 	}
@@ -93,6 +100,9 @@ visible_create(GS_RL_CTX *rl, int row, int col, uint8_t key)
 	if (rl->pos > rl->visible_len)
 		memset(ptr, '.', 2);
 
+	len = MIN(rl->visible_len, rl->pos);
+	memcpy(rl->vline, ptr, len);
+
 	len = ptr - rl->esc_data + len;
 	XASSERT(len < sizeof (rl->esc_data), "BO len = %zd\n", len);
 	rl->esc_data[len] = 0x00;
@@ -100,11 +110,42 @@ visible_create(GS_RL_CTX *rl, int row, int col, uint8_t key)
 	rl->esc_len = len;
 	rl->is_need_redraw = 0;
 done:
-	rl->v_pos = rl->pos;
+	rl->v_pos = MIN(rl->visible_len, rl->pos);
+	rl->vline[rl->v_pos] = 0x00;
+}
+
+void
+GS_RL_reset(GS_RL_CTX *rl)
+{
+	size_t vl = rl->visible_len;
+	int row = rl->row;
+
+	DEBUGF_Y("RL reset\n");
+	memset(rl, 0, sizeof *rl);
+
+	rl->visible_len = vl;
+	rl->row = row;
+}
+
+/*
+ * len is the length.
+ * row/col is the starting position of the prompt.
+ *
+ * Should be called every time the screen resizes.
+ */
+void
+GS_RL_resize(GS_RL_CTX *rl, int len, int row, int col)
+{
+	rl->visible_len = MIN(GS_RL_VISIBLE_MAX, len);
+	rl->row = 0; // triggers a is_need_redraw := 1
+	visible_create(rl, row, col, 0);
 }
 
 /*
  * Offer data to readline.
+ *
+ * row/col are the cordinated where the input line starts (and to which pos)
+ *     the cursor resets when '\n' is hit.
  *
  * Return <0 if it was an unhandled control character (stored in *key)
  *    This is also set if \n is pressed (end of readline input)
@@ -184,14 +225,17 @@ GS_RL_add(GS_RL_CTX *rl, uint8_t c, uint8_t *key, int row, int col)
 		/* Delete visible input from screen */
 		if (rl->pos > 0)
 		{
-			char *ptr = rl->esc_data;
-			char *end = rl->esc_data + GS_RL_ESC_MAX;
-			ptr += snprintf(ptr, end - ptr, "\x1B[%d;%df", row, col);
-			size_t len = MIN(rl->visible_len, rl->pos);
-			memset(ptr, ' ', len);
-			ptr += len;
-			ptr += snprintf(ptr, end - ptr, "\x1B[%d;%df", row, col);
-			rl->esc_len = ptr - rl->esc_data;
+			// DEBUGF_G("returning to %dx%d\n", row, col);
+			// char *ptr = rl->esc_data;
+			// char *end = rl->esc_data + GS_RL_ESC_MAX;
+			// ptr += snprintf(ptr, end - ptr, "\x1B[%d;%df", row, col);
+			// ptr += snprintf(ptr, end - ptr, "\x1B[%d;%df\x1B[K", row, col);
+			// size_t len = MIN(rl->visible_len, rl->pos);
+			// memset(ptr, ' ', len);
+			// ptr += len;
+			// ptr += snprintf(ptr, end - ptr, "\x1B[%d;%df", row, col);
+			// rl->esc_len = ptr - rl->esc_data;
+			rl->esc_len = 0;
 			rl->v_pos = 0;
 		}
 		rl->pos = 0;

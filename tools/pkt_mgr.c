@@ -1,6 +1,7 @@
 #include "common.h"
 #include "pkt_mgr.h"
 #include "console.h"
+#include "console_display.h"
 #include "utils.h"
 #include "gs-netcat.h"
 
@@ -62,7 +63,7 @@ pkt_app_cb_pong(uint8_t msg, const uint8_t *data, size_t len, void *ptr)
 
 	CONSOLE_update_pinginfo(p, ms, ntohs(pong.load), (char *)buf, ntohs(pong.idle));
 
-	DEBUGF_C("PONG received (% 6.03fms) (load % 4.02f, idle %u)\n", ms, (float)ntohs(pong.load) / 100, ntohs(pong.idle));
+	// DEBUGF_C("PONG received (% 6.03fms) (load % 4.02f, idle %u)\n", ms, (float)ntohs(pong.load) / 100, ntohs(pong.idle));
 	gopt.ts_ping_sent = 0;
 }
 
@@ -73,6 +74,7 @@ pkt_app_cb_log(uint8_t msg, const uint8_t *data, size_t len, void *ptr)
 	struct _pkt_app_log *log = (struct _pkt_app_log *)data;
 
 	sanitize_fname_to_str(log->msg, sizeof log->msg);
+	GS_condis_log(log->type, (const char *)log->msg);
 
 	DEBUGF_G("LOG (%d) '%s'\n", log->type, log->msg);
 }

@@ -99,6 +99,7 @@ struct _gopt
 	uint16_t port;		/* NBO */
 	int listen_fd;
 	struct winsize winsize;
+	struct winsize winsize_prev;
 	int row_total; // Rows including console
 	int peer_count;
 	int peer_id_counter;

@@ -6,6 +6,19 @@
 #include "common.h"
 #include "utils.h"
 
+#define PROMPT	">"
+#define PROMPT_LEN  (1)
+
+int is_win_resized = 0;
+
+static void
+cb_sigwinch(int sig)
+{
+	// DEBUGF("Window Size changed\n");
+	is_win_resized = 1;
+}
+
+
 int
 main(int argc, char *argv[])
 {
@@ -15,10 +28,13 @@ main(int argc, char *argv[])
 	gopt.err_fp = stderr;
 	gopt.log_fp = stderr;
 
-	GS_RL_init(&rl, 10);
-	int row = 25;
-	int col = 60;
-	printf("\x1B[%d;%df>", row, col-1);
+	get_winsize();
+
+	signal(SIGWINCH, cb_sigwinch);
+
+	GS_RL_init(&rl, gopt.winsize.ws_col - PROMPT_LEN);
+
+	printf("\x1B[%d;%df" PROMPT, gopt.winsize.ws_row, 1);
 	fflush(stdout);
 
 	uint8_t c;
@@ -29,7 +45,15 @@ main(int argc, char *argv[])
 		rv = read(0, &c, 1);
 		if (rv != 1)
 			break;
-		rv = GS_RL_add(&rl, c, &key, 25, 60);
+		rv = GS_RL_add(&rl, c, &key, gopt.winsize.ws_col - PROMPT_LEN, 1 + PROMPT_LEN);
+		if (is_win_resized)
+		{
+			is_win_resized = 0;
+			get_winsize();
+			printf("\x1B[%d;%df" PROMPT, gopt.winsize.ws_row, 1); fflush(stdout);
+			GS_RL_resize(&rl, gopt.winsize.ws_col - PROMPT_LEN, gopt.winsize.ws_row, 1 + PROMPT_LEN);
+			write(1, rl.vline, rl.v_pos);
+		}
 		DEBUGF_Y("line(%zd) '%s'\n", rl.len, rl.line);
 		HEXDUMP(rl.esc_data, rl.esc_len);
 		write(1, rl.esc_data, rl.esc_len);
@@ -43,6 +67,8 @@ main(int argc, char *argv[])
 			if (key != '\n')
 				DEBUGF_R("Unhandled control key: %02x\n", key);
 			DEBUGF_B("Final line: '%s'\n", rl.line);
+			printf("\x1B[%d;%df\x1B[K" PROMPT, gopt.winsize.ws_row, 1); fflush(stdout);
+
 		}
 
 	}
