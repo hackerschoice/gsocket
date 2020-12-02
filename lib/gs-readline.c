@@ -90,7 +90,7 @@ visible_create(GS_RL_CTX *rl, int row, int col, uint8_t key)
 	char *ptr = rl->esc_data;
 
 	if (rl->is_need_redraw)
-		ptr += snprintf(ptr, d_end - ptr, "\x1B[%d;%df", row, col);
+		SXPRINTF(ptr, d_end - ptr, "\x1B[%d;%df", row, col);
 
 	size_t len;
 	len = MIN(s_end - src, d_end - ptr);
@@ -191,8 +191,8 @@ GS_RL_add(GS_RL_CTX *rl, uint8_t c, uint8_t *key, int row, int col)
 		}
 
 		// Any other cursor
-		if ((k == 'A') || (k == 'B') || (k == 'C'))
-			return 1;
+		// if ((k == 'A') || (k == 'B') || (k == 'C'))
+			// return 1;
 
 		goto ret_unhandled;
 	}
@@ -225,16 +225,6 @@ GS_RL_add(GS_RL_CTX *rl, uint8_t c, uint8_t *key, int row, int col)
 		/* Delete visible input from screen */
 		if (rl->pos > 0)
 		{
-			// DEBUGF_G("returning to %dx%d\n", row, col);
-			// char *ptr = rl->esc_data;
-			// char *end = rl->esc_data + GS_RL_ESC_MAX;
-			// ptr += snprintf(ptr, end - ptr, "\x1B[%d;%df", row, col);
-			// ptr += snprintf(ptr, end - ptr, "\x1B[%d;%df\x1B[K", row, col);
-			// size_t len = MIN(rl->visible_len, rl->pos);
-			// memset(ptr, ' ', len);
-			// ptr += len;
-			// ptr += snprintf(ptr, end - ptr, "\x1B[%d;%df", row, col);
-			// rl->esc_len = ptr - rl->esc_data;
 			rl->esc_len = 0;
 			rl->v_pos = 0;
 		}

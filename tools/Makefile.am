@@ -1,4 +1,4 @@
-noinst_PROGRAMS = gs-helloworld gs-pipe gs-full-pipe packet-test readline-test console-display-test
+noinst_PROGRAMS = gs-helloworld gs-pipe gs-full-pipe packet-test readline-test console_display-test
 bin_PROGRAMS = gs-netcat gs_uchroot_so
 
 gs_helloworld_SOURCES = 1_gs-helloworld.c utils.c

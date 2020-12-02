@@ -11,6 +11,7 @@
 
 #define GS_CONSOLE_ESC	    0x05   // ctrl-E (^E)
 #define GS_CONSOLE_ESC_CHR  'E'
+#define GS_CONSOLE_ESC_LCHR 'e'
 #define GS_CONSOLE_ESC_STR  "^E"
 
 #define GS_CONSOLE_ROWS     (5)    // 1x Line + 4 real rows

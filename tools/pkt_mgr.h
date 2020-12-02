@@ -7,6 +7,13 @@
 #define PKT_MSG_PONG		(16)
 #define PKT_MSG_LOG			(32)  // max 64 bytes long
 
+struct _pkt_app_ping
+{
+	uint8_t flags;
+	uint8_t resever[3];
+	uint8_t user[12];
+} __attribute__((__packed__));
+
 struct _pkt_app_pong
 {
 	uint16_t load;

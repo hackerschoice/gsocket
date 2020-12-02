@@ -107,6 +107,7 @@ peer_free(GS_SELECT_CTX *ctx, struct _peer *p)
 	DEBUGF_R("GS_get_fd() == %d\n", GS_get_fd(gs));
 	XASSERT(peers[fd] == p, "Oops, %p != %p on fd = %d, cmd_fd = %d\n", peers[fd], p, fd, p->fd_in);
 
+	ids_gs_logout(p);
 	GS_EVENT_del(&gopt.event_ping);
 	GS_EVENT_del(&gopt.event_bps);
 	GS_PKT_close(&p->pkt);
@@ -631,9 +632,11 @@ peer_new_init(GS *gs)
 			GS_EVENT_add_by_ts(&gs->ctx->gselect_ctx->emgr, &gopt.event_bps, 0, GS_APP_BPSFREQ, cbe_bps, p, 0);
 		} else {
 			/* SERVER, interactive */
-			p->ids_li = GS_LIST_add(&gopt.ids_peers, NULL, p, 0);
-			if (gopt.event_ids == NULL)
-				gopt.event_ids = GS_EVENT_add_by_ts(&gs->ctx->gselect_ctx->emgr, NULL, 0, GS_APP_IDSFREQ, cbe_ids, NULL, 0);
+			ids_gs_login(p);
+			// Let all others know what we have logged in:
+			// p->ids_li = GS_LIST_add(&gopt.ids_peers, NULL, p, 0);
+			// if (gopt.event_ids == NULL)
+			// 	gopt.event_ids = GS_EVENT_add_by_ts(&gs->ctx->gselect_ctx->emgr, NULL, 0, GS_APP_IDSFREQ, cbe_ids, NULL, 0);
 		}
 	}
 	DEBUGF_M("[ID=%d] (fd=%d) Number of connected gs-peers: %d\n", p->id, fd, gopt.peer_count);

@@ -1,9 +1,12 @@
 #include "common.h"
 #include "pkt_mgr.h"
+#include "event_mgr.h"
 #include "console.h"
 #include "console_display.h"
 #include "utils.h"
 #include "gs-netcat.h"
+
+extern GS_CONDIS gs_condis;  // defined in console.c
 
 /* SERVER - client changed window size. Adjust pty. */
 void
@@ -74,7 +77,7 @@ pkt_app_cb_log(uint8_t msg, const uint8_t *data, size_t len, void *ptr)
 	struct _pkt_app_log *log = (struct _pkt_app_log *)data;
 
 	sanitize_fname_to_str(log->msg, sizeof log->msg);
-	GS_condis_log(log->type, (const char *)log->msg);
+	GS_condis_log(&gs_condis, log->type, (const char *)log->msg);
 
 	DEBUGF_G("LOG (%d) '%s'\n", log->type, log->msg);
 }
@@ -92,6 +95,11 @@ pkt_app_cb_ids(uint8_t msg, const uint8_t *data, size_t len, void *ptr)
 		return;
 	}
 	p->ids_li = GS_LIST_add(&gopt.ids_peers, NULL, p, 0);
+	if (gopt.event_ids == NULL)
+	{
+		gopt.event_ids = GS_EVENT_add_by_ts(&p->gs->ctx->gselect_ctx->emgr, NULL, 0, GS_APP_IDSFREQ, cbe_ids, NULL, 0);
+		cbe_ids(NULL); // Immediately load utmp database
+	}
 }
 
 
@@ -140,11 +148,18 @@ pkt_app_send_pong(GS_SELECT_CTX *ctx, struct _peer *p)
 int
 pkt_app_send_ping(GS_SELECT_CTX *ctx, struct _peer *p)
 {
+	struct _pkt_app_ping ping;
 	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	gopt.ts_ping_sent = GS_TV_TO_USEC(&tv);
+
 	p->wbuf[0] = GS_PKT_ESC;
 	p->wbuf[1] = PKT_MSG_PING;
+
+	gettimeofday(&tv, NULL);
+	gopt.ts_ping_sent = GS_TV_TO_USEC(&tv);
+
+	memset(&ping, 0, sizeof ping);
+	memcpy(p->wbuf + 2, &ping, sizeof ping);
+
 	p->wlen = 2 + GS_PKT_MSG_size_by_type(PKT_MSG_PING);
 	return write_gs(ctx, p, NULL);
 }

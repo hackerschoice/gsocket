@@ -201,6 +201,12 @@ extern struct _gopt gopt;
 # define DEBUGF_W(a...)
 #endif
 
+// Increase ptr by number of characters added to ptr.
+#define SXPRINTF(ptr, len, a...) do {\
+	size_t n = snprintf(ptr, len, a); \
+	ptr += MIN(n, len); \
+} while(0)
+
 #define VOUT(level, a...) do { \
 	if (level > gopt.verboselevel) \
 		break; \

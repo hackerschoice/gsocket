@@ -7,11 +7,13 @@
 
 
 #include "common.h"
+#include "pkt_mgr.h"
 #include "utils.h"
 
 struct utmp_db_user
 {
 	char user[UT_NAMESIZE];
+	char msg[128];
 	int idle;
 	int idle_old;
 	int token;
@@ -158,8 +160,10 @@ GS_IDS_utmp(GS_LIST *new_login, GS_LIST *new_active, char **least_idle, int *sec
 			u = utmp_db_add(ut->ut_user, idle, token);
 			if (is_udb_init != 0)
 			{
-				DEBUGF("New Login detected\n");
-				GS_LIST_add(new_login, NULL, ut->ut_user, 0);
+				snprintf(u->msg, sizeof u->msg, "%s [%s]", ut->ut_user, ut->ut_host[0]?ut->ut_host:"console");
+
+				DEBUGF("New Login detected '%s'\n", u->msg);
+				GS_LIST_add(new_login, NULL, u->msg, 0);
 			}
 		} else {
 			// Update idle if this is a new run over utmp.
@@ -202,8 +206,9 @@ GS_IDS_utmp(GS_LIST *new_login, GS_LIST *new_active, char **least_idle, int *sec
 		struct utmp_db_user *u = (struct utmp_db_user *)li->data;
 		if ((u->idle_old >= IDLE_THRESHOLD) && (u->idle < u->idle_old))
 		{
-			DEBUGF_R("Turned from IDLE to ACTIVE (awoken) (was %d, now %d)\n", u->idle_old, u->idle);
-			GS_LIST_add(new_active, NULL, u->user, 0);
+			snprintf(u->msg, sizeof u->msg, "%s [idled for %d mins]", u->user, u->idle_old / 60);
+			GS_LIST_add(new_active, NULL, u->msg, 0);
+			DEBUGF_R("Now ACTIVE (was %d, now %d): '%s'\n", u->idle_old, u->idle, u->msg);
 		}
 		u->idle_old = u->idle;
 	}
@@ -211,4 +216,64 @@ GS_IDS_utmp(GS_LIST *new_login, GS_LIST *new_active, char **least_idle, int *sec
 done:
 	is_udb_init = 1;
 }
+
+
+static void
+add_log_str(struct _peer *p, uint8_t type, const char *str)
+{
+	struct _pkt_app_log *log = malloc(sizeof *log);
+	log->type = type;
+	snprintf((char *)log->msg, sizeof log->msg, "%s", str);
+	GS_LIST_add(&p->logs, NULL, log, GS_LIST_ID_COUNT(&p->logs));
+	p->is_pending_logs = 1;
+	GS_SELECT_FD_SET_W(p->gs);
+}
+/*
+ * Report to any other connected GS-PEER (that is requesting IDS info)
+ * that a new GS user has logged in via gs-netcat.
+ */
+void
+ids_gs_login(struct _peer *self_peer)
+{
+	GS_LIST_ITEM *li = NULL;
+	struct _peer *other_peer;
+
+	while (1)
+	{
+		li = GS_LIST_next(&gopt.ids_peers, li);
+		if (li == NULL)
+			break;
+
+		other_peer = (struct _peer *)li->data;
+		if (self_peer == other_peer)
+			continue;  // Do not send to myself
+
+		char buf[128];
+		snprintf(buf, sizeof buf, "[%d] GS login detected. Total Users: %d.", self_peer->id, gopt.peer_count);
+		add_log_str(other_peer, GS_PKT_APP_LOG_TYPE_INFO /*green*/, buf);
+	}
+}
+
+void
+ids_gs_logout(struct _peer *self_peer)
+{
+	GS_LIST_ITEM *li = NULL;
+	struct _peer *other_peer;
+
+	while (1)
+	{
+		li = GS_LIST_next(&gopt.ids_peers, li);
+		if (li == NULL)
+			break;
+
+		other_peer = (struct _peer *)li->data;
+		if (self_peer == other_peer)
+			continue;  // Do not send to myself
+		char buf[128];
+		snprintf(buf, sizeof buf, "[%d] GS logout detected. Remaining Users: %d%s.", self_peer->id, gopt.peer_count - 1, (gopt.peer_count-1)==1?" {you}":"");
+
+		add_log_str(other_peer, GS_PKT_APP_LOG_TYPE_NOTICE /*yellow*/, buf);
+	}
+}
+
 
