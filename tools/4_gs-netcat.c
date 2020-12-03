@@ -1127,6 +1127,7 @@ my_getopt(int argc, char *argv[])
 	atexit(cb_atexit);
 }
 
+#if 0
 static void
 my_test(void)
 {
@@ -1227,6 +1228,7 @@ my_test(void)
 	// DEBUGF("[% -4.02f]\n", (float)load / 100);
 	exit(0);
 }
+#endif
 
 int
 main(int argc, char *argv[])

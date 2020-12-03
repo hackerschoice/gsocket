@@ -1,4 +1,4 @@
-#! /bin/bash
+#! /usr/bin/env bash
 
 # A wrapper script to do this (essentially):
 # $ gs-netcat -s MySecret -l -e /usr/lib/sftp-server         # Host

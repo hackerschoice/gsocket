@@ -33,6 +33,12 @@ pkt_cb_channel(uint8_t channel, const uint8_t *data, size_t len, void *arg)
 	// DEBUGF("Channel #%u, length %zu\n", channel, len);
 }
 
+static void
+my_write(int fd, void *data, size_t len)
+{
+	if (write(fd, data, len) != len)
+		ERREXIT("write()\n");
+}
 /*
  */
 int
@@ -70,7 +76,7 @@ main(int argc, char *argv[])
 		if (is_encode)
 		{
 			GS_PKT_encode(&pkt, src, sz, dst, &dsz);
-			write(1, dst, dsz);
+			my_write(1, dst, dsz);
 			/* Randomly introduce an in-band packet */
 			#if 1
 			uint8_t buf[GS_PKT_MAX_SIZE];
@@ -81,14 +87,14 @@ main(int argc, char *argv[])
 				/* in-band MSG of size 4 */
 				buf[1] = 0x01;
 				memcpy(buf + 2, "1234", 4);
-				write(1, buf, 2 + 4);
+				my_write(1, buf, 2 + 4);
 			}	
 			if (rand() % 100 == 0)
 			{
 				/* in-band MSG of size 512 bytes */
 				buf[1] = 0x7f;
 				/* Add a larger inband packet for shits and giggles */
-				write(1, buf, 2 + 512);
+				my_write(1, buf, 2 + 512);
 			}
 			if (rand() % 10 == 0)
 			{
@@ -99,7 +105,8 @@ main(int argc, char *argv[])
 				// DEBUGF("sending len = %u\n", len);
 				memcpy(buf + 2, &nlen, 2);
 
-				write(1, buf, 2 + 2 + len);
+				my_write(1, buf, 2 + 2 + len);
+
 			}
 			#endif		
 
@@ -110,7 +117,7 @@ main(int argc, char *argv[])
 		ret = GS_PKT_decode(&pkt, src, sz, dst, &dsz);
 		if (ret != 0)
 			exit(-1);
-		write(1, dst, dsz);
+		my_write(1, dst, dsz);
 	}
 
 	return 0;

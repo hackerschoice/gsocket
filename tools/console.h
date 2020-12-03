@@ -25,7 +25,7 @@ void CONSOLE_resize(struct _peer *p);
 int CONSOLE_readline(struct _peer *p, void *data, size_t len);
 
 
-void CONSOLE_update_pinginfo(struct _peer *p, float ms, int load, char *active_user, int sec_idle);
+void CONSOLE_update_pinginfo(struct _peer *p, float ms, int load, char *active_user, int sec_idle, uint8_t n_users);
 void CONSOLE_update_bps(struct _peer *p);
 
 

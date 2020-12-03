@@ -53,6 +53,7 @@ struct _console_info
 	int is_sb_redraw_needed;
 	int is_prompt_redraw_needed;
 	float ping_ms;
+	uint8_t n_users;
 	int load;
 	char user[14];
 	int sec_idle;
@@ -205,7 +206,7 @@ console_cursor_on(void)
 
 	DEBUGF_W("Console Cursor ON\n");
 	// ESC[?2004l = Reset bracketed paste mode
-	SXPRINTF(ptr, end - ptr, "\x1B[%d;%ldf", gopt.winsize.ws_row, 1 + GS_CONSOLE_PROMPT_LEN + MIN(rl.pos, rl.visible_len));
+	SXPRINTF(ptr, end - ptr, "\x1B[%d;%zuf", gopt.winsize.ws_row, 1 + GS_CONSOLE_PROMPT_LEN + MIN(rl.pos, rl.visible_len));
 	if (is_console_cursor_needs_reset)
 	{
 		SXPRINTF(ptr, end - ptr, "\x1B[?2004l");
@@ -246,10 +247,11 @@ mk_statusbar(void)
 	else
 		VSADDF(ptr, end, vc, "[%3dms]", (int)ms);
 
+	DEBUGF("Total User: %u\n", ci.n_users);
 	if (ci.load >= 1000)
-		VSADDF(ptr, end, vc, "[Load %02.02f][User ", (float)ci.load / 100);
+		VSADDF(ptr, end, vc, "[Load %02.02f][User(%u) ", (float)ci.load / 100, ci.n_users);
 	else
-		VSADDF(ptr, end, vc, "[Load % 4.02f][User ", (float)ci.load / 100);
+		VSADDF(ptr, end, vc, "[Load % 4.02f][User(%u) ", (float)ci.load / 100, ci.n_users);
 
 	// User name
 	VSADDF(ptr, end, vc, "%*s ", GS_CON_SB_MAX_USERLEN, ci.user);
@@ -307,11 +309,12 @@ update_bps(struct _peer *p)
 }
 
 void
-CONSOLE_update_pinginfo(struct _peer *p, float ms, int load, char *user, int sec_idle)
+CONSOLE_update_pinginfo(struct _peer *p, float ms, int load, char *user, int sec_idle, uint8_t n_users)
 {
 	int fd = p->fd_out;
 	ci.ping_ms = ms;
 	ci.load = load;
+	ci.n_users = n_users;
 
 	if (strlen(user) > GS_CON_SB_MAX_USERLEN)
 		memcpy(user + GS_CON_SB_MAX_USERLEN - 2, "..", 3);
@@ -439,7 +442,7 @@ GS_prompt_cursor(int row)
 	char *ptr = buf;
 	char *end = buf + sizeof buf;
 
-	SXPRINTF(ptr, end - ptr, "\x1B[%d;%luf", gopt.winsize.ws_row /*last*/, 1 + GS_CONSOLE_PROMPT_LEN + MIN(rl.pos, rl.visible_len));
+	SXPRINTF(ptr, end - ptr, "\x1B[%d;%zuf", gopt.winsize.ws_row /*last*/, 1 + GS_CONSOLE_PROMPT_LEN + MIN(rl.pos, rl.visible_len));
 	tty_write(buf, ptr - buf);
 }
 
@@ -611,7 +614,8 @@ CONSOLE_reset(void)
 		/* Move cursor to last line */
 		SXPRINTF(ptr, end - ptr, "\x1B[9999;9999H");
 		/* Restore cursor */
-		write(stdout_fd, buf, ptr - buf);
+		if (write(stdout_fd, buf, ptr - buf) != ptr - buf)
+			ERREXIT("write()\n");
 	}
 
 	close(tty_fd);
@@ -775,7 +779,7 @@ static size_t ansi_buf_len;
 static ssize_t
 ansi_write(int fd, void *data, size_t len, int *cls_code)
 {
-	size_t amount;
+	size_t amount = 0;
 
 	ansi_parse(data, len, &amount, cls_code);
 	// DEBUGF_W("len = %zd amount = %zd\n", len, amount);
@@ -783,11 +787,13 @@ ansi_write(int fd, void *data, size_t len, int *cls_code)
 		goto done;
 	if (ansi_buf_len > 0)
 	{
-		write(fd, ansi_buf, ansi_buf_len);
+		if (write(fd, ansi_buf, ansi_buf_len) != ansi_buf_len)
+			return -1;
 		ansi_buf_len = 0;
 	}
 
-	write(fd, data, amount);
+	if (write(fd, data, amount) != amount)
+		return -1;
 
 	if (amount < len)
 	{
@@ -802,6 +808,10 @@ ansi_write(int fd, void *data, size_t len, int *cls_code)
 	}
 
 done:
+	// From the caller's perspective this function has processed all data
+	// and this function will buffer (if needed) any data not yet passed
+	// to 'write()'. Thus return 'len' here to satisfy caller that all supplied
+	// data is or will be processed.
 	return len;
 }
 
@@ -906,7 +916,8 @@ CONSOLE_readline(struct _peer *p, void *data, size_t len)
 	{
 		rv = GS_RL_add(&rl, *src, &key, GS_CONSOLE_INPUT_LEN, 1 + GS_CONSOLE_PROMPT_LEN);
 		// HEXDUMP(rl.esc_data, rl.esc_len);
-		write(fd, rl.esc_data, rl.esc_len);
+		if (write(fd, rl.esc_data, rl.esc_len) != rl.esc_len)
+			ERREXIT("write()\n");
 
 		if (rv < 0)
 		{
@@ -1118,7 +1129,7 @@ console_command(struct _peer *p, const char *cmd)
 	}
 
 	ptr = buf;
-	SXPRINTF(ptr, end - ptr, "\x1B[%d;%luf\x1B[K", row + GS_CONSOLE_ROWS, 1 + GS_CONSOLE_PROMPT_LEN);
+	SXPRINTF(ptr, end - ptr, "\x1B[%d;%zuf\x1B[K", row + GS_CONSOLE_ROWS, 1 + GS_CONSOLE_PROMPT_LEN);
 	tty_write(buf, ptr - buf);
 
 	return 0;

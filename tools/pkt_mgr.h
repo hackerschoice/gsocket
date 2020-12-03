@@ -18,7 +18,8 @@ struct _pkt_app_pong
 {
 	uint16_t load;
 	uint16_t idle;
-	uint8_t user[12];
+	uint8_t n_users;
+	uint8_t user[11];
 } __attribute__((__packed__));
 
 struct _pkt_app_ids

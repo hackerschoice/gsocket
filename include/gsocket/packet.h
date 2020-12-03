@@ -4,9 +4,8 @@
 #define GS_PKT_MAX_SIZE		(2048)
 #define GS_PKT_MAX_MSG		128  // type = 0..127
 #define GS_PKT_MAX_CHN		128  // type = 128..255 
-#ifdef DEBUG
-# define GS_PKT_ESC			'e'  // escape character
-#else
+// #define GS_PKT_ESC			'e'  // TESTING ONLY
+#ifndef GS_PKT_ESC
 # define GS_PKT_ESC			0xFB // escape character
 #endif
 typedef void (*gspkt_cb_t)(uint8_t type, const uint8_t *data, size_t len, void *arg);

@@ -19,6 +19,13 @@ cb_sigwinch(int sig)
 }
 
 
+static void
+my_write(int fd, void *data, size_t len)
+{
+	if (write(fd, data, len) != len)
+		ERREXIT("write()\n");
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -52,11 +59,11 @@ main(int argc, char *argv[])
 			get_winsize();
 			printf("\x1B[%d;%df" PROMPT, gopt.winsize.ws_row, 1); fflush(stdout);
 			GS_RL_resize(&rl, gopt.winsize.ws_col - PROMPT_LEN, gopt.winsize.ws_row, 1 + PROMPT_LEN);
-			write(1, rl.vline, rl.v_pos);
+			my_write(1, rl.vline, rl.v_pos);
 		}
 		DEBUGF_Y("line(%zd) '%s'\n", rl.len, rl.line);
 		HEXDUMP(rl.esc_data, rl.esc_len);
-		write(1, rl.esc_data, rl.esc_len);
+		my_write(1, rl.esc_data, rl.esc_len);
 		fflush(stdout);
 		// DEBUGF_G("ESCL(%zd) '\x1B[s%s\x1B[u'\n", rl.esc_len, rl.esc_line);
 

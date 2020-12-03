@@ -12,7 +12,7 @@ output(GS_LIST *list)
 		li = GS_LIST_next(list, li);
 		if (li == NULL)
 			break;
-		DEBUGF("add_id = %d, id = %llu\n", li->add_id, li->id);
+		DEBUGF("add_id = %d, id = %"PRIu64"\n", li->add_id, li->id);
 	}
 }
 
@@ -32,7 +32,7 @@ check_order(GS_LIST *list)
 		next = (GS_LIST_ITEM *)li->next;
 		if (next != NULL)
 		{
-			XASSERT(li->id <= next->id, "not in order %llu <= %llu\n", li->id, next->id);
+			XASSERT(li->id <= next->id, "not in order %"PRIu64" <= %"PRIu64"\n", li->id, next->id);
 			if (li->id == next->id)
 			{
 				XASSERT(li->add_id < next->add_id, "Wrong order\n");

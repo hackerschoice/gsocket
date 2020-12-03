@@ -5,9 +5,11 @@
 static int
 cb_event(void *ptr)
 {
+#ifdef DEBUG
 	GS_EVENT *event = (GS_EVENT *)ptr;
+#endif
 
-	DEBUGF("Event callback...(data = '%s', len = %zd)\n", event->data, event->len);
+	DEBUGF("Event callback...(data = '%s', len = %zd)\n", (char *)event->data, event->len);
 
 	return 0;
 }
@@ -30,11 +32,13 @@ main(int argc, char *argv[])
 	my_e_ptr = GS_EVENT_add_by_ts(&mgr, NULL, 0, GS_SEC_TO_USEC(2), NULL, "caller-action", 7);
 	GS_EVENT_add_by_ts(&mgr, &my_e, 0, GS_MSEC_TO_USEC(437), cb_event, "foobar500", 31337);
 
+	if (my_e_ptr == NULL)
+		ERREXIT("add_by_ts()\n");
 	uint64_t wait;
 	while (1)
 	{
 		wait = GS_EVENT_execute(&mgr);
-		DEBUGF_G("Next event in %llu usec\n", wait);
+		DEBUGF_G("Next event in %"PRIu64" usec\n", wait);
 		if (mgr.is_return_to_caller)
 			DEBUGF_C("Return to caller triggered\n");
 		usleep(wait);

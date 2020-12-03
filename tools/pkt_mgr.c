@@ -41,7 +41,7 @@ pkt_app_cb_ping(uint8_t msg, const uint8_t *data, size_t len, void *ptr)
 {
 	struct _peer *p = (struct _peer *)ptr;
 
-	DEBUGF_C("PING received\n");
+	// DEBUGF_C("PING received\n");
 	gopt.is_pong_pending = 1;
 	GS_SELECT_FD_SET_W(p->gs);
 }
@@ -64,7 +64,7 @@ pkt_app_cb_pong(uint8_t msg, const uint8_t *data, size_t len, void *ptr)
 	memcpy(buf, pong.user, sizeof pong.user);
 	sanitize_fname_to_str(buf, sizeof buf);
 
-	CONSOLE_update_pinginfo(p, ms, ntohs(pong.load), (char *)buf, ntohs(pong.idle));
+	CONSOLE_update_pinginfo(p, ms, ntohs(pong.load), (char *)buf, ntohs(pong.idle), pong.n_users);
 
 	// DEBUGF_C("PONG received (% 6.03fms) (load % 4.02f, idle %u)\n", ms, (float)ntohs(pong.load) / 100, ntohs(pong.idle));
 	gopt.ts_ping_sent = 0;
@@ -134,10 +134,9 @@ pkt_app_send_pong(GS_SELECT_CTX *ctx, struct _peer *p)
 	memset(&pong, 0, sizeof pong);
 	pong.load = htons(l);
 	pong.idle = htons(gopt.ids_idle);
+	pong.n_users = MIN(255, gopt.n_users);
 	if (gopt.ids_active_user != NULL)
 		snprintf((char *)pong.user, sizeof pong.user, "%s", gopt.ids_active_user);
-	// for (int i = 0; i < sizeof pong.user; i++)
-		// pong.user[i] = '0'+i%10;
 
 	memcpy(p->wbuf + 2, &pong, sizeof pong);
 

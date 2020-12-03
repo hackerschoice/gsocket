@@ -129,6 +129,13 @@ GS_condis_down(GS_CONDIS *cd)
 	cd->is_redraw_needed = 1;
 }
 
+static void
+cd_write(int fd, void *buf, size_t len)
+{
+	// Failed write() to stdout is fatal. 
+	if (write(fd, buf, len) != len)
+		ERREXIT("write()\n");
+}
 /*
  * Draw the console at position and with each string
  * up to max_char length. Add '..' if string is longer...
@@ -150,7 +157,7 @@ GS_condis_draw(GS_CONDIS *cd, int force)
 	char *ptr = buf;
 
 	SXPRINTF(ptr, end - ptr, "\x1B[%d;1f", cd->y);
-	write(cd->fd, buf, ptr - buf);
+	cd_write(cd->fd, buf, ptr - buf);
 
 	const char *last_color_str = NULL;
 	struct condis_line *cdl;
@@ -171,17 +178,17 @@ GS_condis_draw(GS_CONDIS *cd, int force)
 			}
 			SXPRINTF(ptr, MIN(end - ptr, cd->max_char + 1), "%s", cdl->line);
 
-			write(cd->fd, buf, ptr - buf);
+			cd_write(cd->fd, buf, ptr - buf);
 		}
 		pos = (pos + 1) % CONDIS_MAX_HISTORY;
-		write(cd->fd, "\x1B[K", 3); // Clear to end of line
+		cd_write(cd->fd, "\x1B[K", 3); // Clear to end of line
 		if (i < cd->rows - 1)
-			write(cd->fd, "\r\n", 2); // Add \n to all but last line		
+			cd_write(cd->fd, "\r\n", 2); // Add \n to all but last line		
 	}
 
 	// Reset color if last color was not the default color
 	if (last_color_str != NULL)
-		write(cd->fd, "\x1B[0m", 4);
+		cd_write(cd->fd, "\x1B[0m", 4);
 }
 
 

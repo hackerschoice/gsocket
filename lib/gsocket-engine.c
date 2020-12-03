@@ -16,6 +16,7 @@
 #include <gsocket/gsocket.h>
 #include "gsocket-engine.h"
 #include "gsocket-sha256.h"	// Use internal SHA256 if no OpenSSL available
+#include "gs-externs.h"
 
 #ifdef DEBUG
 //# define DEBUG_SELECT	(1)
@@ -178,7 +179,9 @@ GS_library_init(FILE *err_fp, FILE *dout_fp)
 	XASSERT(RAND_status() == 1, "RAND_status()");
 
 	gs_errfp = err_fp;
+#ifdef DEBUG
 	gs_dout = dout_fp;
+#endif
 }
 
 int

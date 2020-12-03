@@ -41,7 +41,7 @@ struct utmp_db_user
 // 	return 0;
 // }
 
-// struct GS_BUF mon_db;
+// struct GS_BUF mon_db
 
 GS_LIST udb;
 static int is_udb_init;
@@ -123,13 +123,13 @@ GS_IDS_utmp_free(void)
  * Find least idle user.
  */
 void
-GS_IDS_utmp(GS_LIST *new_login, GS_LIST *new_active, char **least_idle, int *sec_idle)
+GS_IDS_utmp(GS_LIST *new_login, GS_LIST *new_active, char **least_idle, int *sec_idle, int *n_users)
 {
 	struct utmpx *ut;
 	int idle;
 	int ret;
 	struct stat s;
-	char buf[128];
+	char buf[MAX(UT_NAMESIZE, 128)];
 	int token = gopt.tv_now.tv_sec;
 
 	if (is_udb_init == 0)
@@ -153,14 +153,15 @@ GS_IDS_utmp(GS_LIST *new_login, GS_LIST *new_active, char **least_idle, int *sec
 		idle = MAX(0, gopt.tv_now.tv_sec - s.st_atime);
 
 		struct utmp_db_user *u;
-		ret = utmp_db_find(ut->ut_user, &u);
+		snprintf(buf, sizeof buf, "%s", ut->ut_user); // -Wstringop-overflow
+		ret = utmp_db_find(buf, &u);
 		if (ret != 0)
 		{
 			// NOT found. Add user.
 			u = utmp_db_add(ut->ut_user, idle, token);
 			if (is_udb_init != 0)
 			{
-				snprintf(u->msg, sizeof u->msg, "%s [%s]", ut->ut_user, ut->ut_host[0]?ut->ut_host:"console");
+				snprintf(u->msg, sizeof u->msg, "%.20s [%.20s]", ut->ut_user, ut->ut_host[0]?ut->ut_host:"console");
 
 				DEBUGF("New Login detected '%s'\n", u->msg);
 				GS_LIST_add(new_login, NULL, u->msg, 0);
@@ -184,7 +185,7 @@ GS_IDS_utmp(GS_LIST *new_login, GS_LIST *new_active, char **least_idle, int *sec
 		}
 		XASSERT(u != NULL, "utmp entry is NULL\n");
 
-		if (idle >= *sec_idle)
+		if (idle > *sec_idle)
 			continue;
 		// HERE: least idle user (so far)
 		*sec_idle = idle;
@@ -197,23 +198,36 @@ GS_IDS_utmp(GS_LIST *new_login, GS_LIST *new_active, char **least_idle, int *sec
 
 	// Check which user has awoken (from IDLE to NOT IDLE)
 	GS_LIST_ITEM *li = NULL;
-	while (1)
+	li = GS_LIST_next(&udb, NULL);
+	while (li != NULL)
 	{
-		li = GS_LIST_next(&udb, li);
 		if (li == NULL)
 			break;
 
 		struct utmp_db_user *u = (struct utmp_db_user *)li->data;
+		if (u->token != token)
+		{
+			// User in db is no longer in utmp. Remove from db.
+			DEBUGF("Removing DB user %s\n", u->user);
+			GS_LIST_ITEM *next = GS_LIST_next(&udb, li);
+			XFREE(li->data);
+			GS_LIST_del(li);
+			li = next;
+			continue;
+		}
+
 		if ((u->idle_old >= IDLE_THRESHOLD) && (u->idle < u->idle_old))
 		{
-			snprintf(u->msg, sizeof u->msg, "%s [idled for %d mins]", u->user, u->idle_old / 60);
+			snprintf(u->msg, sizeof u->msg, "%.20s [idled for %d mins]", u->user, u->idle_old / 60);
 			GS_LIST_add(new_active, NULL, u->msg, 0);
 			DEBUGF_R("Now ACTIVE (was %d, now %d): '%s'\n", u->idle_old, u->idle, u->msg);
 		}
 		u->idle_old = u->idle;
+		li = GS_LIST_next(&udb, li);
 	}
 
 done:
+	*n_users = udb.n_items;
 	is_udb_init = 1;
 }
 
@@ -223,7 +237,7 @@ add_log_str(struct _peer *p, uint8_t type, const char *str)
 {
 	struct _pkt_app_log *log = malloc(sizeof *log);
 	log->type = type;
-	snprintf((char *)log->msg, sizeof log->msg, "%s", str);
+	snprintf((char *)log->msg, sizeof log->msg, "%.62s", str);
 	GS_LIST_add(&p->logs, NULL, log, GS_LIST_ID_COUNT(&p->logs));
 	p->is_pending_logs = 1;
 	GS_SELECT_FD_SET_W(p->gs);

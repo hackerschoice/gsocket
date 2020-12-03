@@ -134,13 +134,9 @@ get_winsize(void)
 void
 init_vars(void)
 {
-	int ret;
-
 	GS_library_init(gopt.err_fp, /* Debug Output */ gopt.err_fp);
-
 	GS_LIST_init(&gopt.ids_peers, 0);
-
-	ret = GS_CTX_init(&gopt.gs_ctx, &gopt.rfd, &gopt.wfd, &gopt.r, &gopt.w, &gopt.tv_now);
+	GS_CTX_init(&gopt.gs_ctx, &gopt.rfd, &gopt.wfd, &gopt.r, &gopt.w, &gopt.tv_now);
 
 	if (gopt.is_use_tor == 1)
 		GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_USE_SOCKS, NULL, 0);

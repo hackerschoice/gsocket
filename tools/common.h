@@ -12,6 +12,9 @@
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <sys/resource.h>
+#ifdef HAVE_SYS_LOADAVG_H
+# include <sys/loadavg.h> // Solaris11
+#endif
 #include <netinet/in.h>
 #ifdef HAVE_NETINET_IN_SYSTM_H
 # include <netinet/in_systm.h>
@@ -37,7 +40,12 @@
 #include <libgen.h>		/* basename() */
 #include <termios.h>
 #include <pwd.h>
-#include <utmpx.h>
+#ifdef HAVE_UTMPX_H
+# include <utmpx.h>
+#endif
+#ifdef HAVE_UTMP_H
+# include <utmp.h>
+#endif
 #ifdef HAVE_LIBUTIL_H
 # include <libutil.h>	/* FreeBSD */
 #endif
@@ -60,6 +68,10 @@
 # define O_NOCTTY 0
 #endif
 
+// Older fbsd's dont have this defined
+#ifndef UT_NAMESIZE
+# define UT_NAMESIZE	32
+#endif
 
 struct _gopt
 {
@@ -109,6 +121,7 @@ struct _gopt
 	GS_LIST ids_peers;
 	char *ids_active_user;
 	int ids_idle;
+	int n_users;             // Number of unique logged in users (from utmp)
 };
 
 struct _socks
