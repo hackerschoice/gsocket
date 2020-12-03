@@ -30,4 +30,4 @@ console_display_test_LDADD = ../lib/libgsocket.a
 
 EXTRA_DIST = run_all_tests.sh
 noinst_HEADERS = common.h utils.h socks.h console.h ids.h event_mgr.h pkt_mgr.h gs-netcat.h console_display.h man_gs-netcat.h
-CFLAGS += -I../include
+AM_CFLAGS = -I../include
