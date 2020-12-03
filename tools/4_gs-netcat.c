@@ -37,17 +37,19 @@
 #include "common.h"
 #include "utils.h"
 #include "socks.h"
+#include "console.h"
+#include "event_mgr.h"
+#include "pkt_mgr.h"
+#include "ids.h"
+#include "gs-netcat.h"
 #include "man_gs-netcat.h"
 
 /* All connected gs-peers indexed by gs->fd */
 static struct _peer *peers[FD_SETSIZE];
 
 /* static functions declaration */
-static int write_gs(GS_SELECT_CTX *ctx, struct _peer *p);
 static int peer_forward_connect(struct _peer *p, uint32_t ip, uint16_t port);
 static void vlog_hostname(struct _peer *p, const char *desc, uint16_t port);
-// static void stty_set_remote_size(GS_SELECT_CTX *ctx, struct _peer *p);
-
 
 /*
  * Make statistics and return them in 'dst'
@@ -94,11 +96,26 @@ peer_free(GS_SELECT_CTX *ctx, struct _peer *p)
 	int is_stdin_forward = p->is_stdin_forward;
 	int fd;
 
+	/* Reset console/stty before outputting stats */
+	if (is_stdin_forward)
+	{
+		CONSOLE_reset();
+		stty_reset();
+	}
 	/* A connecting fd (gs->net.sox[0].fd or a connected fd (gs->fd) */
 	fd = GS_get_fd(gs);
 	DEBUGF_R("GS_get_fd() == %d\n", GS_get_fd(gs));
 	XASSERT(peers[fd] == p, "Oops, %p != %p on fd = %d, cmd_fd = %d\n", peers[fd], p, fd, p->fd_in);
 
+	ids_gs_logout(p);
+	GS_EVENT_del(&gopt.event_ping);
+	GS_EVENT_del(&gopt.event_bps);
+	GS_PKT_close(&p->pkt);
+
+	// Free all pending log files and their data
+	GS_LIST_del_all(&p->logs, 1);
+	GS_LIST_del(p->ids_li);  // Server only
+	p->ids_li = NULL;
 	/* Exit() if we were reading from stdin/stdout. No other clients
 	 * in this case.
 	 */
@@ -109,12 +126,10 @@ peer_free(GS_SELECT_CTX *ctx, struct _peer *p)
 		// stats that GS_close() gives us...
 		//exit(0);	// this will close all fd's :>
 	} else {
-		/* is_stdin_forward == 0 */
 		/*. Not stdin/stdout. */
 		XCLOSE(p->fd_in);
 	}
 
-	stty_reset();
 	/* Output stats gs was connected */
 	if (gs->tv_connected.tv_sec != 0)
 	{
@@ -123,7 +138,6 @@ peer_free(GS_SELECT_CTX *ctx, struct _peer *p)
 		VLOG("%s %s", GS_logtime(), buf);
 		if ((p->is_network_forward) && (p->socks.dst_port != 0))
 	    	vlog_hostname(p, "", p->socks.dst_port);
-
 	}
 
 	GS_SELECT_del_cb(ctx, fd);
@@ -150,8 +164,79 @@ peer_free(GS_SELECT_CTX *ctx, struct _peer *p)
 		exit(0);
 }
 
+static void
+cb_atexit(void)
+{
+	CONSOLE_reset();
+	stty_reset();
+}
+
 /* *********************** FD READ / WRITE ******************************/
 
+/*
+ * read() but with detecting CTRL+E (console command)
+ */
+static ssize_t
+read_esc(int fd, uint8_t *buf, size_t len, uint8_t *key)
+{
+	size_t n = 0;
+	ssize_t sz;
+	uint8_t c;
+	int ret;
+
+	/* FIXME-PERFORMANCE: Implement buffered read for performance
+	 * when in interactive mode [but then how fast can you type?]
+	 */
+	/* FIXME-PERFORMANCE: Cant leave stdin as non-blocking. 'top' wont
+	 * work any more. xterm sends data to stdin (?) and expects
+	 * blocking stdout (my stdin)?
+	 * FIXME-PERFORMANCE: Block-read while console is not being
+	 * displayed (?)
+	 */
+    fcntl(fd, F_SETFL, O_NONBLOCK | fcntl(fd, F_GETFL, 0));
+
+	while (n < len)
+	{
+		sz = read(fd, &c, 1);
+		if (sz <= 0)
+		{
+			/* EOF or ERROR */
+			if (errno == EWOULDBLOCK)
+				break;
+			if (n == 0)
+				n = -1;  // treat EOF as ERROR
+			break;
+		}
+		/* Check if this is an ESCAPE and stop reading */
+		ret = CONSOLE_check_esc(c, &c);
+		// DEBUGF_G("con = %d\n", ret);
+		if (ret != -1)
+		{
+			if (ret > 0)
+			{
+				*key = ret;
+				break;
+			}
+			continue;
+		} 
+
+		buf[n] = c;
+		n++;
+	}
+
+    fcntl(fd, F_SETFL, ~O_NONBLOCK & fcntl(fd, F_GETFL, 0));
+
+	return n;
+}
+
+// static ssize_t
+// read_noesc(int fd, uint8_t *buf, size_t len)
+// {
+// 	ssize_t sz = read(fd, buf, len);
+// 	if (sz == 0)
+// 		sz = -1;
+// 	return sz;
+// }
 
 static int
 cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
@@ -159,13 +244,25 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	struct _peer *p = (struct _peer *)arg;
 	GS *gs = p->gs;
 	int ret;
+	uint8_t key = 0;
 
 	XASSERT(p->wlen <= 0, "Already data in gs-write buffer (%zd)\n", p->wlen);
 
 	errno = 0;
-	p->wlen = read(fd, p->wbuf, sizeof p->wbuf);
+	if ((gopt.is_interactive) && (!(gopt.flags & GSC_FL_IS_SERVER)))
+	{
+		p->wlen = read_esc(fd, p->wbuf, p->w_max, &key);
+		if ((key == 0) && (p->wlen == 0))
+			return GS_SUCCESS;	// EWOULDBLOCK
+	} else {
+		p->wlen = read(fd, p->wbuf, p->w_max);
+		if (p->wlen == 0)
+			p->wlen = -1; // treat EOF as -1 (error)
+	}
+	// HEXDUMPF(p->wbuf, p->wlen, "read(%zd): ", p->wlen);
+
 	// DEBUGF_M("Read %zd from fd_cmd = %d (errno %d)\n", p->wlen, fd, errno);
-	if (p->wlen <= 0)
+	if (p->wlen < 0)
 	{
 		if (p->is_stdin_forward)
 		{
@@ -182,12 +279,37 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 		return GS_SUCCESS;	/* SUCCESS. fd had no errors [ssl may have had] */
 
 	}
-	if ((gopt.is_interactive) && !(gopt.flags & GSC_FL_IS_SERVER))
+
+	// First offer data to console
+	int was_data_for_console = 0;
+	if ((gopt.is_interactive) && (!(gopt.flags & GSC_FL_IS_SERVER)))
 	{
-		stty_check_esc(gs, p->wbuf[0]);
+		was_data_for_console = CONSOLE_readline(p, p->wbuf, p->wlen);
+		if (was_data_for_console)
+			p->wlen = 0;
 	}
 
-	write_gs(ctx, p);
+	if (!(was_data_for_console))
+	{
+	 	if (gopt.is_interactive)
+	 	{
+			size_t dsz;
+			GS_PKT_encode(&p->pkt, p->wbuf, p->wlen, p->pbuf, &dsz);
+			if (p->wlen != dsz)
+			{
+				/* HERE: ESC found. Encoded. */
+				memcpy(p->wbuf, p->pbuf, dsz);
+				p->wlen = dsz;
+			}
+		}
+		write_gs(ctx, p, NULL);
+	}
+
+	/*
+	 * Take action if a console key has been received
+	 */
+	if (key > 0)
+		CONSOLE_action(p, key);
 
 	return GS_SUCCESS;
 }
@@ -197,23 +319,26 @@ write_fd(GS_SELECT_CTX *ctx, struct _peer *p)
 {
 	ssize_t len;
 
-	len = write(p->fd_out, p->rbuf, p->rlen);
+	if ((gopt.is_interactive) && (!(gopt.flags & GSC_FL_IS_SERVER)))
+		len = CONSOLE_write(p->fd_out, p->rbuf, p->rlen);
+	else
+		len = write(p->fd_out, p->rbuf, p->rlen);
 	// DEBUGF_G("write(fd = %d, len = %zd) == %zd, errno = %d (%s)\n", p->fd_out, p->rlen, len, errno, errno==0?"":strerror(errno));
 	
-	if ((len < 0) && (errno == EAGAIN))
-	{
-		/* Marked saved state and current state to STOP READING.
-		 * Even when in WANT_WRITE we must not start reading after
-		 * the WANT_WRITE has been satisfied (until this write() has
-		 * completed.
-		 */
-		GS_SELECT_FD_CLR_R(ctx, p->gs->fd);
-		XFD_SET(p->fd_out, ctx->wfd);	// Mark cmd_fd for writing	
-		return GS_ECALLAGAIN; //GS_SUCCESS;	/* Successfully handled */
-	}
-
 	if (len < 0)
 	{
+		if (errno == EAGAIN)
+		{
+			/* Marked saved state and current state to STOP READING.
+			 * Even when in WANT_WRITE we must not start reading after
+			 * the WANT_WRITE has been satisfied (until this write() has
+			 * completed.
+			 */
+			GS_SELECT_FD_CLR_R(ctx, p->gs->fd);
+			XFD_SET(p->fd_out, ctx->wfd);	// Mark cmd_fd for writing	
+			return GS_ECALLAGAIN; //GS_SUCCESS;	/* Successfully handled */
+		}
+
 		peer_free(ctx, p);
 		return GS_SUCCESS;	/* Succesfully removed peer */
 	}
@@ -234,21 +359,12 @@ cb_write_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 }
 
 /* *********************** NETWORK READ / WRITE *************************/
-static int
-cb_read_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
+/*
+ * Check & Handle GS_read() errors
+ */
+static void
+cb_read_gs_error(GS_SELECT_CTX *ctx, struct _peer *p, ssize_t len)
 {
-	struct _peer *p = (struct _peer *)arg;
-	GS *gs = p->gs;
-	ssize_t len;
-	int ret;
-
-	// XASSERT(p->rlen <= 0, "Already data in input buffer (%zd)\n", p->rlen);
-	XASSERT(p->rlen < sizeof p->rbuf, "rlen=%zd larger than buffer\n", p->rlen);
-	len = GS_read(gs, p->rbuf + p->rlen, sizeof p->rbuf - p->rlen);
-	// DEBUGF_G("GS_read(fd = %d) == %zd\n", gs->fd, len);
-	if (len == 0)
-		return GS_ECALLAGAIN;
-
 	if (len == GS_ERR_EOF)
 	{
 		/* The same for STDOUT, tcp-fordward or cmd-forward [/bin/sh] */
@@ -259,18 +375,35 @@ cb_read_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 			DEBUGF_M("is_receive_only is TRUE. Calling peer_free()\n");
 			peer_free(ctx, p);
 		}
-		return GS_SUCCESS;
-	}
-	if (len < 0) /* any ERROR (but EOF) */
-	{
+	} else if (len < 0) { /* any ERROR (but EOF) */
 		DEBUGF_R("Fatal error=%zd in GS_read() (stdin-forward == %d)\n", len, p->is_stdin_forward);
-		GS_shutdown(gs);
+		GS_shutdown(p->gs);
 		// DEBUGF_R("GS_shutdown() = %d\n", ret);
 		/* Finish peer on FATAL (2nd EOF) or if half-duplex (never send data) */
 		peer_free(ctx, p);	// Will exit() if reading from stdin.
-		return GS_SUCCESS;	/* Successfully removed peer */
 	}
+}
 
+static int
+cb_read_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
+{
+	struct _peer *p = (struct _peer *)arg;
+	GS *gs = p->gs;
+	ssize_t len;
+	int ret;
+
+	// XASSERT(p->rlen <= 0, "Already data in input buffer (%zd)\n", p->rlen);
+	XASSERT(p->rlen < p->r_max, "rlen=%zd larger than buffer\n", p->rlen);
+	len = GS_read(gs, p->rbuf + p->rlen, p->r_max - p->rlen);
+	// DEBUGF_G("GS_read(fd = %d) == %zd\n", gs->fd, len);
+	if (len == 0)
+		return GS_ECALLAGAIN;
+
+	if (len < 0)
+	{
+		cb_read_gs_error(ctx, p, len);
+		return GS_SUCCESS;	// Successfully removed peer
+	}
 
 	p->rlen += len;
 
@@ -281,8 +414,7 @@ cb_read_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 		if (ret != GS_SUCCESS)
 		{
 			DEBUGF_R("**** SOCKS_add() ERROR ****\n");
-			GS_shutdown(gs);
-			peer_free(ctx, p);
+			cb_read_gs_error(ctx, p, GS_ERR_FATAL);
 
 			return GS_SUCCESS;
 		}
@@ -294,16 +426,33 @@ cb_read_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 				return GS_SUCCESS;	// Successfully removed
 			p->socks.state = GSNC_STATE_CONNECTED;	// as if this is a normal port forward...
 		}
+		/* HERE: Socks just got CONNECTED. Flush any pending data. */
 		if (p->wlen > 0)
-			write_gs(ctx, p);
-		// DEBUGF_C("fd=%d in RFD is %s\n", gs->fd, FD_ISSET(gs->fd, ctx->rfd)?"set":"NOT SET");
+			write_gs(ctx, p, NULL);
 	} else {
-		/* First time we receive data we set tty to raw mode. */
-		if ((p->is_stdin_forward) && (gopt.is_interactive))
+		if (gopt.is_interactive)
 		{
-			/* HERE: Client */
-			XASSERT(p->fd_in == STDIN_FILENO, "p->fd_in = %d, not STDIN\n", p->fd_in);
-			stty_set_raw();
+			if (p->is_stdin_forward)
+			{
+				/* HERE: Client */
+				if (p->is_stty_set_raw == 0)
+				{
+					/* Set TTY=raw first time we receive data [connection alive] */
+					XASSERT(p->fd_in == STDIN_FILENO, "p->fd_in = %d, not STDIN\n", p->fd_in);
+					stty_set_raw();
+					p->is_stty_set_raw = 1;
+				}
+			}
+			/* HERE: Client Or Server. Interactive */
+			size_t dsz;
+			ret = GS_PKT_decode(&p->pkt, p->rbuf, p->rlen, p->rbuf, &dsz);
+			p->rlen = dsz;
+			if (ret != 0)
+			{
+				/* Protocol Error [FATAL] */
+				cb_read_gs_error(ctx, p, GS_ERR_FATAL);
+				return GS_SUCCESS; // Successfully removed peer
+			}
 		}
 
 		write_fd(ctx, p);
@@ -312,24 +461,27 @@ cb_read_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	return GS_SUCCESS;
 }
 
-static int
-write_gs(GS_SELECT_CTX *ctx, struct _peer *p)
+int
+write_gs(GS_SELECT_CTX *ctx, struct _peer *p, int *killed)
 {
 	GS *gs = p->gs;
-	int len;
+	int len = 0;
 
-	len = GS_write(gs, p->wbuf, p->wlen);
-	// DEBUGF_R("GS_write(fd==%d) = %d\n", gs->fd, len);
-	if (len == 0)
+	if (p->wlen > 0)
 	{
-		/* GS_write() would block. */
-		FD_CLR(p->fd_in, ctx->rfd);		// Stop reading from input
-		return GS_ECALLAGAIN;
+		len = GS_write(gs, p->wbuf, p->wlen);
+		// DEBUGF_R("GS_write(fd==%d) = %d\n", gs->fd, len);
+		if (len == 0)
+		{
+			/* GS_write() would block. */
+			FD_CLR(p->fd_in, ctx->rfd);		// Stop reading from input
+			return GS_ECALLAGAIN;
+		}
 	}
 
 	if (len == p->wlen)
 	{
-		/* GS_write() was a success */
+		/* GS_write() was a success or p->wlen == 0 */
 		p->wlen = 0;
 		if (p->is_fd_connected)
 		{
@@ -339,11 +491,42 @@ write_gs(GS_SELECT_CTX *ctx, struct _peer *p)
 			FD_CLR(p->gs->fd, ctx->wfd);
 			XFD_SET(p->fd_in, ctx->rfd);	// Start reading from input again
 		}
+		/* Check if there is any other data we like to write... */
+		if (gopt.is_win_resized)
+		{
+			get_winsize();
+			int row = gopt.winsize.ws_row;
+			if (gopt.is_console)
+			{
+				CONSOLE_resize(p);
+				row -= GS_CONSOLE_ROWS; 
+			}
+			gopt.is_win_resized = 0;
+			/* Calls write_gs() */
+			return pkt_app_send_wsize(ctx, p, row);
+		}
+		if (gopt.is_pong_pending)
+		{
+			gopt.is_pong_pending = 0;
+			return pkt_app_send_pong(ctx, p);
+		}
+		if (gopt.is_want_ping)
+		{
+			gopt.is_want_ping = 0;
+			return pkt_app_send_ping(ctx, p);
+		}
+		if (p->is_pending_logs)
+		{
+			return pkt_app_send_all_log(ctx, p);
+		}
+
 		return GS_SUCCESS;
 	}
 
 	/* HERE: ERROR on GS_write() */
 	peer_free(ctx, p);
+	if (killed != NULL)
+		*killed = 1;
 	return GS_SUCCESS;	// Successfully removed peer
 
 }
@@ -351,7 +534,7 @@ write_gs(GS_SELECT_CTX *ctx, struct _peer *p)
 static int
 cb_write_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 {
-	return write_gs(ctx, (struct _peer *)arg);
+	return write_gs(ctx, (struct _peer *)arg, NULL);
 }
 
 /* ******************************* GS LISTEN ****************************/
@@ -400,6 +583,22 @@ cb_complete_connect(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 }
 
 /*
+ * Interactive client only has 1 peer. We need to find
+ * it from signal handlers. Set it here.
+ */
+static struct _peer *my_peer;
+static void
+cb_sigwinch(int sig)
+{
+	// DEBUGF("Window Size changed\n");
+	XASSERT(my_peer != NULL, "my_peer is NULL. Not client. Not interactive.?\n");
+	gopt.is_win_resized = 1;
+	GS_SELECT_FD_SET_W(my_peer->gs);
+}
+
+
+
+/*
  * Server & Client
  */
 static struct _peer *
@@ -415,6 +614,31 @@ peer_new_init(GS *gs)
 	gopt.peer_count++;
 	gopt.peer_id_counter++;
 	p->id = gopt.peer_id_counter;
+	GS_PKT_init(&p->pkt);
+	p->w_max = sizeof p->wbuf;
+	p->r_max = sizeof p->rbuf;
+	if ((gopt.is_interactive))// && !(gopt.flags & GSC_FL_IS_SERVER))
+	{
+		/* -i: Use of packet protocol needs decoding space */
+		p->w_max = sizeof p->wbuf / 2;	/* from fd, to GS */
+		p->r_max = sizeof p->rbuf / 2;	/* from fd, to GS */
+		if (!(gopt.flags & GSC_FL_IS_SERVER))
+		{
+			/* CLIENT, interactive */
+			my_peer = p;
+			signal(SIGWINCH, cb_sigwinch);
+			get_winsize();
+			GS_EVENT_add_by_ts(&gs->ctx->gselect_ctx->emgr, &gopt.event_ping, 0, GS_APP_PINGFREQ, cbe_ping, p, 0);
+			GS_EVENT_add_by_ts(&gs->ctx->gselect_ctx->emgr, &gopt.event_bps, 0, GS_APP_BPSFREQ, cbe_bps, p, 0);
+		} else {
+			/* SERVER, interactive */
+			ids_gs_login(p);
+			// Let all others know what we have logged in:
+			// p->ids_li = GS_LIST_add(&gopt.ids_peers, NULL, p, 0);
+			// if (gopt.event_ids == NULL)
+			// 	gopt.event_ids = GS_EVENT_add_by_ts(&gs->ctx->gselect_ctx->emgr, NULL, 0, GS_APP_IDSFREQ, cbe_ids, NULL, 0);
+		}
+	}
 	DEBUGF_M("[ID=%d] (fd=%d) Number of connected gs-peers: %d\n", p->id, fd, gopt.peer_count);
 
 	return p;
@@ -456,6 +680,16 @@ peer_forward_connect(struct _peer *p, uint32_t ip, uint16_t port)
 }
 
 
+#if 0
+// FIXME: display alarm in xterm title if root logs in?
+static void
+pkt_cb_title(uint8_t msg, const uint8_t *data, size_t len, void *ptr)
+{
+	struct _peer *p = (struct _peer *)ptr;
+
+}
+#endif
+
 /*
  * SERVER
  */
@@ -466,6 +700,14 @@ peer_new(GS_SELECT_CTX *ctx, GS *gs)
 	int ret;
 
 	p = peer_new_init(gs);
+
+	if (gopt.is_interactive)
+	{
+		/* SERVER */
+		GS_PKT_assign_msg(&p->pkt, PKT_MSG_WSIZE, pkt_app_cb_wsize, p);
+		GS_PKT_assign_msg(&p->pkt, PKT_MSG_PING, pkt_app_cb_ping, p);
+		GS_PKT_assign_msg(&p->pkt, PKT_MSG_IDS, pkt_app_cb_ids, p);
+	}
 
 	/* Create a new fd to relay gs-traffic to/from */
 	if ((gopt.cmd != NULL) || (gopt.is_interactive))
@@ -595,7 +837,6 @@ do_server(void)
 }
 
 /********************** CLIENT *************************************/
-
 /*
  * A hack to set the remote window size without inband
  * communication. Only used with -i.
@@ -609,6 +850,8 @@ stty_set_remote_size(GS_SELECT_CTX *ctx, struct _peer *p)
 	write_gs(ctx, p);
 }
 #endif
+
+
 
 /*
  * CLIENT
@@ -635,7 +878,6 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd_notused, void *arg, int val)
 		 * -> Connection 2x to 127.1:1080 should keep 1st connection alive and 2nd
 		 * should (gracefully) fail.
 		 */
-		// usleep(100 * 1000);
 		peer_free(ctx, p);
 		return GS_SUCCESS;
 	}
@@ -664,6 +906,12 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd_notused, void *arg, int val)
 	// 	stty_set_raw();
 	// 	// stty_set_remote_size(ctx, p);
 	// }
+	if (gopt.is_interactive)
+	{
+		pkt_app_send_wsize(ctx, p, gopt.winsize.ws_row);
+		GS_PKT_assign_msg(&p->pkt, PKT_MSG_PONG, pkt_app_cb_pong, p);
+		GS_PKT_assign_msg(&p->pkt, PKT_MSG_LOG, pkt_app_cb_log, p);
+	}
 
 	return GS_SUCCESS;
 }
@@ -744,6 +992,7 @@ do_client(void)
 	while (1)
 	{
 		n = GS_select(&ctx);
+		GS_heartbeat(gopt.gsocket);
 		if (n < 0)
 			break;
 	}
@@ -874,13 +1123,120 @@ my_getopt(int argc, char *argv[])
 
 	init_vars();			/* from utils.c */
 	VLOG("=Encryption     : %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
+
+	atexit(cb_atexit);
 }
+
+#if 0
+static void
+my_test(void)
+{
+	gopt.is_console = 1;
+	GS_LIST new_login;
+	GS_LIST new_active;
+	GS_LIST_ITEM *li;
+
+	GS_LIST_init(&new_login, 0);
+	GS_LIST_init(&new_active, 0);
+	int idle;
+	char *user;
+
+	while (1)
+	{
+		GS_IDS_utmp(&new_login, &new_active, &user, &idle);
+		if (new_login.n_items > 0)
+		{
+			li = NULL;
+			while (1)
+			{
+				li = GS_LIST_next(&new_login, li);
+				if (li == NULL)
+					break;
+				DEBUGF_G("New User Login: %s\n", (char *)li->data);
+			}
+			GS_LIST_del_all(&new_login, 0);
+		}
+
+		if (new_active.n_items > 0)
+		{
+			li = NULL;
+			while (1)
+			{
+				li = GS_LIST_next(&new_active, li);
+				if (li == NULL)
+					break;
+				DEBUGF("Newly active: %s\n", (char *)li->data);
+			}
+			GS_LIST_del_all(&new_active, 0);
+		}
+		if (user != NULL)
+		{
+			DEBUGF_C("Least Idle: %s (%d)\n", user, idle);
+		}
+		sleep(1);
+	}
+
+	// double load;
+	// int ret = getloadavg(&load, 1);
+	// uint32_t l = (uint32_t)(load * 100);
+	// DEBUGF("%d: %f %.02f\n", ret, load, (float)l / 100);
+	// uint8_t buf[14];
+	// for (int i = 0; i < sizeof buf; i++)
+	// 	buf[i] = '0'+i%10;
+
+	// sanitize_fname_to_str(buf, sizeof (buf) - 1);
+	// DEBUGF("user = '%s'\n", buf);
+
+#if 0
+	char buf[8];
+	int64_t i;
+	i=3; format_bps(buf, sizeof buf, i); DEBUGF_Y("%12lld rate = '%s/s'\n", i, buf);
+	i=36; format_bps(buf, sizeof buf, i); DEBUGF_Y("%12lld rate = '%s/s'\n", i, buf);
+	i=999; format_bps(buf, sizeof buf, i); DEBUGF_Y("%12lld rate = '%s/s'\n", i, buf);
+	i=1000; format_bps(buf, sizeof buf, i); DEBUGF_Y("%12lld rate = '%s/s'\n", i, buf);
+	i=5000; format_bps(buf, sizeof buf, i); DEBUGF_Y("%12lld rate = '%s/s'\n", i, buf);
+	i=50000; format_bps(buf, sizeof buf, i); DEBUGF_Y("%12lld rate = '%s/s'\n", i, buf);
+	i=500000; format_bps(buf, sizeof buf, i); DEBUGF_Y("%12lld rate = '%s/s'\n", i, buf);
+	i=10*1024*1024; format_bps(buf, sizeof buf, i); DEBUGF_Y("%12lld rate = '%s/s'\n", i, buf);
+	i=10*(int64_t)1024*1024*1024; format_bps(buf, sizeof buf, i); DEBUGF_Y("%12lld rate = '%s/s'\n", i, buf);
+#endif
+#if 0
+	float ms = 23;
+	DEBUGF("[%3dms]\n", (int)ms);
+	ms = 987;
+	DEBUGF("[%3dms]\n", (int)ms);
+	ms = 4253;
+	DEBUGF("[%1.01fs ]\n---\n", ms / 1000);
+
+	int load = 45;
+	DEBUGF("[% -04.02f]\n", (float)5 / 100); // THIS
+	DEBUGF("[% 04.02f]\n", (float)5 / 100); // THIS
+	DEBUGF("[% -04.02f]\n", (float)45 / 100); // THIS
+	DEBUGF("[% 04.02f]\n", (float)45 / 100); // THIS
+	DEBUGF("[% -04.02f]\n", (float)145 / 100); // THIS
+	DEBUGF("[% 04.02f]\n", (float)145 / 100); // THIS
+	load = 3245;
+	// DEBUGF("[% 04.02f]\n", (float)load / 100); // 
+	DEBUGF("[% -02.02f]\n", (float)3245 / 100);
+	DEBUGF("[%02.02f]\n", (float)3245 / 100); // OK
+	DEBUGF("[%- 02.02f]\n", (float)245 / 100); 
+
+#endif
+	// DEBUGF("[%4.02f]\n", (float)load / 100); // THIS
+	// DEBUGF("[% 4.02f]\n", (float)load / 100);
+	// DEBUGF("[%4.02f]\n", (float)load / 100);
+	// DEBUGF("[% -4.02f]\n", (float)load / 100);
+	exit(0);
+}
+#endif
 
 int
 main(int argc, char *argv[])
 {
 	init_defaults(&argc, &argv);
 	my_getopt(argc, argv);
+
+	// my_test();
 
 	if (gopt.flags & GSC_FL_IS_SERVER)
 		do_server();

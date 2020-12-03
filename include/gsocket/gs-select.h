@@ -34,15 +34,9 @@ typedef struct _gs_select_ctx
 	int rdata_pending[FD_SETSIZE];
 	int rdata_pending_count;
 
-
-	/* Heartbeat / Timeout control */
-	int hb_freq;		/* Every hb_freq usec return to caller */
-	uint64_t hb_init;	/* Initial time when hb was set */
-	uint64_t hb_next;	/* Next time fo hb */
+	GS_EVENT_MGR emgr; // Event Manager (for Heartbeat)
+	GS_EVENT hb;       // Heatbeat timeout; return control to caller
 } GS_SELECT_CTX;
-
-// #define GS_CALLREAD			(0x01)
-// #define GS_CALLWRITE		(0x02)
 
 typedef int (*gselect_cb_t)(GS_SELECT_CTX *ctx, int fd, void *arg, int val);
 

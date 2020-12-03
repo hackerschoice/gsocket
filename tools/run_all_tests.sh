@@ -479,14 +479,11 @@ if [ "${MDHELLOW}" != "$(tail -1 client_out.dat | MD5 /dev/stdin)" ]; then fail 
 $ECHO "${OK}"
 fi
 
-PTYSIM='\033[25;80R'
-[[ "$OSTYPE" == *"cygwin"* ]] && PTYSIM=""
-
 if [[ "$tests" =~ '7.3' ]]; then
 test_start -n "Running: netcat #7.3 (pty shell, exit)...................."
 GSPID1="$(sh -c './gs-netcat -k id_sec.txt -l -i 2>server_err.txt >server_out.dat & echo ${!}')"
 # Can not start Client with -i because it's not a tty. Must 'fake' the terminal response.
-(printf "${PTYSIM}date; echo Hello World; exit\n") | ./gs-netcat -k id_sec.txt -w 2>client_err.txt >client_out.dat
+(printf "date; echo Hello World; exit\n") | ./gs-netcat -k id_sec.txt -w 2>client_err.txt >client_out.dat
 sleep_ct
 kill $GSPID1 
 tail -2 client_out.dat | grep 'Hello World' &>/dev/null
@@ -497,9 +494,9 @@ fi
 if [[ "$tests" =~ '7.4' ]]; then
 test_start -n "Running: netcat #7.4 (multi pty shell, exit).............."
 GSPID1="$(sh -c './gs-netcat -k id_sec.txt -l -i 2>server_err.txt >server_out.dat & echo ${!}')"
-GSPID2=$(sh -c "(printf \"${PTYSIM} date && echo Hello World && exit\n\") | ./gs-netcat -k id_sec.txt -w 2>client1_err.txt >client1_out.dat & echo \${!}")
-GSPID3=$(sh -c "(printf \"${PTYSIM} date && echo Hello World && exit\n\") | ./gs-netcat -k id_sec.txt -w 2>client2_err.txt >client2_out.dat & echo \${!}")
-GSPID4=$(sh -c "(printf \"${PTYSIM} date && echo Hello World && exit\n\") | ./gs-netcat -k id_sec.txt -w 2>client3_err.txt >client3_out.dat & echo \${!}")
+GSPID2=$(sh -c "(printf \"date && echo Hello World && exit\n\") | ./gs-netcat -k id_sec.txt -w 2>client1_err.txt >client1_out.dat & echo \${!}")
+GSPID3=$(sh -c "(printf \"date && echo Hello World && exit\n\") | ./gs-netcat -k id_sec.txt -w 2>client2_err.txt >client2_out.dat & echo \${!}")
+GSPID4=$(sh -c "(printf \"date && echo Hello World && exit\n\") | ./gs-netcat -k id_sec.txt -w 2>client3_err.txt >client3_out.dat & echo \${!}")
 waitk $GSPID2 $GSPID3 $GSPID4
 kill $GSPID1
 if [ x"$(tail -2 client1_out.dat | grep 'Hello World')" == x ]; then fail 1; fi

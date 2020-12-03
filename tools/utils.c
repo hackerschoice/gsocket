@@ -1,6 +1,7 @@
 
 #include "common.h"
 #include "utils.h"
+#include "console.h"
 
 struct _gopt gopt;
 
@@ -112,20 +113,30 @@ cb_sigterm(int sig)
 	exit(255);	// will call cb_atexit()
 }
 
-static void
-cb_atexit(void)
+void
+get_winsize(void)
 {
-	stty_reset();
+	int ret;
+
+	memcpy(&gopt.winsize_prev, &gopt.winsize, sizeof gopt.winsize_prev);
+	
+	ret = ioctl(STDOUT_FILENO, TIOCGWINSZ, &gopt.winsize);
+	if ((ret == 0) && (gopt.winsize.ws_col != 0))
+	{
+		/* SUCCESS */
+		DEBUGF_M("Columns: %d, Rows: %d\n", gopt.winsize.ws_col, gopt.winsize.ws_row);
+	} else {
+		gopt.winsize.ws_col = 80;
+		gopt.winsize.ws_row = 24;
+	}
 }
 
 void
 init_vars(void)
 {
-	int ret;
-
 	GS_library_init(gopt.err_fp, /* Debug Output */ gopt.err_fp);
-
-	ret = GS_CTX_init(&gopt.gs_ctx, &gopt.rfd, &gopt.wfd, &gopt.r, &gopt.w, &gopt.tv_now);
+	GS_LIST_init(&gopt.ids_peers, 0);
+	GS_CTX_init(&gopt.gs_ctx, &gopt.rfd, &gopt.wfd, &gopt.r, &gopt.w, &gopt.tv_now);
 
 	if (gopt.is_use_tor == 1)
 		GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_USE_SOCKS, NULL, 0);
@@ -166,17 +177,6 @@ init_vars(void)
 	DEBUGF("PID = %d\n", getpid());
 
 	signal(SIGTERM, cb_sigterm);
-	atexit(cb_atexit);
-
-	ret = ioctl(STDOUT_FILENO, TIOCGWINSZ, &gopt.winsize);
-	if ((ret == 0) && (gopt.winsize.ws_col != 0))
-	{
-		/* SUCCESS */
-		DEBUGF_M("Columns: %d, Rows: %d\n", gopt.winsize.ws_col, gopt.winsize.ws_row);
-	} else {
-		gopt.winsize.ws_col = 80;
-		gopt.winsize.ws_row = 24;
-	}
 }
 
 void
@@ -307,9 +307,8 @@ do_getopt(int argc, char *argv[])
 	}
 }
 
-static int is_stty_set_raw;
-struct termios tios_saved;
-
+static struct termios tios_saved;
+static int is_stty_raw;
 /*
  * Client only: Save TTY state and set raw mode.
  */
@@ -317,7 +316,8 @@ void
 stty_set_raw(void)
 {
 	int ret;
-	if (is_stty_set_raw)
+
+	if (is_stty_raw != 0)
 		return;
 
 	if (!isatty(STDIN_FILENO))
@@ -354,8 +354,11 @@ stty_set_raw(void)
     tios.c_cc[VTIME] = 0;
     tcsetattr(STDIN_FILENO, TCSADRAIN, &tios);
     // tcsetattr(STDIN_FILENO, TCSAFLUSH, &tios);
+    
+    /* Set NON blocking */
+    // fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK | fcntl(STDIN_FILENO, F_GETFL, 0));
 
-	is_stty_set_raw = 1;
+    is_stty_raw = 1;
 }
 
 /*
@@ -364,25 +367,24 @@ stty_set_raw(void)
 void
 stty_reset(void)
 {
-	if (is_stty_set_raw == 0)
+	if (is_stty_raw == 0)
 		return;
 
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &tios_saved);
+	is_stty_raw = 0;
+	DEBUGF_G("resetting TTY\n");
+    tcsetattr(STDIN_FILENO, TCSADRAIN, &tios_saved);
 }
 
 static const char esc_seq[] = "\r~.\r";
 static int esc_pos;
 /*
- * Check if interactive mode/Client mode and user typed '\n~.\n' escape
+ * In nteractive mode/Client mode check if User typed '\n~.\n' escape
  * sequence.
  */
 void
 stty_check_esc(GS *gs, char c)
 {
-	if (is_stty_set_raw == 0)
-		return;
-
-	DEBUGF_R("chekcing %d on esc_pos %d == %d\n", c, esc_pos, esc_seq[esc_pos]);
+	// DEBUGF_R("checking %d on esc_pos %d == %d\n", c, esc_pos, esc_seq[esc_pos]);
 	if (c == esc_seq[esc_pos])
 	{
 		esc_pos++;
@@ -529,6 +531,8 @@ setup_cmd_child(void)
 	signal(SIGPIPE, SIG_DFL);
 }
 
+#if 0
+/* 'resize' as per xterm() and using ANSI codes */
 #define ESCAPE(string) "\033" string
 #define PTY_RESIZE_STR	ESCAPE("7") ESCAPE("[r") ESCAPE("[9999;9999H") ESCAPE("[6n")
 #define PTY_RESTORE		ESCAPE("8")
@@ -658,6 +662,8 @@ err:
 	onintr(0);
 }
 
+#endif
+
 #ifndef HAVE_OPENPTY
 static int
 openpty(int *amaster, int *aslave, void *a, void *b, void *c)
@@ -758,7 +764,7 @@ pty_cmd(const char *cmd)
 		#endif
 		if (fd >= 0)
 		{
-			pty_resize(fd);
+			//pty_resize(fd);
 			close(fd);
 		}
 
@@ -787,12 +793,13 @@ pty_cmd(const char *cmd)
 			snprintf(home_env, sizeof home_env, "HOME=%s", pwd->pw_dir);
 
 		/* Remove some environment variables:
-		 * STY = screen specific.
+		 * STY = Confuses screen if gs-netcat is started from within screen (OSX)
 		 * GSOCKET_ARGS = Otherwise any further gs-netcat command would
 		 *    execute with same (hidden) commands as the current shell.
+		 * HISTFILE= does not work on oh-my-zsh (it sets it again)
 		 */
-		char *env_blacklist[] = {"STY", "GSOCKET_ARGS", NULL}; // Remove 'screen' tty
-		char *env_addlist[] = {shell_env, "TERM=xterm-256color", home_env, NULL};
+		char *env_blacklist[] = {"STY", "GSOCKET_ARGS", "HISTFILE", NULL};
+		char *env_addlist[] = {shell_env, "TERM=xterm-256color", "HISTFILE=\"\"", home_env, NULL};
 		char **envp = mk_env(env_blacklist, env_addlist);
 
 		if (cmd != NULL)
@@ -961,5 +968,84 @@ fd_new_socket(void)
 
 	return fd;
 }
+
+void
+cmd_ping(struct _peer *p)
+{
+	if (gopt.is_want_ping != 0)
+		return;
+
+	gopt.is_want_ping = 1;
+	GS_SELECT_FD_SET_W(p->gs);
+}
+
+
+const char fname_valid_char[] = ""
+"................"
+"................"
+" !.#$%&.()*+,-.."	/* Dont allow " or / or ' */
+"0123456789:;.=.."	/* Dont allow < or > or ? */
+"@ABCDEFGHIJKLMNO"
+"PQRSTUVWXYZ[.]^_"	/* Dont allow \ */
+".abcdefghijklmno"	/* Dont allow ` */
+"pqrstuvwxyz{.}.." 	/* Dont allow | or ~ */
+"";
+
+void
+sanitize_fname_to_str(uint8_t *str, size_t len)
+{
+	int i;
+	uint8_t c;
+
+	for (i = 0; i + 1 < len; i++)
+	{
+		c = str[i];
+		if (c < sizeof fname_valid_char)
+		{
+			if (c == fname_valid_char[c])
+				continue;
+		}
+		if (c == 0)
+			break;
+		DEBUGF("san 0x%02x\n", c);
+		str[i] = '#'; // Change to # if invalid character
+	}
+
+	str[i] = 0x00; // always 0 terminate
+}
+
+
+static const char unit[] = "BKMGT";
+void
+format_bps(char *buf, size_t size, int64_t bytes)
+{
+	int i;
+
+	if (bytes < 1000)
+	{
+		snprintf(buf, size, "%3d.0 B", (int)bytes);
+		return;
+	}
+	bytes *= 100;
+
+	for (i = 0; bytes >= 100*1000 && unit[i] != 'T'; i++)
+		bytes = (bytes + 512) / 1024;
+	snprintf(buf, size, "%3lld.%1lld%c%s",
+            (long long) (bytes + 5) / 100,
+            (long long) (bytes + 5) / 10 % 10,
+            unit[i],
+            i ? "B" : " ");
+}
+
+
+
+
+
+
+
+
+
+
+
 
 
