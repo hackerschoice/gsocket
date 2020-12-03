@@ -6,7 +6,7 @@ AC_CONFIG_AUX_DIR(config)
 AC_CANONICAL_SYSTEM
 
 dnl we use automake
-AM_INIT_AUTOMAKE
+AM_INIT_AUTOMAKE([foreign])
 AM_CONFIG_HEADER(config.h)
 AM_PROG_AR
 dnl for --enable-maintainer-mode fun use:
@@ -25,7 +25,7 @@ dnl Use these compiler flags if we have gcc.
 dnl
 if test $ac_cv_prog_gcc = yes; then
   CCOPTS='-O2 -Wall'
-  CFLAGS="$CCOPTS"
+  CFLAGS="$CCOPTS $CFLAGS"
 fi
 test "x$prefix" != "xNONE" || prefix="/usr/local"
 test "x$exec_prefix" != "xNONE" || exec_prefix="${prefix}"
