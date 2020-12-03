@@ -79,6 +79,11 @@
 # define DEBUGF_W(a...)
 #endif
 
+#define SXPRINTF(ptr, len, a...) do {\
+        size_t n = snprintf(ptr, len, a); \
+        ptr += MIN(n, len); \
+} while(0)
+
 #define XFREE(ptr)  do{if(ptr) free(ptr); ptr = NULL;}while(0)
 
 #define xfprintf(fp, a...) do {if (fp != NULL) { fprintf(fp, a); fflush(fp); } } while (0)

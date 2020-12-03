@@ -17,6 +17,11 @@ void stty_set_raw(void);
 void stty_reset(void);
 void stty_check_esc(GS *gs, char c);
 char **mk_env(char **blacklist, char **addlist);
+void get_winsize(void);
+void cmd_ping(struct _peer *p);
+// void sanitze_name_to_string(uint8_t *str, size_t len);
+void sanitize_fname_to_str(uint8_t *str, size_t len);
+void format_bps(char *buf, size_t size, int64_t bytes);
 
 #define VLOG(a...)	do{if (gopt.log_fp != NULL){ fprintf(gopt.log_fp, a); fflush(gopt.log_fp); } }while(0)
 

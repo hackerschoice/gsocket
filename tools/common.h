@@ -12,6 +12,9 @@
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <sys/resource.h>
+#ifdef HAVE_SYS_LOADAVG_H
+# include <sys/loadavg.h> // Solaris11
+#endif
 #include <netinet/in.h>
 #ifdef HAVE_NETINET_IN_SYSTM_H
 # include <netinet/in_systm.h>
@@ -37,6 +40,12 @@
 #include <libgen.h>		/* basename() */
 #include <termios.h>
 #include <pwd.h>
+#ifdef HAVE_UTMPX_H
+# include <utmpx.h>
+#endif
+#ifdef HAVE_UTMP_H
+# include <utmp.h>
+#endif
 #ifdef HAVE_LIBUTIL_H
 # include <libutil.h>	/* FreeBSD */
 #endif
@@ -57,6 +66,11 @@
 #ifndef O_NOCTTY
 # warning "O_NOCTTY not defined. Using 0."
 # define O_NOCTTY 0
+#endif
+
+// Older fbsd's dont have this defined
+#ifndef UT_NAMESIZE
+# define UT_NAMESIZE	32
 #endif
 
 struct _gopt
@@ -84,6 +98,11 @@ struct _gopt
 	int is_daemon;
 	int is_logfile;
 	int is_quite;
+	int is_win_resized;     // window size changed (signal)
+	int is_console;		    // console is being displayed
+	int is_pong_pending;    // Server: Answer to PING waiting to be send
+	int is_want_ping;       // Client: Wants to send a ping
+	uint64_t ts_ping_sent;  // TimeStamp ping sent
 	fd_set rfd, r;
 	fd_set wfd, w;
 	struct timeval tv_now;
@@ -92,8 +111,17 @@ struct _gopt
 	uint16_t port;		/* NBO */
 	int listen_fd;
 	struct winsize winsize;
+	struct winsize winsize_prev;
+	int row_total; // Rows including console
 	int peer_count;
-	int peer_id_counter;	
+	int peer_id_counter;
+	GS_EVENT event_ping;
+	GS_EVENT event_bps;
+	GS_EVENT *event_ids;
+	GS_LIST ids_peers;
+	char *ids_active_user;
+	int ids_idle;
+	int n_users;             // Number of unique logged in users (from utmp)
 };
 
 struct _socks
@@ -118,18 +146,26 @@ struct _peer
 	GS *gs;
 	int fd_in;
 	int fd_out;	/* Same as fd_in unless client reads from stdin/stdout */
-	uint8_t rbuf[2048];	/* from GS */
+	uint8_t rbuf[2048];	/* from GS, to fd */
+	size_t r_max;
 	ssize_t rlen;
-	uint8_t wbuf[2048];	/* to GS */
+	uint8_t wbuf[2048];	/* from fd, to GS */
+	size_t w_max;
 	ssize_t wlen;
+	uint8_t pbuf[2048];	/* for pkt-encode/decode */
 	int is_network_forward;
 	int is_stdin_forward;
 	int is_app_forward;
 	int is_fd_connected;
 	int is_pty_first_read;		/* send stty hack */
+	int is_stty_set_raw;		/* Client only */
 	/* For Statistics */
 	int id;			/* Stats: assign an ID to each pere */
 	struct _socks socks;
+	GS_PKT pkt;		// In-band data for interactive shell (-i)
+	GS_LIST logs;   // Queue for log messages from Server to Client (-i)
+	int is_pending_logs; // Log files need to be send to peer.
+	GS_LIST_ITEM *ids_li;  // Peer is interested in global IDS logs
 };
 
 #define GSC_FL_IS_SERVER		(0x01)
@@ -177,6 +213,12 @@ extern struct _gopt gopt;
 # define DEBUGF_C(a...)
 # define DEBUGF_W(a...)
 #endif
+
+// Increase ptr by number of characters added to ptr.
+#define SXPRINTF(ptr, len, a...) do {\
+	size_t n = snprintf(ptr, len, a); \
+	ptr += MIN(n, len); \
+} while(0)
 
 #define VOUT(level, a...) do { \
 	if (level > gopt.verboselevel) \

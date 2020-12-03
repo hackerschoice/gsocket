@@ -6,7 +6,7 @@ AC_CONFIG_AUX_DIR(config)
 AC_CANONICAL_SYSTEM
 
 dnl we use automake
-AM_INIT_AUTOMAKE
+AM_INIT_AUTOMAKE([foreign])
 AM_CONFIG_HEADER(config.h)
 AM_PROG_AR
 dnl for --enable-maintainer-mode fun use:
@@ -25,7 +25,7 @@ dnl Use these compiler flags if we have gcc.
 dnl
 if test $ac_cv_prog_gcc = yes; then
   CCOPTS='-O2 -Wall'
-  CFLAGS="$CCOPTS"
+  CFLAGS="$CCOPTS $CFLAGS"
 fi
 test "x$prefix" != "xNONE" || prefix="/usr/local"
 test "x$exec_prefix" != "xNONE" || exec_prefix="${prefix}"
@@ -74,6 +74,9 @@ mips-sony-bsd|mips-sony-newsos4)
 	;;
 *-*-darwin*|*-*-*bsd*)
 	AC_DEFINE([BSD_SCRIPT], [1], [/usr/bin/script is the bsd variant])
+	if test x"$(which ar)" != x'/usr/bin/ar'; then
+		ARDIRWARN=1
+	fi
 	;;
 esac
 
@@ -91,7 +94,7 @@ AC_CHECK_LIB([ssl], [SRP_VBASE_get1_by_user], [], [AC_MSG_ERROR([SRP not support
 dnl Checks for header files.
 AC_HEADER_STDC
 AC_HEADER_SYS_WAIT
-AC_CHECK_HEADERS(sys/time.h unistd.h string.h pty.h openssl/srp.h util.h libutil.h netinet/in_systm.h)
+AC_CHECK_HEADERS(sys/time.h unistd.h string.h utmp.h utmpx.h pty.h openssl/srp.h util.h libutil.h netinet/in_systm.h sys/loadavg.h)
 
 AC_CHECK_HEADER(openssl/srp.h, [], [AC_MSG_ERROR([openssl/srp.h not found. Update OpenSSL?])])
 
@@ -138,6 +141,8 @@ if test x"$STATIC" = x"yes"; then
 	CFLAGS="-static ${CFLAGS}"
 fi
 
+AC_SUBST(PROGRAMS_TEST_LIB, "list-test event-test")
+dnl AC_SUBST(PROGRAMS_TEST_TOOLS, "nt-test")
 AC_OUTPUT([Makefile lib/Makefile tools/Makefile man/Makefile])
 
 echo "
@@ -159,5 +164,8 @@ ${PACKAGE_NAME}-${PACKAGE_VERSION} has been configured:
  Libraries.........: ${LIBS}
 
 Configuration complete. Now type: make all install"
-
+if test x"${ARDIRWARN}" = x1; then
+	AC_MSG_WARN([Build tools seem to be a mix of GNU and Apple.])
+	AC_MSG_WARN([Alex, try 'PATH=/usr/bin:\$PATH ./configure'.])
+fi
 

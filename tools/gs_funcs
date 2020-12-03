@@ -1,4 +1,4 @@
-#! /bin/bash
+#! /usr/bin/env bash
 
 # Find a sftp-server binary
 find_binary()
@@ -50,15 +50,8 @@ first_symbol()
 	echo ">>>$*-NOT-FOUND<<< "
 }
 
-# Verify that all symboles will get hijacked. exit on failure.
-# 			linux      osx		solaris
-# sftp		-Du			-pu		-Du
-# .so		-D|T		-p|T	-p|T
-uchroot_check()
+uchroot_check_sym()
 {
-	local VALID_CMD
-	local FAIL_CMD
-
 	command -v nm >/dev/null 2>&1 || { echo >&2 "chroot failed (nm not found. apt-get install binutils?). Try -U to disable."; exit 255; }
 
 	# Extract symbols from .so and sftp-server binary
@@ -91,6 +84,23 @@ uchroot_check()
 	for func in ${funclist}; do
 		ucheck_fail "${sym_sftp}" "${sym_uchr}" "${func}"
 	done
+}
+
+# Verify that all symboles will get hijacked. exit on failure.
+# 			linux      osx		solaris
+# sftp		-Du			-pu		-Du
+# .so		-D|T		-p|T	-p|T
+uchroot_check()
+{
+	local VALID_CMD
+	local FAIL_CMD
+
+	# skip nm-style symbol check on cygwin
+	# (sftp-server does not like nm on cygwin?!)
+	if [[ x"$OSTYPE" != "xcygwin"* ]]; then
+		# NOT cygwin
+		uchroot_check_sym
+	fi
 
 	# Run a self test (sftp -D sftp-server)
 	command -v sftp >/dev/null 2>&1 || { echo >&2 "chroot self-test failed (sftp not found). Try -U to disable."; exit 255; }
@@ -158,7 +168,12 @@ gs_init()
 	[[ -f "${BIN}" ]] && GS_NETCAT_BIN="${BIN}"
 	# shellcheck disable=SC2034 # appears unused. Verify use (or export if used externally).
 	GS_SFTP_BIN="${BASEDIR}/gs-sftp"
-	UCHROOT_BIN="${BASEDIR}/gs_uchroot_so"
+	EXE=""
+	if [[ x"$OSTYPE" == "xcygwin"* ]]; then
+		EXE=".exe"
+	fi
+
+	UCHROOT_BIN="${BASEDIR}/gs_uchroot_so${EXE}"
 	[[ -f "${UCHROOT_BIN}" ]] || { echo >&2 "${UCHROOT_BIN} not found."; exit 2; }
 
 	# To find sftp-server in PREFIX/lib
@@ -274,7 +289,7 @@ sftp_server_start()
 		if [[ -n "${IS_UCHROOT}" ]]; then
 			ROOTDIR=$(mktemp -d -t thc-gs-sftp-XXXXXXXXXXXXXXX) 
 		fi
-		SFTP_SERVER_BIN=$(find_binary sftp-server "$PREFIX"/lib /opt/csw/libexec /usr/lib /usr/local/lib /usr/libexec /usr/libexec/openssh /usr/lib/ssh)
+		SFTP_SERVER_BIN=$(find_binary sftp-server${EXE} "$PREFIX"/lib /opt/csw/libexec /usr/lib /usr/local/lib /usr/libexec /usr/libexec/openssh /usr/lib/ssh /usr/sbin)
 		PRELOAD="LD_PRELOAD=${UCHROOT_BIN}"
 	fi
 	[[ -z "${SFTP_SERVER_BIN}" ]] && { echo >&2 "sftp-server binary not found."; exit 1; }
