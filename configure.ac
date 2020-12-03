@@ -122,10 +122,11 @@ AC_ARG_ENABLE([31337],
 
 AC_ARG_ENABLE(debug,
 [  --enable-debug          Enable debug information],
-	AC_DEFINE(DEBUG, 1, [Debug infos])
+	AC_DEFINE(DEBUG, 1, [Debug infos]) 
 )
 
 AS_IF([test x$enable_debug = xyes], AC_DEFINE(D31337, 1, [Expermental feature]))
+AS_IF([test x$enable_debug = xyes], [debug=true])
 
 AC_ARG_ENABLE(dist,
 [  --enable-dist           Enable distribution mode, Use own libraries.],
@@ -141,8 +142,9 @@ if test x"$STATIC" = x"yes"; then
 	CFLAGS="-static ${CFLAGS}"
 fi
 
-AC_SUBST(PROGRAMS_TEST_LIB, "list-test event-test")
-dnl AC_SUBST(PROGRAMS_TEST_TOOLS, "nt-test")
+AS_IF([test x$debug = xtrue], AC_SUBST(PROGRAMS_TEST_LIB, "list-test event-test"))
+AS_IF([test x$debug = xtrue], AC_SUBST(PROGRAMS_TEST_TOOLS, "packet-test readline-test console_display-test"))
+
 AC_OUTPUT([Makefile lib/Makefile tools/Makefile man/Makefile])
 
 echo "
