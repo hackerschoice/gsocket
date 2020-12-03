@@ -1122,6 +1122,9 @@ console_command(struct _peer *p, const char *cmd)
 	} else if (memcmp(cmd, "get", 3) == 0) {
 		GS_condis_add(&gs_condis, 0, "Not yet implemented.");
 		GS_condis_draw(&gs_condis, 1);
+	} else if (memcmp(cmd, "xaitax", 6) == 0) {
+		GS_condis_add(&gs_condis, 0, "Thanks xaitax for testing!");
+		GS_condis_draw(&gs_condis, 1);
 	} else {
 		snprintf(buf, sizeof buf, "Command not known: '%s'", cmd);
 		GS_condis_add(&gs_condis, 0, buf);
