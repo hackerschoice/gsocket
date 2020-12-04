@@ -16,8 +16,8 @@
 #include "utils.h"
 
 #define ESCAPE(string) "\033" string
-#define PTY_RESIZE_STR	ESCAPE("7") ESCAPE("[r") ESCAPE("[9999;9999H") ESCAPE("[6n")
-#define PTY_RESTORE		ESCAPE("8")
+// #define PTY_RESIZE_STR	ESCAPE("7") ESCAPE("[r") ESCAPE("[9999;9999H") ESCAPE("[6n")
+// #define PTY_RESTORE		ESCAPE("8")
 #define PTY_SIZE_STR	ESCAPE("[%d;%dR")
 #define UIntClr(dst,bits) dst = dst & (unsigned) ~(bits)
 
@@ -980,6 +980,7 @@ console_start(void)
 	int row;
 	row = gopt.winsize.ws_row - GS_CONSOLE_ROWS;
 
+#if 0
 	// Get cursor's current location.
 	// int rv;
 	int current_row;
@@ -1003,6 +1004,19 @@ console_start(void)
 
 	// Save the cursor location from upper tier
 	SXPRINTF(ptr, end - ptr, "\x1B[s");
+#else
+
+	int i;
+	// Scroll up i lines
+	for (i = 0; i < GS_CONSOLE_ROWS; i++)
+		SXPRINTF(ptr, end - ptr, "\x1B""D");
+	// Move cursor up as well. Save cursor thereafter.
+	SXPRINTF(ptr, end - ptr, "\x1B[%dA\x1B[s", GS_CONSOLE_ROWS);
+	// Reset scrolling area. Will set cursor to 1;1.
+	SXPRINTF(ptr, end - ptr, "\x1b[1;%dr", row);
+	// Restore cursor to saved location
+	SXPRINTF(ptr, end - ptr, "\x1B[u");
+#endif
 
 	tty_write(buf, ptr - buf);
 }
@@ -1018,7 +1032,7 @@ console_stop(void)
 	char *ptr = buf;
 
 	// Clear console
-	SXPRINTF(ptr, end - ptr, "\x1B[%d;1f", gopt.winsize.ws_row - GS_CONSOLE_ROWS - 1);
+	SXPRINTF(ptr, end - ptr, "\x1B[%d;1f", gopt.winsize.ws_row - GS_CONSOLE_ROWS);
 	SXPRINTF(ptr, end - ptr, "\x1B[J");
 	// Reset scroll size
 	SXPRINTF(ptr, end - ptr, "\x1B[r");
@@ -1036,7 +1050,7 @@ hard_quit(void)
 {
 	CONSOLE_reset();
 	stty_reset();
-	printf("\nBye.\n");
+	printf("\n[Bye]\n");
 	exit(0); // hard exit.
 }
 
