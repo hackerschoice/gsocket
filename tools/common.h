@@ -262,16 +262,23 @@ extern struct _gopt gopt;
         fd = -1; \
 } while (0)
 
+#define XFCLOSE(fp)		do { \
+		if (fp == NULL) { DEBUGF_R("*** WARNING *** Closing BAD fp\n"); break; } \
+		fclose(fp); \
+		fp = NULL; \
+} while (0)
+
+
 #define XFD_SET(fd, set) do { \
         if (fd < 0) { DEBUGF_R("WARNING: FD_SET(%d, )\n", fd); break; } \
         FD_SET(fd, set); \
 } while (0)
 
 #ifdef DEBUG
-# define HEXDUMP(a, len)        do { \
-        int n = 0; \
+# define HEXDUMP(a, _len)        do { \
+        size_t _n = 0; \
         xfprintf(gopt.err_fp, "%s:%d HEX ", __FILE__, __LINE__); \
-        while (n < len) xfprintf(gopt.err_fp, "%2.2x", ((unsigned char *)a)[n++]); \
+        while (_n < (_len)) xfprintf(gopt.err_fp, "%2.2x", ((unsigned char *)a)[_n++]); \
         xfprintf(gopt.err_fp, "\n"); \
 } while (0)
 # define HEXDUMPF(a, len, m...) do{xfprintf(gopt.err_fp, m); HEXDUMP(a, len);}while(0)

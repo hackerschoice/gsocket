@@ -143,7 +143,7 @@ if test x"$STATIC" = x"yes"; then
 fi
 
 AS_IF([test x$debug = xtrue], AC_SUBST(PROGRAMS_TEST_LIB, "list-test event-test"))
-AS_IF([test x$debug = xtrue], AC_SUBST(PROGRAMS_TEST_TOOLS, "packet-test readline-test console_display-test"))
+AS_IF([test x$debug = xtrue], AC_SUBST(PROGRAMS_TEST_TOOLS, "packet-test readline-test console_display-test filetransfer-test"))
 
 AC_OUTPUT([Makefile lib/Makefile tools/Makefile man/Makefile])
 

@@ -172,6 +172,38 @@ GS_user_secret(GS_CTX *ctx, const char *sec_file, const char *sec_str)
 	return ptr;
 }
 
+uint64_t
+GS_usec(void)
+{
+	struct timeval tv;
+
+	gettimeofday(&tv, NULL);
+	return GS_TV_TO_USEC(&tv);
+}
+
+// 7 readable characters + 0
+static const char unit[] = "BKMGT";
+void
+GS_format_bps(char *dst, size_t size, int64_t bytes)
+{
+	int i;
+
+	if (bytes < 1000)
+	{
+		snprintf(dst, size, "%3d.0 B", (int)bytes);
+		return;
+	}
+	bytes *= 100;
+
+	for (i = 0; bytes >= 100*1000 && unit[i] != 'T'; i++)
+		bytes = (bytes + 512) / 1024;
+	snprintf(dst, size, "%3lld.%1lld%c%s",
+            (long long) (bytes + 5) / 100,
+            (long long) (bytes + 5) / 10 % 10,
+            unit[i],
+            i ? "B" : " ");
+}
+
 /*
  * Duplicate the process. Child returns. Parent monitors child
  * and re-spwans child if it dies.

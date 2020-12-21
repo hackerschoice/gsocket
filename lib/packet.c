@@ -178,7 +178,10 @@ GS_PKT_decode_single(GS_PKT *pkt, const uint8_t *src, size_t slen, uint8_t *dst,
 			/* First character after ESC is TYPE || CHN */			
 			pkt->type = *src;
 			if (pkt->type == 0x0)
+			{
+				DEBUGF_R("ERROR TYPE IS 0x00\n");
 				return -1;	// Protocol Error (FATAL)
+			}
 
 			if (GS_PKT_IS_CHANNEL(pkt->type))
 			{
@@ -221,6 +224,9 @@ GS_PKT_decode_single(GS_PKT *pkt, const uint8_t *src, size_t slen, uint8_t *dst,
 	return src - src_orig;
 }
 
+/*
+ * Return 0 on success.
+ */
 int
 GS_PKT_decode(GS_PKT *pkt, const uint8_t *src, size_t slen, uint8_t *dst, size_t *dlen)
 {

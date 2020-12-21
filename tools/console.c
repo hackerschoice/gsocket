@@ -31,7 +31,7 @@
 static void console_start(void);
 static void console_stop(void);
 static int console_command(struct _peer *p, const char *cmd);
-static void get_cursor_pos(int *row, int *col);
+// static void get_cursor_pos(int *row, int *col);
 
 static uint8_t chr_last;
 static int tty_fd = -1;
@@ -122,6 +122,7 @@ console_init(int fd)
 		return;
 }
 
+#if 0
 static int
 readstring(int fd, char *buf, size_t sz, const char *str)
 {
@@ -174,6 +175,7 @@ err:
 	// }
     return rv;
 }
+#endif
 
 static ssize_t
 tty_write(void *src, size_t len)
@@ -192,7 +194,7 @@ static int is_cursor_in_console;
 static void
 console_cursor_off(void)
 {
-	tty_write("\x1B[u", 3); // Move cursor to upper tier
+	tty_write("\x1B""8", 2); // Move cursor to upper tier
 
 	is_cursor_in_console = 0;
 }
@@ -247,7 +249,6 @@ mk_statusbar(void)
 	else
 		VSADDF(ptr, end, vc, "[%3dms]", (int)ms);
 
-	DEBUGF("Total User: %u\n", ci.n_users);
 	if (ci.load >= 1000)
 		VSADDF(ptr, end, vc, "[Load %02.02f][User(%u) ", (float)ci.load / 100, ci.n_users);
 	else
@@ -269,8 +270,9 @@ mk_statusbar(void)
 		VSADDF(ptr, end, vc, "*idle*");
 	VSADDF(ptr, end, vc, "]");
 
+	// BYTES/sec
 	char buf[8];
-	format_bps(buf, sizeof buf, (int64_t)ci.bps);
+	GS_format_bps(buf, sizeof buf, (int64_t)ci.bps);
 	VSADDF(ptr, end, vc, "[%s/s]", buf);
 
 	// Fill until end
@@ -337,6 +339,7 @@ CONSOLE_resize(struct _peer *p)
 	char *end = buf + sizeof buf;
 	int delta;
 
+	DEBUGF_R("RESIZE to %d;%d\n", gopt.winsize.ws_col, gopt.winsize.ws_row);
 	if (gopt.is_console)
 	{
 		delta = gopt.winsize.ws_row - gopt.winsize_prev.ws_row;
@@ -348,7 +351,7 @@ CONSOLE_resize(struct _peer *p)
 			// Assign scrolling area. Will reset cursor to 1;1
 			SXPRINTF(ptr, end - ptr, "\x1b[1;%dr", gopt.winsize.ws_row - GS_CONSOLE_ROWS);
 			// Restore cursor to upper tier
-			SXPRINTF(ptr, end - ptr, "\x1B[u");
+			SXPRINTF(ptr, end - ptr, "\x1B""8");
 			// Clear screen
 			SXPRINTF(ptr, end - ptr, "\x1B[J");
 		}
@@ -356,13 +359,15 @@ CONSOLE_resize(struct _peer *p)
 		if (delta < 0)
 		{
 			// Shorter: 
+			DEBUGF_R("Shorter. ScrollingArea to %d\n", gopt.winsize.ws_row - GS_CONSOLE_ROWS);
 			if (is_cursor_in_console)
 			{
-				SXPRINTF(ptr, end - ptr, "\x1B[u\x1B[J");
+				DEBUGF_R("cursor is IN console\n");
+				SXPRINTF(ptr, end - ptr, "\x1B""8""\x1B[J");
 				SXPRINTF(ptr, end - ptr, "\x1B[%dA", 0-delta);
-				SXPRINTF(ptr, end - ptr, "\x1B[s");
+				SXPRINTF(ptr, end - ptr, "\x1B""7");
 				SXPRINTF(ptr, end - ptr, "\x1b[1;%dr", gopt.winsize.ws_row - GS_CONSOLE_ROWS);
-				SXPRINTF(ptr, end - ptr, "\x1B[u");
+				SXPRINTF(ptr, end - ptr, "\x1B""8");
 
 				// WORKING
 				// SXPRINTF(ptr, end - ptr, "\x1B[u\x1B[J");
@@ -372,9 +377,10 @@ CONSOLE_resize(struct _peer *p)
 				// SXPRINTF(ptr, end - ptr, "\x1B[u");
 			} else {
 				// WORKING
+				DEBUGF_R("cursor is UPPER TIER\n");
 				SXPRINTF(ptr, end - ptr, "\x1B[%dS", 0-delta);
 				SXPRINTF(ptr, end - ptr, "\x1b[1;%dr", gopt.winsize.ws_row - GS_CONSOLE_ROWS);
-				SXPRINTF(ptr, end - ptr, "\x1B[u\x1B[%dA", 0-delta);
+				SXPRINTF(ptr, end - ptr, "\x1B""8""\x1B[%dA", 0-delta);
 			}
 		}
 		tty_write(buf, ptr - buf);
@@ -417,7 +423,7 @@ GS_sb_draw(int force)
 
 
 static void
-GS_prompt_draw(int row, int force)
+GS_prompt_draw(int force)
 {
 	char buf[512];
 	char *ptr = buf;;
@@ -428,7 +434,7 @@ GS_prompt_draw(int row, int force)
 	ci.is_prompt_redraw_needed = 0;
 
 	ptr = buf;
-	SXPRINTF(ptr, end - ptr, "\x1B[%d;1f" GS_CONSOLE_PROMPT "%s", row + GS_CONSOLE_ROWS, rl.vline);
+	SXPRINTF(ptr, end - ptr, "\x1B[%d;1f" GS_CONSOLE_PROMPT "%s", gopt.winsize.ws_row /*last*/, rl.vline);
 	tty_write(buf, ptr - buf);
 }
 
@@ -436,7 +442,7 @@ GS_prompt_draw(int row, int force)
  * Position active cursor to user input in console
  */
 static void
-GS_prompt_cursor(int row)
+GS_prompt_cursor(void)
 {
 	char buf[64];
 	char *ptr = buf;
@@ -449,20 +455,17 @@ GS_prompt_cursor(int row)
 static void
 console_draw(int fd, int force)
 {
-	int row = gopt.winsize.ws_row - (GS_CONSOLE_ROWS - 1);
-
 	if (gopt.is_console == 0)
 		return;
 
-	DEBUGF_R("CONSOLE DRAW (force=%d)\n", force);
-	// GS_condis_pos(row + 1, gopt.winsize.ws_col);
+	// DEBUGF_R("CONSOLE DRAW (force=%d)\n", force);
 
 	int cursor_to_prompt = 0;
 	cursor_to_prompt += ci.is_sb_redraw_needed;
 	cursor_to_prompt += gs_condis.is_redraw_needed;
 
 	if (is_cursor_in_console == 0)
-		tty_write("\x1B[s", 3);
+		tty_write("\x1B""7", 2);
 
 	// Status Bar (Normally black on blue)
 	GS_sb_draw(force);
@@ -471,15 +474,15 @@ console_draw(int fd, int force)
 	GS_condis_draw(&gs_condis, force);
 
 	// Prompt
-	GS_prompt_draw(row, force);
+	GS_prompt_draw(force);
 
 	// Restore cursor position
 	if (is_cursor_in_console == 0)
 	{
-		tty_write("\x1B[u", 3);
+		tty_write("\x1B""8", 2);
 	} else {
 		if (cursor_to_prompt)
-			GS_prompt_cursor(row);
+			GS_prompt_cursor();
 	}
 }
 
@@ -542,7 +545,7 @@ CONSOLE_check_esc(uint8_t c, uint8_t *submit)
 {
 	int esc;
 
-	DEBUGF_Y("key = 0x%02x\n", c);
+	// DEBUGF_Y("key = 0x%02x\n", c);
  	if (chr_last == GS_CONSOLE_ESC)
  	{
  		if (check_arrow(&esc, c) == 0)
@@ -606,11 +609,13 @@ CONSOLE_reset(void)
 	if (tty_fd < 0)
 		return;
 
+	DEBUGF_R("Resetting scolling area (rows %d)\n", gopt.winsize.ws_row);
 	if (gopt.is_console)
 	{
-		/* Reset scrolling area */
 		ptr = buf;
-		SXPRINTF(ptr, end - ptr, "\x1B[r");
+		// Reset scrolling area. Will set cursor to 1;1.
+		// SXPRINTF(ptr, end - ptr, "\x1B[r");
+		SXPRINTF(ptr, end - ptr, "\x1b[1;%dr", gopt.winsize.ws_row);
 		/* Move cursor to last line */
 		SXPRINTF(ptr, end - ptr, "\x1B[9999;9999H");
 		/* Restore cursor */
@@ -634,8 +639,118 @@ static struct _pat cls_pattern[] = {
 	{"\x1B[J", 3, 1},      // Clear screen from cursor down
 	{"\x1B[2J", 4, 1},     // Clear entire screen
 	{"\x1B[?1049h", 8, 2}, // Switch Alternate Screen Buffer (clears screen)
-	{"\x1B[?1049l", 8, 3}  // Switch Normal Screen Buffer (clears screen)
+	{"\x1B[?1049l", 8, 3}, // Switch Normal Screen Buffer (clears screen)
+	{"\x1B""c", 2, 4}        // Reset terminal to initial state
 };
+
+#ifdef DEBUG
+/*
+ * For debugging only.
+ * Find the next ansi sequence.
+ * Return the length of the sequence. Set 'is_ansi' if it's an ansi sequence.
+ * The sequence can be a non-ansi sequence (e.g. normal data) or an ansi sequnce.
+ */
+static size_t 
+ansi_next(void *data, size_t len, int *is_ansi)
+{
+	static int in_esc;
+	static int in_esc_pos;
+	uint8_t *src = (uint8_t *)data;
+	uint8_t *src_orig = src;
+	uint8_t *src_end = src + len;
+
+	in_esc_pos = 0;
+	in_esc = 0;
+	*is_ansi = 0;
+	if (*src == '\x1B')
+	{
+		src++;
+		*is_ansi = 1;
+		in_esc = 1;
+	}
+
+	for (; src < src_end; src++)
+	{
+		if (in_esc == 0)
+		{
+			if (*src != '\x1B')
+				continue;
+
+			*is_ansi = 0;
+			return src - src_orig;
+		}
+
+		// HERE: in escape sequence
+		// Check when escape finishes
+		if (*src == '\x1B')
+			break;
+		in_esc_pos++;
+
+		if (in_esc_pos == 1)
+		{
+			// Check if multi character esc sequence
+			if (*src == '[')
+				continue;
+			if (*src == '(')
+				continue;
+			if (*src == ')')
+				continue;
+			if (*src == '#')
+				continue; // Esc-#2
+			if (*src == '6')
+				continue; // Esc-6n
+			if (*src == '5')
+				continue;
+			if (*src == '0')
+				continue;
+			if (*src == '3')
+				continue;
+
+			break;
+		}
+
+		if (in_esc_pos >= 2)
+		{
+			if ((*src >= '0') && (*src <= '9'))
+				continue;
+			if (*src == ';')
+				continue;
+			if (*src == '?')
+				continue;
+
+			break;
+		}
+
+		break;
+	}
+	return src - src_orig + 1;
+}
+
+// For debugging
+static void
+ansi_output(void *data, size_t len)
+{
+	uint8_t *src = (uint8_t *)data;
+	uint8_t *src_end = src + len;
+	int is_ansi;
+	size_t n;
+	char buf[64];
+
+	while (src < src_end)
+	{
+		n = ansi_next(src, src_end - src, &is_ansi);
+		XASSERT(n > 0, "n is 0\n");
+		if (is_ansi)
+		{
+			snprintf(buf, sizeof buf, "%.*s", (int)(n - 1), src + 1);
+			DEBUGF_B("ansi: %s\n", buf);
+		}
+		else
+			HEXDUMP(src, n);
+		src += n;
+	}
+}
+#endif
 
 static uint8_t cls_buf[8];
 static size_t cls_pos;
@@ -656,12 +771,12 @@ static size_t cls_pos;
  * amount => Amount of data save to process (remaining is part of an
  * unfinished ansi sequence).
  */
-static int in_esc;
-static int in_esc_pos;
 
 static void
 ansi_parse(void *data, size_t len, size_t *amount, int *cls_code)
 {
+	static int in_esc;
+	static int in_esc_pos;
 	uint8_t *src = (uint8_t *)data;
 	uint8_t *src_orig = src;
 	uint8_t *src_end = src + len;
@@ -732,8 +847,8 @@ ansi_parse(void *data, size_t len, size_t *amount, int *cls_code)
 		cls_buf[cls_pos] = *src;
 		cls_pos++;
 
-		// Any sequence we are interested in is at least 3 chars long
-		if (cls_pos < 3)
+		// Any sequence we are interested in is at least 2 chars long
+		if (cls_pos < 2)
 			goto skip;
 
 		//Check if any ESC sequence matches
@@ -794,6 +909,9 @@ ansi_write(int fd, void *data, size_t len, int *cls_code)
 
 	if (write(fd, data, amount) != amount)
 		return -1;
+#ifdef DEBUG
+	ansi_output(data, amount);
+#endif
 
 	if (amount < len)
 	{
@@ -844,7 +962,7 @@ CONSOLE_write(int fd, void *data, size_t len)
 
 	/* Move cursor to upper tier if cursor inside console */
 	if (is_cursor_in_console)
-		tty_write("\x1B[u", 3); // Restore cursor
+		tty_write("\x1B""8", 2); // Restore cursor
 
 	ssize_t sz;
 	sz = ansi_write(fd, data, len, &is_detected_clearscreen);
@@ -858,15 +976,17 @@ CONSOLE_write(int fd, void *data, size_t len)
 		// HEXDUMP(data, MIN(16, len));
 
 	if (is_cursor_in_console)
-		tty_write("\x1B[s", 3);  // Save cursor position
+		tty_write("\x1B""7", 2);  // Save cursor position
 
+
+	// Now check if console needs to be re-drawn
 	if (is_detected_clearscreen == 2)
 	{
 		// Switch to Alternate Screen Buffer detected
 		is_console_before_sb = gopt.is_console;
 	}
 
-	// DEBUGF_G("cls = %d before = %d, now %d\n", is_detected_clearscreen, is_console_before_sb, gopt.is_console);
+	// DEBUGF_G("cls = %d iscon-before = %d, iscon-now %d\n", is_detected_clearscreen, is_console_before_sb, gopt.is_console);
 	if (is_detected_clearscreen == 3)
 	{
 		// Switched to Normal Screen Buffer detected
@@ -878,6 +998,13 @@ CONSOLE_write(int fd, void *data, size_t len)
 			else
 				console_start();
 		}
+	}
+
+	if (is_detected_clearscreen == 4)
+	{
+		DEBUGF_R("RESET of terminal detected.\n");
+		if (gopt.is_console)
+			console_start();
 	}
 
 	if (gopt.is_console == 0)
@@ -950,6 +1077,7 @@ CONSOLE_readline(struct _peer *p, void *data, size_t len)
 	return 1;
 }
 
+#if 0
 static void
 get_cursor_pos(int *row, int *col)
 {
@@ -966,6 +1094,7 @@ get_cursor_pos(int *row, int *col)
 
 	DEBUGF_G("Current Cursor row=%d col=%d\n", *row, *col);
 }
+#endif
 
 /*
  * Set up terminal to display console (e.g. scroll upper tier up
@@ -980,43 +1109,17 @@ console_start(void)
 	int row;
 	row = gopt.winsize.ws_row - GS_CONSOLE_ROWS;
 
-#if 0
-	// Get cursor's current location.
-	// int rv;
-	int current_row;
-	int current_col;
-	get_cursor_pos(&current_row, &current_col);
-
-	// Current cursor is inside console's space. Scroll up...
-	if (current_row > row)
-		SXPRINTF(ptr, end - ptr, "\x1b[%dS", current_row - row);
-
-	// Reduce scrolling area (will reset cursor to 0;0)
-	SXPRINTF(ptr, end - ptr, "\x1b[1;%dr", row);
-
-	// We scrolled up. Cursor was in console area. Set to last row.
-	int new_row = current_row; // Default: Leave cursor where it was
-	if (current_row > row)
-		new_row = row;	// Set cursor to last row of new scrolling area
-
-	// Adjust cursor to new location after [r moved it to 0;0
-	SXPRINTF(ptr, end - ptr, "\x1b[%d;%dH", new_row, current_col);
-
-	// Save the cursor location from upper tier
-	SXPRINTF(ptr, end - ptr, "\x1B[s");
-#else
-
 	int i;
 	// Scroll up i lines
 	for (i = 0; i < GS_CONSOLE_ROWS; i++)
 		SXPRINTF(ptr, end - ptr, "\x1B""D");
-	// Move cursor up as well. Save cursor thereafter.
-	SXPRINTF(ptr, end - ptr, "\x1B[%dA\x1B[s", GS_CONSOLE_ROWS);
-	// Reset scrolling area. Will set cursor to 1;1.
+	// Move cursor up. Then save cursor pos.
+	SXPRINTF(ptr, end - ptr, "\x1B[%dA\x1B""7", GS_CONSOLE_ROWS);
+	// Set scrolling area. Will set cursor to 1;1.
+	DEBUGF("Setting Scrolling area to %d\n", row);
 	SXPRINTF(ptr, end - ptr, "\x1b[1;%dr", row);
 	// Restore cursor to saved location
-	SXPRINTF(ptr, end - ptr, "\x1B[u");
-#endif
+	SXPRINTF(ptr, end - ptr, "\x1B""8");
 
 	tty_write(buf, ptr - buf);
 }
@@ -1037,7 +1140,7 @@ console_stop(void)
 	// Reset scroll size
 	SXPRINTF(ptr, end - ptr, "\x1B[r");
 	// Restore cursor to upper tier (shell)
-	SXPRINTF(ptr, end - ptr, "\x1B[u");
+	SXPRINTF(ptr, end - ptr, "\x1B""8");
 	tty_write(buf, ptr - buf);
 	is_cursor_in_console = 0;
 }
@@ -1050,7 +1153,6 @@ hard_quit(void)
 {
 	CONSOLE_reset();
 	stty_reset();
-	printf("\n[Bye]\n");
 	exit(0); // hard exit.
 }
 
@@ -1066,6 +1168,15 @@ CONSOLE_action(struct _peer *p, uint8_t key)
 
 	if (key == 'q')
 		hard_quit();
+
+#ifdef DEBUG
+	if (key == 'l')
+	{
+		DEBUGF_B("redraw\n");
+		mk_statusbar();
+		console_draw(p->fd_out, 1);
+	}
+#endif
 
 	if (key == 'c')
 	{

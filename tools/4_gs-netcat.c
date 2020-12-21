@@ -169,6 +169,7 @@ cb_atexit(void)
 {
 	CONSOLE_reset();
 	stty_reset();
+	printf("\n[Bye]\n");
 }
 
 /* *********************** FD READ / WRITE ******************************/

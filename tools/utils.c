@@ -1015,28 +1015,6 @@ sanitize_fname_to_str(uint8_t *str, size_t len)
 }
 
 
-static const char unit[] = "BKMGT";
-void
-format_bps(char *buf, size_t size, int64_t bytes)
-{
-	int i;
-
-	if (bytes < 1000)
-	{
-		snprintf(buf, size, "%3d.0 B", (int)bytes);
-		return;
-	}
-	bytes *= 100;
-
-	for (i = 0; bytes >= 100*1000 && unit[i] != 'T'; i++)
-		bytes = (bytes + 512) / 1024;
-	snprintf(buf, size, "%3lld.%1lld%c%s",
-            (long long) (bytes + 5) / 100,
-            (long long) (bytes + 5) / 10 % 10,
-            unit[i],
-            i ? "B" : " ");
-}
-
 
 
 
