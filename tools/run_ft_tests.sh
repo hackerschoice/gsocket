@@ -4,6 +4,7 @@ command -v md5 >/dev/null 2>&1 		&& MD5(){ md5 -q "${1}";}
 command -v md5sum >/dev/null 2>&1 	&& MD5() { md5sum "${1}" | cut -f1 -d' ';}
 
 IODIR=ft_test_io
+IODIRSRC=ft_test_src
 OK="....[\033[1;32mOK\033[0m]"
 FAIL="[\033[1;31mFAILED\033[0m]"
 ECHO="echo -e"
@@ -19,8 +20,8 @@ mk_dummy test8k.dat 8
 
 test_start()
 {
+	rm -rf "${IODIR}/" &>/dev/null
 	mkdir -p "${IODIR}" &>/dev/null
-	rm -rf "${IODIR}/"*.dat &>/dev/null
 	[[ x"$1" != x ]] && $ECHO $*
 }
 
@@ -45,10 +46,11 @@ run_put()
 # tests="1.0 "
 # tests+="1.1 "
 # tests+="1.2 "
-tests+="1.3 "
+# tests+="1.3 "
 # tests+="2.1 2.2 "
 # tests+="2.3 "
 # tests+="3.1 3.2 3.3 "
+tests+="3.4 "
 # tests+="4.1 "
 # tests+="4.2 "
 # tests+="4.3 "
@@ -75,14 +77,29 @@ run_put not-exists.dat
 $ECHO "${OK}"
 fi
 
+run_put_fail()
+{
+	rm -rf "${IODIR}/" &>/dev/null
+	mkdir -p "${IODIR}" &>/dev/null
+	run_put "$2"
+	[[ -f "$3" ]] || fail "$1"
+	rm -f "$3"
+}
+
 if [[ "$tests" =~ '1.3 ' ]]; then
 test_start -n "Running #1.3 (absolute file)..............................."
-# run_put /etc/hosts
-cp test1k.dat ./foo/bar/test1k.dat
-run_put ./foo/bar/test1k.dat
-# run_put /./etc/hosts ../tools/test1k.dat
-ls -al "${IODIR}/foo/bar"
-exit
+mkdir -p "${IODIRSRC}/foo/bar"
+cp test1k.dat "${IODIRSRC}/foo/bar/test1k.dat"
+
+run_put_fail 1 "${IODIRSRC}/foo/bar/test1k.dat" "${IODIR}/test1k.dat"
+run_put_fail 2 "${IODIRSRC}/foo/bar/./test1k.dat" "${IODIR}/test1k.dat"
+run_put_fail 3 "./${IODIRSRC}/foo/bar/test1k.dat" "${IODIR}/test1k.dat"
+run_put_fail 4 "${IODIRSRC}/foo/./bar/test1k.dat" "${IODIR}/bar/test1k.dat"
+run_put_fail 5 "././${IODIRSRC}/foo/bar/test1k.dat" "${IODIR}/${IODIRSRC}/foo/bar/test1k.dat"
+run_put_fail 6 "${IODIRSRC}/foo/../foo/bar/test1k.dat" "${IODIR}/test1k.dat"
+run_put_fail 7 "${IODIRSRC}/foo/../foo/./bar/test1k.dat" "${IODIR}/bar/test1k.dat"
+run_put_fail 8 "${PWD}/${IODIRSRC}/foo/bar/test1k.dat" "${IODIR}/test1k.dat"
+# run_put foo/./../foo/../foo/bar/test1k.dat # escape. wanted behavior (?).
 [[ -f "${IODIR}/etc/hosts" ]] && fail 1
 $ECHO "${OK}"
 fi
@@ -133,8 +150,16 @@ if [[ "$tests" =~ '3.3 ' ]]; then
 test_start -n "Running #3.3 (dir not writeable)..........................."
 chmod a-w "${IODIR}"
 run_put test4k.dat
-chmod u+w "${IODIR}"
 [[ -f "${IODIR}/test4k.dat" ]] && fail 1
+$ECHO "${OK}"
+fi
+
+if [[ "$tests" =~ '3.4 ' ]]; then
+test_start -n "Running #3.4 (src not readable)............................"
+chmod a-r test4k.dat
+run_put test4k.dat
+[[ -f "${IODIR}/test4k.dat" ]] && fail 1
+chmod a+r test4k.dat
 $ECHO "${OK}"
 fi
 
@@ -144,7 +169,7 @@ chmod 462 test4k.dat
 # chmod u+s test4k.dat # On MacOS our own app can not set +s...
 run_put test4k.dat
 [[ x`stat -f%A "test4k.dat"` = x`stat -f%A "${IODIR}/test4k.dat"` ]] || fail 1
-chmod 644 "${IODIR}/test4k.dat"
+chmod 644 test4k.dat
 $ECHO "${OK}"
 fi
 
@@ -157,7 +182,7 @@ $ECHO "${OK}"
 fi
 
 if [[ "$tests" =~ '4.3 ' ]]; then
-test_start -n "Running #4.2 (zero-size, mtime)............................"
+test_start -n "Running #4.3 (zero-size, mtime)............................"
 touch -r /etc/hosts zero.dat
 run_put zero.dat
 [[ x`stat -f%a "zero.dat"` = x`stat -f%a "${IODIR}/zero.dat"` ]] || fail 1

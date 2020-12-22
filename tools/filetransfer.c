@@ -12,7 +12,7 @@ static uint32_t GS_mode2fperm(mode_t m);
 
 #if 0
 0 FIXME: must make sure that server cant request transfer from client!
-- test when file becomes unavaialble after after it was added.
+- test when file becomes unavaialble after it was added.
 - Sym Link
 - max buffer size 64 macro somewhere needed
 - queue up all 'put' requests and send as 1 large message or loop around write() while we can.
@@ -21,6 +21,9 @@ static uint32_t GS_mode2fperm(mode_t m);
   (add files until it does not fit. Return to caller the ID that failed and let caller decide
   if he likes to remove that ID from our list or just let caller try again until it fits...)
   is there a limt?
+- retain fperm/mtime on directories
+- empty directories
+
 
 
 - implement GS_FT_get()
@@ -32,8 +35,8 @@ TEST CASES:
 4. same file in command line
 5. src file can not be opened or read error.
 6. write to symlink
-7. zero file size
-8. retain timestamp
+#7. zero file size
+#8. retain timestamp
 #endif
 
 void
@@ -191,24 +194,47 @@ GS_FT_put(GS_FT *ft, const char *fname)
 	if (!S_ISREG(res.st_mode))
 		return -2;
 
-STOP HERE:
-- if we want to retain umask/mtime of directories then we need to create them on remote as well
-and need a flag
-- empty directory (ignore for now?! Create on server side on the fly when needed)
-- /./etc/hosts (create directoyr on the fly when needed - for now. later implement on client side to
-	add directories up to filename to create them and globbing can also add directories...)
 	struct _gs_ft_file *f;
 	f = calloc(1, sizeof *f);
-	char *str = strdup(fname);
-	f->name = strdup(basename(str));
-	free(str);
+
+	/*
+	 * Consider these possibilities (examples)
+	 * /tmp/foo/bar/hosts
+	 * /./tmp/foo/bar/hosts
+	 * /tmp/foo/./bar/./hosts
+	 * /tmp/./foo/bar/hosts
+	 * hosts
+	 * foo/bar/host
+	 */
+	// Find token after last occurance of '/./'
+	const char *str = fname;
+	char *token;
+	int found = 0;
+	while (1)
+	{
+		token = strstr(str, "/./");
+		if (token == NULL)
+			break;
+		found = 1;
+		str = token + 3; // skip '/./'
+	}
+	// str contains everything after '/./' or fname if '/./' not found.
+	if (found == 0)
+	{
+		// HERE: No '/./'. Use basename (file only, no directory part)
+		char *s = strdup(fname); // basename() might modify str :/
+		f->name = strdup(basename(s));
+		free(s);
+	} else {
+		f->name = strdup(str);
+	}
+
 	f->realname = realfname;
 	f->fsize = res.st_size;
 	f->mode = res.st_mode;
 	f->mtime = res.st_mtime;
 
-	DEBUGF_Y("mode = %o\n", res.st_mode & ~S_IFMT);
-
+	// DEBUGF_Y("mode = %o\n", res.st_mode & ~S_IFMT);
 	DEBUGF_Y("#%u name = %s\n", ft->g_id, f->name);
 	f->li = GS_LIST_add(&ft->fqueue, NULL, f, ft->g_id);
 	ft->g_id += 1;
@@ -325,6 +351,35 @@ GS_FT_accept(GS_FT *ft, uint32_t id, int64_t offset_dst)
 	f->offset = offset_dst;
 }
 
+/*
+ * Create all directories up to file
+ * /tmp/foo/bar/test.dat would create /tmp/foo/bar/
+ * /tmp/foo/bar/test.dat/ would create /tmp/foo/bar/test.dat/
+ */
+static void
+mkdirp(const char *file)
+{
+	char *f = strdup(file);
+
+	char *ptr = f;
+	while (1)
+	{
+		ptr = index(ptr, '/');
+		if (ptr == NULL)
+			break;
+		*ptr = '\0';
+		if (*f != 0)
+		{
+			DEBUGF_W("mkdir(%s)\n", f);
+			mkdir(f, 0755);
+		}
+		*ptr = '/';
+		ptr += 1;
+	}
+
+	free(f);
+}
+
 // SERVER
 void
 GS_FT_switch(GS_FT *ft, uint32_t id, int64_t offset)
@@ -370,7 +425,8 @@ GS_FT_switch(GS_FT *ft, uint32_t id, int64_t offset)
 	// new->fsize = fsize;
 	if (offset == 0)
 	{
-		DEBUGF_G("New file\n");
+		DEBUGF_G("New file (%s)\n", new->name);
+		mkdirp(new->name);
 		new->fp = fopen(new->realname, "w");
 	} else {
 		// Check fsize of local file.
@@ -618,7 +674,7 @@ GS_FT_packet(GS_FT *ft, void *dst, size_t len, int *pkt_type)
 	struct _gs_ft_file *f;
 	size_t sz;
 
-	// DEBUGF("puts %d, accepted %d, len %zu\n", ft->fputs.n_items, ft->faccepted.n_items, len);
+	DEBUGF("GS_FT_packet() %d, accepted %d, len %zu\n", ft->fputs.n_items, ft->faccepted.n_items, len);
 
 	*pkt_type = GS_FT_TYPE_NONE;
 	if (len < GS_FT_MIN_BUF_SIZE)

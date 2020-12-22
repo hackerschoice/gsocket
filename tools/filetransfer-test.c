@@ -159,6 +159,24 @@ mk_packet(void)
 	return 0;
 }
 
+static void
+do_test(void)
+{
+	// char *fname = "/tmp/foo/./bar/hosts";
+	char fname[80] = "This is/./www.tutorialspoint.com/./website";
+	char *str;
+	char s[4] = "/./";
+
+	DEBUGF("mkar\n");
+	str = strtok(fname, s);
+	DEBUGF("mkar\n");
+	while (str != NULL)
+	{
+		DEBUGF("'%s'\n", str);
+		str = strtok(NULL, s);
+	}
+	exit(0);
+}
 
 int
 main(int arc, char *argv[])
@@ -173,6 +191,8 @@ main(int arc, char *argv[])
 	GS_library_init(stderr, stderr);
 	gopt.err_fp = stderr;
 	gopt.log_fp = stderr;
+
+	// do_test();
 
 	GS_PKT_init(&pkt);
 
