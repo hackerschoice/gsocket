@@ -29,9 +29,9 @@ readline_test_LDADD = ../lib/libgsocket.a
 console_display_test_SOURCES = console_display.c console_display-test.c utils.c
 console_display_test_LDADD = ../lib/libgsocket.a
 
-filetransfer_test_SOURCES = filetransfer.c filetransfer-test.c utils.c
+filetransfer_test_SOURCES = filetransfer.c filetransfer-test.c utils.c globbing.c
 filetransfer_test_LDADD = ../lib/libgsocket.a
 
 EXTRA_DIST = run_all_tests.sh
-noinst_HEADERS = common.h utils.h socks.h console.h ids.h event_mgr.h pkt_mgr.h gs-netcat.h console_display.h filetransfer.h man_gs-netcat.h
+noinst_HEADERS = common.h utils.h socks.h console.h ids.h event_mgr.h pkt_mgr.h gs-netcat.h console_display.h filetransfer.h man_gs-netcat.h globbing.h
 AM_CFLAGS = -I../include

@@ -1,7 +1,8 @@
 #ifndef __GS_PACKET_H__
 #define __GS_PACKET_H__ 1
 
-#define GS_PKT_MAX_SIZE		(2048)
+#define GS_PKT_MAX_SIZE		(2048)  // content length without pkt-header (2 or 4 bytes)
+#define GS_PKT_HDR_MAX_SIZE (4)
 #define GS_PKT_MAX_MSG		128  // type = 0..127
 #define GS_PKT_MAX_CHN		128  // type = 128..255 
 // #define GS_PKT_ESC			'e'  // TESTING ONLY

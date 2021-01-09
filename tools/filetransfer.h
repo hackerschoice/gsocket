@@ -1,11 +1,12 @@
 #ifndef __GS_FILETRANSFER_H__
 #define __GS_FILETRANSFER_H__ 1
 
-#define GS_FT_CHN_PUT       (0)
-#define GS_FT_CHN_ACCEPT    (1)
-#define GS_FT_CHN_DATA      (3)
-#define GS_FT_CHN_ERROR     (4)
-#define GS_FT_CHN_SWITCH    (5)
+#define GS_FT_CHN_PUT       (0)  // 128
+#define GS_FT_CHN_ACCEPT    (1)  // 129
+
+#define GS_FT_CHN_DATA      (3)  // 131 0x83
+#define GS_FT_CHN_ERROR     (4)  // 132
+#define GS_FT_CHN_SWITCH    (5)  // 133 0x85
 
 // Number of bytes needed for largest message (could be data)
 #define GS_FT_MIN_BUF_SIZE	(64)
@@ -86,6 +87,8 @@ typedef struct
 	gsft_cb_status_t func_status;
 
 	GS_LIST qerrs;      // queue'd errors
+	int is_server;
+	int is_paused_data;    // write() blocked. Queue control data. Pause sending file data
 
 	int n_files_waiting;   // Files waiting for completion or error
 
@@ -139,7 +142,7 @@ struct _gs_ft_error
 #define GS_FT_ERR_NODATA       (10)
 #define GS_FT_ERR_COMPLETED    (128) // All data written successfully
 
-void GS_FT_init(GS_FT *ft, gsft_cb_stats_t func, gsft_cb_status_t);
+void GS_FT_init(GS_FT *ft, gsft_cb_stats_t func_stats, gsft_cb_status_t func_status, int is_server);
 void GS_FT_free(GS_FT *ft);
 int GS_FT_add_file(GS_FT *ft, uint32_t id, const char *fname, size_t len, int64_t fsize, uint32_t mtime, uint32_t fperm);
 int GS_FT_put(GS_FT *ft, const char *fname);
@@ -149,6 +152,8 @@ void GS_FT_data(GS_FT *ft, const void *data, size_t len);
 void GS_FT_status(GS_FT *ft, uint32_t id, uint8_t code, const char *err_str, size_t len);
 // void GS_FT_del_file(GS_FT *ft, uint32_t id);
 size_t GS_FT_packet(GS_FT *ft, void *dst, size_t len, int *pkt_type);
+void GS_FT_pause_data(GS_FT *ft);
+void GS_FT_unpause_data(GS_FT *ft);
 int GS_FT_WANT_WRITE(GS_FT *ft);
 
 // Packet types

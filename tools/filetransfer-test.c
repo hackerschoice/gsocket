@@ -6,19 +6,28 @@ mkdir -p test
 rm -rf test/test*.dat
 socat SYSTEM:'./filetransfer-test c test4k.dat test8k.dat 2>client.log' SYSTEM:'(cd test; ../filetransfer-test s 2>../server.log)'
 
+socat SYSTEM:'./filetransfer-test c /usr/share/man/./  2>client.log' SYSTEM:'(cd test; ../filetransfer-test s 2>../server.log)'
+STOP HERE (not working): 
+socat SYSTEM:'./filetransfer-test c /usr/share/man/mann  2>client.log' SYSTEM:'(cd test; ../filetransfer-test s 2>../server.log)'
+is this a blocking problem? or some odd files that are not normal files?
+
+FIXME:
+- test that buffer does not go heywire when write() blocks or when write() is incomplete (8192).
+   (i really should PAUSE transfer if write() is incomplete???)
+- 
  */
 
 #include "common.h"
 #include "filetransfer.h"
 #include "utils.h"
 
-#define BUF_LEN		(1024)
+#define BUF_LEN		(250)
+// #define BUF_LEN		(GS_PKT_MAX_SIZE)
 
 static GS_PKT pkt;
 static GS_FT ft;
-static int is_server;
-static uint8_t wbuf[GS_PKT_MAX_SIZE];
-static size_t wlen;
+static GS_BUF gsb;
+static fd_set rfds, wfds;
 
 /* SERVER receiving PUT from client */
 static void
@@ -110,26 +119,35 @@ cb_status(void *ft_ptr, struct _gs_ft_status *s)
 	DEBUGF_M("File  : %s\n", s->file->name);
 }
 
+/*
+ * Return -1 when all done (must exit)
+ * Return 0 on success.
+ * Return 1 when waiting for data
+ */
 int
 mk_packet(void)
 {
-	struct gs_pkt_chn_hdr *hdr = (struct gs_pkt_chn_hdr *)wbuf;
+	struct gs_pkt_chn_hdr *hdr = (struct gs_pkt_chn_hdr *)GS_BUF_WDST(&gsb);
 	int pkt_type;
 	size_t sz;
 
-	sz = GS_FT_packet(&ft, wbuf + sizeof *hdr, sizeof wbuf - sizeof *hdr, &pkt_type);
-	XASSERT(sz <= sizeof wbuf - sizeof *hdr, "Oops, GS_FT_packet() to long. sz=%zu.\n", sz);
+	size_t max_len;
 
-	// DEBUGF("sz %zu, type %d\n", sz, pkt_type);
+	max_len = MIN(GS_PKT_MAX_SIZE, GS_BUF_UNUSED(&gsb) - sizeof *hdr);
+
+	// if (GS_BUF_USED(&gsb) > 0)
+	// 	DEBUGF_Y("%zu bytes already in buffer, max_len=%zu\n", GS_BUF_USED(&gsb), max_len);
+	memset(GS_BUF_WDST(&gsb), 0, max_len); // FIXME
+	sz = GS_FT_packet(&ft, GS_BUF_WDST(&gsb) + sizeof *hdr, max_len, &pkt_type);
+
 	switch (pkt_type)
 	{
 	case GS_FT_TYPE_NONE:
 		// Nothing to write...waiting for peer's reply.
-		DEBUGF_G("TYPE NONE\n");
-		return 0;
+		// DEBUGF_G("TYPE NONE\n");
+		return 1;
 	case GS_FT_TYPE_PUT:
 		hdr->type = GS_PKT_CHN2TYPE(GS_FT_CHN_PUT);
-		// HEXDUMP(wbuf, sizeof *hdr + sz);
 		break;
 	case GS_FT_TYPE_ERROR:
 		hdr->type = GS_PKT_CHN2TYPE(GS_FT_CHN_ERROR);
@@ -144,7 +162,7 @@ mk_packet(void)
 		hdr->type = GS_PKT_CHN2TYPE(GS_FT_CHN_DATA);
 		break;
 	case GS_FT_TYPE_DONE:
-		// CLIENT only. Server always keeps listening.
+		// CLIENT only: done with all files.
 		DEBUGF_G("All done.\n");
 		return -1;
 	default:
@@ -152,29 +170,54 @@ mk_packet(void)
 	}
 
 	hdr->esc = GS_PKT_ESC;
-	hdr->len = htons(sz);
+	uint16_t len = htons(sz);
+	memcpy(&hdr->len, &len, sizeof len);
+	// DEBUGF("Packet type=%u length %zu + %zu\n", hdr->type, sizeof *hdr, sz);
 
-	wlen = sizeof *hdr + sz;
+	// if (hdr->type == 131)
+	// {
+	// 	static FILE *dfp;
+	// 	if (dfp == NULL)
+	// 		dfp = fopen("packet-out.dat", "w");
+	// 	fwrite(GS_BUF_WDST(&gsb), 1, sizeof *hdr + sz, dfp); fflush(dfp);
+	// }
+	// STOP HERE: packet-out.dat shows correct data but output.dat (from write()) does not..
+
+	XASSERT(sz + sizeof *hdr <= GS_BUF_UNUSED(&gsb), "Oops, GS_FT_packet() to long. sz=%zu, unusued=%zu.\n", sz, GS_BUF_UNUSED(&gsb));
+	GS_BUF_add(&gsb, sizeof *hdr + sz);
+
+	// if (hdr->type == 131)
+	// {
+	// 	static FILE *dxfp;
+	// 	if (dxfp == NULL)
+	// 		dxfp = fopen("packet-out-after.dat", "w");
+	// 	fwrite(GS_BUF_WDST(&gsb) - sizeof *hdr - sz, 1, sizeof *hdr + sz, dxfp); fflush(dxfp);
+	// }
 
 	return 0;
 }
 
+#include "globbing.h"
 static void
-do_test(void)
+glob_cb(GS_GL *res)
 {
-	// char *fname = "/tmp/foo/./bar/hosts";
-	char fname[80] = "This is/./www.tutorialspoint.com/./website";
-	char *str;
-	char s[4] = "/./";
+	DEBUGF("Inside Globbing CB %s\n", res->name);
+	if (GS_FT_put(&ft, res->name) != 0)
+		DEBUGF_Y("Not valid: %s\n", res->name); // not found or directory
+}
 
-	DEBUGF("mkar\n");
-	str = strtok(fname, s);
-	DEBUGF("mkar\n");
-	while (str != NULL)
-	{
-		DEBUGF("'%s'\n", str);
-		str = strtok(NULL, s);
-	}
+
+static void
+glob_cb_test(GS_GL *res)
+{
+	DEBUGF("Inside Globbing CB %s\n", res->name);
+}
+static void
+do_test(const char *exp)
+{
+	if (exp == NULL)
+		exp = "/tmp/fo*";
+	GS_GLOBBING(glob_cb_test, exp);
 	exit(0);
 }
 
@@ -187,56 +230,49 @@ main(int arc, char *argv[])
 	ssize_t sz;
 	size_t dsz;
 	int ret;
+	int n;
 
 	GS_library_init(stderr, stderr);
 	gopt.err_fp = stderr;
 	gopt.log_fp = stderr;
 
-	// do_test();
+	// do_test(argv[2]);
 
+	GS_BUF_init(&gsb, GS_PKT_MAX_SIZE + GS_PKT_HDR_MAX_SIZE);
+
+	fcntl(1, F_SETFL, O_NONBLOCK | fcntl(1, F_GETFL, 0));
 	GS_PKT_init(&pkt);
 
 	GS_PKT_assign_chn(&pkt, GS_FT_CHN_ERROR, pkt_cb_error, NULL);
 	if (*argv[1] == 'c')
 	{
-		GS_FT_init(&ft, cb_stats, cb_status);
+		GS_FT_init(&ft, cb_stats, cb_status, 0);
 		GS_PKT_assign_chn(&pkt, GS_FT_CHN_ACCEPT, pkt_cb_accept, NULL);
 		// Add files to queue...
 		char **ptr = &argv[2];
 		while (*ptr != NULL)
 		{
-			if (GS_FT_put(&ft, *ptr) != 0)
-				DEBUGF_Y("Not found: %s\n", *ptr);
+			// DEBUGF_B("'%s'\n", *ptr);
+			GS_GLOBBING(glob_cb, *ptr);
 			ptr++;
 		}
 	} else {
-		GS_FT_init(&ft, NULL, cb_status);
+		GS_FT_init(&ft, NULL, cb_status, 1);
 		GS_PKT_assign_chn(&pkt, GS_FT_CHN_PUT, pkt_cb_put, NULL);
 		GS_PKT_assign_chn(&pkt, GS_FT_CHN_DATA, pkt_cb_data, NULL);
 		GS_PKT_assign_chn(&pkt, GS_FT_CHN_SWITCH, pkt_cb_switch, NULL);
-		is_server = 1;
 	}
 
 	while (1)
 	{
-		// If there is data to write then write data first.
-		if (wlen > 0)
-		{
-			sz = write(1, wbuf, wlen);
-			// DEBUGF("write %zu\n", sz);
-			if (sz <= 0)
-				ERREXIT("write()\n");
-			wlen = 0;
-		}
-
 		ret = mk_packet();
-
-		if ((is_server == 0) && (ret != 0))
+		if ((ft.is_server == 0) && (ret == -1))
 		{
 			// No more files to transfer
 			// (All data send. Not waiting for any reply).
 
 			break;
+			#if 0
 			// HERE: test adding files after transfer completed...
 			if (is_extra_puts >= 1)
 				break;
@@ -246,20 +282,81 @@ main(int arc, char *argv[])
 			if (GS_FT_put(&ft, "test1k-extra2.dat") != 0)
 				DEBUGF_Y("Not found: test1k-extra2.dat\n");
 			continue;
+			#endif
 		}
-		if (wlen > 0)
-			continue;
 
-		sz = read(0, src, sizeof src);
-		if (sz <= 0)
-			ERREXIT("read()\n");
-		ret = GS_PKT_decode(&pkt, src, sz, dst, &dsz);
-		if (ret != 0)
-			ERREXIT("GS_PKT_decode()\n");
+		// If there is data to write then write data first.
+		FD_CLR(0, &rfds);
+		FD_SET(0, &rfds);
+
+		FD_CLR(1, &wfds);
+		if (GS_BUF_USED(&gsb) > 0)
+			FD_SET(1, &wfds);
+		// DEBUGF("Write Data pending: %zu\n", GS_BUF_USED(&gsb));
+
+		// Go into select if write-pending or waiting for data		
+		if ((GS_BUF_USED(&gsb) > 0) || (ret == 1))
+		{
+			struct timeval tv;
+			tv.tv_usec = 0;
+			tv.tv_sec = 1;
+			n = select(2, &rfds, &wfds, NULL, &tv);
+			if (n < 0)
+				ERREXIT("select(): %s\n", strerror(errno));
+		}
+
+		if (FD_ISSET(1, &wfds))
+		{
+			// HERE: Write what we can from io-write buffer (max 16k writes).
+			// Adjust buffer of data successfully written.
+			// FIXME: MIN(1024,, .. to trigger bug early. Remove. Always try to write all
+			// sz = write(1, GS_BUF_RSRC(&gsb), MIN(1024, GS_BUF_USED(&gsb)));
+			sz = write(1, GS_BUF_RSRC(&gsb), GS_BUF_USED(&gsb));
+			// DEBUGF("write() == %zd of %zu\n", sz, GS_BUF_USED(&gsb));
+			if (sz == 0)
+				ERREXIT("write() EOF\n");
+
+			if (sz < 0)
+			{
+				if (errno == EAGAIN)
+				{
+					DEBUGF_R("WOULD BLOCK..pausing data\n");
+					exit(0); // FIXME
+					// Stop sending data packets but keep queueing control
+					// packets (e.g. replies to what we read()).
+					GS_FT_pause_data(&ft);
+				}
+				ERREXIT("write(): %s\n", strerror(errno));
+			}
+
+			// HERE: write() was a success. Consume data.
+			GS_BUF_del(&gsb, sz);
+			// DEBUGF("Write Data pending [after write]: %zu\n", GS_BUF_USED(&gsb));
+
+			GS_FT_unpause_data(&ft);
+		}
+
+		if (FD_ISSET(0, &rfds))
+		{
+			sz = read(0, src, sizeof src);
+			// DEBUGF_G("read() == %zu\n", sz);
+			if (sz <= 0)
+				ERREXIT("read()\n");
+			ret = GS_PKT_decode(&pkt, src, sz, dst, &dsz);
+			if (ret != 0)
+				ERREXIT("GS_PKT_decode()\n");
+			if (dsz != 0)
+			{
+				HEXDUMP(src, sz);
+				HEXDUMP(dst, dsz);
+				ERREXIT("test program should contain only inband data...dsz=%zu\n", dsz);
+			}
+		}
 	}
 
 	// stats_total(&ft.stats_total);
 	GS_FT_free(&ft);
+	GS_BUF_free(&gsb);
 
 	return 0;
 }

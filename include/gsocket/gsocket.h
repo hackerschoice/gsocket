@@ -56,6 +56,7 @@
 #include <gsocket/gs-select.h>
 #include <gsocket/packet.h>
 #include <gsocket/gs-readline.h>
+#include <gsocket/buf.h>
 
 /* ###########################
  * ### PROTOCOL DEFINITION ###

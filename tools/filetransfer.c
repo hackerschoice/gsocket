@@ -24,8 +24,8 @@ static uint32_t GS_mode2fperm(mode_t m);
 - retain fperm/mtime on directories
 - empty directories
 
-
-
+STOP HERE 2020-12-22:
+- globbing / wordexp
 - implement GS_FT_get()
 
 TEST CASES:
@@ -33,14 +33,14 @@ TEST CASES:
 #2. dest file not writeable
 #3. re-start transmission
 4. same file in command line
-5. src file can not be opened or read error.
-6. write to symlink
+#5. src file can not be opened or read error.
+#6. write to symlink - as per unix (follow symlinks)
 #7. zero file size
 #8. retain timestamp
 #endif
 
 void
-GS_FT_init(GS_FT *ft, gsft_cb_stats_t func_stats, gsft_cb_status_t func_status)
+GS_FT_init(GS_FT *ft, gsft_cb_stats_t func_stats, gsft_cb_status_t func_status, int is_server)
 {
 	memset(ft, 0, sizeof *ft);
 	GS_LIST_init(&ft->fqueue, 0);
@@ -55,6 +55,7 @@ GS_FT_init(GS_FT *ft, gsft_cb_stats_t func_stats, gsft_cb_status_t func_status)
 
 	ft->func_stats = func_stats;
 	ft->func_status = func_status;
+	ft->is_server = is_server;
 }
 
 /*
@@ -150,7 +151,7 @@ GS_mode2fperm(mode_t m)
 			u |= x_mperm[n].perm;
 	}
 
-	DEBUGF_B("mode2fperm 0%o\n", u);
+	// DEBUGF_B("mode2fperm 0%o\n", u);
 	return u;
 }
 
@@ -161,7 +162,7 @@ GS_fperm2mode(uint32_t u)
 	mode_t m = 0;
 	int n;
 
-	DEBUGF_B("fperm2mode 0%o\n", u);
+	// DEBUGF_B("fperm2mode 0%o\n", u);
 
 	for (n = 0; n < sizeof x_mperm / sizeof *x_mperm; n++)
 	{
@@ -199,12 +200,12 @@ GS_FT_put(GS_FT *ft, const char *fname)
 
 	/*
 	 * Consider these possibilities (examples)
-	 * /tmp/foo/bar/hosts
+	 * /tmp/foo/bar/hosts 
 	 * /./tmp/foo/bar/hosts
 	 * /tmp/foo/./bar/./hosts
 	 * /tmp/./foo/bar/hosts
-	 * hosts
-	 * foo/bar/host
+	 * hosts 
+	 * foo/bar/host 
 	 */
 	// Find token after last occurance of '/./'
 	const char *str = fname;
@@ -226,6 +227,11 @@ GS_FT_put(GS_FT *ft, const char *fname)
 		f->name = strdup(basename(s));
 		free(s);
 	} else {
+		// Scenario: put 'foo/'' will turn into 'foo/./'' which will call
+		// GS_FT_put(foo/.//bar/file.txt) which must end up with 'bar/file.txt'
+		// and not with '/bar/file.txt'
+		while (*str == '/')
+			str++;
 		f->name = strdup(str);
 	}
 
@@ -301,14 +307,16 @@ GS_FT_data(GS_FT *ft, const void *data, size_t len)
 
 	if (f == NULL)
 	{
-		DEBUGF_R("Receiving data but no active receiving file\n");
+		DEBUGF_R("Receiving data but no active receiving file (len=%zu)\n", len);
+		HEXDUMP(data, MIN(len, 16));
 		return;
 	}
 	
 	XASSERT(f->fp != NULL, "fp is NULL\n");
 	if (f->offset + len > f->fsize)
 	{
-		DEBUGF_R("More data than we want!\n");
+		DEBUGF_R("More data than we want (%"PRIu64")! (offset=%"PRIu64", len == %zu, fsize = %"PRIu64"\n", f->offset + len - f->fsize, f->offset, len, f->fsize);
+		HEXDUMP((uint8_t *)data + (f->fsize - f->offset), f->offset + len - f->fsize);
 		len = f->fsize - f->offset;
 	}
 
@@ -674,11 +682,12 @@ GS_FT_packet(GS_FT *ft, void *dst, size_t len, int *pkt_type)
 	struct _gs_ft_file *f;
 	size_t sz;
 
-	DEBUGF("GS_FT_packet() %d, accepted %d, len %zu\n", ft->fputs.n_items, ft->faccepted.n_items, len);
+	// DEBUGF("GS_FT_packet() %d, accepted %d, len %zu\n", ft->fputs.n_items, ft->faccepted.n_items, len);
 
 	*pkt_type = GS_FT_TYPE_NONE;
 	if (len < GS_FT_MIN_BUF_SIZE)
 	{
+		DEBUGF_R("Does this ever happen?\n");
 		return 0;
 	}
 	// XASSERT(len >= GS_FT_MIN_BUF_SIZE, "len to small\n");
@@ -696,7 +705,6 @@ GS_FT_packet(GS_FT *ft, void *dst, size_t len, int *pkt_type)
 		*pkt_type = GS_FT_TYPE_ERROR;
 		GS_LIST_del(li);
 		return sz;
-		// return sizeof err + sz;
 	}
 
 	// Check if any files in the queue that need to be 'put'
@@ -806,8 +814,15 @@ GS_FT_packet(GS_FT *ft, void *dst, size_t len, int *pkt_type)
 			}
 
 			*pkt_type = GS_FT_TYPE_SWITCH;
+			DEBUGF_W("#%"PRIu64" Switch to %s (%"PRIu64")\n", li->id, f->name, f->fsize);
 
 			return (sizeof sw);
+		}
+
+		if (ft->is_paused_data)
+		{
+			DEBUGF_W("IS-PAUSED-DATA==1. Not sending file data....\n");
+			return 0;
 		}
 
 		// HERE: active file 
@@ -847,10 +862,14 @@ GS_FT_packet(GS_FT *ft, void *dst, size_t len, int *pkt_type)
 		return sz;
 	}
 
-	if (ft->n_files_waiting == 0)
+	if (ft->is_server == 0)
 	{
-		*pkt_type = GS_FT_TYPE_DONE;
-		return 0;
+		// CLIENT
+		if (ft->n_files_waiting == 0)
+		{
+			*pkt_type = GS_FT_TYPE_DONE;
+			return 0;
+		}
 	}
 
 	return 0;
@@ -890,6 +909,18 @@ GS_FT_free(GS_FT *ft)
 	}
 
 	ft->active_put_file = NULL;
+}
+
+void
+GS_FT_pause_data(GS_FT *ft)
+{
+	ft->is_paused_data = 1;
+}
+
+void
+GS_FT_unpause_data(GS_FT *ft)
+{
+	ft->is_paused_data = 0;
 }
 
 

@@ -3,11 +3,13 @@
 command -v md5 >/dev/null 2>&1 		&& MD5(){ md5 -q "${1}";}
 command -v md5sum >/dev/null 2>&1 	&& MD5() { md5sum "${1}" | cut -f1 -d' ';}
 
-IODIR=ft_test_io
-IODIRSRC=ft_test_src
+IODIR="${PWD}/ft_test_dst"
+IODIRSRC="ft_test_src"
+LOGDIR="${PWD}"
 OK="....[\033[1;32mOK\033[0m]"
 FAIL="[\033[1;31mFAILED\033[0m]"
 ECHO="echo -e"
+BIN="${PWD}/filetransfer-test"
 
 mk_dummy()
 {
@@ -17,6 +19,14 @@ mk_dummy()
 mk_dummy test1k.dat 1
 mk_dummy test4k.dat 4
 mk_dummy test8k.dat 8
+
+rm -rf "${IODIRSRC}/foo"
+mkdir -p "${IODIRSRC}/foo/bar"
+# mkdir -p "${IODIRSRC}/foo/dir_empty" // FIXME: Empty directory not yet supported
+cp test1k.dat "${IODIRSRC}/foo/bar/test1k.dat"
+cp test1k.dat "${IODIRSRC}/foo/.rcfile1"
+cp test1k.dat "${IODIRSRC}/foo/.rcfile1"
+cp test4k.dat "${IODIRSRC}/foo/bar/.rcfile2"
 
 test_start()
 {
@@ -39,21 +49,30 @@ md5fail()
 
 run_put()
 {
-	socat SYSTEM:"./filetransfer-test c $* 2>client.log" SYSTEM:"(cd ${IODIR}; ../filetransfer-test s 2>../server.log)"
+	# set -f disabled globbing
+	# socat SYSTEM:"./filetransfer-test c $* 2>client.log" SYSTEM:"(cd ${IODIR}; ../filetransfer-test s 2>../server.log)"
+	# socat SYSTEM:"set -f && ./filetransfer-test c $* 2>client.log" SYSTEM:"(cd ${IODIR}; ../filetransfer-test s 2>../server.log)"
+	socat SYSTEM:"set -f && ${BIN} c $* 2>${LOGDIR}/client.log" SYSTEM:"(cd ${IODIR}; ${BIN} s 2>${LOGDIR}/server.log)"
 }
 
 
-# tests="1.0 "
-# tests+="1.1 "
-# tests+="1.2 "
-# tests+="1.3 "
-# tests+="2.1 2.2 "
-# tests+="2.3 "
-# tests+="3.1 3.2 3.3 "
+tests="1.0 "
+tests+="1.1 "
+tests+="1.2 "
+tests+="1.3 "
+tests+="2.1 2.2 "
+tests+="2.3 "
+tests+="3.1 3.2 3.3 "
 tests+="3.4 "
-# tests+="4.1 "
-# tests+="4.2 "
-# tests+="4.3 "
+tests+="4.1 "
+tests+="4.2 "
+tests+="4.3 "
+tests+="5.1 "
+tests+="5.2 "
+tests+="5.3 "
+tests+="5.4 "
+tests+="5.5 "
+tests+="5.6 "
 
 if [[ "$tests" =~ '1.0 ' ]]; then
 test_start -n "Running #1.0 (put 1 file).................................."
@@ -88,8 +107,6 @@ run_put_fail()
 
 if [[ "$tests" =~ '1.3 ' ]]; then
 test_start -n "Running #1.3 (absolute file)..............................."
-mkdir -p "${IODIRSRC}/foo/bar"
-cp test1k.dat "${IODIRSRC}/foo/bar/test1k.dat"
 
 run_put_fail 1 "${IODIRSRC}/foo/bar/test1k.dat" "${IODIR}/test1k.dat"
 run_put_fail 2 "${IODIRSRC}/foo/bar/./test1k.dat" "${IODIR}/test1k.dat"
@@ -189,3 +206,52 @@ run_put zero.dat
 $ECHO "${OK}"
 fi
 
+fail_file_count()
+{
+	# Do not quote so that globbing takes effect.
+	nf_src=$(find -x $2 -type f -o -type d | wc -l)
+	nf_dst=$(find -x $3 -type f -o -type d | wc -l)
+	[[ $nf_src -eq $nf_dst ]] || fail $1
+}
+
+if [[ "$tests" =~ '5.1 ' ]]; then
+test_start -n "Running #5.1 (Globbing ./*)................................"
+run_put "${IODIRSRC}/*"
+fail_file_count 1 "${IODIRSRC}/*" "${IODIR}/*" 
+$ECHO "${OK}"
+fi
+
+if [[ "$tests" =~ '5.2 ' ]]; then
+test_start -n "Running #5.2 (Globbing ./foo/.*)..........................."
+run_put "${IODIRSRC}/./foo/.*"
+[[ $(find ${IODIR}/ -type f -o -type d | wc -l) -eq 3 ]] || fail 1
+$ECHO "${OK}"
+fi
+
+if [[ "$tests" =~ '5.3 ' ]]; then
+test_start -n "Running #5.3 (Globbing .*)................................."
+(cd "${IODIRSRC}/foo" && run_put ".*")
+[[ $(find ${IODIR}/ -type f -o -type d | wc -l) -eq 2 ]] || fail 1
+$ECHO "${OK}"
+fi
+
+if [[ "$tests" =~ '5.4 ' ]]; then
+test_start -n "Running #5.4 (Globbing foo)................................"
+(cd "${IODIRSRC}" && run_put "foo")
+fail_file_count 1 "${IODIRSRC}/foo" "${IODIR}/foo" 
+$ECHO "${OK}"
+fi
+
+if [[ "$tests" =~ '5.5 ' ]]; then
+test_start -n "Running #5.5 (Globbing .).................................."
+(cd "${IODIRSRC}" && run_put ".")
+fail_file_count 1 "${IODIRSRC}/" "${IODIR}/" 
+$ECHO "${OK}"
+fi
+
+if [[ "$tests" =~ '5.6 ' ]]; then
+test_start -n "Running #5.6 (Globbing foo/)..............................."
+(cd "${IODIRSRC}" && run_put "foo/")
+fail_file_count 1 "${IODIRSRC}/foo/" "${IODIR}/" 
+$ECHO "${OK}"
+fi
