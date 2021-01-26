@@ -22,11 +22,12 @@ mk_dummy test8k.dat 8
 
 rm -rf "${IODIRSRC}/foo"
 mkdir -p "${IODIRSRC}/foo/bar"
-# mkdir -p "${IODIRSRC}/foo/dir_empty" // FIXME: Empty directory not yet supported
-cp test1k.dat "${IODIRSRC}/foo/bar/test1k.dat"
+mkdir -p "${IODIRSRC}/foo/dir_empty"
+cp test1k.dat "${IODIRSRC}/foo/bar/"
 cp test1k.dat "${IODIRSRC}/foo/.rcfile1"
-cp test1k.dat "${IODIRSRC}/foo/.rcfile1"
+cp test4k.dat "${IODIRSRC}/foo/"
 cp test4k.dat "${IODIRSRC}/foo/bar/.rcfile2"
+cp test8k.dat "${IODIRSRC}/"
 
 test_start()
 {
@@ -47,6 +48,14 @@ md5fail()
 	[[ "$(MD5 ${2})" != "$(MD5 ${3})" ]] && fail $1;
 }
 
+fail_file_count()
+{
+	# Do not quote so that globbing takes effect.
+	nf_src=$(find -x $2 -type f -o -type d | wc -l)
+	nf_dst=$(find -x $3 -type f -o -type d | wc -l)
+	[[ $nf_src -eq $nf_dst ]] || fail $1
+}
+
 run_put()
 {
 	# set -f disabled globbing
@@ -55,6 +64,17 @@ run_put()
 	socat SYSTEM:"set -f && ${BIN} c $* 2>${LOGDIR}/client.log" SYSTEM:"(cd ${IODIR}; ${BIN} s 2>${LOGDIR}/server.log)"
 }
 
+run_get()
+{
+	# set -f disabled globbing
+	socat SYSTEM:"(cd ${IODIR}; set -f && ${BIN} C $* 2>${LOGDIR}/client.log)" SYSTEM:"(cd ${IODIRSRC}; ${BIN} s 2>${LOGDIR}/server.log)"
+}
+
+run_get2()
+{
+	# set -f disabled globbing
+	socat SYSTEM:"(cd ${IODIR}; set -f && ${BIN} C $* 2>${LOGDIR}/client.log)" SYSTEM:"(cd ${IODIRSRC}/foo; ${BIN} s 2>${LOGDIR}/server.log)"
+}
 
 tests="1.0 "
 tests+="1.1 "
@@ -62,17 +82,77 @@ tests+="1.2 "
 tests+="1.3 "
 tests+="2.1 2.2 "
 tests+="2.3 "
-tests+="3.1 3.2 3.3 "
+tests+="3.1 3.2 "
+tests+="3.3 "
 tests+="3.4 "
 tests+="4.1 "
 tests+="4.2 "
 tests+="4.3 "
+tests+="4.4 "
 tests+="5.1 "
 tests+="5.2 "
 tests+="5.3 "
 tests+="5.4 "
 tests+="5.5 "
 tests+="5.6 "
+
+tests+="8.1 "
+tests+="8.2 "
+tests+="8.3 "
+tests+="8.4 "
+tests+="8.5 "
+tests+="8.6 "
+
+
+if [[ "$tests" =~ '8.1 ' ]]; then
+test_start -n "Running #8.1 (get, 2 files)................................"
+run_get test8k.dat foo/bar/.rcfile2
+md5fail 1 test8k.dat "${IODIR}/test8k.dat"
+md5fail 2 test4k.dat "${IODIR}/.rcfile2"
+$ECHO "${OK}"
+fi
+
+if [[ "$tests" =~ '8.2 ' ]]; then
+test_start -n "Running #8.2 (get, 2 files /./ test)......................."
+run_get ./foo/bar/test1k.dat ./foo/./bar/test1k.dat
+md5fail 1 test1k.dat "${IODIR}/test1k.dat"
+md5fail 2 test1k.dat "${IODIR}/bar/test1k.dat"
+$ECHO "${OK}"
+fi
+
+if [[ "$tests" =~ '8.3 ' ]]; then
+test_start -n "Running #8.3 (directory test).............................."
+run_get foo/bar
+md5fail 1 "${IODIRSRC}/foo/bar/test1k.dat" "${IODIR}/bar/test1k.dat"
+md5fail 2 "${IODIRSRC}/foo/bar/.rcfile2" "${IODIR}/bar/.rcfile2"
+$ECHO "${OK}"
+fi
+
+if [[ "$tests" =~ '8.4 ' ]]; then
+test_start -n "Running #8.4 (get, non-exist).............................."
+run_get not-exists.dat foobar*noexist[1234].d[ab]t
+[[ -f "${IODIR}/not-exists.dat" ]] && fail 1
+$ECHO "${OK}"
+fi
+
+if [[ "$tests" =~ '8.5 ' ]]; then
+test_start -n "Running #8.5 (get, ../test8k.dat).........................."
+run_get2 ../test8k.dat ../foo ../foo/./bar
+md5fail 1 "${IODIRSRC}/test8k.dat" "${IODIR}/test8k.dat"
+fail_file_count 2 "${IODIRSRC}/foo" "${IODIR}/foo"
+fail_file_count 3 "${IODIRSRC}/foo/bar" "${IODIR}/bar"
+$ECHO "${OK}"
+fi
+
+if [[ "$tests" =~ '8.6 ' ]]; then
+test_start -n "Running #8.6 (get, /etc/hosts)............................."
+run_get /etc/hosts /etc/./ssh/ssh_config /./etc/ssh/ssh_config
+# run_get /etc/./ssh/ssh_config
+md5fail 1 "/etc/hosts" "${IODIR}/hosts"
+md5fail 2 "/etc/ssh/ssh_config" "${IODIR}/ssh/ssh_config"
+md5fail 3 "/etc/ssh/ssh_config" "${IODIR}/etc/ssh/ssh_config"
+$ECHO "${OK}"
+fi
 
 if [[ "$tests" =~ '1.0 ' ]]; then
 test_start -n "Running #1.0 (put 1 file).................................."
@@ -107,7 +187,6 @@ run_put_fail()
 
 if [[ "$tests" =~ '1.3 ' ]]; then
 test_start -n "Running #1.3 (absolute file)..............................."
-
 run_put_fail 1 "${IODIRSRC}/foo/bar/test1k.dat" "${IODIR}/test1k.dat"
 run_put_fail 2 "${IODIRSRC}/foo/bar/./test1k.dat" "${IODIR}/test1k.dat"
 run_put_fail 3 "./${IODIRSRC}/foo/bar/test1k.dat" "${IODIR}/test1k.dat"
@@ -116,8 +195,7 @@ run_put_fail 5 "././${IODIRSRC}/foo/bar/test1k.dat" "${IODIR}/${IODIRSRC}/foo/ba
 run_put_fail 6 "${IODIRSRC}/foo/../foo/bar/test1k.dat" "${IODIR}/test1k.dat"
 run_put_fail 7 "${IODIRSRC}/foo/../foo/./bar/test1k.dat" "${IODIR}/bar/test1k.dat"
 run_put_fail 8 "${PWD}/${IODIRSRC}/foo/bar/test1k.dat" "${IODIR}/test1k.dat"
-# run_put foo/./../foo/../foo/bar/test1k.dat # escape. wanted behavior (?).
-[[ -f "${IODIR}/etc/hosts" ]] && fail 1
+### run_put foo/./../foo/../foo/bar/test1k.dat # escape. wanted behavior (?).
 $ECHO "${OK}"
 fi
 
@@ -206,13 +284,19 @@ run_put zero.dat
 $ECHO "${OK}"
 fi
 
-fail_file_count()
-{
-	# Do not quote so that globbing takes effect.
-	nf_src=$(find -x $2 -type f -o -type d | wc -l)
-	nf_dst=$(find -x $3 -type f -o -type d | wc -l)
-	[[ $nf_src -eq $nf_dst ]] || fail $1
-}
+if [[ "$tests" =~ '4.4 ' ]]; then
+test_start -n "Running #4.4 (put, empty directory)........................"
+touch "${IODIR}/foo" # Place a file in its way (should be overwritten)
+run_put "${IODIRSRC}/./foo/dir_empty"
+[[ -d "${IODIR}/foo/dir_empty" ]] || fail 1
+touch "${IODIR}/dir_empty" # Place a file in its way (should be overwritten)
+run_put "${IODIRSRC}/foo/dir_empty"
+[[ -d "${IODIR}/dir_empty" ]] || fail 2
+rmdir "${IODIR}/dir_empty"
+run_put "${IODIRSRC}/foo/dir_empty"
+[[ -d "${IODIR}/dir_empty" ]] || fail 3
+$ECHO "${OK}"
+fi
 
 if [[ "$tests" =~ '5.1 ' ]]; then
 test_start -n "Running #5.1 (Globbing ./*)................................"

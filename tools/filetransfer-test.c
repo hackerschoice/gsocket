@@ -2,34 +2,42 @@
  * Test program to test gs filetransfer sub-system used by gs-netcat.
  *
 
+TESTING PUT
+===========
 mkdir -p test
 rm -rf test/test*.dat
 socat SYSTEM:'./filetransfer-test c test4k.dat test8k.dat 2>client.log' SYSTEM:'(cd test; ../filetransfer-test s 2>../server.log)'
 
+rm -rf test
+mkdir test
 socat SYSTEM:'./filetransfer-test c /usr/share/man/./  2>client.log' SYSTEM:'(cd test; ../filetransfer-test s 2>../server.log)'
-STOP HERE (not working): 
-socat SYSTEM:'./filetransfer-test c /usr/share/man/mann  2>client.log' SYSTEM:'(cd test; ../filetransfer-test s 2>../server.log)'
-is this a blocking problem? or some odd files that are not normal files?
+echo Verifying...
+(cd /usr/share/man/; find . -type f )| while read x; do [[ $(md5 -q test/$x) == $(md5 -q /usr/share/man/$x) ]] || { echo failed on $x; break; } done
 
-FIXME:
-- test that buffer does not go heywire when write() blocks or when write() is incomplete (8192).
-   (i really should PAUSE transfer if write() is incomplete???)
-- 
+
+TESTING GET
+===========
+mkdir -p test
+rm -rf test/test*.dat
+socat SYSTEM:'(cd test; set -f; ../filetransfer-test C test[14]k.dat test8k.dat 2>../client.log)' SYSTEM:'./filetransfer-test s 2>server.log'
+echo Verifying...
+for x in test4k.dat test8k.dat; do [[ $(md5 -q "./${x}" == $(md5 -q "test/${x}" ]] || { echo failed on $x; break; } done
+
  */
 
 #include "common.h"
 #include "filetransfer.h"
 #include "utils.h"
+#include "globbing.h"
 
-#define BUF_LEN		(250)
-// #define BUF_LEN		(GS_PKT_MAX_SIZE)
+#define BUF_LEN		(GS_PKT_MAX_SIZE)
 
 static GS_PKT pkt;
 static GS_FT ft;
 static GS_BUF gsb;
 static fd_set rfds, wfds;
 
-/* SERVER receiving PUT from client */
+// SERVER receiving PUT from client
 static void
 pkt_cb_put(uint8_t chn, const uint8_t *data, size_t len, void *argNOTUSED)
 {
@@ -40,7 +48,52 @@ pkt_cb_put(uint8_t chn, const uint8_t *data, size_t len, void *argNOTUSED)
 		return;  // protocol error
 
 	memcpy(&hdr, data, sizeof hdr);
-	GS_FT_add_file(&ft, ntohl(hdr.id), (char *)p->name, len - sizeof hdr - 1, ntohll(hdr.fsize), ntohl(hdr.mtime), ntohl(hdr.fperm));	
+	GS_FT_add_file(&ft, ntohl(hdr.id), (char *)p->name, len - sizeof hdr - 1, ntohll(hdr.fsize), ntohl(hdr.mtime), ntohl(hdr.fperm), hdr.flags);	
+}
+
+// SERVER receiving DL from client
+static void
+pkt_cb_dl(uint8_t chn, const uint8_t *data, size_t len, void *argNOTUSED)
+{
+	struct _gs_ft_dl *d = (struct _gs_ft_dl *)data;
+	struct _gs_ft_dl hdr;
+
+	if (len < sizeof hdr + 1)
+		return;  // protocol error
+
+	memcpy(&hdr, data, sizeof hdr);
+	GS_FT_dl_add_file(&ft, ntohl(hdr.id), (char *)d->name, len - sizeof hdr - 1, ntohll(hdr.offset));
+}
+
+
+// SERVER receiving a LIST request from client
+static void
+pkt_cb_listrequest(uint8_t chn, const uint8_t *data, size_t len, void *argNOTUSED)
+{
+	DEBUGF_B("LIST-REQUEST received!\n");
+	struct _gs_ft_list_request *lr = (struct _gs_ft_list_request *)data;
+	struct _gs_ft_list_request hdr;
+
+	if (len < sizeof hdr + 1)
+		return; // protocol error
+
+	memcpy(&hdr, data, sizeof hdr);
+	GS_FT_list_add_files(&ft, ntohl(hdr.globbing_id), (char *)lr->pattern, len - sizeof hdr - 1);
+}
+
+// CLIENT receiving answer to LIST request
+static void
+pkt_cb_listreply(uint8_t chn, const uint8_t *data, size_t len, void *argNOTUSED)
+{
+	// DEBUGF_B("LIST-REPLY received\n");
+	struct _gs_ft_list_reply *lr = (struct _gs_ft_list_reply *)data;
+	struct _gs_ft_list_reply hdr;
+
+	if (len < sizeof hdr + 1)
+		return;
+
+	memcpy(&hdr, data, sizeof hdr);
+	GS_FT_list_add(&ft, ntohl(hdr.globbing_id), (char *)lr->name, len - sizeof hdr - 1, ntohll(hdr.fsize), ntohl(hdr.mtime), ntohl(hdr.fperm), hdr.flags);
 }
 
 static void
@@ -52,7 +105,7 @@ pkt_cb_switch(uint8_t chn, const uint8_t *data, size_t len, void *argNOTUSED)
 		return; // protocol error
 
 	memcpy(&hdr, data, sizeof hdr);
-	GS_FT_switch(&ft, ntohl(hdr.id), /*ntohll(hdr.fsize), */ntohll(hdr.offset));
+	GS_FT_switch(&ft, ntohl(hdr.id), ntohll(hdr.offset));
 }
 
 /* SERVER receiving DATA from client */
@@ -63,7 +116,7 @@ pkt_cb_data(uint8_t chn, const uint8_t *data, size_t len, void *argNOTUSED)
 	GS_FT_data(&ft, data, len);
 }
 
-/* CLIENT receiving ACCEPT from server */
+/* PUT, CLIENT receiving ACCEPT from server */
 static void
 pkt_cb_accept(uint8_t chn, const uint8_t *data, size_t len, void *argNOTUSED)
 {
@@ -104,7 +157,7 @@ stats_total(GS_FT_stats_total *st)
 static void
 cb_stats(struct _gs_ft_stats *s)
 {
-	DEBUGF_C("%u stats: %s\n", s->id, s->f->name);
+	DEBUGF_C("%u stats: %s\n", s->id, s->fname);
 	DEBUGF_C("Speed: %s\n", s->speed_str);
 
 	stats_total(&ft.stats_total);
@@ -135,8 +188,8 @@ mk_packet(void)
 
 	max_len = MIN(GS_PKT_MAX_SIZE, GS_BUF_UNUSED(&gsb) - sizeof *hdr);
 
-	// if (GS_BUF_USED(&gsb) > 0)
-	// 	DEBUGF_Y("%zu bytes already in buffer, max_len=%zu\n", GS_BUF_USED(&gsb), max_len);
+	if (GS_BUF_USED(&gsb) > 0)
+		DEBUGF_Y("%zu bytes already in buffer, max_len=%zu\n", GS_BUF_USED(&gsb), max_len);
 	memset(GS_BUF_WDST(&gsb), 0, max_len); // FIXME
 	sz = GS_FT_packet(&ft, GS_BUF_WDST(&gsb) + sizeof *hdr, max_len, &pkt_type);
 
@@ -161,6 +214,18 @@ mk_packet(void)
 	case GS_FT_TYPE_DATA:
 		hdr->type = GS_PKT_CHN2TYPE(GS_FT_CHN_DATA);
 		break;
+	case GS_FT_TYPE_LISTREQUEST:
+		// GET (download), CLIENT
+		hdr->type = GS_PKT_CHN2TYPE(GS_FT_CHN_LIST_REQUEST);
+		break;
+	case GS_FT_TYPE_LISTREPLY:
+		// SERVER (reply to 'get' (list request))
+		hdr->type = GS_PKT_CHN2TYPE(GS_FT_CHN_LIST_REPLY);
+		break;
+	case GS_FT_TYPE_DL:
+		// CLIENT - download by filename
+		hdr->type = GS_PKT_CHN2TYPE(GS_FT_CHN_DL);
+		break;
 	case GS_FT_TYPE_DONE:
 		// CLIENT only: done with all files.
 		DEBUGF_G("All done.\n");
@@ -174,34 +239,20 @@ mk_packet(void)
 	memcpy(&hdr->len, &len, sizeof len);
 	// DEBUGF("Packet type=%u length %zu + %zu\n", hdr->type, sizeof *hdr, sz);
 
-	// if (hdr->type == 131)
-	// {
-	// 	static FILE *dfp;
-	// 	if (dfp == NULL)
-	// 		dfp = fopen("packet-out.dat", "w");
-	// 	fwrite(GS_BUF_WDST(&gsb), 1, sizeof *hdr + sz, dfp); fflush(dfp);
-	// }
-	// STOP HERE: packet-out.dat shows correct data but output.dat (from write()) does not..
-
 	XASSERT(sz + sizeof *hdr <= GS_BUF_UNUSED(&gsb), "Oops, GS_FT_packet() to long. sz=%zu, unusued=%zu.\n", sz, GS_BUF_UNUSED(&gsb));
 	GS_BUF_add(&gsb, sizeof *hdr + sz);
-
-	// if (hdr->type == 131)
-	// {
-	// 	static FILE *dxfp;
-	// 	if (dxfp == NULL)
-	// 		dxfp = fopen("packet-out-after.dat", "w");
-	// 	fwrite(GS_BUF_WDST(&gsb) - sizeof *hdr - sz, 1, sizeof *hdr + sz, dxfp); fflush(dxfp);
-	// }
 
 	return 0;
 }
 
-#include "globbing.h"
+
+// Client, put (uploading)
+// FIXME: move this internal to GS_FT (do globbing internally and make GS_FT_put() accept wildcards)
 static void
 glob_cb(GS_GL *res)
 {
 	DEBUGF("Inside Globbing CB %s\n", res->name);
+	// PUT (upload)
 	if (GS_FT_put(&ft, res->name) != 0)
 		DEBUGF_Y("Not valid: %s\n", res->name); // not found or directory
 }
@@ -213,13 +264,15 @@ glob_cb_test(GS_GL *res)
 	DEBUGF("Inside Globbing CB %s\n", res->name);
 }
 static void
-do_test(const char *exp)
+do_globtest(const char *exp)
 {
 	if (exp == NULL)
-		exp = "/tmp/fo*";
-	GS_GLOBBING(glob_cb_test, exp);
+		ERREXIT("no arg\n");
+	GS_GLOBBING(glob_cb_test, exp, 0, NULL, 0);
 	exit(0);
 }
+
+// static uint32_t globbing_id;
 
 int
 main(int arc, char *argv[])
@@ -231,12 +284,14 @@ main(int arc, char *argv[])
 	size_t dsz;
 	int ret;
 	int n;
+	int is_get = 0;
 
 	GS_library_init(stderr, stderr);
 	gopt.err_fp = stderr;
 	gopt.log_fp = stderr;
 
-	// do_test(argv[2]);
+	if (*argv[1] == 'G')
+		do_globtest(argv[2]);
 
 	GS_BUF_init(&gsb, GS_PKT_MAX_SIZE + GS_PKT_HDR_MAX_SIZE);
 
@@ -244,23 +299,50 @@ main(int arc, char *argv[])
 	GS_PKT_init(&pkt);
 
 	GS_PKT_assign_chn(&pkt, GS_FT_CHN_ERROR, pkt_cb_error, NULL);
-	if (*argv[1] == 'c')
+	if ((*argv[1] == 'c') || (*argv[1] == 'C'))
 	{
+		// CLIENT
 		GS_FT_init(&ft, cb_stats, cb_status, 0);
-		GS_PKT_assign_chn(&pkt, GS_FT_CHN_ACCEPT, pkt_cb_accept, NULL);
-		// Add files to queue...
-		char **ptr = &argv[2];
-		while (*ptr != NULL)
+
+
+		if (*argv[1] == 'c')
 		{
-			// DEBUGF_B("'%s'\n", *ptr);
-			GS_GLOBBING(glob_cb, *ptr);
-			ptr++;
+			// Test PUT (upload)
+			GS_PKT_assign_chn(&pkt, GS_FT_CHN_ACCEPT, pkt_cb_accept, NULL);
+			// Add files to queue...
+			// char **ptr = &argv[2];
+			// int globbing_id = 0;
+			int i;
+			for (i = 2; argv[i] != NULL; i++)
+			{
+				GS_GLOBBING(glob_cb, argv[i], i, &ft, 0);
+			}
+		} else {
+			// Test GET (download)
+			is_get = 1;
+			GS_PKT_assign_chn(&pkt, GS_FT_CHN_LIST_REPLY, pkt_cb_listreply, NULL);
+			GS_PKT_assign_chn(&pkt, GS_FT_CHN_DATA, pkt_cb_data, NULL);
+			GS_PKT_assign_chn(&pkt, GS_FT_CHN_SWITCH, pkt_cb_switch, NULL);
+
+			int i;
+			// GS_FT_get(&ft, "test[14]k.dat");
+			// GS_FT_get(&ft, "test8k.dat");
+			for (i = 2; argv[i] != NULL; i++)
+			{
+				GS_FT_get(&ft, argv[i]);
+			}
 		}
+
 	} else {
+		// SERVER
 		GS_FT_init(&ft, NULL, cb_status, 1);
 		GS_PKT_assign_chn(&pkt, GS_FT_CHN_PUT, pkt_cb_put, NULL);
 		GS_PKT_assign_chn(&pkt, GS_FT_CHN_DATA, pkt_cb_data, NULL);
 		GS_PKT_assign_chn(&pkt, GS_FT_CHN_SWITCH, pkt_cb_switch, NULL);
+
+		// SERVER - DOWNLOAD CAPACILITY
+		GS_PKT_assign_chn(&pkt, GS_FT_CHN_LIST_REQUEST, pkt_cb_listrequest, NULL);
+		GS_PKT_assign_chn(&pkt, GS_FT_CHN_DL, pkt_cb_dl, NULL);
 	}
 
 	while (1)
@@ -292,7 +374,6 @@ main(int arc, char *argv[])
 		FD_CLR(1, &wfds);
 		if (GS_BUF_USED(&gsb) > 0)
 			FD_SET(1, &wfds);
-		// DEBUGF("Write Data pending: %zu\n", GS_BUF_USED(&gsb));
 
 		// Go into select if write-pending or waiting for data		
 		if ((GS_BUF_USED(&gsb) > 0) || (ret == 1))
@@ -307,10 +388,7 @@ main(int arc, char *argv[])
 
 		if (FD_ISSET(1, &wfds))
 		{
-			// HERE: Write what we can from io-write buffer (max 16k writes).
 			// Adjust buffer of data successfully written.
-			// FIXME: MIN(1024,, .. to trigger bug early. Remove. Always try to write all
-			// sz = write(1, GS_BUF_RSRC(&gsb), MIN(1024, GS_BUF_USED(&gsb)));
 			sz = write(1, GS_BUF_RSRC(&gsb), GS_BUF_USED(&gsb));
 			// DEBUGF("write() == %zd of %zu\n", sz, GS_BUF_USED(&gsb));
 			if (sz == 0)
@@ -333,7 +411,10 @@ main(int arc, char *argv[])
 			GS_BUF_del(&gsb, sz);
 			// DEBUGF("Write Data pending [after write]: %zu\n", GS_BUF_USED(&gsb));
 
-			GS_FT_unpause_data(&ft);
+			if (GS_BUF_USED(&gsb) > 0)
+				GS_FT_pause_data(&ft); // Failed to write all data in buffer. Stop reading file data.
+			else
+				GS_FT_unpause_data(&ft);
 		}
 
 		if (FD_ISSET(0, &rfds))

@@ -11,7 +11,7 @@ gs_pipe_LDADD = ../lib/libgsocket.a
 gs_full_pipe_SOURCES = 3_gs-full-pipe.c utils.c
 gs_full_pipe_LDADD = ../lib/libgsocket.a
 
-gs_netcat_SOURCES = 4_gs-netcat.c utils.c socks.c console.c ids.c event_mgr.c pkt_mgr.c console_display.c filetransfer.c
+gs_netcat_SOURCES = 4_gs-netcat.c utils.c socks.c console.c ids.c event_mgr.c pkt_mgr.c console_display.c filetransfer.c globbing.c
 gs_netcat_LDADD = ../lib/libgsocket.a
 
 dist_bin_SCRIPTS = blitz gs-sftp gs-mount gs_funcs

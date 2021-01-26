@@ -6,16 +6,14 @@
 #include <gsocket/gsocket.h>
 #include "gs-externs.h"
 
-// #define GS_BUF_CHUNK_SIZE	(4096)
-
 void
 GS_BUF_init(GS_BUF *gsb, size_t sz_max_add)
 {
 	memset(gsb, 0, sizeof *gsb);
 	gsb->sz_max_add = sz_max_add;
 
-	gsb->sz_total = 16*1024*1024; // FIXME
-	gsb->data = malloc(gsb->sz_total); // FIXME
+	// gsb->sz_total = 16*1024*1024; // FIXME
+	// gsb->data = malloc(gsb->sz_total); // FIXME
 
 	GS_BUF_resize(gsb, 0);
 }
