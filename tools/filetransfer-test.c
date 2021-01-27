@@ -289,6 +289,7 @@ main(int arc, char *argv[])
 	GS_library_init(stderr, stderr);
 	gopt.err_fp = stderr;
 	gopt.log_fp = stderr;
+	// gopt.err_fp = NULL; // DISABLE DEBUG
 
 	if (*argv[1] == 'G')
 		do_globtest(argv[2]);

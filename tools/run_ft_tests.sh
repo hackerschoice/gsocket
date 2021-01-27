@@ -28,6 +28,7 @@ cp test1k.dat "${IODIRSRC}/foo/.rcfile1"
 cp test4k.dat "${IODIRSRC}/foo/"
 cp test4k.dat "${IODIRSRC}/foo/bar/.rcfile2"
 cp test8k.dat "${IODIRSRC}/"
+touch "${IODIRSRC}/zero.dat"
 
 test_start()
 {
@@ -56,12 +57,46 @@ fail_file_count()
 	[[ $nf_src -eq $nf_dst ]] || fail $1
 }
 
+fail_file_bypipe()
+{
+	while read f; do
+		if [ $(stat -f%A-%m-%z "${2}/${f}") != $(stat -f%A-%m-%z "${3}/${f}") ]; then
+			echo "${f} not equal";
+			fail $1
+		fi
+	done
+}
+
+fail_dir_bypipe()
+{
+	while read f; do
+		if [ $(stat -f%A-%m "${2}/${f}") != $(stat -f%A-%m "${3}/${f}") ]; then
+			echo "${f} not equal";
+			fail $1
+		fi
+	done
+}
+
+# Recursively compare st_mode and mtime and fail if different
+fail_dir_compare()
+{
+	(cd "$2"; find -x "$4" -type d) | fail_dir_bypipe "$1" "$2" "$3"
+	(cd "$2"; find -x "$4" -type f) | fail_file_bypipe "$1" "$2" "$3"
+}
+
+
 run_put()
 {
 	# set -f disabled globbing
 	# socat SYSTEM:"./filetransfer-test c $* 2>client.log" SYSTEM:"(cd ${IODIR}; ../filetransfer-test s 2>../server.log)"
 	# socat SYSTEM:"set -f && ./filetransfer-test c $* 2>client.log" SYSTEM:"(cd ${IODIR}; ../filetransfer-test s 2>../server.log)"
 	socat SYSTEM:"set -f && ${BIN} c $* 2>${LOGDIR}/client.log" SYSTEM:"(cd ${IODIR}; ${BIN} s 2>${LOGDIR}/server.log)"
+}
+
+# put with command 
+run_putc()
+{
+	socat SYSTEM:"set -f && ${BIN} c \'$*\' 2>${LOGDIR}/client.log" SYSTEM:"(cd ${IODIR}; ${BIN} s 2>${LOGDIR}/server.log)"
 }
 
 run_get()
@@ -74,6 +109,11 @@ run_get2()
 {
 	# set -f disabled globbing
 	socat SYSTEM:"(cd ${IODIR}; set -f && ${BIN} C $* 2>${LOGDIR}/client.log)" SYSTEM:"(cd ${IODIRSRC}/foo; ${BIN} s 2>${LOGDIR}/server.log)"
+}
+
+run_getc()
+{
+	socat SYSTEM:"(cd ${IODIR}; set -f && ${BIN} C \'$*\' 2>${LOGDIR}/client.log)" SYSTEM:"(cd ${IODIRSRC}; ${BIN} s 2>${LOGDIR}/server.log)"
 }
 
 tests="1.0 "
@@ -95,6 +135,8 @@ tests+="5.3 "
 tests+="5.4 "
 tests+="5.5 "
 tests+="5.6 "
+tests+="5.7 "
+tests+="5.8 "
 
 tests+="8.1 "
 tests+="8.2 "
@@ -102,57 +144,12 @@ tests+="8.3 "
 tests+="8.4 "
 tests+="8.5 "
 tests+="8.6 "
+tests+="8.7 "
+tests+="8.8 "
 
+tests+="9.1 "
+tests+="9.2 "
 
-if [[ "$tests" =~ '8.1 ' ]]; then
-test_start -n "Running #8.1 (get, 2 files)................................"
-run_get test8k.dat foo/bar/.rcfile2
-md5fail 1 test8k.dat "${IODIR}/test8k.dat"
-md5fail 2 test4k.dat "${IODIR}/.rcfile2"
-$ECHO "${OK}"
-fi
-
-if [[ "$tests" =~ '8.2 ' ]]; then
-test_start -n "Running #8.2 (get, 2 files /./ test)......................."
-run_get ./foo/bar/test1k.dat ./foo/./bar/test1k.dat
-md5fail 1 test1k.dat "${IODIR}/test1k.dat"
-md5fail 2 test1k.dat "${IODIR}/bar/test1k.dat"
-$ECHO "${OK}"
-fi
-
-if [[ "$tests" =~ '8.3 ' ]]; then
-test_start -n "Running #8.3 (directory test).............................."
-run_get foo/bar
-md5fail 1 "${IODIRSRC}/foo/bar/test1k.dat" "${IODIR}/bar/test1k.dat"
-md5fail 2 "${IODIRSRC}/foo/bar/.rcfile2" "${IODIR}/bar/.rcfile2"
-$ECHO "${OK}"
-fi
-
-if [[ "$tests" =~ '8.4 ' ]]; then
-test_start -n "Running #8.4 (get, non-exist).............................."
-run_get not-exists.dat foobar*noexist[1234].d[ab]t
-[[ -f "${IODIR}/not-exists.dat" ]] && fail 1
-$ECHO "${OK}"
-fi
-
-if [[ "$tests" =~ '8.5 ' ]]; then
-test_start -n "Running #8.5 (get, ../test8k.dat).........................."
-run_get2 ../test8k.dat ../foo ../foo/./bar
-md5fail 1 "${IODIRSRC}/test8k.dat" "${IODIR}/test8k.dat"
-fail_file_count 2 "${IODIRSRC}/foo" "${IODIR}/foo"
-fail_file_count 3 "${IODIRSRC}/foo/bar" "${IODIR}/bar"
-$ECHO "${OK}"
-fi
-
-if [[ "$tests" =~ '8.6 ' ]]; then
-test_start -n "Running #8.6 (get, /etc/hosts)............................."
-run_get /etc/hosts /etc/./ssh/ssh_config /./etc/ssh/ssh_config
-# run_get /etc/./ssh/ssh_config
-md5fail 1 "/etc/hosts" "${IODIR}/hosts"
-md5fail 2 "/etc/ssh/ssh_config" "${IODIR}/ssh/ssh_config"
-md5fail 3 "/etc/ssh/ssh_config" "${IODIR}/etc/ssh/ssh_config"
-$ECHO "${OK}"
-fi
 
 if [[ "$tests" =~ '1.0 ' ]]; then
 test_start -n "Running #1.0 (put 1 file).................................."
@@ -272,7 +269,7 @@ if [[ "$tests" =~ '4.2 ' ]]; then
 test_start -n "Running #4.2 (mtime)......................................."
 touch -r /etc/hosts test4k.dat
 run_put test4k.dat
-[[ x`stat -f%a "test4k.dat"` = x`stat -f%a "${IODIR}/test4k.dat"` ]] || fail 1
+[[ x`stat -f%m "test4k.dat"` = x`stat -f%m "${IODIR}/test4k.dat"` ]] || fail 1
 $ECHO "${OK}"
 fi
 
@@ -280,7 +277,7 @@ if [[ "$tests" =~ '4.3 ' ]]; then
 test_start -n "Running #4.3 (zero-size, mtime)............................"
 touch -r /etc/hosts zero.dat
 run_put zero.dat
-[[ x`stat -f%a "zero.dat"` = x`stat -f%a "${IODIR}/zero.dat"` ]] || fail 1
+[[ x`stat -f%m "zero.dat"` = x`stat -f%m "${IODIR}/zero.dat"` ]] || fail 1
 $ECHO "${OK}"
 fi
 
@@ -337,5 +334,126 @@ if [[ "$tests" =~ '5.6 ' ]]; then
 test_start -n "Running #5.6 (Globbing foo/)..............................."
 (cd "${IODIRSRC}" && run_put "foo/")
 fail_file_count 1 "${IODIRSRC}/foo/" "${IODIR}/" 
+$ECHO "${OK}"
+fi
+
+if [[ "$tests" =~ '5.7 ' ]]; then
+test_start -n "Running #5.7 (put, globbing \$(find...*.dat)................"
+# (cd "${IODIRSRC}" && run_putc '\$(echo *.dat)')
+(cd "${IODIRSRC}" && run_putc '\$(find . -type f -name \\*.dat)')
+(cd "${IODIRSRC}" && find . -type f -name '*.dat') | fail_file_bypipe 1 "${IODIRSRC}" "${IODIR}"
+$ECHO "${OK}"
+fi
+
+if [[ "$tests" =~ '5.8 ' ]]; then
+test_start -n "Running #5.8 (get, globbing \$(find...*.dat)................"
+run_getc '\$(find . -type f -name \\*.dat)'
+(cd "${IODIRSRC}" && find . -type f -name '*.dat') | fail_file_bypipe 1 "${IODIRSRC}" "${IODIR}"
+$ECHO "${OK}"
+fi
+
+if [[ "$tests" =~ '8.1 ' ]]; then
+test_start -n "Running #8.1 (get, 2 files)................................"
+run_get test8k.dat foo/bar/.rcfile2
+md5fail 1 test8k.dat "${IODIR}/test8k.dat"
+md5fail 2 test4k.dat "${IODIR}/.rcfile2"
+$ECHO "${OK}"
+fi
+
+if [[ "$tests" =~ '8.2 ' ]]; then
+test_start -n "Running #8.2 (get, 2 files /./ test)......................."
+run_get ./foo/bar/test1k.dat ./foo/./bar/test1k.dat
+md5fail 1 test1k.dat "${IODIR}/test1k.dat"
+md5fail 2 test1k.dat "${IODIR}/bar/test1k.dat"
+$ECHO "${OK}"
+fi
+
+if [[ "$tests" =~ '8.3 ' ]]; then
+test_start -n "Running #8.3 (directory test).............................."
+run_get foo/bar
+md5fail 1 "${IODIRSRC}/foo/bar/test1k.dat" "${IODIR}/bar/test1k.dat"
+md5fail 2 "${IODIRSRC}/foo/bar/.rcfile2" "${IODIR}/bar/.rcfile2"
+$ECHO "${OK}"
+fi
+
+if [[ "$tests" =~ '8.4 ' ]]; then
+test_start -n "Running #8.4 (get, non-exist).............................."
+run_get not-exists.dat foobar*noexist[1234].d[ab]t
+[[ -f "${IODIR}/not-exists.dat" ]] && fail 1
+$ECHO "${OK}"
+fi
+
+if [[ "$tests" =~ '8.5 ' ]]; then
+test_start -n "Running #8.5 (get, ../test8k.dat).........................."
+run_get2 ../test8k.dat ../foo ../foo/./bar
+md5fail 1 "${IODIRSRC}/test8k.dat" "${IODIR}/test8k.dat"
+fail_file_count 2 "${IODIRSRC}/foo" "${IODIR}/foo"
+fail_file_count 3 "${IODIRSRC}/foo/bar" "${IODIR}/bar"
+$ECHO "${OK}"
+fi
+
+if [[ "$tests" =~ '8.6 ' ]]; then
+test_start -n "Running #8.6 (get, /etc/hosts)............................."
+run_get /etc/hosts /etc/./ssh/ssh_config /./etc/ssh/ssh_config
+md5fail 1 "/etc/hosts" "${IODIR}/hosts"
+md5fail 2 "/etc/ssh/ssh_config" "${IODIR}/ssh/ssh_config"
+md5fail 3 "/etc/ssh/ssh_config" "${IODIR}/etc/ssh/ssh_config"
+$ECHO "${OK}"
+fi
+
+if [[ "$tests" =~ '8.7 ' ]]; then
+test_start -n "Running #8.7 (get, permission, mtime, zero)................"
+chmod 462 "${IODIRSRC}/test1k.dat"
+chmod 624 "${IODIRSRC}/zero.dat"
+chmod 3751 "${IODIRSRC}/foo/dir_empty"
+touch -r /etc/hosts "${IODIRSRC}/test1k.dat" "${IODIRSRC}/zero.dat" "${IODIRSRC}/foo/dir_empty"
+touch -r /etc "${IODIRSRC}/foo"
+touch -r /etc "${IODIR}"
+run_get test1k.dat zero.dat ././foo/dir_empty
+[[ $(stat -f%A-%m-%z "${IODIRSRC}/test1k.dat") = $(stat -f%A-%m-%z "${IODIR}/test1k.dat") ]] || fail 1
+[[ $(stat -f%A-%m-%z "${IODIRSRC}/zero.dat") = $(stat -f%A-%m-%z "${IODIR}/zero.dat") ]] || fail 2
+[[ $(stat -f%A-%m "${IODIRSRC}/foo/dir_empty") = $(stat -f%A-%m "${IODIR}/foo/dir_empty") ]] || fail 3
+[[ $(stat -L -f%A-%m "/etc") = $(stat -f%A-%m "${IODIRSRC}/foo") ]] || fail 4
+[[ $(stat -L -f%A-%m "/etc") = $(stat -f%A-%m "${IODIR}") ]] || fail 5
+chmod 644 "${IODIRSRC}/test1k.dat" "${IODIRSRC}/zero.dat"
+chmod 755 "${IODIRSRC}/foo/dir_empty"
+$ECHO "${OK}"
+fi
+
+if [[ "$tests" =~ '8.8 ' ]]; then
+test_start -n "Running #8.8 (get restart: dst is larger, smaller & zero).."
+dd bs=1k count=5 if="${IODIRSRC}/test8k.dat" of="${IODIR}/test8k.dat" &>/dev/null
+cp "${IODIRSRC}/test8k.dat" "${IODIR}/test1k.dat"
+touch "${IODIR}/test4k.dat"
+run_get test1k.dat test8k.dat foo/test4k.dat
+md5fail 1 "${IODIRSRC}/test8k.dat" "${IODIR}/test8k.dat"
+md5fail 2 "${IODIRSRC}/test1k.dat" "${IODIR}/test1k.dat"
+md5fail 2 "${IODIRSRC}/foo/test4k.dat" "${IODIR}/test4k.dat"
+$ECHO "${OK}"
+fi
+
+if [[ "$tests" =~ '9.1 ' ]]; then
+test_start -n "Running #9.1 (HUGE put)..........................."
+## Small
+# run_put /usr/./share/man/man4
+# $ECHO -n "verify..."
+# fail_dir_compare 1 /usr/share/man "${IODIR}/share/man" man4
+## HUGE
+run_put /usr/./share/man
+$ECHO -n "verify..."
+fail_dir_compare 1 /usr/share "${IODIR}/share" man
+$ECHO "${OK}"
+fi
+
+if [[ "$tests" =~ '9.2 ' ]]; then
+test_start -n "Running #9.2 (HUGE get)..........................."
+## Small
+# run_get /usr/./share/man/man4
+# $ECHO -n "verify..."
+# fail_dir_compare 1 /usr/share/man "${IODIR}/share/man" man4
+## HUGE
+run_get /usr/./share/man
+$ECHO -n "verify..."
+fail_dir_compare 1 /usr/share "${IODIR}/share" man
 $ECHO "${OK}"
 fi

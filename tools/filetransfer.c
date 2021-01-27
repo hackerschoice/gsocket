@@ -15,9 +15,10 @@ static uint32_t GS_mode2fperm(mode_t m);
 static void update_stats(struct _gs_ft_file *f, size_t sz);
 static const char *str_dotslash(const char *src);
 static const char *str_stripslash(const char *src);
-static int mkdirp(const char *dir, mode_t mode);
-
-
+static int mkdirp(const char *dir, mode_t mode, uint32_t mtime);
+static void dir_restore_mtime(const char *path, struct timespec *mtime);
+static void dir_save_mtime(const char *path, struct timespec *mtime);
+static void set_mode_mtime(const char *path, mode_t mode, uint32_t mtime);
 
 
 
@@ -32,11 +33,12 @@ static int mkdirp(const char *dir, mode_t mode);
   (add files until it does not fit. Return to caller the ID that failed and let caller decide
   if he likes to remove that ID from our list or just let caller try again until it fits...)
   is there a limt?
-- empty directories
 - fnmatch for receiving files (hehe. yes please).
 STOP HERE: 
 - Test '/usr/./share/' downloads etc
 - deal with server sending /etc/hosts or ../../ shit (strchr?)
+- do a HUGE get download.
+- do a HUGE put upload
 
 TEST CASES:
 1. pathname + filename 4096 long
@@ -116,7 +118,7 @@ gs_ft_add_file(GS_FT *ft, GS_LIST *gsl, uint32_t id, const char *fname, uint32_t
 	if (flags & GS_FT_FL_ISDIR)
 	{
 		// mkdirp() will remove any ordinary file that is in its way
-		if (mkdirp(fname, GS_fperm2mode(fperm)) != 0)
+		if (mkdirp(fname, GS_fperm2mode(fperm), mtime) != 0)
 		{
 			DEBUGF_R("mkdir(%s): %s\n", fname, strerror(errno));
 			qerr_add(ft, id, GS_FT_ERR_PERM, NULL);
@@ -274,7 +276,7 @@ GS_FT_list_add(GS_FT *ft, uint32_t globbing_id, const char *fname, size_t len, i
 	{
 		DEBUGF_C("Directory: %s\n", fn_local);
 		// mkdirp() will remove any ordinary file that is in its way
-		if (mkdirp(fn_local, GS_fperm2mode(fperm)) != 0)
+		if (mkdirp(fn_local, GS_fperm2mode(fperm), mtime) != 0)
 		{
 			DEBUGF_R("mkdir(%s): %s\n", fn_local, strerror(errno));
 		}
@@ -587,6 +589,7 @@ GS_FT_get(GS_FT *ft, const char *pattern)
 	return 0;
 }
 
+// Add an error message to (outgoing) queue.
 static void
 qerr_add(GS_FT *ft, uint32_t id, uint8_t code, const char *str)
 {
@@ -603,28 +606,81 @@ qerr_add(GS_FT *ft, uint32_t id, uint8_t code, const char *str)
 	GS_LIST_add(&ft->qerrs, NULL, qerr, ft->qerrs.add_count);
 }
 
+// Send status to peer (error-msg) and free the file structure.
 static void
-do_error(GS_FT *ft, GS_LIST_ITEM *li, uint32_t code, const char *str)
+send_status_and_del(GS_FT *ft, GS_LIST_ITEM *li, uint32_t code, const char *str)
 {
 	qerr_add(ft, li->id, code, str);
 	ft_del(li);
 }
 
+// Error while receiving data (called from GS_FT_switch() or GS_FT_data()
+// Stop peer sending any further data for this id.
 static void
-do_complete(GS_FT *ft, struct _gs_ft_file *f)
+do_recv_error(GS_FT *ft, GS_LIST_ITEM *li, uint32_t code, const char *str)
 {
-	if (f->fp != NULL)
+	struct _gs_ft_file *f = (struct _gs_ft_file *)li->data;
+
+	if (ft->is_server == 0)
+		mk_stats(ft, f->li->id, f->li->data, NULL, 1 /*err*/);
+
+	send_status_and_del(ft, li, code, str);
+}
+
+// No more data to be send.
+// Called by 'sending' party (either from mk_switch() or mk_xfer_data()
+// when all data has been send.
+// CLIENT: wait for COMPLETE error
+// SERVER: Close immediately.
+static void
+sending_complete(GS_FT *ft, struct _gs_ft_file **active, GS_LIST *fcompleted)
+{
+	struct _gs_ft_file *f = *active;
+
+	if (ft->is_server == 0)
 	{
-		fflush(f->fp);
-		fchmod(fileno(f->fp), f->mode & ~S_IFMT);
-		if (f->mtime != 0)
-		{
-			DEBUGF_B("Setting time to %ld\n", f->mtime);
-			struct timeval t[] = {{f->mtime, 0}, {f->mtime, 0}};
-			futimes(fileno(f->fp), t);
-		}
+		XASSERT(fcompleted != NULL, "Client has no complete-queue??\n");
+		XFCLOSE(f->fp);
+		GS_LIST_move(fcompleted, f->li);
+	} else {
+		// SERVER
+		XASSERT(fcompleted == NULL, "Server has a complete-queue??\n");
+		ft_del(f->li);
 	}
-	do_error(ft, f->li, GS_FT_ERR_COMPLETED, NULL);
+
+	*active = NULL;
+}
+
+// Expecting no more data. Called on receiving side
+// Called by receiving party (from GS_FT_switch() or GS_FT_data())
+// CLIENT: output stats, set time 
+static void
+receiving_complete(GS_FT *ft, struct _gs_ft_file *f)
+{
+	char *s = strdup(f->realname);
+	char *dn = dirname(s);
+
+	if (ft->is_server == 0)
+	{
+		// CLIENT (get, download: All data received)
+		mk_stats(ft, f->li->id, f->li->data, NULL, 0 /*err*/);
+		XFCLOSE(f->fp); // Must close before setting mtime
+		set_mode_mtime(f->realname, f->mode, f->mtime);
+		dir_restore_mtime(dn, &f->dir_mtime);
+
+		ft_done(ft);
+		ft_del(f->li);
+	} else {
+		// SERVER (put, upload: all data received)
+		XFCLOSE(f->fp);
+		set_mode_mtime(f->realname, f->mode, f->mtime);
+		dir_restore_mtime(dn, &f->dir_mtime);
+
+		// close FP, free file, return COMPLETE message to client.
+		send_status_and_del(ft, f->li, GS_FT_ERR_COMPLETED, NULL);
+	}
+
+	XFREE(s);
 }
 
 static void
@@ -669,10 +725,7 @@ GS_FT_data(GS_FT *ft, const void *data, size_t len)
 
 	if (sz != len)
 	{
-		if (ft->is_server == 0)
-			mk_stats(ft, f->li->id, f->li->data, NULL, 1 /*err*/);
-
-		do_error(ft, f->li, GS_FT_ERR_BADF, NULL);
+		do_recv_error(ft, f->li, GS_FT_ERR_BADF, NULL);
 		*active = NULL;
 		return;
 	}
@@ -687,16 +740,7 @@ GS_FT_data(GS_FT *ft, const void *data, size_t len)
 		return; // still data missing...
 
 	DEBUGF_B("All data received (%"PRIu64" of %"PRIu64")\n", f->fz_local, f->fz_remote);
-	if (ft->is_server == 0)
-	{
-		// CLIENT, get (download)
-		mk_stats(ft, f->li->id, f->li->data, NULL, 0 /*err*/);
-		ft_done(ft);
-		ft_del(f->li);
-	} else {
-		// SERVER, put (upload)
-		do_complete(ft, f); 
-	}
+	receiving_complete(ft, f); 
 
 	*active = NULL;
 }
@@ -722,11 +766,22 @@ GS_FT_accept(GS_FT *ft, uint32_t id, int64_t fz_remote)
 	f->fz_remote = fz_remote;
 }
 
+static void
+set_mode_mtime(const char *path, mode_t mode, uint32_t mtime)
+{
+	chmod(path, mode & ~S_IFMT);
+	struct timeval t[] = {{mtime, 0}, {mtime, 0}};
+
+	if (mtime != 0)
+		utimes(path, t);
+}
+
 // unlink any file in our way and create directory.
 static int
-mkdir_agressive(const char *path, mode_t mode)
+mkdir_agressive(const char *path, mode_t mode, uint32_t mtime)
 {
 	struct stat res;
+
 	if (stat(path, &res) == 0)
 	{
 		if (S_ISDIR(res.st_mode))
@@ -737,11 +792,19 @@ mkdir_agressive(const char *path, mode_t mode)
 		unlink(path);
 	}
 
-	if (mkdir(path, mode) != 0)
+	struct timespec ts;
+	char *s = strdup(path);
+	char *parent_dir = dirname(s);
+	dir_save_mtime(parent_dir, &ts);
+	if (mkdir(path, 0755 /*use chmod() to bypass umask-value*/) != 0)
 	{
 		DEBUGF_R("mkdir(%s) failed: %s\n", path, strerror(errno));
+		XFREE(s);
 		return -1;
 	}
+	set_mode_mtime(path, mode, mtime); // bypass umask-value
+	dir_restore_mtime(parent_dir, &ts);
+	XFREE(s);
 
 	return 0;
 }
@@ -754,7 +817,7 @@ mkdir_agressive(const char *path, mode_t mode)
  * ///// would return success ('/' always exists)
  */
 static int
-mkdirp(const char *path, mode_t mode)
+mkdirp(const char *path, mode_t mode, uint32_t mtime)
 {
 	int rv = 0;
 	char *f = strdup(path);
@@ -772,9 +835,9 @@ mkdirp(const char *path, mode_t mode)
 				// if (access(path, W_OK) != 0)
 				goto done; // Done have access
 			} else {
-				chmod(f, mode);
+				set_mode_mtime(f, mode, mtime);
 			}
-			DEBUGF_W("%s already exists\n", f);
+			// DEBUGF_W("%s already exists\n", f);
 			goto done;
 		}
 	}
@@ -785,14 +848,13 @@ mkdirp(const char *path, mode_t mode)
 
 	// If parent directory exist then only create last directory.
 	char *dn = dirname(f);
-	DEBUGF_W("Parent of %s is %s\n", f, dn);
 	if ((dn != NULL) && (stat(dn, &res) == 0))
 	{
 		if (S_ISDIR(res.st_mode))
 		{
 			// HERE: Parent directory exists.
 			DEBUGF_W("1-mkdir(%s)\n", f);
-			if (mkdir_agressive(f, mode) != 0)
+			if (mkdir_agressive(f, mode, mtime) != 0)
 				rv = -1;
 			goto done;
 		}
@@ -822,13 +884,17 @@ mkdirp(const char *path, mode_t mode)
 
 	// HERE: Create all directory starting from left
 	// '/tmp' -> '/tmp/foo' -> '/tmp/foo/bar' -> ...
+	// and set mode for last directory.
+	mode_t new_mode = 0755;
 	while (1)
 	{
 		ptr = index(ptr, '/');
 		if (ptr != NULL)
 			*ptr = '\0';
-		DEBUGF_W("2-mkdir(%s)\n", f);
-		if (mkdir_agressive(f, mode) != 0)
+		else
+			new_mode = mode; // last part of directory
+		DEBUGF_W("2-mkdir(%s, 0%o)\n", f, new_mode);
+		if (mkdir_agressive(f, new_mode, mtime) != 0)
 		{
 			rv = -1;
 			goto done;
@@ -844,6 +910,31 @@ done:
 	return rv;
 }
 
+static void
+dir_save_mtime(const char *path, struct timespec *mtime)
+{
+	struct stat res;
+
+	if (stat(path, &res) != 0)
+		return;
+
+	*mtime = res.st_mtimespec;
+	// DEBUGF_W("SAVE Dir-TimeStamp %lu.%lu %s\n", mtime->tv_sec, mtime->tv_nsec, path);
+}
+
+static void
+dir_restore_mtime(const char *path, struct timespec *mtime)
+{
+	// DEBUGF_W("RESTORE Dir-TimeStamp %lu %s\n", mtime->tv_sec, path);
+
+	if (mtime->tv_sec == 0)
+		return;
+
+	struct timeval t[] = {{mtime->tv_sec, mtime->tv_nsec / 1000}, {mtime->tv_sec, mtime->tv_nsec / 1000}};
+	utimes(path, t);
+}
+
+// SWITCH message received.
 static void
 gs_ft_switch(GS_FT *ft, uint32_t id, int64_t fz_remote, struct _gs_ft_file **active, GS_LIST *fsource)
 {
@@ -879,9 +970,7 @@ gs_ft_switch(GS_FT *ft, uint32_t id, int64_t fz_remote, struct _gs_ft_file **act
 
 	if ((new->fz_remote == new->fz_local) && (new->fz_local != 0))
 	{
-		// FIXME: currently _not_ updating mtime/fperm if file is already on peer side.
-		// Do we want this? (if so then move this code block after fopen().)
-		do_complete(ft, new);
+		receiving_complete(ft, new);
 		return;
 	}
 
@@ -898,8 +987,9 @@ gs_ft_switch(GS_FT *ft, uint32_t id, int64_t fz_remote, struct _gs_ft_file **act
 				ptr++;
 		}
 		ptr = dirname(ptr);
+		dir_save_mtime(ptr, &new->dir_mtime);
 		// put(test1k.dat) must not modify the permission of parent directory.
-		mkdirp(ptr, 0 /*do not update permission on existing directory*/);
+		mkdirp(ptr, 0 /*do not update permission on existing directory*/, 0 /*do not update mtime*/);
 
 		new->fp = fopen(new->realname, "w");
 	} else {
@@ -911,7 +1001,7 @@ gs_ft_switch(GS_FT *ft, uint32_t id, int64_t fz_remote, struct _gs_ft_file **act
 		if (res.st_size != new->fz_local)
 		{
 			// Size changed
-			do_error(ft, new->li, GS_FT_ERR_BADFSIZE, NULL);
+			do_recv_error(ft, new->li, GS_FT_ERR_BADFSIZE, NULL);
 			return;
 		}
 		new->fp = fopen(new->realname, "a");
@@ -925,15 +1015,15 @@ gs_ft_switch(GS_FT *ft, uint32_t id, int64_t fz_remote, struct _gs_ft_file **act
 
 	if (new->fz_remote == 0)
 	{
-		// Zero sized file. Completed.
-		do_complete(ft, new);
+		// Zero File Size
+		receiving_complete(ft, new);
 		return;
 	}
 
 	*active = new;
 	return;
 err:
-	do_error(ft, new->li, GS_FT_ERR_PERM, NULL);
+	do_recv_error(ft, new->li, GS_FT_ERR_PERM, NULL);
 }
 
 void
@@ -961,6 +1051,14 @@ file_free(struct _gs_ft_file *f)
 static void
 ft_done(GS_FT *ft)
 {
+	if (ft->is_server != 0)
+	{
+		DEBUGF_R("WARN: DOES NOT HAPPEN\n");
+		return;
+	}
+
+	// Only client does requests. Server only answers. Thus only client keeps
+	// track of number of outstanding requests:
 	if (ft->n_files_waiting > 0)
 		ft->n_files_waiting -= 1;
 	else
@@ -975,7 +1073,10 @@ ft_del(GS_LIST_ITEM *li)
 {
 	struct _gs_ft_file *f = (struct _gs_ft_file *)li->data;
 
-	XFCLOSE(f->fp);
+	// on client this should be closed already but on server this might
+	// still be open.
+	if (f->fp != NULL)
+		XFCLOSE(f->fp);
 
 	file_free(f);
 	GS_LIST_del(li);
@@ -1125,7 +1226,8 @@ GS_FT_status(GS_FT *ft, uint32_t id, uint8_t code, const char *err_str, size_t l
 		ft_done(ft);
 		ft_del(li);
 	} else {
-		ft_done(ft);
+		// From a PATTERN request (LISTREQ, Client, get, download).
+		// File structure is not available.
 		GS_LIST_del(li);
 	}
 
@@ -1193,7 +1295,7 @@ update_stats(struct _gs_ft_file *f, size_t sz)
 }
 
 static size_t
-mk_xfer_data(GS_FT *ft, struct _gs_ft_file **active, GS_LIST *fcompleted, int *pkt_type, void *dst, size_t len, int is_log_stats)
+mk_xfer_data(GS_FT *ft, struct _gs_ft_file **active, GS_LIST *fcompleted, int *pkt_type, void *dst, size_t len)
 {
 	struct _gs_ft_file *f = *active;
 	size_t sz;
@@ -1208,20 +1310,21 @@ mk_xfer_data(GS_FT *ft, struct _gs_ft_file **active, GS_LIST *fcompleted, int *p
 	}
 	f->fz_remote += sz;
 
-	if (f->fz_remote >= f->fz_local)
-	{
-		GS_LIST_move(fcompleted, f->li);
-		*active = NULL;
-	}
-
-	if (is_log_stats)
+	if (ft->is_server == 0)
 	{
 		update_stats(f, sz);
 	}
 
+	if (f->fz_remote >= f->fz_local)
+	{
+		// Immediatley close f->fp to free file descriptor.
+		sending_complete(ft, active, fcompleted);
+	}
+
+
 	return sz;
 }
- 
+
 static size_t
 mk_switch(GS_FT *ft, struct _gs_ft_file **active, GS_LIST *fsource, GS_LIST *fcompleted, int *pkt_type, void *dst, size_t len)
 {
@@ -1229,13 +1332,15 @@ mk_switch(GS_FT *ft, struct _gs_ft_file **active, GS_LIST *fsource, GS_LIST *fco
 	struct _gs_ft_file *f;
 	int ret;
 
+	XASSERT(active != NULL, "active file is NULL\n");
+
 	li = GS_LIST_next(fsource, NULL);
 	f = (struct _gs_ft_file *)li->data;
 
 	f->fp = fopen(f->realname, "r");
 	if (f->fp == NULL)
 	{
-		DEBUGF("Could not open file %s\n", f->realname);
+		DEBUGF("fopen(%s): %s\n", f->realname, strerror(errno));
 		return ft_mk_error(ft, dst, len, pkt_type, li, GS_FT_ERR_PERM, NULL);
 	}
 
@@ -1249,7 +1354,8 @@ mk_switch(GS_FT *ft, struct _gs_ft_file **active, GS_LIST *fsource, GS_LIST *fco
 	if ((f->fz_local == f->fz_remote) && (f->fz_local != 0))
 	{
 		DEBUGF("#%u Skipping %s (already on peer)\n", (unsigned int)f->li->id, f->name);
-		mk_stats(ft, li->id, f, NULL, 0 /*success*/);
+		if (ft->is_server == 0)
+			mk_stats(ft, li->id, f, NULL, 0 /*success*/);
 		return ft_mk_error(ft, dst, len, pkt_type, li, GS_FT_ERR_NODATA, NULL);
 	}
 
@@ -1268,18 +1374,17 @@ mk_switch(GS_FT *ft, struct _gs_ft_file **active, GS_LIST *fsource, GS_LIST *fco
 	sw.offset = htonll(f->fz_remote);
 	memcpy(dst, &sw, sizeof sw);
 
+	DEBUGF_W("#%"PRIu64" Switch to %s (fz_local=%"PRIu64", fz_remote=%"PRIu64")\n", li->id, f->name, f->fz_local, f->fz_remote);
+
 	// Handle zero size files
+	*active = f;
 	if (f->fz_local == 0)
 	{
-		GS_LIST_move(fcompleted, f->li);
-		*active = NULL;
-	} else {
-		// HERE: fsize is not zero.
-		*active = f;
+		// For SERVER (get, download) the fcompleted is NULL
+		sending_complete(ft, active, fcompleted);
 	}
 
 	*pkt_type = GS_FT_TYPE_SWITCH;
-	DEBUGF_W("#%"PRIu64" Switch to %s (fz_local=%"PRIu64", fz_remote=%"PRIu64")\n", li->id, f->name, f->fz_local, f->fz_remote);
 
 	return sizeof sw;
 }
@@ -1468,20 +1573,22 @@ GS_FT_packet(GS_FT *ft, void *dst, size_t len, int *pkt_type)
 		return sizeof acc;
 	}
 
-	// Server - download to client
+	// Server - get (download to client)
 	if (ft->fdl.n_items > 0)
 	{
-		DEBUGF("Files to send: %d\n", ft->fdl.n_items);
 		if (ft->active_dl_file == NULL)
 		{
-			DEBUGF("Switching to new file\n");
-			return mk_switch(ft, &ft->active_dl_file, &ft->fdl, &ft->fdl_completed, pkt_type, dst, len);
+			DEBUGF("Files to send: %d\n", ft->fdl.n_items);
+			return mk_switch(ft, &ft->active_dl_file, &ft->fdl, NULL, pkt_type, dst, len);
 		}
 
 		if (ft->is_paused_data)
+		{
+			DEBUGF_W("IS-PAUSED-DATA==1. Not sending file data....\n");
 			return 0;
+		}
 
-		return mk_xfer_data(ft, &ft->active_dl_file, &ft->fdl_completed, pkt_type, dst, len, 0 /*is_log_stats*/);
+		return mk_xfer_data(ft, &ft->active_dl_file, NULL, pkt_type, dst, len);
 	}
 
 	// Client
@@ -1489,6 +1596,7 @@ GS_FT_packet(GS_FT *ft, void *dst, size_t len, int *pkt_type)
 	{
 		if (ft->active_put_file == NULL)
 		{
+			DEBUGF("Files to send: %d\n", ft->faccepted.n_items);
 			return mk_switch(ft, &ft->active_put_file, &ft->faccepted, &ft->fcompleted, pkt_type, dst, len);
 		}
 
@@ -1498,13 +1606,22 @@ GS_FT_packet(GS_FT *ft, void *dst, size_t len, int *pkt_type)
 			return 0;
 		}
 
-		return mk_xfer_data(ft, &ft->active_put_file, &ft->fcompleted, pkt_type, dst, len, 1 /*is_log_stats*/);
+		return mk_xfer_data(ft, &ft->active_put_file, &ft->fcompleted, pkt_type, dst, len);
 	}
 
 	if (ft->is_server == 0)
 	{
 		// CLIENT
-		DEBUGF_R("n_files_waiting=%d, plist.n_items=%d\n", ft->n_files_waiting, ft->plistreq_waiting.n_items);
+#ifdef DEBUG
+		static int old_waiting;
+		static int old_pl_waiting;
+		if ((ft->n_files_waiting != old_waiting) || (ft->plistreq_waiting.n_items != old_pl_waiting))
+		{
+			DEBUGF_R("n_files_waiting=%d, plist.n_items=%d\n", ft->n_files_waiting, ft->plistreq_waiting.n_items);
+			old_waiting = ft->n_files_waiting;
+			old_pl_waiting = ft->plistreq_waiting.n_items;
+		}
+#endif
 		if ((ft->n_files_waiting == 0) && (ft->plistreq_waiting.n_items == 0))
 		{
 			*pkt_type = GS_FT_TYPE_DONE;

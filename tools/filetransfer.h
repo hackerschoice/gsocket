@@ -17,7 +17,7 @@ struct _gs_ft_file
 {
 	GS_LIST_ITEM *li;
 	char *name;
-	char *realname;  // realpath() resolved
+	char *realname;  // local file name (absolute)
 	mode_t mode;
 	time_t mtime;
 	FILE *fp;
@@ -25,6 +25,7 @@ struct _gs_ft_file
 	off_t fz_local;  // Total file size (from client)
 	uint32_t globbing_id;
 
+	struct timespec dir_mtime;
 	// statistics
 	// Note: xfer might be suspended by 'switch' to another file.
 	// Log suspended time in usec_suspend.
@@ -102,7 +103,7 @@ typedef struct
 	// GET (download) - Server Side
 	GS_LIST flistreply;  // Server list of file to be send to client.
 	GS_LIST fdl;         // List of files ready to send (switch to).
-	GS_LIST fdl_completed;  // Waiting for ERR_COMPLETED
+	// GS_LIST fdl_completed;  // Waiting for ERR_COMPLETED
 
 	int g_id;           // global request ID (unique) to match error-replies to requests
 	int g_globbing_id;  // global globbing id
