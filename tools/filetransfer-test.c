@@ -29,6 +29,7 @@ for x in test4k.dat test8k.dat; do [[ $(md5 -q "./${x}" == $(md5 -q "test/${x}" 
 #include "filetransfer.h"
 #include "utils.h"
 #include "globbing.h"
+#include "pkt_mgr.h" // For channel numbers
 
 #define BUF_LEN		(GS_PKT_MAX_SIZE)
 
@@ -145,7 +146,7 @@ pkt_cb_error(uint8_t chn, const uint8_t *data, size_t len, void *argNOTUSED)
 
 // Output total stats
 static void
-stats_total(GS_FT_stats_total *st)
+print_stats_ft(GS_FT_stats *st)
 {
 	DEBUGF_Y("Speed  : %s\n", st->speed_str);
 	DEBUGF_Y("Amount : %"PRIu64"/%"PRIu64"usec\n", st->xfer_amount, st->xfer_duration);
@@ -155,21 +156,21 @@ stats_total(GS_FT_stats_total *st)
 
 // On file transfer completion (for each file)
 static void
-cb_stats(struct _gs_ft_stats *s)
+cb_stats(struct _gs_ft_stats_file *s, void *arg)
 {
 	DEBUGF_C("%u stats: %s\n", s->id, s->fname);
 	DEBUGF_C("Speed: %s\n", s->speed_str);
 
-	stats_total(&ft.stats_total);
+	print_stats_ft(&ft.stats);
 }
 
 // Status and Error messages
 static void
-cb_status(void *ft_ptr, struct _gs_ft_status *s)
+cb_status(void *ft_ptr, struct _gs_ft_status *s, void *arg)
 {
 	DEBUGF_M("Status: %u\n", s->code);
 	DEBUGF_M("error : '%s'\n", s->err_str);
-	DEBUGF_M("File  : %s\n", s->file->name);
+	DEBUGF_M("File  : %s\n", s->fname);
 }
 
 /*
@@ -245,19 +246,6 @@ mk_packet(void)
 	return 0;
 }
 
-
-// Client, put (uploading)
-// FIXME: move this internal to GS_FT (do globbing internally and make GS_FT_put() accept wildcards)
-static void
-glob_cb(GS_GL *res)
-{
-	DEBUGF("Inside Globbing CB %s\n", res->name);
-	// PUT (upload)
-	if (GS_FT_put(&ft, res->name) != 0)
-		DEBUGF_Y("Not valid: %s\n", res->name); // not found or directory
-}
-
-
 static void
 glob_cb_test(GS_GL *res)
 {
@@ -272,10 +260,8 @@ do_globtest(const char *exp)
 	exit(0);
 }
 
-// static uint32_t globbing_id;
-
 int
-main(int arc, char *argv[])
+main(int arc, const char *argv[])
 {
 	int is_extra_puts = 0;
 	uint8_t src[BUF_LEN];
@@ -289,7 +275,7 @@ main(int arc, char *argv[])
 	GS_library_init(stderr, stderr);
 	gopt.err_fp = stderr;
 	gopt.log_fp = stderr;
-	// gopt.err_fp = NULL; // DISABLE DEBUG
+	// gopt.err_fp = NULL; // un-comment to DISABLE DEBUG
 
 	if (*argv[1] == 'G')
 		do_globtest(argv[2]);
@@ -303,7 +289,7 @@ main(int arc, char *argv[])
 	if ((*argv[1] == 'c') || (*argv[1] == 'C'))
 	{
 		// CLIENT
-		GS_FT_init(&ft, cb_stats, cb_status, 0);
+		GS_FT_init(&ft, cb_stats, cb_status, 0, NULL, 0);
 
 
 		if (*argv[1] == 'c')
@@ -311,13 +297,9 @@ main(int arc, char *argv[])
 			// Test PUT (upload)
 			GS_PKT_assign_chn(&pkt, GS_FT_CHN_ACCEPT, pkt_cb_accept, NULL);
 			// Add files to queue...
-			// char **ptr = &argv[2];
-			// int globbing_id = 0;
 			int i;
 			for (i = 2; argv[i] != NULL; i++)
-			{
-				GS_GLOBBING(glob_cb, argv[i], i, &ft, 0);
-			}
+				GS_FT_put(&ft, argv[i]);
 		} else {
 			// Test GET (download)
 			is_get = 1;
@@ -326,17 +308,15 @@ main(int arc, char *argv[])
 			GS_PKT_assign_chn(&pkt, GS_FT_CHN_SWITCH, pkt_cb_switch, NULL);
 
 			int i;
-			// GS_FT_get(&ft, "test[14]k.dat");
-			// GS_FT_get(&ft, "test8k.dat");
 			for (i = 2; argv[i] != NULL; i++)
-			{
 				GS_FT_get(&ft, argv[i]);
-			}
 		}
 
 	} else {
 		// SERVER
-		GS_FT_init(&ft, NULL, cb_status, 1);
+		GS_FT_init_tests(&argv[2]); // Test [8.9]
+
+		GS_FT_init(&ft, NULL, cb_status, 0, NULL, 1);
 		GS_PKT_assign_chn(&pkt, GS_FT_CHN_PUT, pkt_cb_put, NULL);
 		GS_PKT_assign_chn(&pkt, GS_FT_CHN_DATA, pkt_cb_data, NULL);
 		GS_PKT_assign_chn(&pkt, GS_FT_CHN_SWITCH, pkt_cb_switch, NULL);
@@ -436,7 +416,7 @@ main(int arc, char *argv[])
 		}
 	}
 
-	// stats_total(&ft.stats_total);
+	// print_stats_ft(&ft.stats);
 	GS_FT_free(&ft);
 	GS_BUF_free(&gsb);
 

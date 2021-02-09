@@ -111,6 +111,13 @@ run_get2()
 	socat SYSTEM:"(cd ${IODIR}; set -f && ${BIN} C $* 2>${LOGDIR}/client.log)" SYSTEM:"(cd ${IODIRSRC}/foo; ${BIN} s 2>${LOGDIR}/server.log)"
 }
 
+# Server is a bad actor and send ../../../shit.dat as reply for any request
+run_get_dst()
+{
+	# set -f disabled globbing
+	socat SYSTEM:"(cd ${IODIR}/foo; set -f && ${BIN} C test4k.dat 2>${LOGDIR}/client.log)" SYSTEM:"(cd ${IODIRSRC}/foo; ${BIN} s $* 2>${LOGDIR}/server.log)"
+}
+
 run_getc()
 {
 	socat SYSTEM:"(cd ${IODIR}; set -f && ${BIN} C \'$*\' 2>${LOGDIR}/client.log)" SYSTEM:"(cd ${IODIRSRC}; ${BIN} s 2>${LOGDIR}/server.log)"
@@ -146,9 +153,10 @@ tests+="8.5 "
 tests+="8.6 "
 tests+="8.7 "
 tests+="8.8 "
+tests+="8.9 "
 
-tests+="9.1 "
-tests+="9.2 "
+# tests+="9.1 "
+# tests+="9.2 "
 
 
 if [[ "$tests" =~ '1.0 ' ]]; then
@@ -429,6 +437,17 @@ run_get test1k.dat test8k.dat foo/test4k.dat
 md5fail 1 "${IODIRSRC}/test8k.dat" "${IODIR}/test8k.dat"
 md5fail 2 "${IODIRSRC}/test1k.dat" "${IODIR}/test1k.dat"
 md5fail 2 "${IODIRSRC}/foo/test4k.dat" "${IODIR}/test4k.dat"
+$ECHO "${OK}"
+fi
+
+if [[ "$tests" =~ '8.9 ' ]]; then
+test_start -n "Running #8.9 (get, Server sending ../../../shit............"
+mkdir ${IODIR}/foo 
+run_get_dst /tmp/0wned.dat
+run_get_dst ./../../../../../../../../../../../../../tmp/0wned.dat
+run_get_dst ../0wned.dat
+[[ -e /tmp/0wned.dat ]] && fail 1
+[[ -e "${IODIR}/0wned.dat" ]] && fail 2 
 $ECHO "${OK}"
 fi
 

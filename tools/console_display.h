@@ -6,7 +6,6 @@
 
 struct condis_line
 {
-	// int type;
 	const char *color_str;
 	char line[CONDIS_LINE_MAX_LEN];
 };

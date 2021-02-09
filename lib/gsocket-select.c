@@ -96,10 +96,10 @@ gs_select_rw_restore_state(GS_SELECT_CTX *ctx, int fd, char *idstr)
 }
 
 void
-gs_select_set_rdata_pending(GS_SELECT_CTX *ctx, int fd)
+gs_select_set_rdata_pending(GS_SELECT_CTX *ctx, int fd, int len)
 {
 	ctx->rdata_pending_count++;
-	ctx->rdata_pending[fd] = 1;
+	ctx->rdata_pending[fd] = len;
 }
 
 static void
@@ -154,7 +154,7 @@ GS_select(GS_SELECT_CTX *ctx)
 			/* HERE: Call to GS_read() needed because there is still
 			 * data in the input buffer (not i/o buffer).
 			 */
-			DEBUGF_Y("Pending data in read input buffer :>\n");
+			DEBUGF_Y("fd=%d Pending data in SSL read input buffer (len=%d):>\n", i, ctx->rdata_pending[i]);
 			ctx->rdata_pending_count--;
 			call_item(ctx, &ctx->mgr_r[i], i);
 		}

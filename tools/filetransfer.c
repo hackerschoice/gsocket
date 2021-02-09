@@ -8,17 +8,20 @@ static void ft_del(GS_LIST_ITEM *li);
 static void free_get_li(GS_LIST_ITEM *li);
 static void ft_done(GS_FT *ft);
 static void qerr_add(GS_FT *ft, uint32_t id, uint8_t code, const char *str);
-static void mk_stats_total(GS_FT *ft);
-static void mk_stats(GS_FT *ft, uint32_t id, struct _gs_ft_file *f, const char *fname, int err);
+static void mk_stats_ft(GS_FT *ft);
+static void mk_stats_file(GS_FT *ft, uint32_t id, struct _gs_ft_file *f, const char *fname, int err);
 static mode_t GS_fperm2mode(uint32_t u);
 static uint32_t GS_mode2fperm(mode_t m);
-static void update_stats(struct _gs_ft_file *f, size_t sz);
+static void update_stats(GS_FT *ft, struct _gs_ft_file *f, size_t sz);
+static void init_xfer_stats(GS_FT *ft, struct _gs_ft_file *f, int64_t sz);
 static const char *str_dotslash(const char *src);
 static const char *str_stripslash(const char *src);
 static int mkdirp(const char *dir, mode_t mode, uint32_t mtime);
 static void dir_restore_mtime(const char *path, struct timespec *mtime);
 static void dir_save_mtime(const char *path, struct timespec *mtime);
 static void set_mode_mtime(const char *path, mode_t mode, uint32_t mtime);
+static void call_status_cb(GS_FT *ft, const char *fname, uint8_t code, const char *err_str);
+
 
 
 
@@ -49,40 +52,61 @@ TEST CASES:
 #6. write to symlink - as per unix (follow symlinks)
 #7. zero file size
 #8. retain timestamp
+
 #endif
 
 void
-GS_FT_init(GS_FT *ft, gsft_cb_stats_t func_stats, gsft_cb_status_t func_status, int is_server)
+GS_FT_init(GS_FT *ft, gsft_cb_stats_t func_stats, gsft_cb_status_t func_status, pid_t pid, void *arg, int is_server)
 {
 	memset(ft, 0, sizeof *ft);
 
-	// PUT (upload) - Client side
-	GS_LIST_init(&ft->fqueue, 0);
-	GS_LIST_init(&ft->fputs, 0);
-	GS_LIST_init(&ft->faccepted, 0);
-	GS_LIST_init(&ft->fcompleted, 0);
-	// PUT (upload) - Server Side
-	GS_LIST_init(&ft->fadded, 0);
-	GS_LIST_init(&ft->freceiving, 0);
-
-	// GET (download) - Client side
-	GS_LIST_init(&ft->plistreq, 0);
-	GS_LIST_init(&ft->plistreq_waiting, 0);
-	GS_LIST_init(&ft->flist, 0);
-	GS_LIST_init(&ft->fdl_waiting, 0);
-	// GET (download) - Server side
-	GS_LIST_init(&ft->flistreply, 0);
-	GS_LIST_init(&ft->fdl, 0);
+	if (is_server == 0)
+	{
+		// CLIENT
+		// PUT (upload) - Client side
+		GS_LIST_init(&ft->fqueue, 0);
+		GS_LIST_init(&ft->fputs, 0);
+		GS_LIST_init(&ft->faccepted, 0);
+		GS_LIST_init(&ft->fcompleted, 0);
+		// GET (download) - Client side
+		GS_LIST_init(&ft->plistreq, 0);
+		GS_LIST_init(&ft->plistreq_waiting, 0);
+		GS_LIST_init(&ft->flist, 0);
+		GS_LIST_init(&ft->fdl_waiting, 0);
+	} else {
+		// SERVER
+		// PUT (upload) - Server Side
+		GS_LIST_init(&ft->fadded, 0);
+		GS_LIST_init(&ft->freceiving, 0);
+		// GET (download) - Server side
+		GS_LIST_init(&ft->flistreply, 0);
+		GS_LIST_init(&ft->fdl, 0);
+	}
 
 	GS_LIST_init(&ft->qerrs, 0);
 
+	ft->pid = pid;
+	ft->func_arg = arg;
 	ft->func_stats = func_stats;
 	ft->func_status = func_status;
 	ft->is_server = is_server;
 }
 
+#ifdef DEBUG
+static const char **g_filesv;
+static int g_filesc;
+static const char *g_true_fname;
+// For test 8.9: Server is a bad actor and sends ../../0wned.dat etc as list-reply for any request.
+void
+GS_FT_init_tests(const char **argv)
+{
+	g_filesv = argv;
+	g_filesc = 0;
+}
+#endif
+
 static struct _gs_ft_file *
-file_new(const char *fname, const char *fn_local, int64_t fz_local, int64_t fz_remote, uint32_t mtime, uint32_t fperm)
+file_new(const char *fname, const char *fn_local, const char *fn_relative, int64_t fz_local, int64_t fz_remote, uint32_t mtime, uint32_t fperm)
 {
 	struct _gs_ft_file *f;
 	f = calloc(1, sizeof *f);
@@ -92,13 +116,16 @@ file_new(const char *fname, const char *fn_local, int64_t fz_local, int64_t fz_r
 	f->fz_local = fz_local;
 	f->fz_remote = fz_remote;
 
+	if (fn_relative != NULL)
+		f->fn_relative = strdup(fn_relative);
+
 	if (fn_local != NULL)
 	{
 		// CLIENT
-		f->realname = strdup(fn_local);
+		f->fn_local = strdup(fn_local); // absolute file name
 	} else {
 		// SERVER (put & get)
-		f->realname = strdup(fname);
+		f->fn_local = strdup(fname);
 	}
 
 	f->name = strdup(fname);
@@ -162,11 +189,14 @@ gs_ft_add_file(GS_FT *ft, GS_LIST *gsl, uint32_t id, const char *fname, uint32_t
 
 	// HERE: File (not directory)
 	struct _gs_ft_file *f;
-	f = file_new(fname, NULL, fz, fz_remote, mtime, GS_fperm2mode(fperm));
+	f = file_new(fname, NULL, fname, fz, fz_remote, mtime, GS_fperm2mode(fperm));
 	f->li = GS_LIST_add(gsl, NULL, f, id);
+	ft->is_want_write = 1;
 
 	return 0;	
 }
+
+
 /*
  * SERVER, PUT (upload)
  * Return < 0 on error.
@@ -182,7 +212,7 @@ GS_FT_add_file(GS_FT *ft, uint32_t id, const char *fname, size_t len, int64_t fs
 	DEBUGF_Y("#%u ADD-FILE - size %"PRIu64", fperm 0%o, '%s' mtime=%d flags=0x%02x\n", id, fsize, fperm, fname, mtime, flags);
 
 	char fn_local[4096];
-	char *wdir = getwd(NULL);
+	char *wdir = GS_getpidwd(ft->pid);
 	snprintf(fn_local, sizeof fn_local, "%s/%s", wdir, fname);
 	XFREE(wdir);
 
@@ -201,6 +231,14 @@ GS_FT_dl_add_file(GS_FT *ft, uint32_t id, const char *fname, size_t len, int64_t
 		return -1; // protocol error. Not 0 terminated.
 
 	DEBUGF_Y("#%u DL-ADD-FILE - '%s' fz_remote=%"PRId64"\n", id, fname, fz_remote);
+#ifdef DEBUGF
+	// Test [8.9]
+	if (g_true_fname != NULL)
+	{
+		fname = g_true_fname;
+		DEBUGF_B("TESTING: Fake filename. Using data from %s\n", fname);
+	}
+#endif
 
 	struct stat res;
 	int ret;
@@ -244,28 +282,30 @@ GS_FT_list_add(GS_FT *ft, uint32_t globbing_id, const char *fname, size_t len, i
 	GS_LIST_ITEM *li = GS_LIST_by_id(&ft->plistreq_waiting, globbing_id);
 	if (li == NULL)
 	{
-		DEBUGF_R("Oops. Received G#%u but no file requested?\n", globbing_id);
+		DEBUGF_R("Oops. Received G#%u but no file requested? (listreq_waiting=%d)\n", globbing_id, ft->plistreq_waiting.n_items);
 		return -1;
 	}
 	p = (struct _gs_ft_list_pattern *)li->data;
 
 	char fn_local[4096];
-	const char *ptr;
-	ptr = str_dotslash(fname);
-	if (ptr == NULL)
+	const char *fn_relative;
+	fn_relative = str_dotslash(fname);
+	if (fn_relative == NULL)
 	{
-		ptr = str_stripslash(fname);
+		fn_relative = str_stripslash(fname);
 	}
-	snprintf(fn_local, sizeof fn_local, "%s/%s", p->wdir, ptr);
+	snprintf(fn_local, sizeof fn_local, "%s/%s", p->wdir, fn_relative);
 
+#if 0
+	// DISABLED check. Not possible with wordexp() support.
 	if (fnmatch(p->pattern, fn_local, 0) != 0)
 	{
 		DEBUGF_R("filename does not match request (%s != %s)\n", fname, p->pattern);
 		// goto done; // FIXME: C 'foo/*' would return 'bar/x.txt' but should return 'foo/bar/x.txt'
 	}
+#endif
 
-	// FIXME: Check for '..' and '/' and that realpath matches when send the globbing
-	// request to remote. Oops, this should be done when requesting file name?
+	// Sanity-check for '..' and deny if server sends reply containing '..' 
 	if (strstr(fn_local, "..") != NULL)
 	{
 		DEBUGF_R("Bad file name (%s)...\n", fn_local);
@@ -293,7 +333,7 @@ GS_FT_list_add(GS_FT *ft, uint32_t globbing_id, const char *fname, size_t len, i
 		if (res.st_size == fz_remote)
 		{
 			DEBUGF_R("File of equal size already exists (%s)\n", fn_local);
-			mk_stats(ft, -1, NULL, fn_local, 0 /*success*/);
+			mk_stats_file(ft, -1, NULL, fn_relative, 0 /*success*/);
 
 			goto done;
 		}
@@ -302,12 +342,16 @@ GS_FT_list_add(GS_FT *ft, uint32_t globbing_id, const char *fname, size_t len, i
 	}
 
 	struct _gs_ft_file *f;
-	f = file_new(fname, fn_local, fz_local, fz_remote, mtime, GS_fperm2mode(fperm));
+	f = file_new(fname, fn_local, fn_relative, fz_local, fz_remote, mtime, GS_fperm2mode(fperm));
 
 	f->li = GS_LIST_add(&ft->flist, NULL, f, ft->g_id);
 	ft->g_id += 1;
 
+	// Update global stats
+	init_xfer_stats(ft, f, f->fz_remote - f->fz_local);
+
 	ft->n_files_waiting += 1;
+	ft->is_want_write = 1;
 	ret = 0;
 
 done:
@@ -452,19 +496,35 @@ dotslash_filename(const char *src)
 // CLIENT, put (upload)
 // SERVER, get (download), after globbing.
 static int
-add_file_to_list(GS_FT *ft, GS_LIST *gsl, const char *fname, uint32_t globbing_id, int is_get)
+add_file_to_list(GS_FT *ft, GS_LIST *gsl, const char *fname, uint32_t globbing_id, int is_server)
 {
 	struct _gs_ft_file *f;
 	f = calloc(1, sizeof *f);
 	f->globbing_id = globbing_id;
 
-	if (is_get == 1)
+	if (is_server == 1)
 	{
 		// Server, GET (download). 
+#ifdef DEBUG
+		const char *ff = fname;
+		if ((g_filesv != NULL) && (g_filesv[g_filesc] != NULL))
+		{
+			ff = g_filesv[g_filesc];
+
+			g_filesc++;
+			if (g_filesv[g_filesc] == NULL)
+				g_filesc = 0;
+			g_true_fname = strdup(fname);
+		}
+
+		f->name = strdup(ff);
+#else
 		f->name = strdup(fname);
+#endif
 	} else {
 		// Client, PUT (upload).
 		f->name = dotslash_filename(fname);
+		f->fn_relative = strdup(f->name);
 	}
 
 	DEBUGF_Y("#%u name = %s\n", ft->g_id, f->name);
@@ -491,7 +551,7 @@ add_file_to_list(GS_FT *ft, GS_LIST *gsl, const char *fname, uint32_t globbing_i
 	if (realfname == NULL)
 		return -3;
 
-	f->realname = realfname;
+	f->fn_local = realfname;
 	f->fz_local = res.st_size;
 	f->mode = res.st_mode;
 	f->mtime = res.st_mtime;
@@ -502,12 +562,12 @@ add_file_to_list(GS_FT *ft, GS_LIST *gsl, const char *fname, uint32_t globbing_i
 /*
  * CLIENT: Add this file (not directory) to queue.
  */
-int
-GS_FT_put(GS_FT *ft, const char *fname)
+static int
+gs_ft_put(GS_FT *ft, const char *fname)
 {
 	int ret;
 
-	ret = add_file_to_list(ft, &ft->fqueue, fname, 0 /*unused*/, 0 /*is_get*/);
+	ret = add_file_to_list(ft, &ft->fqueue, fname, 0 /*unused*/, 0 /*is_client*/);
 	if (ret != 0)
 		return ret;
 	ft->n_files_waiting += 1;
@@ -515,6 +575,35 @@ GS_FT_put(GS_FT *ft, const char *fname)
 	return 0;
 }
 
+// CLIENT
+static void
+glob_cb_client(GS_GL *res)
+{
+	GS_FT *ft = (GS_FT *)res->arg_ptr;
+
+	gs_ft_put(ft, res->name);
+}
+
+// CLIENT
+int
+GS_FT_put(GS_FT *ft, const char *pattern)
+{
+	int n_found;
+
+	n_found = GS_GLOBBING(glob_cb_client, pattern, -1, ft, 0);
+
+	if (n_found <= 0)
+	{
+		// Globbing error
+		DEBUGF_R("NOT FOUND: %s\n", pattern);
+		char buf[128];
+		snprintf(buf, sizeof buf, "%s: %s", GS_FT_strerror(GS_FT_ERR_INVAL), pattern);
+		call_status_cb(ft, pattern, GS_FT_ERR_INVAL, buf);
+		return -1;
+	}
+
+	return 0;
+}
 
 // SERVER: Add a single file
 static int
@@ -525,7 +614,7 @@ get_add_file(GS_FT *ft, const char *fname, uint32_t globbing_id)
 	DEBUGF_G("Adding %s\n", fname);
 
 	// Retrieve all info for the file.
-	ret = add_file_to_list(ft, &ft->flistreply, fname, globbing_id, 1 /*is_get*/);
+	ret = add_file_to_list(ft, &ft->flistreply, fname, globbing_id, 1 /*is_server*/);
 	if (ret != 0)
 	{
 		return ret;
@@ -554,6 +643,9 @@ GS_FT_list_add_files(GS_FT *ft, uint32_t globbing_id, const char *pattern, size_
 		return -1; // protocol error. Not 0-terminated.
 
 	DEBUGF_Y("G#%u GET-ADD-FILE: %s\n", globbing_id, pattern);
+	char *ptr = GS_getpidwd(ft->pid);
+	chdir(ptr);
+	XFREE(ptr);
 
 	n_found = GS_GLOBBING(glob_cb, pattern, globbing_id, ft, 0);
 
@@ -565,6 +657,7 @@ GS_FT_list_add_files(GS_FT *ft, uint32_t globbing_id, const char *pattern, size_
 		qerr_add(ft, globbing_id, GS_FT_ERR_NOENT, err);
 	}
 
+	ft->is_want_write = 1;
 	return n_found;
 }
 
@@ -580,8 +673,7 @@ GS_FT_get(GS_FT *ft, const char *pattern)
 	p = calloc(1, sizeof *p);
 	p->pattern = strdup(pattern);
 	p->wdir = getwd(NULL);
-	p->globbing_id = ft->g_globbing_id;
-	ft->g_globbing_id++;
+	p->globbing_id = ft->g_id;
 
 	GS_LIST_add(&ft->plistreq, NULL, p, ft->g_id);
 	ft->g_id += 1;
@@ -604,6 +696,7 @@ qerr_add(GS_FT *ft, uint32_t id, uint8_t code, const char *str)
 
 	// Must add in sequence of occurance (add_count)
 	GS_LIST_add(&ft->qerrs, NULL, qerr, ft->qerrs.add_count);
+	ft->is_want_write = 1;
 }
 
 // Send status to peer (error-msg) and free the file structure.
@@ -622,7 +715,7 @@ do_recv_error(GS_FT *ft, GS_LIST_ITEM *li, uint32_t code, const char *str)
 	struct _gs_ft_file *f = (struct _gs_ft_file *)li->data;
 
 	if (ft->is_server == 0)
-		mk_stats(ft, f->li->id, f->li->data, NULL, 1 /*err*/);
+		mk_stats_file(ft, li->id, f, NULL, 1 /*err*/);
 
 	send_status_and_del(ft, li, code, str);
 }
@@ -657,15 +750,15 @@ sending_complete(GS_FT *ft, struct _gs_ft_file **active, GS_LIST *fcompleted)
 static void
 receiving_complete(GS_FT *ft, struct _gs_ft_file *f)
 {
-	char *s = strdup(f->realname);
+	char *s = strdup(f->fn_local);
 	char *dn = dirname(s);
 
 	if (ft->is_server == 0)
 	{
 		// CLIENT (get, download: All data received)
-		mk_stats(ft, f->li->id, f->li->data, NULL, 0 /*err*/);
+		mk_stats_file(ft, f->li->id, f, NULL, 0 /*err*/);
 		XFCLOSE(f->fp); // Must close before setting mtime
-		set_mode_mtime(f->realname, f->mode, f->mtime);
+		set_mode_mtime(f->fn_local, f->mode, f->mtime);
 		dir_restore_mtime(dn, &f->dir_mtime);
 
 		ft_done(ft);
@@ -673,7 +766,7 @@ receiving_complete(GS_FT *ft, struct _gs_ft_file *f)
 	} else {
 		// SERVER (put, upload: all data received)
 		XFCLOSE(f->fp);
-		set_mode_mtime(f->realname, f->mode, f->mtime);
+		set_mode_mtime(f->fn_local, f->mode, f->mtime);
 		dir_restore_mtime(dn, &f->dir_mtime);
 
 		// close FP, free file, return COMPLETE message to client.
@@ -733,7 +826,8 @@ GS_FT_data(GS_FT *ft, const void *data, size_t len)
 	if (ft->is_server == 0)
 	{
 		// CLIENT, get (download);
-		update_stats(f, sz);
+		update_stats(ft, f, sz);
+		DEBUGF_W("xfer %"PRId64"/%"PRId64"\n", ft->stats.xfer_amount, ft->stats.xfer_amount_scheduled);
 	}
 
 	if (f->fz_local < f->fz_remote)
@@ -746,6 +840,18 @@ GS_FT_data(GS_FT *ft, const void *data, size_t len)
 }
 
 // CLIENT
+static void
+init_xfer_stats(GS_FT *ft, struct _gs_ft_file *f, int64_t sz)
+{
+	if (sz <= 0)
+		return;
+
+	f->xfer_amount_scheduled = sz;
+	ft->stats.xfer_amount_scheduled += f->xfer_amount_scheduled;
+	DEBUGF_W("Xfer Bytes Scheduled: %"PRId64", (added=%"PRId64")\n", ft->stats.xfer_amount_scheduled, f->xfer_amount_scheduled);
+}
+
+// CLIENT, put (upload)
 void
 GS_FT_accept(GS_FT *ft, uint32_t id, int64_t fz_remote)
 {
@@ -764,6 +870,11 @@ GS_FT_accept(GS_FT *ft, uint32_t id, int64_t fz_remote)
 
 	struct _gs_ft_file *f = (struct _gs_ft_file *)li->data;
 	f->fz_remote = fz_remote;
+
+	// Update global stats
+	init_xfer_stats(ft, f, f->fz_local - f->fz_remote);
+
+	ft->is_want_write = 1;
 }
 
 static void
@@ -976,9 +1087,9 @@ gs_ft_switch(GS_FT *ft, uint32_t id, int64_t fz_remote, struct _gs_ft_file **act
 
 	if (fz_remote == 0)
 	{
-		DEBUGF_G("New file (%s) %s\n", new->realname, new->name);
+		DEBUGF_G("New file (%s) %s\n", new->fn_local, new->name);
 		
-		char *ptr = new->realname;
+		char *ptr = new->fn_local;
 		// mkdir(): Remove leading './///' in './////foo/bar' (when globbing './')
 		if (*ptr == '.')
 		{
@@ -991,12 +1102,12 @@ gs_ft_switch(GS_FT *ft, uint32_t id, int64_t fz_remote, struct _gs_ft_file **act
 		// put(test1k.dat) must not modify the permission of parent directory.
 		mkdirp(ptr, 0 /*do not update permission on existing directory*/, 0 /*do not update mtime*/);
 
-		new->fp = fopen(new->realname, "w");
+		new->fp = fopen(new->fn_local, "w");
 	} else {
 		// Check fsize of local file.
 		DEBUGF_G("Appending to file\n");
 		struct stat res;
-		if (stat(new->realname, &res) != 0)
+		if (stat(new->fn_local, &res) != 0)
 			goto err;
 		if (res.st_size != new->fz_local)
 		{
@@ -1004,12 +1115,12 @@ gs_ft_switch(GS_FT *ft, uint32_t id, int64_t fz_remote, struct _gs_ft_file **act
 			do_recv_error(ft, new->li, GS_FT_ERR_BADFSIZE, NULL);
 			return;
 		}
-		new->fp = fopen(new->realname, "a");
+		new->fp = fopen(new->fn_local, "a");
 	}
 
 	if (new->fp == NULL)
 	{
-		DEBUGF("fopen(%s) failed: %s\n", new->realname, strerror(errno));
+		DEBUGF("fopen(%s) failed: %s\n", new->fn_local, strerror(errno));
 		goto err;
 	}
 
@@ -1043,7 +1154,8 @@ static void
 file_free(struct _gs_ft_file *f)
 {
 	XFREE(f->name);
-	XFREE(f->realname);
+	XFREE(f->fn_local);
+	XFREE(f->fn_relative);
 	XFREE(f);
 }
 
@@ -1053,6 +1165,7 @@ ft_done(GS_FT *ft)
 {
 	if (ft->is_server != 0)
 	{
+		// SERVER
 		DEBUGF_R("WARN: DOES NOT HAPPEN\n");
 		return;
 	}
@@ -1092,23 +1205,27 @@ mk_bps(char *str, size_t sz, uint64_t duration, uint64_t amount, int err)
 		return;
 	}
 	if (duration > 0)
-		GS_format_bps(str, sz, (amount * 1000000 / duration));
+		GS_format_bps(str, sz, (amount * 1000000 / duration), "/s");
 	else
 		snprintf(str, sz, "SKIPPED");
 }
 
 // Generate stats per file and call call-back.
 static void
-mk_stats(GS_FT *ft, uint32_t id, struct _gs_ft_file *f, const char *fname, int err)
+mk_stats_file(GS_FT *ft, uint32_t id, struct _gs_ft_file *f, const char *name, int err)
 {
-	struct _gs_ft_stats s;
+	struct _gs_ft_stats_file s;
 
 	memset(&s, 0, sizeof s);
 	s.id = id;
-	if (fname != NULL)
-		s.fname = fname;
-	else if (f != NULL)
-		s.fname = f->name;
+	if (name != NULL)
+	{
+		s.fname = name;
+	} else if (f != NULL) {
+		s.fname = str_dotslash(f->name);
+		if (s.fname == NULL)
+			s.fname = f->name;
+	}
 
 	if (f != NULL)
 	{
@@ -1121,32 +1238,72 @@ mk_stats(GS_FT *ft, uint32_t id, struct _gs_ft_file *f, const char *fname, int e
 			DEBUGF_R("Oops, Reporting stats on a suspended file\n");
 			f->usec_suspend_duration += (GS_usec() - f->usec_suspend_start);
 		}
+		DEBUGF_W("end=%"PRIu64", start=%"PRIu64", suspend=%"PRIu64"\n", f->usec_end, f->usec_start, f->usec_suspend_duration);
+
 		s.xfer_duration = (f->usec_end - f->usec_start) - f->usec_suspend_duration;
 	}
-
 	mk_bps(s.speed_str, sizeof s.speed_str, s.xfer_duration, s.xfer_amount, err);
 
 	// Global stats for all files
-	ft->stats_total.xfer_duration += s.xfer_duration;
-	ft->stats_total.xfer_amount += s.xfer_amount;
+	ft->stats.xfer_duration += s.xfer_duration;
 	if (err == 0)
-		ft->stats_total.n_files_success += 1;
-	else 
-		ft->stats_total.n_files_error += 1;
-	mk_stats_total(ft);
+		ft->stats.n_files_success += 1;
+	else {
+		ft->stats.n_files_error += 1;
+		// Encountered an error. Reduce the 'scheduled' amount by what
+		// we could not transfer.
+		if (f != NULL)
+		{
+			int64_t diff = MAX(0, f->xfer_amount_scheduled - f->xfer_amount);
+			int64_t allx = MAX(0, ft->stats.xfer_amount_scheduled - diff);
+			ft->stats.xfer_amount_scheduled = allx;
+		}
+	}
+	mk_stats_ft(ft);
 
-	// Call call-back
-	if (ft->func_stats != NULL)
-		(*ft->func_stats)(&s);
+	// Call call-back (but not if it is an error)
+	if ((ft->func_stats != NULL) && (err == 0))
+		(*ft->func_stats)(&s, ft->func_arg);
 }
 
 // Generate total stats
 static void
-mk_stats_total(GS_FT *ft)
+mk_stats_ft(GS_FT *ft)
 {
-	GS_FT_stats_total *st = &ft->stats_total;
+	GS_FT_stats *st = &ft->stats;
 
 	mk_bps(st->speed_str, sizeof st->speed_str, st->xfer_duration, st->xfer_amount, st->n_files_success==0?1:0);
+}
+
+void
+GS_FT_stats_reset(GS_FT *ft)
+{
+	memset(&ft->stats, 0, sizeof ft->stats);
+}
+
+// Report error to caller
+static void
+call_status_cb(GS_FT *ft, const char *fname, uint8_t code, const char *err_str)
+{
+	if (ft->func_status == NULL)
+		return;
+
+	char buf[128];
+	if (err_str == NULL)
+	{
+		// Create error string if none provided
+		snprintf(buf, sizeof buf, "%s: %s", GS_FT_strerror(code), fname);
+		err_str = buf;
+		DEBUGF_R("string1='%s'\n", err_str);
+	}
+	struct _gs_ft_status s;
+	memset(&s, 0, sizeof s);
+	s.fname = fname;
+	s.code = code;
+		DEBUGF_R("string2='%s'\n", err_str);
+
+	s.err_str = err_str;
+	(*ft->func_status)(ft, &s, ft->func_arg);
 }
 
 /*
@@ -1158,7 +1315,8 @@ GS_FT_status(GS_FT *ft, uint32_t id, uint8_t code, const char *err_str, size_t l
 {
 	GS_LIST_ITEM *li;
 	int err = 1;
-	int is_make_stats = 1;
+	struct _gs_ft_file *f = NULL;
+	struct _gs_ft_list_pattern *lp = NULL;
 
 	if (err_str[len] != '\0')
 		return; // protocol error. Not 0 terminated.
@@ -1170,31 +1328,32 @@ GS_FT_status(GS_FT *ft, uint32_t id, uint8_t code, const char *err_str, size_t l
 
 	// li can be one of two structures only:
 	// _gs_ft_file or gs_ft_list_pattern
-	li = GS_LIST_by_id(&ft->fcompleted, id);
+	li = GS_LIST_by_id(&ft->fcompleted, id); // CLIENT
 	if (li == NULL)
 	{
-		li = GS_LIST_by_id(&ft->fputs, id);
+		li = GS_LIST_by_id(&ft->fputs, id); // CLIENT
 		if (li == NULL)
 		{
-			li = GS_LIST_by_id(&ft->fadded, id);
+			li = GS_LIST_by_id(&ft->fdl_waiting, id); // CLIENT (get)
 			if (li == NULL)
 			{
-				li = GS_LIST_by_id(&ft->freceiving, id);
+				// This 'li' does not hold a _gs_ft_file structure and thus
+				// must not generate stats or try to free a _gs_ft_file when it is not.
+				li = GS_LIST_by_id(&ft->plistreq_waiting, id); // CLIENT (get)
 				if (li == NULL)
 				{
-					li = GS_LIST_by_id(&ft->fdl_waiting, id);
+					li = GS_LIST_by_id(&ft->fadded, id); // SERVER (put)
 					if (li == NULL)
 					{
-						li = GS_LIST_by_id(&ft->plistreq_waiting, id);
+						li = GS_LIST_by_id(&ft->freceiving, id); // SERVER (put)
 						if (li == NULL)
 						{
 							DEBUGF_R("id %u not found\n", id);
 							return; // not found
 						}
-						// This 'li' does not hold a _gs_ft_file structure and thus
-						// must not generate stats or try to free a _gs_ft_file when it is not.
-						is_make_stats = 0;
 					}
+				} else {
+					lp = (struct _gs_ft_list_pattern *)li->data;
 				}
 			}
 		}
@@ -1204,22 +1363,35 @@ GS_FT_status(GS_FT *ft, uint32_t id, uint8_t code, const char *err_str, size_t l
 			err = 0;
 	}
 
-	// Report (error-)status to caller
-	struct _gs_ft_status s;
-	memset(&s, 0, sizeof s);
-	s.code = code;
-	s.file = li->data;
-	// FIXME: sanitize error string
-	snprintf(s.err_str, sizeof s.err_str, "%s", err_str);
-	if (ft->func_status != NULL)
-		(*ft->func_status)(ft, &s);
-
-
-	if (is_make_stats)
+	const char *name;
+	if (lp == NULL)
 	{
-		// Report stats to caller
-		mk_stats(ft, id, li->data, NULL, err);
+		// A *f file (not a globbing pattern)
+		f = (struct _gs_ft_file *)li->data;
+		name = str_dotslash(f->name);
+		if (name == NULL)
+			name = f->name;
+		DEBUGF_R("FILE: %s\n", name);
+	} else {
+		name = lp->pattern;
+	}
 
+	if (ft->is_server == 0)
+	{
+		// CLIENT
+		// Report (error-)status to caller
+		// Dont trust 'err_str' from remote. Passing 'null' will make sure we generate our own.
+		call_status_cb(ft, name, code, NULL /*err_str*/);
+
+		if (f != NULL)
+		{
+			// Report stats to caller
+			mk_stats_file(ft, id, f, name, err);
+		}
+	}
+
+	if (f != NULL)
+	{
 		if (li->data == ft->active_put_file)
 			ft->active_put_file = NULL;
 
@@ -1228,6 +1400,7 @@ GS_FT_status(GS_FT *ft, uint32_t id, uint8_t code, const char *err_str, size_t l
 	} else {
 		// From a PATTERN request (LISTREQ, Client, get, download).
 		// File structure is not available.
+		// Or SERVER list
 		GS_LIST_del(li);
 	}
 
@@ -1259,14 +1432,68 @@ mk_error(void *dst, size_t len, uint32_t id, uint8_t code, const char *str)
 	return sizeof err + sz;
 }
 
+static uint8_t
+errno2code(int eno /*errno*/, uint8_t default_code)
+{
+	DEBUGF_Y("errno = %d\n", eno);
+	switch (eno)
+	{
+	case EACCES:
+	case EPERM:
+		return GS_FT_ERR_PERM;
+	case ENOENT:
+	case EFAULT:
+		return GS_FT_ERR_NOENT;
+	case EBADF:
+		return GS_FT_ERR_BADF;
+	case EINVAL:
+		return GS_FT_ERR_INVAL;
+	}
+
+	return default_code;
+}
+
+const char *
+GS_FT_strerror(uint8_t code)
+{
+	switch (code)
+	{
+	case GS_FT_ERR_PERM:
+		return "Permission denied";
+	case GS_FT_ERR_NOENT:
+		return "Not found";
+	case GS_FT_ERR_BADFSIZE:
+		return "Bad file size";
+	case GS_FT_ERR_BADF:
+		return "Bad file descriptor";
+	case GS_FT_ERR_NODATA:
+		return "No Data";
+	case GS_FT_ERR_INVAL:
+		return "Bad Value";
+	case GS_FT_ERR_COMPLETED:
+		return "Completed";
+	}
+
+	return "UNKNONW";
+}
+
 /*
  * Make an error packet. Remove errornous file from queue
  */
 static size_t
-ft_mk_error(GS_FT *ft, void *dst, size_t len, int *pkt_type, GS_LIST_ITEM *li, uint8_t code, const char *str)
+ft_mk_error(GS_FT *ft, struct _gs_ft_file *f, void *dst, size_t len, int *pkt_type, GS_LIST_ITEM *li, uint8_t code, const char *str)
 {
 	size_t sz;
 
+	// On CLIENT side report this error to caller:
+	if (ft->is_server == 0)
+	{
+		// CLIENT
+		char buf[128];
+		DEBUGF_B("fn-rel: %s\n", f->fn_relative);
+		snprintf(buf, sizeof buf, "%s: %s", GS_FT_strerror(code), f->fn_relative);
+		call_status_cb(ft, f->fn_relative, code, buf);
+	}
 	*pkt_type = GS_FT_TYPE_ERROR;
 	sz = mk_error(dst, len, li->id, code, str);
 
@@ -1277,7 +1504,7 @@ ft_mk_error(GS_FT *ft, void *dst, size_t len, int *pkt_type, GS_LIST_ITEM *li, u
 }
 
 static void
-update_stats(struct _gs_ft_file *f, size_t sz)
+update_stats(GS_FT *ft, struct _gs_ft_file *f, size_t sz)
 {
 	// -----BEGIN Log statistics-----
 	if (f->usec_start == 0)
@@ -1291,6 +1518,7 @@ update_stats(struct _gs_ft_file *f, size_t sz)
 		f->usec_suspend_start = 0;
 	}
 	f->xfer_amount += sz;
+	ft->stats.xfer_amount += sz;
 	// -----END Log statistics-----
 }
 
@@ -1306,13 +1534,14 @@ mk_xfer_data(GS_FT *ft, struct _gs_ft_file **active, GS_LIST *fcompleted, int *p
 	if (sz <= 0)
 	{
 		*active = NULL;
-		return ft_mk_error(ft, dst, len, pkt_type, f->li, GS_FT_ERR_BADF, NULL);
+		return ft_mk_error(ft, f, dst, len, pkt_type, f->li, errno2code(errno, GS_FT_ERR_BADF), NULL);
 	}
 	f->fz_remote += sz;
 
 	if (ft->is_server == 0)
 	{
-		update_stats(f, sz);
+		update_stats(ft, f, sz);
+		DEBUGF_W("xfer %"PRId64"/%"PRId64"\n", ft->stats.xfer_amount, ft->stats.xfer_amount_scheduled);
 	}
 
 	if (f->fz_remote >= f->fz_local)
@@ -1337,16 +1566,16 @@ mk_switch(GS_FT *ft, struct _gs_ft_file **active, GS_LIST *fsource, GS_LIST *fco
 	li = GS_LIST_next(fsource, NULL);
 	f = (struct _gs_ft_file *)li->data;
 
-	f->fp = fopen(f->realname, "r");
+	f->fp = fopen(f->fn_local, "r");
 	if (f->fp == NULL)
 	{
-		DEBUGF("fopen(%s): %s\n", f->realname, strerror(errno));
-		return ft_mk_error(ft, dst, len, pkt_type, li, GS_FT_ERR_PERM, NULL);
+		DEBUGF("fopen(%s): %s\n", f->fn_local, strerror(errno));
+		return ft_mk_error(ft, f, dst, len, pkt_type, li, errno2code(errno, GS_FT_ERR_PERM), NULL);
 	}
 
 	ret = fseek(f->fp, 0, SEEK_END);
 	if (ret != 0)
-		return ft_mk_error(ft, dst, len, pkt_type, li, GS_FT_ERR_BADF, NULL);
+		return ft_mk_error(ft, f, dst, len, pkt_type, li, errno2code(errno, GS_FT_ERR_BADF), NULL);
 	f->fz_local = ftell(f->fp);
 
 	// Peer already has this file.
@@ -1355,8 +1584,8 @@ mk_switch(GS_FT *ft, struct _gs_ft_file **active, GS_LIST *fsource, GS_LIST *fco
 	{
 		DEBUGF("#%u Skipping %s (already on peer)\n", (unsigned int)f->li->id, f->name);
 		if (ft->is_server == 0)
-			mk_stats(ft, li->id, f, NULL, 0 /*success*/);
-		return ft_mk_error(ft, dst, len, pkt_type, li, GS_FT_ERR_NODATA, NULL);
+			mk_stats_file(ft, li->id, f, NULL, 0 /*success*/);
+		return ft_mk_error(ft, f, dst, len, pkt_type, li, GS_FT_ERR_NODATA, NULL);
 	}
 
 	// Remote size is larger. Overwrite from beginning.
@@ -1366,7 +1595,7 @@ mk_switch(GS_FT *ft, struct _gs_ft_file **active, GS_LIST *fsource, GS_LIST *fco
 	// Remote size is smaller. Restart transmission.
 	ret = fseek(f->fp, f->fz_remote, SEEK_SET);
 	if (ret != 0)
-		return ft_mk_error(ft, dst, len, pkt_type, li, GS_FT_ERR_BADF, NULL);
+		return ft_mk_error(ft, f, dst, len, pkt_type, li, errno2code(errno, GS_FT_ERR_BADF), NULL);
 
 	struct _gs_ft_switch sw;
 	memset(&sw, 0, sizeof sw);
@@ -1474,7 +1703,7 @@ GS_FT_packet(GS_FT *ft, void *dst, size_t len, int *pkt_type)
 		li = GS_LIST_next(&ft->plistreq, NULL);
 		struct _gs_ft_list_pattern *p = li->data;
 
-		DEBUGF("%d LIST-REQ '%s' in queue (LIST-REQ to be send)\n", ft->plistreq.n_items, p->pattern);
+		DEBUGF("%d LIST-REQ '%s' in queue (LIST-REQ to be send) [Using glob-id=%d]\n", ft->plistreq.n_items, p->pattern, p->globbing_id);
 
 		struct _gs_ft_list_request list_req;
 		struct _gs_ft_list_request *lr = (struct _gs_ft_list_request *)dst;
@@ -1624,10 +1853,13 @@ GS_FT_packet(GS_FT *ft, void *dst, size_t len, int *pkt_type)
 #endif
 		if ((ft->n_files_waiting == 0) && (ft->plistreq_waiting.n_items == 0))
 		{
+			ft->is_want_write = 0;
 			*pkt_type = GS_FT_TYPE_DONE;
 			return 0;
 		}
 	}
+	if (*pkt_type == GS_FT_TYPE_NONE)
+		ft->is_want_write = 0;
 
 	return 0;
 }

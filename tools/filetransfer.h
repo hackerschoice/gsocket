@@ -1,23 +1,16 @@
 #ifndef __GS_FILETRANSFER_H__
 #define __GS_FILETRANSFER_H__ 1
 
-#define GS_FT_CHN_PUT           (0)  // 128
-#define GS_FT_CHN_ACCEPT        (1)  // 129
-#define GS_FT_CHN_LIST_REQUEST  (2)  // 130 0x82
-#define GS_FT_CHN_DATA          (3)  // 131 0x83
-#define GS_FT_CHN_ERROR         (4)  // 132
-#define GS_FT_CHN_SWITCH        (5)  // 133 0x85
-#define GS_FT_CHN_LIST_REPLY    (6)  // 134 0x86
-#define GS_FT_CHN_DL            (7)  // 135 0x87
-
 // Number of bytes needed for largest message (could be data)
 #define GS_FT_MIN_BUF_SIZE	(64)
+#define GS_FT_SPEEDSTR_MAXSIZE    (7 + 2 + 1)    // "123.4MB" + "/s" + \0
 
 struct _gs_ft_file
 {
 	GS_LIST_ITEM *li;
-	char *name;
-	char *realname;  // local file name (absolute)
+	char *name;        // requested name
+	char *fn_local;    // local file name (absolute)
+	char *fn_relative; // Client: last part after '/./'
 	mode_t mode;
 	time_t mtime;
 	FILE *fp;
@@ -34,6 +27,7 @@ struct _gs_ft_file
 	uint64_t usec_suspend_start;
 	uint64_t usec_suspend_duration;
 	int64_t xfer_amount;  // Actual data on the wire
+	int64_t xfer_amount_scheduled;
 };
 
 // Client structure to keep outstanding 'list' request in a GS-LIST
@@ -44,27 +38,27 @@ struct _gs_ft_list_pattern
 	char *wdir;      // working directory
 };
 
-struct _gs_ft_stats
+struct _gs_ft_stats_file
 {
 	uint32_t id;
-	// struct _gs_ft_file *f;
 	const char *fname;
 	uint64_t xfer_duration; // Actual transfer time (without suspension)
 	uint64_t xfer_amount;   // Actual data transfered
-	char speed_str[8];     // Speed (bps). Human readable string.
+	char speed_str[GS_FT_SPEEDSTR_MAXSIZE];     // Speed (bps). Human readable string.
 };
 
-typedef void (*gsft_cb_stats_t)(struct _gs_ft_stats *s);
+typedef void (*gsft_cb_stats_t)(struct _gs_ft_stats_file *s, void *arg);
 
 // Updated after each file completion
 typedef struct
 {
-	uint64_t xfer_duration;
-	uint64_t xfer_amount;
-	char speed_str[8];
+	uint64_t xfer_duration;  // 
+	uint64_t xfer_amount;    // bytes actually transfered so far
+	char speed_str[GS_FT_SPEEDSTR_MAXSIZE]; // Overall bps (updated after each file transfer)
 	int n_files_success; // transferred or skipped so far
 	int n_files_error;
-} GS_FT_stats_total;
+	int64_t xfer_amount_scheduled;  // Bytes scheduled (so far) for transfer
+} GS_FT_stats;
 
 /*
  * Queue'ed error's that need to be send to peer.
@@ -79,10 +73,11 @@ struct _gs_ft_qerr
 struct _gs_ft_status
 {
 	uint8_t code;
-	struct _gs_ft_file *file;
-	char err_str[128]; // 0-terminated error string
+	// struct _gs_ft_file *file;
+	const char *fname;
+	const char *err_str;
 };
-typedef void (*gsft_cb_status_t)(void *ft_ptr, struct _gs_ft_status *s);
+typedef void (*gsft_cb_status_t)(void *ft_ptr, struct _gs_ft_status *s, void *arg);
 
 typedef struct 
 {
@@ -105,24 +100,28 @@ typedef struct
 	GS_LIST fdl;         // List of files ready to send (switch to).
 	// GS_LIST fdl_completed;  // Waiting for ERR_COMPLETED
 
+	pid_t pid;          // Server only: Use the CWD of this process for uploads/downloadds
 	int g_id;           // global request ID (unique) to match error-replies to requests
 	int g_globbing_id;  // global globbing id
 	struct _gs_ft_file *active_put_file;  // Current active upload file
 	struct _gs_ft_file *active_dl_file;  // Current active download file
 	gsft_cb_stats_t func_stats;
 	gsft_cb_status_t func_status;
+	void *func_arg;
 
 	GS_LIST qerrs;      // queue'd errors
 	int is_server;
 	int is_paused_data;    // write() blocked. Queue control data. Pause sending file data
 
 	int n_files_waiting;   // Files waiting for completion or error FIXME: This should be n_requests_waiting
+	int is_want_write;
 	// ..and be a counter of all outstanding requests we are awaiting an answer for....
 	// int n_listreply_waiting;
 
 	// Statistics total (all files)
-	GS_FT_stats_total stats_total;
+	GS_FT_stats stats;
 } GS_FT;
+
 
 // CLIENT -> Server: upload a file to server.
 // Server replies with 'gs_ft_accept'
@@ -161,7 +160,7 @@ struct _gs_ft_list_reply
 #define GS_FT_FL_ISDIR               (2)
 
 
-// CLIENT -> Server: request file for download
+// CLIENT -> Server: GET (downlaod) - request file
 struct _gs_ft_dl
 {
 	uint32_t id;
@@ -171,7 +170,7 @@ struct _gs_ft_dl
 	uint8_t name[0]; // 0-terminated file name
 } __attribute__((__packed__));
 
-// SERVER -> Client: Accept file. (reply to PUT)
+// SERVER -> Client: PUT (upload) - accept file
 struct _gs_ft_accept
 {
 	uint32_t id;
@@ -205,24 +204,30 @@ struct _gs_ft_error
 #define GS_FT_ERR_BADFSIZE     (3)   // Size on server is larger
 #define GS_FT_ERR_BADF         (9)
 #define GS_FT_ERR_NODATA       (10)
+#define GS_FT_ERR_INVAL        (11)  // wordexp(3) error
 #define GS_FT_ERR_COMPLETED    (128) // All data written successfully
 
-void GS_FT_init(GS_FT *ft, gsft_cb_stats_t func_stats, gsft_cb_status_t func_status, int is_server);
+void GS_FT_init(GS_FT *ft, gsft_cb_stats_t func_stats, gsft_cb_status_t func_status, pid_t pid, void *arg, int is_server);
 void GS_FT_free(GS_FT *ft);
 int GS_FT_add_file(GS_FT *ft, uint32_t id, const char *fname, size_t len, int64_t fsize, uint32_t mtime, uint32_t fperm, uint8_t flags);
 int GS_FT_dl_add_file(GS_FT *ft, uint32_t id, const char *fname, size_t len, int64_t fsize);
 int GS_FT_list_add_files(GS_FT *ft, uint32_t get_id, const char *pattern, size_t len);
 int GS_FT_list_add(GS_FT *ft, uint32_t globbing_id, const char *fname, size_t len, int64_t fsize, uint32_t mtime, uint32_t fperm, uint8_t flags);
-int GS_FT_put(GS_FT *ft, const char *fname);
+int GS_FT_put(GS_FT *ft, const char *pattern);
 int GS_FT_get(GS_FT *ft, const char *pattern);
 void GS_FT_switch(GS_FT *ft, uint32_t id, int64_t offset);
 void GS_FT_accept(GS_FT *ft, uint32_t id, int64_t offset);
 void GS_FT_data(GS_FT *ft, const void *data, size_t len);
 void GS_FT_status(GS_FT *ft, uint32_t id, uint8_t code, const char *err_str, size_t len);
+void GS_FT_stats_reset(GS_FT *ft);
+const char *GS_FT_strerror(uint8_t code);
 size_t GS_FT_packet(GS_FT *ft, void *dst, size_t len, int *pkt_type);
 void GS_FT_pause_data(GS_FT *ft);
 void GS_FT_unpause_data(GS_FT *ft);
-int GS_FT_WANT_WRITE(GS_FT *ft);
+#define GS_FT_WANT_WRITE(xft)	(xft)->is_want_write
+#ifdef DEBUG
+void GS_FT_init_tests(const char **argv);
+#endif
 
 // Packet types
 #define GS_FT_TYPE_NONE        (0)

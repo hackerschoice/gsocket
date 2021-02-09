@@ -744,7 +744,7 @@ forkpty(int *fd, void *a, void *b, void *c)
 #endif /* HAVE_FORKPTY */
 
 int
-pty_cmd(const char *cmd)
+pty_cmd(const char *cmd, pid_t *pidptr)
 {
 	pid_t pid;
 	int fd;
@@ -819,6 +819,9 @@ pty_cmd(const char *cmd)
 	}
 	/* HERE: Parent */
 
+	if (pidptr)
+		*pidptr = pid;
+
 	return fd;
 }
 
@@ -826,7 +829,7 @@ pty_cmd(const char *cmd)
  * Spawn a cmd and return fd.
  */
 int
-fd_cmd(const char *cmd)
+fd_cmd(const char *cmd, pid_t *pidptr)
 {
 	pid_t pid;
 	int fds[2];
@@ -836,7 +839,7 @@ fd_cmd(const char *cmd)
 
 	if (gopt.is_interactive)
 	{
-		return pty_cmd(cmd);
+		return pty_cmd(cmd, pidptr);
 	}
 
 	ret = socketpair(AF_UNIX, SOCK_STREAM, 0, fds);
@@ -860,6 +863,8 @@ fd_cmd(const char *cmd)
 	}
 
 	/* HERE: Parent process */
+	if (pidptr)
+		*pidptr = pid;
 	close(fds[0]);
 
 	return fds[1];
@@ -979,6 +984,15 @@ cmd_ping(struct _peer *p)
 	GS_SELECT_FD_SET_W(p->gs);
 }
 
+void
+cmd_pwd(struct _peer *p)
+{
+	if (gopt.is_want_pwd != 0)
+		return;
+
+	gopt.is_want_pwd = 1;
+	GS_SELECT_FD_SET_W(p->gs);
+}
 
 const char fname_valid_char[] = ""
 "................"

@@ -19,30 +19,6 @@ struct utmp_db_user
 	int token;
 };
 
-// struct GS_BUF
-// {
-// 	void *data;
-// 	size_t last;
-// 	size_t total_len;
-// };
-
-// int
-// GS_BUF_add(struct GS_BUF *gsb, void *data, size_t len)
-// {
-// 	if (gsb->total_len - gsb->last < len)
-// 	{
-// 		gsb->total_len += len * 10;
-// 		gsb->data = realloc(gsb->data, gsb->total_len);
-// 	}
-
-// 	memcpy((uint8_t *)gsb->data + gsb->last, data, len);
-// 	gsb->last += len;
-
-// 	return 0;
-// }
-
-// struct GS_BUF mon_db
-
 GS_LIST udb;
 static int is_udb_init;
 

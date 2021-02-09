@@ -31,7 +31,6 @@
 static void console_start(void);
 static void console_stop(void);
 static int console_command(struct _peer *p, const char *cmd);
-// static void get_cursor_pos(int *row, int *col);
 
 static uint8_t chr_last;
 static int tty_fd = -1;
@@ -63,10 +62,13 @@ struct _console_info
 	int64_t last_pos;
 	double bps;
 	double last_bps;
+
+	float ft_last_perc;
+	float ft_perc;   // FileTransfer percent completion
 };
 
 struct _console_info ci;
-GS_CONDIS gs_condis;
+GS_CONDIS gs_condis; // ConsoleDisplay
 
 static double
 get_usec(void)
@@ -122,61 +124,6 @@ console_init(int fd)
 		return;
 }
 
-#if 0
-static int
-readstring(int fd, char *buf, size_t sz, const char *str)
-{
-    unsigned char last;
-    unsigned char c;
-    int n;
-    int rv = -1;
-    char *end = buf + sz;
-
-    if (fd < 0)
-    	return -1;
-
-    // signal(SIGALRM, resize_timeout);
-    // alarm(10);
-    n = read(fd, &c, 1);
-    if (n <= 0)
-		goto err;
-
-    if (c == 0233)
-    {	/* meta-escape, CSI */
-		*buf++ = ESCAPE("")[0];
-		*buf++ = '[';
-    } else {
-		*buf++ = (char) c;
-    }
-    if (c != *str)
-		goto err;
-
-    last = str[strlen(str) - 1];	// R
-    while (1)
-    {
-		n = read(fd, &c, 1);
-		if (n <= 0)
-			goto err;
-		*buf++ = c;
-		if (c == last)
-			break;
-		if (buf >= end)
-			goto err;
-    }
-
-    alarm(0);
-    *buf = 0;
-    rv = 0;
-err:
-	// if (rv != 0)
-	// {
-	// 	signal(SIGALRM, SIG_DFL);
-	// 	alarm(0);	// CANCEL alarm
-	// }
-    return rv;
-}
-#endif
-
 static ssize_t
 tty_write(void *src, size_t len)
 {
@@ -206,9 +153,12 @@ console_cursor_on(void)
 	char *end = buf + sizeof (buf);
 	char *ptr = buf;
 
-	DEBUGF_W("Console Cursor ON\n");
+	int row = gopt.winsize.ws_row;
+	int col = 1 + GS_CONSOLE_PROMPT_LEN + MIN(rl.pos, rl.visible_len);
+
+	DEBUGF_W("Console Cursor ON (%d:%df)\n", row, col);
 	// ESC[?2004l = Reset bracketed paste mode
-	SXPRINTF(ptr, end - ptr, "\x1B[%d;%zuf", gopt.winsize.ws_row, 1 + GS_CONSOLE_PROMPT_LEN + MIN(rl.pos, rl.visible_len));
+	SXPRINTF(ptr, end - ptr, "\x1B[%d;%df", row, col);
 	if (is_console_cursor_needs_reset)
 	{
 		SXPRINTF(ptr, end - ptr, "\x1B[?2004l");
@@ -271,9 +221,19 @@ mk_statusbar(void)
 	VSADDF(ptr, end, vc, "]");
 
 	// BYTES/sec
-	char buf[8];
-	GS_format_bps(buf, sizeof buf, (int64_t)ci.bps);
-	VSADDF(ptr, end, vc, "[%s/s]", buf);
+	char buf[GS_FT_SPEEDSTR_MAXSIZE];
+	GS_format_bps(buf, sizeof buf, (int64_t)ci.bps, "/s");
+	VSADDF(ptr, end, vc, "[%s]", buf);
+
+	// Percent of FileTransfer completed [99.2%] or [ 0.4%] or [-----]
+	if (ci.ft_perc <= 0)
+	{
+		VSADDF(ptr, end, vc, "[-----]");
+	} else {
+		char perc[5];
+		snprintf(perc, sizeof perc, "%1.1f", ci.ft_perc);
+		VSADDF(ptr, end, vc, "[%4s%%]", perc);
+	}
 
 	// Fill until end
 	size_t v_left = gopt.winsize.ws_col - vc;
@@ -308,6 +268,24 @@ update_bps(struct _peer *p)
 
 	ci.last_usec = now_usec;
 	ci.last_pos = cur_pos;
+
+	if (ci.last_bps != ci.bps)
+		ci.is_sb_redraw_needed += 1;
+
+	// Percentage of File Transfer
+	ci.ft_last_perc = ci.ft_perc;
+	GS_FT *ft = &p->ft;
+	GS_FT_stats *s = &ft->stats;
+
+	if (s->xfer_amount_scheduled == 0)
+		ci.ft_perc = 0;
+	else {
+		float f = ((float)(s->xfer_amount * 100)/ s->xfer_amount_scheduled);
+		ci.ft_perc = MIN(f, 99.9);
+	}
+
+	if (ci.ft_last_perc != ci.ft_perc)
+		ci.is_sb_redraw_needed += 1;
 }
 
 void
@@ -401,7 +379,7 @@ CONSOLE_update_bps(struct _peer *p)
 		return;
 
 	// Only redraw if there was a change
-	if (ci.last_bps != ci.bps)
+	if (ci.is_sb_redraw_needed)
 	{
 		mk_statusbar();
 		console_draw(p->fd_out, 0);
@@ -539,6 +517,11 @@ check_arrow(int *esc, uint8_t c)
  * 6. ^E + <other> == submit=other. Send ^E + submit. Return -2
  * ==> behavior screen like (see *#1* below)
  * 6. ^E + <other> == do not submit. Return 0
+ *
+ * Return 0 : Caller not to process received character (more data required).
+ * Return -1: Caller to process character in *submit
+ * Return -2: not used.
+ * Return >0: Escaped character.
  */
 int
 CONSOLE_check_esc(uint8_t c, uint8_t *submit)
@@ -910,7 +893,7 @@ ansi_write(int fd, void *data, size_t len, int *cls_code)
 	if (write(fd, data, amount) != amount)
 		return -1;
 #ifdef DEBUG
-	ansi_output(data, amount);
+	// ansi_output(data, amount);
 #endif
 
 	if (amount < len)
@@ -962,7 +945,7 @@ CONSOLE_write(int fd, void *data, size_t len)
 
 	/* Move cursor to upper tier if cursor inside console */
 	if (is_cursor_in_console)
-		tty_write("\x1B""8", 2); // Restore cursor
+		tty_write("\x1B""8", 2); // Restore cursor to upper tier
 
 	ssize_t sz;
 	sz = ansi_write(fd, data, len, &is_detected_clearscreen);
@@ -976,7 +959,7 @@ CONSOLE_write(int fd, void *data, size_t len)
 		// HEXDUMP(data, MIN(16, len));
 
 	if (is_cursor_in_console)
-		tty_write("\x1B""7", 2);  // Save cursor position
+		tty_write("\x1B""7", 2);  // Save new cursor position after writing to upper tier
 
 
 	// Now check if console needs to be re-drawn
@@ -1014,7 +997,10 @@ CONSOLE_write(int fd, void *data, size_t len)
 	 	console_draw(fd, 1 /*force*/);
 
 	 if (is_cursor_in_console)
+	 {
+	 	DEBUGF("is_cursor_in_console is true\n");
 	 	console_cursor_on();
+	 }
 
 	return sz;
 }
@@ -1041,7 +1027,7 @@ CONSOLE_readline(struct _peer *p, void *data, size_t len)
 
 	for (; src < s_end; src++)
 	{
-		rv = GS_RL_add(&rl, *src, &key, GS_CONSOLE_INPUT_LEN, 1 + GS_CONSOLE_PROMPT_LEN);
+		rv = GS_RL_add(&rl, *src, &key, gopt.winsize.ws_row, 1 + GS_CONSOLE_PROMPT_LEN);
 		// HEXDUMP(rl.esc_data, rl.esc_len);
 		if (write(fd, rl.esc_data, rl.esc_len) != rl.esc_len)
 			ERREXIT("write()\n");
@@ -1076,25 +1062,6 @@ CONSOLE_readline(struct _peer *p, void *data, size_t len)
 
 	return 1;
 }
-
-#if 0
-static void
-get_cursor_pos(int *row, int *col)
-{
-	*row = -1;
-	*col = -1;
-	int rv;
-	char buf[64];
-
-	tty_write("\x1b" "[6n", 4);
-    rv = readstring(tty_fd, buf, sizeof buf, PTY_SIZE_STR);
-
-    if (rv == 0)
-	    sscanf(buf, PTY_SIZE_STR, row, col);
-
-	DEBUGF_G("Current Cursor row=%d col=%d\n", *row, *col);
-}
-#endif
 
 /*
  * Set up terminal to display console (e.g. scroll upper tier up
@@ -1180,8 +1147,8 @@ CONSOLE_action(struct _peer *p, uint8_t key)
 
 	if (key == 'c')
 	{
-		/* Trigger: Send new window size to peer */
-		gopt.is_win_resized = 1;
+		gopt.is_win_resized = 1; // Trigger: Send new window size to peer
+		gopt.is_want_ids_on = 1;
 		GS_SELECT_FD_SET_W(p->gs);
 
 		if (gopt.is_console == 1)
@@ -1195,8 +1162,6 @@ CONSOLE_action(struct _peer *p, uint8_t key)
 		console_start();
 		gopt.is_console = 1;
 
-		pkt_app_send_ids(p->gs->ctx->gselect_ctx, p);
-
 		GS_condis_pos(&gs_condis, (gopt.winsize.ws_row - GS_CONSOLE_ROWS) + 1 + 1, gopt.winsize.ws_col);
 		if (is_console_welcome_msg == 0)
 		{
@@ -1205,7 +1170,7 @@ CONSOLE_action(struct _peer *p, uint8_t key)
 			GS_condis_add(&gs_condis, 0, "Press Ctrl-e + UP to leave the console.");
 			is_console_welcome_msg = 1;
 		}
-		// Draw console neede? Resizing remote will trigger a CLEAR (=> re-draw)
+		// Draw console needed? Resizing remote will trigger a CLEAR (=> re-draw)
 		mk_statusbar();
 		console_draw(p->fd_out, 1);
 	}
@@ -1222,6 +1187,41 @@ cmd_help(int fd)
 	GS_condis_draw(&gs_condis, 1);	
 }
 
+// Use wordexp(3) to resolve path name with ~/ and variable substitution
+static int
+path_resolve(const char *pattern, char *dst, size_t len)
+{
+	wordexp_t p;
+	int ret;
+
+	if (len <= 0)
+		return -1;
+
+	dst[0] = '\0';
+	// On failure return 'pattern' as path 
+	snprintf(dst, len, "%s", pattern); 
+
+	signal(SIGCHLD, SIG_DFL);
+	ret = wordexp(pattern, &p, WRDE_NOCMD);
+	signal(SIGCHLD, SIG_IGN);
+	if (ret != 0)
+	{
+		DEBUGF_R("wordexp(%s) error: %d\n", pattern, ret);
+		return -1;
+	}
+
+	if (p.we_wordc <= 0)
+	{
+		wordfree(&p);
+		return -1;
+	}
+
+	snprintf(dst, len, "%s", p.we_wordv[0]);
+	wordfree(&p);
+
+	return 0;
+}
+
 static int
 console_command(struct _peer *p, const char *cmd)
 {
@@ -1231,6 +1231,9 @@ console_command(struct _peer *p, const char *cmd)
 	char *ptr;
 	int row = gopt.winsize.ws_row - (GS_CONSOLE_ROWS - 1);
 
+	if (strlen(cmd) <= 0)
+		return 0;
+	
 	if (memcmp(cmd, "help", 4) == 0)
 	{
 		cmd_help(fd);
@@ -1238,17 +1241,31 @@ console_command(struct _peer *p, const char *cmd)
 		cmd_ping(p);
 	} else if (memcmp(cmd, "quit", 4) == 0) {
 		hard_quit();
+	} else if (memcmp(cmd, "pwd", 3) == 0) {
+		cmd_pwd(p);
 	} else if (memcmp(cmd, "clear", 5) == 0) {
 		GS_condis_clear(&gs_condis);
 		GS_condis_draw(&gs_condis, 1);
-	} else if (memcmp(cmd, "put", 3) == 0) {
-		GS_condis_add(&gs_condis, 0, "Not yet implemented.");
-		GS_condis_draw(&gs_condis, 1);
-	} else if (memcmp(cmd, "get", 3) == 0) {
-		GS_condis_add(&gs_condis, 0, "Not yet implemented.");
-		GS_condis_draw(&gs_condis, 1);
+	} else if (memcmp(cmd, "put ", 4) == 0) {
+		GS_FT_put(&p->ft, cmd+4);
+		GS_SELECT_FD_SET_W(p->gs);
+	} else if (memcmp(cmd, "get ", 4) == 0) {
+		GS_FT_get(&p->ft, cmd+4);
+		GS_SELECT_FD_SET_W(p->gs);
 	} else if (memcmp(cmd, "xaitax", 6) == 0) {
-		GS_condis_add(&gs_condis, 0, "Thanks xaitax for testing!");
+		GS_condis_add(&gs_condis, GS_PKT_APP_LOG_TYPE_DEFAULT, "Thanks xaitax for testing!");
+		GS_condis_draw(&gs_condis, 1);
+	} else if (strncmp(cmd, "lpwd", 4) == 0) {
+		GS_condis_add(&gs_condis, GS_PKT_APP_LOG_TYPE_DEFAULT, getwd(NULL));
+		GS_condis_draw(&gs_condis, 1);
+	} else if (strncmp(cmd, "lcd ", 4) == 0) {
+		char path[PATH_MAX];
+		path_resolve(cmd + 4, path, sizeof path);
+		if (chdir(path) != 0)
+			snprintf(buf, sizeof buf, "%s: %s", strerror(errno), path);
+		else
+			snprintf(buf, sizeof buf, "%s", getwd(NULL));
+		GS_condis_add(&gs_condis, GS_PKT_APP_LOG_TYPE_DEFAULT, buf);
 		GS_condis_draw(&gs_condis, 1);
 	} else {
 		snprintf(buf, sizeof buf, "Command not known: '%s'", cmd);

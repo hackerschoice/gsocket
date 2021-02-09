@@ -181,27 +181,55 @@ GS_usec(void)
 	return GS_TV_TO_USEC(&tv);
 }
 
-// 7 readable characters + 0
+// 7 readable characters + suffix + 0
 static const char unit[] = "BKMGT";
 void
-GS_format_bps(char *dst, size_t size, int64_t bytes)
+GS_format_bps(char *dst, size_t size, int64_t bytes, const char *suffix)
 {
 	int i;
 
+	if (suffix == NULL)
+		suffix = "";
+
 	if (bytes < 1000)
 	{
-		snprintf(dst, size, "%3d.0 B", (int)bytes);
+		snprintf(dst, size, "%3d.0 B%s", (int)bytes, suffix);
 		return;
 	}
 	bytes *= 100;
 
 	for (i = 0; bytes >= 100*1000 && unit[i] != 'T'; i++)
 		bytes = (bytes + 512) / 1024;
-	snprintf(dst, size, "%3lld.%1lld%c%s",
+	snprintf(dst, size, "%3lld.%1lld%c%s%s",
             (long long) (bytes + 5) / 100,
             (long long) (bytes + 5) / 10 % 10,
             unit[i],
-            i ? "B" : " ");
+            i ? "B" : " ", suffix);
+}
+
+// Get Working Directory of process with id pid or if this fails then current cwd
+// of this process.
+char *
+GS_getpidwd(pid_t pid)
+{
+	int ret;
+	char *wd = NULL;
+
+	if (pid <= 0)
+		goto err;
+
+	struct proc_vnodepathinfo vpi;
+	ret = proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &vpi, sizeof vpi);
+	if (ret <= 0)
+		goto err;
+
+	wd = strdup(vpi.pvi_cdir.vip_path);
+
+err:
+	if (wd == NULL)
+		wd = getwd(NULL);
+	DEBUGF_W("PID %d CWD=%s\n", pid, wd);
+	return wd;
 }
 
 /*

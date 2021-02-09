@@ -43,6 +43,7 @@
 #include <libgen.h>		/* basename() */
 #include <termios.h>
 #include <pwd.h>
+#include <wordexp.h>
 #ifdef HAVE_UTMPX_H
 # include <utmpx.h>
 #endif
@@ -65,6 +66,7 @@
 #include <openssl/srp.h>
 #include <gsocket/gsocket.h>
 #include <gsocket/gs-select.h>
+#include "filetransfer.h"
 
 #ifndef O_NOCTTY
 # warning "O_NOCTTY not defined. Using 0."
@@ -105,6 +107,10 @@ struct _gopt
 	int is_console;		    // console is being displayed
 	int is_pong_pending;    // Server: Answer to PING waiting to be send
 	int is_want_ping;       // Client: Wants to send a ping
+	int is_want_pwd;        // Client: Wants server to send cwd
+	int is_pwdreply_pending; // Server: Answer to pwd-request
+	int is_want_chdir; 
+	int is_want_ids_on;     
 	uint64_t ts_ping_sent;  // TimeStamp ping sent
 	fd_set rfd, r;
 	fd_set wfd, w;
@@ -166,9 +172,11 @@ struct _peer
 	int id;			/* Stats: assign an ID to each pere */
 	struct _socks socks;
 	GS_PKT pkt;		// In-band data for interactive shell (-i)
+	GS_FT ft;       // Filetransfer (-i)
 	GS_LIST logs;   // Queue for log messages from Server to Client (-i)
 	int is_pending_logs; // Log files need to be send to peer.
 	GS_LIST_ITEM *ids_li;  // Peer is interested in global IDS logs
+	pid_t pid;
 };
 
 #define GSC_FL_IS_SERVER		(0x01)

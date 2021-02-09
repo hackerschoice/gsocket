@@ -5,6 +5,7 @@
 #include "console_display.h"
 #include "utils.h"
 #include "gs-netcat.h"
+#include "filetransfer_mgr.h"
 
 extern GS_CONDIS gs_condis;  // defined in console.c
 
@@ -102,6 +103,29 @@ pkt_app_cb_ids(uint8_t msg, const uint8_t *data, size_t len, void *ptr)
 	}
 }
 
+// SERVER
+void
+pkt_app_cb_pwdrequest(uint8_t msg, const uint8_t *dataUNUSED, size_t lenUNUSED, void *ptr)
+{
+	struct _peer *p = (struct _peer *)ptr;
+
+	gopt.is_pwdreply_pending = 1;
+	GS_SELECT_FD_SET_W(p->gs);
+}
+
+// CLIENT
+void
+pkt_app_cb_pwdreply(uint8_t chn, const uint8_t *data, size_t len, void *ptr)
+{
+	if (len <= 0)
+		return;
+
+	if (data[len - 1] != '\0')
+		return; // protocol error.
+	
+	DEBUGF_B("REMOTE WD=%s\n", data);
+	GS_condis_add(&gs_condis, GS_PKT_APP_LOG_TYPE_DEFAULT, (char *)data);
+}
 
 int
 pkt_app_send_wsize(GS_SELECT_CTX *ctx, struct _peer *p, int row)
@@ -179,6 +203,75 @@ pkt_app_send_ids(GS_SELECT_CTX *ctx, struct _peer *p)
 	return write_gs(ctx, p, NULL);
 }
 
+int
+pkt_app_send_pwdrequest(GS_SELECT_CTX *ctx, struct _peer *p)
+{
+	p->wbuf[0] = GS_PKT_ESC;
+	p->wbuf[1] = PKT_MSG_PWD;
+	p->wlen = 2 + GS_PKT_MSG_size_by_type(PKT_MSG_PWD);
+	return write_gs(ctx, p, NULL);
+}
+
+int
+pkt_app_send_pwdreply(GS_SELECT_CTX *ctx, struct _peer *p)
+{
+	struct gs_pkt_chn_hdr *hdr = (struct gs_pkt_chn_hdr *)p->wbuf;
+
+	hdr->esc = GS_PKT_ESC;
+	hdr->type = GS_PKT_CHN2TYPE(GS_CHN_PWD);
+
+	char *wd = GS_getpidwd(p->pid);
+	snprintf((char *)p->wbuf + sizeof *hdr, sizeof p->wbuf - sizeof *hdr, "%s", wd);
+	size_t sz = strlen(wd) + 1; // including \0
+	XFREE(wd);
+
+	uint16_t len = htons(sz);
+	memcpy(&hdr->len, &len, sizeof len);
+
+	p->wlen = sizeof *hdr + sz;
+	return write_gs(ctx, p, NULL);
+}
+
+
+// Loop until all FileTransfer data is written
+// or the socket would block.
+int
+pkt_app_send_ft(GS_SELECT_CTX *ctx, struct _peer *p)
+{
+	ssize_t sz;
+	int len;
+
+	while (1)
+	{
+		sz = GS_FTM_mk_packet(&p->ft, p->wbuf, sizeof p->wbuf);
+		if (sz == 0)
+			return GS_SUCCESS;   // No data available.
+		if (sz == -1)
+			return GS_SUCCESS;   // All files have been transfered.
+		if (sz < 0) // Catch All (-2 mostly/always)
+			return GS_ERR_FATAL; // Not enough space.
+
+		// Got data to write.
+		p->wlen = sz;
+		len = write_gs_atomic(ctx, p);
+		if (len == -1)
+			return GS_ECALLAGAIN;
+		if (len != p->wlen)
+			return GS_ERROR;
+		p->wlen = 0; // SUCCESS.
+		// Do a single write only. This function returns and enters the select() loop
+		// again to check if there is any data on stdin. 
+		// Otherwise the FileTransfer subsystem will keep sending data until write() would block
+		// and then keep data in p->wbuf without the STDIN ever being checked for input until
+		// the FileTransfer has completed. We like to check STDIN...
+		// FIXME-PERFORMANCE: Could write() here until would-block but then do not
+		// leave data in p->wbuf and instead use an internal buffer. This way select() is not
+		// called for every write() from FileTransfer subsystem.
+		return GS_SUCCESS;
+	}
+
+	return GS_SUCCESS; // NOT REACHED
+}
 
 static int
 send_log(GS_SELECT_CTX *ctx, struct _peer *p, struct _pkt_app_log *log)

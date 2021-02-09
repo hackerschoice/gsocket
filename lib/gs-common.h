@@ -36,6 +36,7 @@
 #include <inttypes.h>
 #include <signal.h>
 #include <libgen.h>		/* basename() */
+#include <libproc.h>          // getpidwd(pid_t)
 #include <openssl/srp.h>
 #include <openssl/ssl.h>
 #include <openssl/rand.h>

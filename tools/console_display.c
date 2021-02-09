@@ -156,6 +156,7 @@ GS_condis_draw(GS_CONDIS *cd, int force)
 	char *end = buf + sizeof (buf) - 1; // Space for \n
 	char *ptr = buf;
 
+	DEBUGF("Moving cursor to %d:1f\n", cd->y);
 	SXPRINTF(ptr, end - ptr, "\x1B[%d;1f", cd->y);
 	cd_write(cd->fd, buf, ptr - buf);
 
