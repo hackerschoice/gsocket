@@ -15,6 +15,9 @@
 #ifdef HAVE_SYS_LOADAVG_H
 # include <sys/loadavg.h> // Solaris11
 #endif
+#ifdef HAVE_SYS_ENDIAN_H
+# include <sys/endian.h>
+#endif
 #include <netinet/in.h>
 #ifdef HAVE_NETINET_IN_SYSTM_H
 # include <netinet/in_systm.h>
@@ -34,6 +37,7 @@
 #endif
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>    // Solaris11
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -76,6 +80,29 @@
 // Older fbsd's dont have this defined
 #ifndef UT_NAMESIZE
 # define UT_NAMESIZE	32
+#endif
+
+#if defined(__sun)
+# if !defined(be64toh) // Solaris11
+#  define be64toh(x) ntohll(x)
+#  define htobe64(x) htonll(x)
+# endif
+# if !defined(htonll) // Solaris10
+#  if __BIG_ENDIAN__
+#   define htonll(x) (x)
+#   define ntohll(x) (x)
+#  else
+#   define htonll(x) ((uint64_t)htonl((x) & 0xFFFFFFFF) << 32) | htonl((uint64_t)(x) >> 32)
+#   define ntohll(x) ((uint64_t)ntohl((x) & 0xFFFFFFFF) << 32) | ntohl((uint64_t)(x) >> 32)
+#  endif
+# endif
+#endif
+
+#ifndef htonll
+# define htonll(x)	htobe64(x)
+#endif
+#ifndef ntohll
+# define ntohll(x)  be64toh(x)
 #endif
 
 struct _gopt
@@ -230,6 +257,9 @@ extern struct _gopt gopt;
 	size_t n = snprintf(ptr, len, a); \
 	ptr += MIN(n, len); \
 } while(0)
+
+// Overcome GCC warning for truncation. Abort() if truncation happen.
+#define SNPRINTF_ABORT(...)	(snprintf(__VA_ARGS__) < 0 ? abort() : (void)0)
 
 #define VOUT(level, a...) do { \
 	if (level > gopt.verboselevel) \

@@ -11,8 +11,13 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
-#include <sys/types.h>
 #include <sys/wait.h>
+#if defined(__FREEBSD__)
+# include <sys/sysctl.h>
+# include <sys/caprights.h>
+# include <sys/param.h>
+# include <sys/queue.h>
+#endif // __FREEBSD__
 #include <netinet/in.h>
 #ifdef HAVE_NETINET_IN_SYSTM_H
 # include <netinet/in_systm.h>
@@ -36,7 +41,17 @@
 #include <inttypes.h>
 #include <signal.h>
 #include <libgen.h>		/* basename() */
-#include <libproc.h>          // getpidwd(pid_t)
+#if defined(__APPLE__) && defined(HAVE_LIBPROC_H)
+# include <libproc.h>          // getpidwd(pid_t)
+#endif
+#if defined(__FREEBSD__)
+// FIXME: Please tell me where this is defined? fbsd 12-1 complains:
+// /usr/include/libprocstat.h:122:15: error: field 'fs_cap_rights' has incomplete type
+# ifndef cap_rights_t
+typedef struct cap_rights       cap_rights_t;
+# endif
+# include <libprocstat.h>
+#endif
 #include <openssl/srp.h>
 #include <openssl/ssl.h>
 #include <openssl/rand.h>

@@ -1206,8 +1206,6 @@ my_test(void)
 
 	GS_LIST_init(&new_login, 0);
 	GS_LIST_init(&new_active, 0);
-	int idle;
-	char *user;
 
 
 	// double load;
@@ -1260,6 +1258,59 @@ my_test(void)
 	// DEBUGF("[% 4.02f]\n", (float)load / 100);
 	// DEBUGF("[%4.02f]\n", (float)load / 100);
 	// DEBUGF("[% -4.02f]\n", (float)load / 100);
+
+#if 0
+	// FBSD getppidcwd() test to find out cwd of parent pid
+	#include <sys/types.h>
+	#include <sys/sysctl.h>
+	#include <sys/caprights.h>
+	#include <sys/param.h>
+	#include <sys/queue.h>
+	#include <sys/socket.h>
+	#ifndef cap_rights_t
+	typedef struct cap_rights       cap_rights_t;
+	#endif
+	#include <libprocstat.h>
+
+	chdir("/tmp");
+
+	char *wd = NULL;
+	struct procstat *procstat;
+	struct kinfo_proc *kipp;
+	struct filestat_list *head;
+	struct filestat *fst;
+	pid_t pid;
+	unsigned int cnt;
+
+	procstat = procstat_open_sysctl();
+	if (procstat == NULL)
+		goto done;
+
+	pid = getppid();
+
+	kipp = procstat_getprocs(procstat, KERN_PROC_PID, pid, &cnt);
+	if ((kipp == NULL) || (cnt <= 0))
+		goto done;
+
+	head = procstat_getfiles(procstat, kipp, 0);
+	if (head == NULL)
+		goto done;
+
+	STAILQ_FOREACH(fst, head, next)
+	{
+		if (!(fst->fs_uflags & PS_FST_UFLAG_CDIR))
+			continue;
+		if (fst->fs_path == NULL)
+			continue;
+		wd = strdup(fst->fs_path);
+		break;
+			printf("cwd %-18s\n", fst->fs_path != NULL ? fst->fs_path : "-");
+	}
+
+	procstat_freefiles(procstat, head);
+done:
+	printf("wd='%s'\n", wd);
+#endif
 	exit(0);
 }
 #endif

@@ -436,14 +436,14 @@ console_draw(int fd, int force)
 	if (gopt.is_console == 0)
 		return;
 
-	// DEBUGF_R("CONSOLE DRAW (force=%d)\n", force);
-
 	int cursor_to_prompt = 0;
 	cursor_to_prompt += ci.is_sb_redraw_needed;
 	cursor_to_prompt += gs_condis.is_redraw_needed;
+	cursor_to_prompt += ci.is_prompt_redraw_needed;
+	// DEBUGF_W("CONSOLE DRAW (force=%d, cursor-to-prompt=%d)\n", force, cursor_to_prompt);
 
 	if (is_cursor_in_console == 0)
-		tty_write("\x1B""7", 2);
+		tty_write("\x1B""7", 2);  // Save position (upper tier)
 
 	// Status Bar (Normally black on blue)
 	GS_sb_draw(force);
@@ -457,7 +457,7 @@ console_draw(int fd, int force)
 	// Restore cursor position
 	if (is_cursor_in_console == 0)
 	{
-		tty_write("\x1B""8", 2);
+		tty_write("\x1B""8", 2);  // Restore position (upper tier)
 	} else {
 		if (cursor_to_prompt)
 			GS_prompt_cursor();
@@ -1227,6 +1227,7 @@ console_command(struct _peer *p, const char *cmd)
 {
 	int fd = p->fd_out;
 	char buf[GS_CONSOLE_BUF_SIZE];
+	char path[PATH_MAX + 1];
 	char *end = buf + sizeof (buf);
 	char *ptr;
 	int row = gopt.winsize.ws_row - (GS_CONSOLE_ROWS - 1);
@@ -1256,15 +1257,19 @@ console_command(struct _peer *p, const char *cmd)
 		GS_condis_add(&gs_condis, GS_PKT_APP_LOG_TYPE_DEFAULT, "Thanks xaitax for testing!");
 		GS_condis_draw(&gs_condis, 1);
 	} else if (strncmp(cmd, "lpwd", 4) == 0) {
-		GS_condis_add(&gs_condis, GS_PKT_APP_LOG_TYPE_DEFAULT, getwd(NULL));
+		char *cwd = getcwd(NULL, 0);
+		GS_condis_add(&gs_condis, GS_PKT_APP_LOG_TYPE_DEFAULT, cwd);
+		XFREE(cwd);
 		GS_condis_draw(&gs_condis, 1);
 	} else if (strncmp(cmd, "lcd ", 4) == 0) {
-		char path[PATH_MAX];
 		path_resolve(cmd + 4, path, sizeof path);
 		if (chdir(path) != 0)
-			snprintf(buf, sizeof buf, "%s: %s", strerror(errno), path);
-		else
-			snprintf(buf, sizeof buf, "%s", getwd(NULL));
+			snprintf(buf, sizeof buf, "%s: %.512s", strerror(errno), path);
+		else {
+			char *cwd = getcwd(NULL, 0);
+			snprintf(buf, sizeof buf, "%s", cwd);
+			XFREE(cwd);
+		}
 		GS_condis_add(&gs_condis, GS_PKT_APP_LOG_TYPE_DEFAULT, buf);
 		GS_condis_draw(&gs_condis, 1);
 	} else {

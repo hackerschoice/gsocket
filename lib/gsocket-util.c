@@ -212,22 +212,65 @@ GS_format_bps(char *dst, size_t size, int64_t bytes, const char *suffix)
 char *
 GS_getpidwd(pid_t pid)
 {
-	int ret;
 	char *wd = NULL;
 
 	if (pid <= 0)
 		goto err;
 
+#if defined(__APPLE__) && defined(HAVE_LIBPROC_H)
+	// OSX (and others?)
+	int ret;
 	struct proc_vnodepathinfo vpi;
 	ret = proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &vpi, sizeof vpi);
 	if (ret <= 0)
 		goto err;
 
 	wd = strdup(vpi.pvi_cdir.vip_path);
+#elif __FREEBSD__
+	struct procstat *procstat;
+	struct kinfo_proc *kipp;
+	struct filestat_list *head;
+	struct filestat *fst;
+	unsigned int cnt;
 
+	procstat = procstat_open_sysctl();
+	if (procstat == NULL)
+		goto err;
+
+	kipp = procstat_getprocs(procstat, KERN_PROC_PID, pid, &cnt);
+	if ((kipp == NULL) || (cnt <= 0))
+		goto err;
+
+	head = procstat_getfiles(procstat, kipp, 0);
+	if (head == NULL)
+		goto err;
+
+	STAILQ_FOREACH(fst, head, next)
+	{
+		if (!(fst->fs_uflags & PS_FST_UFLAG_CDIR))
+			continue;
+		if (fst->fs_path == NULL)
+			continue;
+		wd = strdup(fst->fs_path);
+		break;
+	}
+
+	procstat_freefiles(procstat, head);
+#else
+	// Linux
+	char buf[1024];
+	char res[PATH_MAX + 1];
+	ssize_t sz;
+	
+	snprintf(buf, sizeof buf, "/proc/%d/cwd", pid);
+	sz = readlink(buf, res, sizeof res - 1);
+	if (sz < 0)
+		goto err;
+	wd = strdup(res); 
+#endif
 err:
 	if (wd == NULL)
-		wd = getwd(NULL);
+		wd = getcwd(NULL, 0);
 	DEBUGF_W("PID %d CWD=%s\n", pid, wd);
 	return wd;
 }

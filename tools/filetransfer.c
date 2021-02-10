@@ -16,13 +16,13 @@ static void update_stats(GS_FT *ft, struct _gs_ft_file *f, size_t sz);
 static void init_xfer_stats(GS_FT *ft, struct _gs_ft_file *f, int64_t sz);
 static const char *str_dotslash(const char *src);
 static const char *str_stripslash(const char *src);
-static int mkdirp(const char *dir, mode_t mode, uint32_t mtime);
+static int mkdirpm(const char *dir, mode_t mode, uint32_t mtime);
 static void dir_restore_mtime(const char *path, struct timespec *mtime);
 static void dir_save_mtime(const char *path, struct timespec *mtime);
 static void set_mode_mtime(const char *path, mode_t mode, uint32_t mtime);
 static void call_status_cb(GS_FT *ft, const char *fname, uint8_t code, const char *err_str);
-
-
+static void status_report_error(GS_FT *ft, const char *name, uint8_t code);
+static uint8_t errno2code(int eno /*errno*/, uint8_t default_code);
 
 
 #if 0
@@ -144,8 +144,8 @@ gs_ft_add_file(GS_FT *ft, GS_LIST *gsl, uint32_t id, const char *fname, uint32_t
 	// First: Directory struture.
 	if (flags & GS_FT_FL_ISDIR)
 	{
-		// mkdirp() will remove any ordinary file that is in its way
-		if (mkdirp(fname, GS_fperm2mode(fperm), mtime) != 0)
+		// mkdirpm() will remove any ordinary file that is in its way
+		if (mkdirpm(fname, GS_fperm2mode(fperm), mtime) != 0)
 		{
 			DEBUGF_R("mkdir(%s): %s\n", fname, strerror(errno));
 			qerr_add(ft, id, GS_FT_ERR_PERM, NULL);
@@ -231,7 +231,7 @@ GS_FT_dl_add_file(GS_FT *ft, uint32_t id, const char *fname, size_t len, int64_t
 		return -1; // protocol error. Not 0 terminated.
 
 	DEBUGF_Y("#%u DL-ADD-FILE - '%s' fz_remote=%"PRId64"\n", id, fname, fz_remote);
-#ifdef DEBUGF
+#ifdef DEBUG
 	// Test [8.9]
 	if (g_true_fname != NULL)
 	{
@@ -315,8 +315,8 @@ GS_FT_list_add(GS_FT *ft, uint32_t globbing_id, const char *fname, size_t len, i
 	if (flags & GS_FT_FL_ISDIR)
 	{
 		DEBUGF_C("Directory: %s\n", fn_local);
-		// mkdirp() will remove any ordinary file that is in its way
-		if (mkdirp(fn_local, GS_fperm2mode(fperm), mtime) != 0)
+		// mkdirpm() will remove any ordinary file that is in its way
+		if (mkdirpm(fn_local, GS_fperm2mode(fperm), mtime) != 0)
 		{
 			DEBUGF_R("mkdir(%s): %s\n", fn_local, strerror(errno));
 		}
@@ -498,6 +498,28 @@ dotslash_filename(const char *src)
 static int
 add_file_to_list(GS_FT *ft, GS_LIST *gsl, const char *fname, uint32_t globbing_id, int is_server)
 {
+	// SERVER, get: Even if it does not exist then we still need to add it to the LISTREPLY list
+	// Client will request it and only then will we send an error.
+	// This can happen when client requests "foo[123].notexist[233].da*" and globbing
+	// fails.
+	// CLIENT: Immediatly return.
+	int ret;
+	int is_notfound = 0;
+	struct stat res;
+	ret = stat(fname, &res);
+	if (ret != 0)
+	{
+		DEBUGF_R("%s NOT FOUND\n", fname);
+		if (is_server == 0)
+		{
+			char *name = dotslash_filename(fname);
+			status_report_error(ft, name, GS_FT_ERR_NOENT);
+			XFREE(name);
+			return -1;
+		}
+		is_notfound = 1; // Server, get (download)
+	}
+
 	struct _gs_ft_file *f;
 	f = calloc(1, sizeof *f);
 	f->globbing_id = globbing_id;
@@ -531,18 +553,9 @@ add_file_to_list(GS_FT *ft, GS_LIST *gsl, const char *fname, uint32_t globbing_i
 	f->li = GS_LIST_add(gsl, NULL, f, ft->g_id);
 	ft->g_id += 1;
 
-	// Even if it does not exist then we still need to add it to the LISTREPLY list
-	// Client will request it and only then will we send an error.
-	// This can happen when client requests "foo[123].notexist[233].da*" and globbing
-	// fails.
-	int ret;
-	struct stat res;
-	ret = stat(fname, &res);
-	if (ret != 0)
-	{
-		DEBUGF_R("%s NOT FOUND\n", fname);
+	// stat() failed.
+	if (is_notfound)
 		return -1;
-	}
 
 	// Get absolute and real path as CWD may change before
 	// upload starts.
@@ -637,28 +650,38 @@ glob_cb(GS_GL *res)
 int
 GS_FT_list_add_files(GS_FT *ft, uint32_t globbing_id, const char *pattern, size_t len)
 {
-	int n_found;
+	int ret;
+	char err[128];
 
 	if (pattern[len] != '\0')
 		return -1; // protocol error. Not 0-terminated.
 
 	DEBUGF_Y("G#%u GET-ADD-FILE: %s\n", globbing_id, pattern);
 	char *ptr = GS_getpidwd(ft->pid);
-	chdir(ptr);
-	XFREE(ptr);
+	ret = chdir(ptr);
 
-	n_found = GS_GLOBBING(glob_cb, pattern, globbing_id, ft, 0);
+	if (ret != 0)
+	{
+		DEBUGF_R("chrdir(%s): %s\n", ptr, strerror(errno));
+		snprintf(err, sizeof err, "chdir(%s): %s\n", ptr, strerror(errno));
+		qerr_add(ft, globbing_id, errno2code(errno, GS_FT_ERR_NOENT), err);
 
-	if (n_found <= 0)
+		goto done;
+	}
+
+	ret = GS_GLOBBING(glob_cb, pattern, globbing_id, ft, 0);
+
+	if (ret <= 0)
 	{
 		DEBUGF_R("NOT FOUND: %s\n", pattern);
-		char err[128];
 		snprintf(err, sizeof err, "Not found: %s", pattern);
 		qerr_add(ft, globbing_id, GS_FT_ERR_NOENT, err);
 	}
 
+done:
+	XFREE(ptr);
 	ft->is_want_write = 1;
-	return n_found;
+	return ret;
 }
 
 
@@ -672,7 +695,7 @@ GS_FT_get(GS_FT *ft, const char *pattern)
 
 	p = calloc(1, sizeof *p);
 	p->pattern = strdup(pattern);
-	p->wdir = getwd(NULL);
+	p->wdir = getcwd(NULL, 0);
 	p->globbing_id = ft->g_id;
 
 	GS_LIST_add(&ft->plistreq, NULL, p, ft->g_id);
@@ -921,14 +944,14 @@ mkdir_agressive(const char *path, mode_t mode, uint32_t mtime)
 }
 
 /*
- * Create all directories recursively.
+ * Create all directories recursively. Remove any file that is in our way.
  *
  * /tmp/foo/bar/test.dat would create /tmp/foo/bar/test.dat [directory]
  * /tmp/foo/bar/test.dat/ would create /tmp/foo/bar/test.dat/
  * ///// would return success ('/' always exists)
  */
 static int
-mkdirp(const char *path, mode_t mode, uint32_t mtime)
+mkdirpm(const char *path, mode_t mode, uint32_t mtime)
 {
 	int rv = 0;
 	char *f = strdup(path);
@@ -1026,10 +1049,15 @@ dir_save_mtime(const char *path, struct timespec *mtime)
 {
 	struct stat res;
 
+	memset(mtime, 0, sizeof *mtime);
 	if (stat(path, &res) != 0)
 		return;
 
+#ifdef __APPLE__
 	*mtime = res.st_mtimespec;
+#else
+	*mtime = res.st_mtim;
+#endif
 	// DEBUGF_W("SAVE Dir-TimeStamp %lu.%lu %s\n", mtime->tv_sec, mtime->tv_nsec, path);
 }
 
@@ -1100,7 +1128,7 @@ gs_ft_switch(GS_FT *ft, uint32_t id, int64_t fz_remote, struct _gs_ft_file **act
 		ptr = dirname(ptr);
 		dir_save_mtime(ptr, &new->dir_mtime);
 		// put(test1k.dat) must not modify the permission of parent directory.
-		mkdirp(ptr, 0 /*do not update permission on existing directory*/, 0 /*do not update mtime*/);
+		mkdirpm(ptr, 0 /*do not update permission on existing directory*/, 0 /*do not update mtime*/);
 
 		new->fp = fopen(new->fn_local, "w");
 	} else {
@@ -1477,6 +1505,16 @@ GS_FT_strerror(uint8_t code)
 	return "UNKNONW";
 }
 
+// CLIENT: Create error string and report to caller (via callback)
+static void
+status_report_error(GS_FT *ft, const char *name, uint8_t code)
+{
+	char buf[128];
+	DEBUGF_B("fn-rel: %s\n", name);
+	snprintf(buf, sizeof buf, "%s: %s", GS_FT_strerror(code), name);
+	call_status_cb(ft, name, code, buf);
+}
+
 /*
  * Make an error packet. Remove errornous file from queue
  */
@@ -1489,10 +1527,7 @@ ft_mk_error(GS_FT *ft, struct _gs_ft_file *f, void *dst, size_t len, int *pkt_ty
 	if (ft->is_server == 0)
 	{
 		// CLIENT
-		char buf[128];
-		DEBUGF_B("fn-rel: %s\n", f->fn_relative);
-		snprintf(buf, sizeof buf, "%s: %s", GS_FT_strerror(code), f->fn_relative);
-		call_status_cb(ft, f->fn_relative, code, buf);
+		status_report_error(ft, f->fn_relative, code);
 	}
 	*pkt_type = GS_FT_TYPE_ERROR;
 	sz = mk_error(dst, len, li->id, code, str);
@@ -1541,7 +1576,7 @@ mk_xfer_data(GS_FT *ft, struct _gs_ft_file **active, GS_LIST *fcompleted, int *p
 	if (ft->is_server == 0)
 	{
 		update_stats(ft, f, sz);
-		DEBUGF_W("xfer %"PRId64"/%"PRId64"\n", ft->stats.xfer_amount, ft->stats.xfer_amount_scheduled);
+		// DEBUGF_W("xfer %"PRId64"/%"PRId64"\n", ft->stats.xfer_amount, ft->stats.xfer_amount_scheduled);
 	}
 
 	if (f->fz_remote >= f->fz_local)
