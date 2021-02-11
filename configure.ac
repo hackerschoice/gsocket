@@ -1,6 +1,6 @@
-dnl Process this File with autoconf to produce a configure script.
+${EXEEXT}dnl Process this File with autoconf to produce a configure script.
 AC_PREREQ(2.61)
-AC_INIT([gsocket], 1.4.23-ft1)
+AC_INIT([gsocket], 1.4.23-ft2)
 dnl AC_CONFIG_AUX_DIR(config-x86_64-apple-darwin19.6.0)
 AC_CONFIG_AUX_DIR(config)
 AC_CANONICAL_SYSTEM
@@ -49,7 +49,7 @@ for xincdir in $trydir_i ; do
 		INCLUDES="$INCLUDES -I${xincdir}";
 	fi
 done
-CPPFLAGS="${INCLUDES} $CPPFLAGS"
+CPPFLAGS="-I../include ${INCLUDES} $CPPFLAGS"
 
 dnl Try library paths...
 trydir_l="${trydir_l} /usr/local/opt/openssl/lib"
@@ -116,18 +116,24 @@ AC_TYPE_UID_T
 AC_CHECK_FUNCS(gettimeofday memcpy strchr strlcat forkpty openpty getline stat64 open64 statvfs64)
 
 AC_ARG_ENABLE([31337],
-	AS_HELP_STRING([--enable-31337],
-		[Enable experimental features.]),
+	AS_HELP_STRING([--enable-31337], [Enable experimental features.]),
 	AC_DEFINE(D31337, 1, [Expermental feature])
 )
 
-AC_ARG_ENABLE(debug,
-[  --enable-debug          Enable debug information],
-	AC_DEFINE(DEBUG, 1, [Debug infos]) 
+AC_ARG_ENABLE([debug],
+	AS_HELP_STRING([--enable-debug], [Enable debug information.]),
+	[debug=true AC_DEFINE(DEBUG, 1, [Debug infos])]
+)
+
+AC_ARG_ENABLE([tests],
+	AS_HELP_STRING([--enable-tests], [Enable self-tests.]),
+	[selftests=true]
 )
 
 AS_IF([test x$enable_debug = xyes], AC_DEFINE(D31337, 1, [Expermental feature]))
-AS_IF([test x$enable_debug = xyes], [debug=true])
+AS_IF([test x$enable_debug = xyes], [selftests=true])
+
+AS_IF([test x$selftests = xtrue], AC_DEFINE(SELFTESTS, 1, [Self Tests]))
 
 AC_ARG_ENABLE(dist,
 [  --enable-dist           Enable distribution mode, Use own libraries.],
@@ -143,8 +149,8 @@ if test x"$STATIC" = x"yes"; then
 	CFLAGS="-static ${CFLAGS}"
 fi
 
-AS_IF([test x$debug = xtrue], AC_SUBST(PROGRAMS_TEST_LIB, "list-test event-test"))
-AS_IF([test x$debug = xtrue], AC_SUBST(PROGRAMS_TEST_TOOLS, "packet-test readline-test console_display-test filetransfer-test"))
+AS_IF([test x$selftests = xtrue], AC_SUBST(PROGRAMS_TEST_LIB, "list-test${EXEEXT} event-test${EXEEXT}"))
+AS_IF([test x$selftests = xtrue], AC_SUBST(PROGRAMS_TEST_TOOLS, "packet-test${EXEEXT} readline-test${EXEEXT} console_display-test${EXEEXT} filetransfer-test${EXEEXT}"))
 
 AC_OUTPUT([Makefile lib/Makefile tools/Makefile man/Makefile])
 

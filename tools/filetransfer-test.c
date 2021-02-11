@@ -261,21 +261,26 @@ do_globtest(const char *exp)
 }
 
 int
-main(int arc, const char *argv[])
+main(int argc, const char *argv[])
 {
-	int is_extra_puts = 0;
 	uint8_t src[BUF_LEN];
 	uint8_t dst[2 * sizeof src];
 	ssize_t sz;
 	size_t dsz;
 	int ret;
 	int n;
-	int is_get = 0;
+
 
 	GS_library_init(stderr, stderr);
 	gopt.err_fp = stderr;
 	gopt.log_fp = stderr;
 	// gopt.err_fp = NULL; // un-comment to DISABLE DEBUG
+
+	if (argc < 2)
+	{
+		fprintf(stderr, "filetransfer-test [scCG] <files ..>\n");
+		exit(255);
+	}
 
 	if (*argv[1] == 'G')
 		do_globtest(argv[2]);
@@ -302,7 +307,6 @@ main(int arc, const char *argv[])
 				GS_FT_put(&ft, argv[i]);
 		} else {
 			// Test GET (download)
-			is_get = 1;
 			GS_PKT_assign_chn(&pkt, GS_FT_CHN_LIST_REPLY, pkt_cb_listreply, NULL);
 			GS_PKT_assign_chn(&pkt, GS_FT_CHN_DATA, pkt_cb_data, NULL);
 			GS_PKT_assign_chn(&pkt, GS_FT_CHN_SWITCH, pkt_cb_switch, NULL);
@@ -333,19 +337,7 @@ main(int arc, const char *argv[])
 		{
 			// No more files to transfer
 			// (All data send. Not waiting for any reply).
-
 			break;
-			#if 0
-			// HERE: test adding files after transfer completed...
-			if (is_extra_puts >= 1)
-				break;
-			is_extra_puts++;
-			if (GS_FT_put(&ft, "test1k-extra1.dat") != 0)
-				DEBUGF_Y("Not found: test1k-extra1.dat\n");
-			if (GS_FT_put(&ft, "test1k-extra2.dat") != 0)
-				DEBUGF_Y("Not found: test1k-extra2.dat\n");
-			continue;
-			#endif
 		}
 
 		// If there is data to write then write data first.
@@ -403,7 +395,7 @@ main(int arc, const char *argv[])
 			sz = read(0, src, sizeof src);
 			// DEBUGF_G("read() == %zu\n", sz);
 			if (sz <= 0)
-				ERREXIT("read()\n");
+				break;
 			ret = GS_PKT_decode(&pkt, src, sz, dst, &dsz);
 			if (ret != 0)
 				ERREXIT("GS_PKT_decode()\n");

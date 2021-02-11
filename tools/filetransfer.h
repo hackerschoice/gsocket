@@ -84,7 +84,7 @@ typedef struct
 	// PUT (upload) - Client Side
 	GS_LIST fqueue;     // Client List of files to be transfered
 	GS_LIST fputs;      // Client list of files we requested transfer (put sent)
-	GS_LIST faccepted;  // Client List of accepted files
+	GS_LIST faccepted;  // Client List of file server has accepted (now can mk_switch() to any of those files)
 	GS_LIST fcompleted; // Completed. Waiting for 'ERR_COMPLETED'
 	// PUT (upload) - Server Side
 	GS_LIST fadded;     // Server Side list of ready files
@@ -225,7 +225,7 @@ size_t GS_FT_packet(GS_FT *ft, void *dst, size_t len, int *pkt_type);
 void GS_FT_pause_data(GS_FT *ft);
 void GS_FT_unpause_data(GS_FT *ft);
 #define GS_FT_WANT_WRITE(xft)	(xft)->is_want_write
-#ifdef DEBUG
+#ifdef SELFTESTS
 void GS_FT_init_tests(const char **argv);
 #endif
 

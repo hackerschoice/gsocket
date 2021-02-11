@@ -175,7 +175,7 @@ cb_atexit(void)
 {
 	CONSOLE_reset();
 	stty_reset();
-	printf("\n[Bye]\n");
+	fprintf(stderr, "\n[Bye]\n"); // stdout must be clean for pipe & gs-netcat
 }
 
 /* *********************** FD READ / WRITE ******************************/

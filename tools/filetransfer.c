@@ -92,7 +92,7 @@ GS_FT_init(GS_FT *ft, gsft_cb_stats_t func_stats, gsft_cb_status_t func_status, 
 	ft->is_server = is_server;
 }
 
-#ifdef DEBUG
+#ifdef SELFTESTS
 static const char **g_filesv;
 static int g_filesc;
 static const char *g_true_fname;
@@ -231,7 +231,7 @@ GS_FT_dl_add_file(GS_FT *ft, uint32_t id, const char *fname, size_t len, int64_t
 		return -1; // protocol error. Not 0 terminated.
 
 	DEBUGF_Y("#%u DL-ADD-FILE - '%s' fz_remote=%"PRId64"\n", id, fname, fz_remote);
-#ifdef DEBUG
+#ifdef SELFTESTS
 	// Test [8.9]
 	if (g_true_fname != NULL)
 	{
@@ -527,7 +527,7 @@ add_file_to_list(GS_FT *ft, GS_LIST *gsl, const char *fname, uint32_t globbing_i
 	if (is_server == 1)
 	{
 		// Server, GET (download). 
-#ifdef DEBUG
+#ifdef SELFTESTS
 		const char *ff = fname;
 		if ((g_filesv != NULL) && (g_filesv[g_filesc] != NULL))
 		{
@@ -954,11 +954,12 @@ static int
 mkdirpm(const char *path, mode_t mode, uint32_t mtime)
 {
 	int rv = 0;
-	char *f = strdup(path);
 	struct stat res;
+	char *f = NULL;
 
+	DEBUGF("mkdirpm(%s)\n", path);
 	// Return 0 if directory already exist
-	if (stat(f, &res) == 0)
+	if (stat(path, &res) == 0)
 	{
 		if (S_ISDIR(res.st_mode))
 		{
@@ -969,7 +970,7 @@ mkdirpm(const char *path, mode_t mode, uint32_t mtime)
 				// if (access(path, W_OK) != 0)
 				goto done; // Done have access
 			} else {
-				set_mode_mtime(f, mode, mtime);
+				set_mode_mtime(path, mode, mtime);
 			}
 			// DEBUGF_W("%s already exists\n", f);
 			goto done;
@@ -979,20 +980,22 @@ mkdirpm(const char *path, mode_t mode, uint32_t mtime)
 	// Directory does not exist. Use default permission to create it.
 	if (mode == 0)
 		mode = 0755;
-
+	f = strdup(path);
 	// If parent directory exist then only create last directory.
-	char *dn = dirname(f);
-	if ((dn != NULL) && (stat(dn, &res) == 0))
+	char *parent = dirname(f);
+	if ((parent != NULL) && (stat(parent, &res) == 0))
 	{
 		if (S_ISDIR(res.st_mode))
 		{
 			// HERE: Parent directory exists.
-			DEBUGF_W("1-mkdir(%s)\n", f);
-			if (mkdir_agressive(f, mode, mtime) != 0)
+			DEBUGF_W("1-mkdir(%s)\n", path);
+			if (mkdir_agressive(path, mode, mtime) != 0)
 				rv = -1;
 			goto done;
 		}
 	}
+	XFREE(f); // dirname() may have modified it
+	f = strdup(path);
 
 	// HERE: Neither directory nor parent directory exist. Start from
 	// the left and create entire hirachy....
@@ -1125,10 +1128,15 @@ gs_ft_switch(GS_FT *ft, uint32_t id, int64_t fz_remote, struct _gs_ft_file **act
 			while (*ptr == '/')
 				ptr++;
 		}
-		ptr = dirname(ptr);
+		char *dir = strdup(ptr); // direname() may modify dir
+		// ptr points to an internal buffer. strdup() it because mkdirpm() calls dirname() as well
+		// and would overwrite this structure..
+		ptr = strdup(dirname(dir));
 		dir_save_mtime(ptr, &new->dir_mtime);
 		// put(test1k.dat) must not modify the permission of parent directory.
 		mkdirpm(ptr, 0 /*do not update permission on existing directory*/, 0 /*do not update mtime*/);
+		XFREE(dir);
+		XFREE(ptr);
 
 		new->fp = fopen(new->fn_local, "w");
 	} else {
@@ -1356,32 +1364,36 @@ GS_FT_status(GS_FT *ft, uint32_t id, uint8_t code, const char *err_str, size_t l
 
 	// li can be one of two structures only:
 	// _gs_ft_file or gs_ft_list_pattern
-	li = GS_LIST_by_id(&ft->fcompleted, id); // CLIENT
+	li = GS_LIST_by_id(&ft->faccepted, id); // CLIENT
 	if (li == NULL)
 	{
-		li = GS_LIST_by_id(&ft->fputs, id); // CLIENT
+		li = GS_LIST_by_id(&ft->fcompleted, id); // CLIENT
 		if (li == NULL)
 		{
-			li = GS_LIST_by_id(&ft->fdl_waiting, id); // CLIENT (get)
+			li = GS_LIST_by_id(&ft->fputs, id); // CLIENT
 			if (li == NULL)
 			{
-				// This 'li' does not hold a _gs_ft_file structure and thus
-				// must not generate stats or try to free a _gs_ft_file when it is not.
-				li = GS_LIST_by_id(&ft->plistreq_waiting, id); // CLIENT (get)
+				li = GS_LIST_by_id(&ft->fdl_waiting, id); // CLIENT (get)
 				if (li == NULL)
 				{
-					li = GS_LIST_by_id(&ft->fadded, id); // SERVER (put)
+					// This 'li' does not hold a _gs_ft_file structure and thus
+					// must not generate stats or try to free a _gs_ft_file when it is not.
+					li = GS_LIST_by_id(&ft->plistreq_waiting, id); // CLIENT (get)
 					if (li == NULL)
 					{
-						li = GS_LIST_by_id(&ft->freceiving, id); // SERVER (put)
+						li = GS_LIST_by_id(&ft->fadded, id); // SERVER (put)
 						if (li == NULL)
 						{
-							DEBUGF_R("id %u not found\n", id);
-							return; // not found
+							li = GS_LIST_by_id(&ft->freceiving, id); // SERVER (put)
+							if (li == NULL)
+							{
+								DEBUGF_R("id %u not found\n", id);
+								return; // not found
+							}
 						}
+					} else {
+						lp = (struct _gs_ft_list_pattern *)li->data;
 					}
-				} else {
-					lp = (struct _gs_ft_list_pattern *)li->data;
 				}
 			}
 		}
@@ -1842,7 +1854,7 @@ GS_FT_packet(GS_FT *ft, void *dst, size_t len, int *pkt_type)
 	{
 		if (ft->active_dl_file == NULL)
 		{
-			DEBUGF("Files to send: %d\n", ft->fdl.n_items);
+			DEBUGF("S Files to send: %d\n", ft->fdl.n_items);
 			return mk_switch(ft, &ft->active_dl_file, &ft->fdl, NULL, pkt_type, dst, len);
 		}
 
@@ -1860,7 +1872,7 @@ GS_FT_packet(GS_FT *ft, void *dst, size_t len, int *pkt_type)
 	{
 		if (ft->active_put_file == NULL)
 		{
-			DEBUGF("Files to send: %d\n", ft->faccepted.n_items);
+			DEBUGF("C Files to send: %d\n", ft->faccepted.n_items);
 			return mk_switch(ft, &ft->active_put_file, &ft->faccepted, &ft->fcompleted, pkt_type, dst, len);
 		}
 

@@ -11,4 +11,3 @@ event_test_SOURCES = event-test.c
 event_test_LDADD = libgsocket.a
 
 noinst_HEADERS = gsocket-sha256.h gs-common.h gs-externs.h gsocket-engine.h
-AM_CFLAGS = -I../include
