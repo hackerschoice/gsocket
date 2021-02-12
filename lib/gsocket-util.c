@@ -266,6 +266,7 @@ GS_getpidwd(pid_t pid)
 	sz = readlink(buf, res, sizeof res - 1);
 	if (sz < 0)
 		goto err;
+	res[sz] = '\0';
 	wd = strdup(res); 
 #endif
 err:

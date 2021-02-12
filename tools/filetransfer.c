@@ -667,7 +667,7 @@ GS_FT_list_add_files(GS_FT *ft, uint32_t globbing_id, const char *pattern, size_
 
 	if (ret != 0)
 	{
-		DEBUGF_R("chrdir(%s): %s\n", ptr, strerror(errno));
+		DEBUGF_R("chdir(%s): %s\n", ptr, strerror(errno));
 		snprintf(err, sizeof err, "chdir(%s): %s\n", ptr, strerror(errno));
 		qerr_add(ft, globbing_id, errno2code(errno, GS_FT_ERR_NOENT), err);
 

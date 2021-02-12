@@ -798,7 +798,7 @@ pty_cmd(const char *cmd, pid_t *pidptr)
 		 * HISTFILE= does not work on oh-my-zsh (it sets it again)
 		 */
 		char *env_blacklist[] = {"STY", "GSOCKET_ARGS", "HISTFILE", NULL};
-		char *env_addlist[] = {shell_env, "TERM=xterm-256color", "HISTFILE=\"\"", home_env, NULL};
+		char *env_addlist[] = {shell_env, "TERM=xterm-256color", "HISTFILE=/dev/null", home_env, NULL};
 		char **envp = mk_env(env_blacklist, env_addlist);
 
 		if (cmd != NULL)
