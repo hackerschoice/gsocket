@@ -238,7 +238,10 @@ GS_RL_add(GS_RL_CTX *rl, uint8_t c, uint8_t *key, int row, int col)
 
 	// Unhandled control character
 	if ((c < 0x20) || (c > 0x7E))
+	{
+		DEBUGF("Unhandled: 0x%02x\n", c);
 		goto ret_unhandled;
+	}
 
 	if (rl->pos >= GS_RL_LINE_MAX)
 		return 1;
@@ -252,6 +255,7 @@ GS_RL_add(GS_RL_CTX *rl, uint8_t c, uint8_t *key, int row, int col)
 	return 1;
 
 ret_unhandled:
+	rl->esc_len = 0;
 	*key = k;
 	return -1;
 }

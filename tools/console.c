@@ -1028,7 +1028,6 @@ CONSOLE_readline(struct _peer *p, void *data, size_t len)
 	for (; src < s_end; src++)
 	{
 		rv = GS_RL_add(&rl, *src, &key, gopt.winsize.ws_row, 1 + GS_CONSOLE_PROMPT_LEN);
-		// HEXDUMP(rl.esc_data, rl.esc_len);
 		if (write(fd, rl.esc_data, rl.esc_len) != rl.esc_len)
 			ERREXIT("write()\n");
 
