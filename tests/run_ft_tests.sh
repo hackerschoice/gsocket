@@ -510,7 +510,7 @@ bigdir="share/man" # HUGE
 [[ -n "$QUICK" ]] && bigdir="share/man/man4" # Less huge
 [[ -n "$QUICK" ]] && [[ $(uname) =~ CYGWIN ]] && bigdir="share/man/man8" # Less huge
 [[ -n "$QUICK" ]] && [[ $(uname) =~ FreeBSD ]] && bigdir="share/man/man6" # Less huge
-[[ -n "$QUICK" ]] && [[ $(uname) =~ SunOS ]] && bigdir="share/man/man8s" # Less huge
+[[ -n "$QUICK" ]] && [[ $(uname) =~ SunOS ]] && bigdir="share/man/man9p" # Less huge
 
 if [[ "$tests" =~ '9.1 ' ]]; then
 test_start -n "Running #9.1 (HUGE put).........................."

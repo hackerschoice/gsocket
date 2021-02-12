@@ -153,7 +153,13 @@ GS_GLOBBING(gsglobbing_cb_t func, const char *exp, uint32_t glob_id, void *arg_p
 	res.arg_ptr = arg_ptr;
 	res.arg_val = arg_val;
 
-	wdir = getcwd(NULL, 0);
+	wdir = getcwd(NULL, PATH_MAX + 1);
+	if (wdir == NULL)
+	{
+		DEBUGF_R("getcwd(): %s\n", strerror(errno));
+		return 0;
+	}
+
 
 	DEBUGF("G#%u GS_GLOBBING('%s') [wdir='%s']\n", glob_id, exp, wdir);
 
@@ -358,9 +364,8 @@ GS_GLOBBING(gsglobbing_cb_t func, const char *exp, uint32_t glob_id, void *arg_p
 	}
 
 done:
-	XFREE(wdir);
 	wordfree(&p);
-
+	XFREE(wdir);
 	return n_found;
 }
 

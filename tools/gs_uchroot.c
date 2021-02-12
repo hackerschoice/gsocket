@@ -120,7 +120,7 @@ thc_init(void)
 
 	/* OSX's getcwd() calls stat() */
 	char *ptr;
-	ptr = getcwd(NULL, 0);
+	ptr = getcwd(NULL, PATH_MAX + 1);
 	if (ptr == NULL)
 		exit(123);
 	if (realpath(ptr, rp_cwd) == NULL)

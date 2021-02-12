@@ -555,14 +555,19 @@ add_file_to_list(GS_FT *ft, GS_LIST *gsl, const char *fname, uint32_t globbing_i
 
 	// stat() failed.
 	if (is_notfound)
+	{
+		DEBUGF_R("stat(%s): %s\n", fname, strerror(errno));
 		return -1;
+	}
 
 	// Get absolute and real path as CWD may change before
 	// upload starts.
-	char *realfname;
-	realfname = realpath(fname, NULL);
-	if (realfname == NULL)
+	char *realfname = malloc(PATH_MAX); // solaris10 does not support realpath(ptr, NULL);
+	if (realpath(fname, realfname) == NULL)
+	{
+		XFREE(realfname);
 		return -3;
+	}
 
 	f->fn_local = realfname;
 	f->fz_local = res.st_size;
@@ -695,7 +700,7 @@ GS_FT_get(GS_FT *ft, const char *pattern)
 
 	p = calloc(1, sizeof *p);
 	p->pattern = strdup(pattern);
-	p->wdir = getcwd(NULL, 0);
+	p->wdir = getcwd(NULL, PATH_MAX + 1);
 	p->globbing_id = ft->g_id;
 
 	GS_LIST_add(&ft->plistreq, NULL, p, ft->g_id);

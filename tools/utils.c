@@ -67,7 +67,7 @@ add_env_argv(int *argcptr, char **argvptr[])
 	*argvptr = newargv;
 	DEBUGF("Total argv[] == %d\n", newargc);
 	int i;
-	for (i = 0; i < newargc + 1; i++)
+	for (i = 0; i < newargc; i++)
 		DEBUGF("argv[%d] = %s\n", i, newargv[i]);
 }
 
@@ -163,7 +163,6 @@ init_vars(void)
 	if ((str != NULL) && (strlen(str) > 0))
 		VLOG("=Extra arguments: '%s'\n", str);
 
-	DEBUGF("sec_str %s\n", gopt.sec_str);
 	gopt.sec_str = GS_user_secret(&gopt.gs_ctx, gopt.sec_file, gopt.sec_str);
 	if (gopt.sec_str == NULL)
 		ERREXIT("%s\n", GS_CTX_strerror(&gopt.gs_ctx));
@@ -834,8 +833,6 @@ fd_cmd(const char *cmd, pid_t *pidptr)
 	pid_t pid;
 	int fds[2];
 	int ret;
-
-	DEBUGF("cmd == %s\n", cmd);
 
 	if (gopt.is_interactive)
 	{

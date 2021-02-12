@@ -257,7 +257,7 @@ GS_getpidwd(pid_t pid)
 
 	procstat_freefiles(procstat, head);
 #else
-	// Linux
+	// Linux & other unix (solaris etc)
 	char buf[1024];
 	char res[PATH_MAX + 1];
 	ssize_t sz;
@@ -270,7 +270,10 @@ GS_getpidwd(pid_t pid)
 #endif
 err:
 	if (wd == NULL)
-		wd = getcwd(NULL, 0);
+	{
+		wd = getcwd(NULL, PATH_MAX + 1);
+		XASSERT(wd != NULL, "getcwd(): %s\n", strerror(errno)); // hard fail
+	}
 	DEBUGF_W("PID %d CWD=%s\n", pid, wd);
 	return wd;
 }

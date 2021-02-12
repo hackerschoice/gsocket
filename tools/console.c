@@ -1257,7 +1257,7 @@ console_command(struct _peer *p, const char *cmd)
 		GS_condis_add(&gs_condis, GS_PKT_APP_LOG_TYPE_DEFAULT, "Thanks xaitax for testing!");
 		GS_condis_draw(&gs_condis, 1);
 	} else if (strncmp(cmd, "lpwd", 4) == 0) {
-		char *cwd = getcwd(NULL, 0);
+		char *cwd = getcwd(NULL, PATH_MAX + 1);
 		GS_condis_add(&gs_condis, GS_PKT_APP_LOG_TYPE_DEFAULT, cwd);
 		XFREE(cwd);
 		GS_condis_draw(&gs_condis, 1);
@@ -1266,7 +1266,7 @@ console_command(struct _peer *p, const char *cmd)
 		if (chdir(path) != 0)
 			snprintf(buf, sizeof buf, "%s: %.512s", strerror(errno), path);
 		else {
-			char *cwd = getcwd(NULL, 0);
+			char *cwd = getcwd(NULL, PATH_MAX + 1);
 			snprintf(buf, sizeof buf, "%s", cwd);
 			XFREE(cwd);
 		}
