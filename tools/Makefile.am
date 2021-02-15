@@ -3,16 +3,20 @@ EXTRA_PROGRAMS = packet-test readline-test console_display-test filetransfer-tes
 bin_PROGRAMS = gs-netcat gs_uchroot_so
 
 gs_helloworld_SOURCES = 1_gs-helloworld.c utils.c
-gs_helloworld_LDADD = ../lib/libgsocket.a
+gs_helloworld_LDADD = ../lib/libgsocket.a @LDADD_STATIC@
+gs_helloworld_CFLAGS = @CFLAGS_STATIC@
 
 gs_pipe_SOURCES = 2_gs-pipe.c utils.c
-gs_pipe_LDADD = ../lib/libgsocket.a
+gs_pipe_LDADD = ../lib/libgsocket.a @LDADD_STATIC@
+gs_pipe_CFLAGS = @CFLAGS_STATIC@
 
 gs_full_pipe_SOURCES = 3_gs-full-pipe.c utils.c
-gs_full_pipe_LDADD = ../lib/libgsocket.a
+gs_full_pipe_LDADD = ../lib/libgsocket.a @LDADD_STATIC@
+gs_ful_pipe_CFLAGS = @CFLAGS_STATIC@
 
 gs_netcat_SOURCES = 4_gs-netcat.c utils.c socks.c console.c ids.c event_mgr.c pkt_mgr.c console_display.c filetransfer.c globbing.c filetransfer_mgr.c
-gs_netcat_LDADD = ../lib/libgsocket.a
+gs_netcat_LDADD = ../lib/libgsocket.a @LDADD_STATIC@
+gs_netcat_CFLAGS = @CFLAGS_STATIC@
 
 dist_bin_SCRIPTS = blitz gs-sftp gs-mount gs_funcs
 

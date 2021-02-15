@@ -35,7 +35,10 @@ BIN="${BINDIR}/filetransfer-test"
 
 [[ -f "${BIN}" ]] || { echo "${BIN} not found. Try ./configure --enable-tests"; exit 255; }
 
-command -v socat >/dev/null 2>&1 || { echo >&2 "socat not installed. ${SKIP}"; exit 0; }
+if [[ $(uname) =~ Darwin ]]; then
+	export PATH=$HOME/usr/bin:$PATH
+fi
+command -v socat >/dev/null 2>&1 || { $ECHO >&2 "socat not installed. ${SKIP}"; exit 0; }
 
 
 mk_dummy()
