@@ -1,6 +1,6 @@
 dnl Process this File with autoconf to produce a configure script.
 AC_PREREQ(2.61)
-AC_INIT([gsocket], 1.4.23-ft2)
+AC_INIT([gsocket], 1.4.23-ft3)
 dnl AC_CONFIG_AUX_DIR(config-x86_64-apple-darwin19.6.0)
 AC_CONFIG_AUX_DIR(config)
 AC_CANONICAL_SYSTEM
@@ -170,14 +170,11 @@ echo "
 if test x"${STATIC}" = xyes; then
 echo "
 ********************************** WARNING ***********************************
-* Compiling STATICLY disables proper use of blitz, gs-sftp etc.              *
-* Do not do it unless you know what you are doing...                         *
-*                                                                            *
-* Your system needs staticly compiled versions of OpenSSL etc.               *
-* If in doubt compile them first:                                            *
+* Your MUST compile OpenSSL like this:                                       *
 * openssl-src>                                                               *
 * ./Configure --prefix=\$HOME/usr no-dso no-threads no-shared linux-generic64 * 
-* openssl-src> mkdir -p \$HOME/usr && make all install                        *
+* mkdir -p \$HOME/usr && make all install                                     *
+* Only then compile gsocket \(using the same --prefix=\):                    *
 * gsocket-src> ./configure --prefix=\$HOME/usr --enable-static                *
 * gsocket-src> make all install                                              *
 * gsocket-src> export PATH=\$HOME/usr/bin:\$PATH                               *

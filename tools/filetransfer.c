@@ -700,7 +700,7 @@ GS_FT_get(GS_FT *ft, const char *pattern)
 
 	p = calloc(1, sizeof *p);
 	p->pattern = strdup(pattern);
-	p->wdir = getcwd(NULL, PATH_MAX + 1);
+	p->wdir = getcwdx();
 	p->globbing_id = ft->g_id;
 
 	GS_LIST_add(&ft->plistreq, NULL, p, ft->g_id);
@@ -1335,13 +1335,11 @@ call_status_cb(GS_FT *ft, const char *fname, uint8_t code, const char *err_str)
 		// Create error string if none provided
 		snprintf(buf, sizeof buf, "%s: %s", GS_FT_strerror(code), fname);
 		err_str = buf;
-		DEBUGF_R("string1='%s'\n", err_str);
 	}
 	struct _gs_ft_status s;
 	memset(&s, 0, sizeof s);
 	s.fname = fname;
 	s.code = code;
-		DEBUGF_R("string2='%s'\n", err_str);
 
 	s.err_str = err_str;
 	(*ft->func_status)(ft, &s, ft->func_arg);

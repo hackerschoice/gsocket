@@ -78,12 +78,58 @@ IPv4 address for port forwarding.
 .It Fl p Ar port
 TCP port to listen on or to forward traffic to.
 .It Fl i
-Interactive login shell. The server spawns a true PTY login shell. The client acts as a true PTY client (with Ctrl-C etc working). The client can terminate the session by typing \'~.\' at any time or by typing \'exit\'. The server supports multiple clients at the same time.
+Interactive login shell. The server spawns a true PTY login shell. The client acts as a true PTY client (with Ctrl-C etc working). The client can terminate the session by typing \'Ctrl-e q\' at any time or by typing \'exit\'. The server supports multiple clients at the same time.
 .El
 
 .Pp
 .Ar port
 can be a numerical value between 1-65535.
+.Sh CONSOLE
+Pressing \'Ctrl-e c\' (e for EEEElite) opens the command console. The command console displays the following information:
+.Pp
+.Bl -bullet -offset indent -compact
+.It
+Latency (in milliseconds) to the remote host
+.It
+Warning when a user logs into the system or becomes active
+.It
+Data troughput
+.It
+File transfer logs
+.El
+Type \'help\' for a list of available commands.
+
+.Sh FILETRANSFER
+File transfer is available from the command console. Files are transfered with the permission and modification timestamp unchanged. Partially transfered files are re-started where the transfer was left off.
+
+The 'put' command is used for uploading:
+
+.Dl put foobar.txt
+.Dl put $HOME/foobar.txt
+.Dl put /tmp/*.log
+.Dl put $(find . -type f -name '*.c')
+
+(The above example shows Shell Variable substitution and word expansion)
+
+It is possible to limit the amount of path information that is sent as implied directories for each path you specify. You can insert a dot and a slash into the source path, like this:
+
+.Dl put /foo/./bar/baz.c
+
+That would create /tmp/bar/baz.c on the remote machine. 
+
+The 'get' command is used for downloading:
+
+.Dl get foobar.txt
+.Dl get $(find /var/./ -name '*.log')
+
+Transfering a directory automatically transfers all files and directories within that directory (recursively):
+
+.Dl get /var/log
+.Dl get /
+The first command transfers all directories and files in /var/log/*. The latter command transfers the entire filesystem.
+
+Multiple get/put commands can be scheduled at the same time.
+
 .Sh EXAMPLES
 .Nm Example 1
 - Listen for a new connection using the password \'MySecret\':

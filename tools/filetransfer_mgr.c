@@ -243,11 +243,11 @@ GS_FTM_mk_packet(GS_FT *ft, uint8_t *dst, size_t dlen)
 				snprintf(buf, sizeof buf, "FAILED: %d", st->n_files_error);
 				GS_condis_log(&gs_condis, GS_PKT_APP_LOG_TYPE_ALERT, buf);
 			}
-			CONSOLE_draw(gs_condis.fd);
 		}
 		if (st->n_files_success + st->n_files_error > 0)
 			GS_FT_stats_reset(ft);
 
+		CONSOLE_draw(gs_condis.fd);
 		// DEBUGF_G("All done (%d/%d)\n", st->n_files_success, st->n_files_error);
 		return -1;
 	case GS_FT_TYPE_PUT:

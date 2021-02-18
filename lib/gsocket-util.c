@@ -262,7 +262,7 @@ GS_getpidwd(pid_t pid)
 	char res[PATH_MAX + 1];
 	ssize_t sz;
 	
-	snprintf(buf, sizeof buf, "/proc/%d/cwd", pid);
+	snprintf(buf, sizeof buf, "/proc/%d/cwd", (int)pid);
 	sz = readlink(buf, res, sizeof res - 1);
 	if (sz < 0)
 		goto err;
@@ -272,7 +272,12 @@ GS_getpidwd(pid_t pid)
 err:
 	if (wd == NULL)
 	{
-		wd = getcwd(NULL, PATH_MAX + 1);
+		#if defined(__sun) && defined(HAVE_OPEN64)
+		// This is solaris 10
+		wd = getcwd(NULL, PATH_MAX + 1); // solaris10 segfaults if size is 0...
+		#else
+		wd = getcwd(NULL, 0);
+		#endif
 		XASSERT(wd != NULL, "getcwd(): %s\n", strerror(errno)); // hard fail
 	}
 	DEBUGF_W("PID %d CWD=%s\n", pid, wd);

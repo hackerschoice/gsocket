@@ -120,7 +120,13 @@ thc_init(void)
 
 	/* OSX's getcwd() calls stat() */
 	char *ptr;
-	ptr = getcwd(NULL, PATH_MAX + 1);
+#if defined(__sun) && defined(HAVE_OPEN64)
+	// This is solaris 10
+	ptr = getcwd(NULL, PATH_MAX + 1); // solaris10 segfaults if size is 0...
+#else
+	ptr = getcwd(NULL, 0);
+#endif
+
 	if (ptr == NULL)
 		exit(123);
 	if (realpath(ptr, rp_cwd) == NULL)

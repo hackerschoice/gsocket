@@ -238,6 +238,17 @@ zap_arg(char *str)
 	memset(str, '*', len);
 }
 
+char *
+getcwdx(void)
+{
+#if defined(__sun) && defined(HAVE_OPEN64)
+	// This is solaris 10
+	return getcwd(NULL, PATH_MAX + 1); // solaris10 segfaults if size is 0...
+#else
+	return getcwd(NULL, 0);
+#endif
+}
+
 void
 do_getopt(int argc, char *argv[])
 {

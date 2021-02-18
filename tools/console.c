@@ -1279,7 +1279,7 @@ cmd_lls_file(const char *name)
 	else if (S_ISREG(sr.st_mode))
 		typestr = "";
 
-	snprintf(buf, sizeof buf, "%16s %5.5s %' 16lld %s", tmstr, typestr, sr.st_size, name);	
+	snprintf(buf, sizeof buf, "%16s %5.5s %' 16"PRId64" %s", tmstr, typestr, (int64_t)sr.st_size, name);	
 	GS_condis_add(&gs_condis, GS_PKT_APP_LOG_TYPE_DEFAULT, buf);
 }
 
@@ -1398,7 +1398,7 @@ console_command(struct _peer *p, const char *cmd)
 		GS_condis_add(&gs_condis, GS_PKT_APP_LOG_TYPE_DEFAULT, "Thanks xaitax for testing!");
 		GS_condis_draw(&gs_condis, 1);
 	} else if (strncmp(cmd, "lpwd", 4) == 0) {
-		char *cwd = getcwd(NULL, PATH_MAX + 1);
+		char *cwd = getcwdx();
 		GS_condis_add(&gs_condis, GS_PKT_APP_LOG_TYPE_DEFAULT, cwd);
 		XFREE(cwd);
 		GS_condis_draw(&gs_condis, 1);
@@ -1408,7 +1408,7 @@ console_command(struct _peer *p, const char *cmd)
 		if (chdir(path) != 0)
 			snprintf(buf, sizeof buf, "%s: %.512s", strerror(errno), path);
 		else {
-			char *cwd = getcwd(NULL, PATH_MAX + 1);
+			char *cwd = getcwdx();
 			snprintf(buf, sizeof buf, "%s", cwd);
 			XFREE(cwd);
 		}

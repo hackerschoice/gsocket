@@ -153,7 +153,7 @@ GS_GLOBBING(gsglobbing_cb_t func, const char *exp, uint32_t glob_id, void *arg_p
 	res.arg_ptr = arg_ptr;
 	res.arg_val = arg_val;
 
-	wdir = getcwd(NULL, PATH_MAX + 1);
+	wdir = getcwdx();
 	if (wdir == NULL)
 	{
 		DEBUGF_R("getcwd(): %s\n", strerror(errno));
