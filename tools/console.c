@@ -10,6 +10,8 @@
  * https://www.linuxquestions.org/questions/programming-9/get-cursor-position-in-c-947833/
  */
 #include "common.h"
+#include <wordexp.h>
+#include <dirent.h>
 #include "pkt_mgr.h"
 #include "console.h"
 #include "console_display.h"
@@ -43,7 +45,7 @@ static int is_console_cursor_needs_reset;
 static const char *sb_color = "\x1B[44m\x1B[30m"; // Black on Blue
 
 #define GS_CONSOLE_BUF_SIZE	    (1024)
-#define GS_CONDIS_ROWS          (3)
+#define GS_CONDIS_ROWS          (GS_CONSOLE_ROWS - 2)
 
 struct _console_info
 {
@@ -428,6 +430,12 @@ GS_prompt_cursor(void)
 
 	SXPRINTF(ptr, end - ptr, "\x1B[%d;%zuf", gopt.winsize.ws_row /*last*/, 1 + GS_CONSOLE_PROMPT_LEN + MIN(rl.pos, rl.visible_len));
 	tty_write(buf, ptr - buf);
+}
+
+void
+CONSOLE_draw(int fd)
+{
+	console_draw(fd, 0);
 }
 
 static void
@@ -1041,12 +1049,10 @@ CONSOLE_readline(struct _peer *p, void *data, size_t len)
 			} else if (key == 'A') {
 				DEBUGF_Y("UP\n");
 				GS_condis_up(&gs_condis);
-				GS_condis_draw(&gs_condis, 1);
-				console_cursor_on();
+				CONSOLE_draw(gs_condis.fd);
 			} else if (key == 'B') {
 				GS_condis_down(&gs_condis);
-				GS_condis_draw(&gs_condis, 1);
-				console_cursor_on();
+				CONSOLE_draw(gs_condis.fd);
 			}
 			/* Unhandled control character */
 			continue;
@@ -1164,11 +1170,14 @@ CONSOLE_action(struct _peer *p, uint8_t key)
 		GS_condis_pos(&gs_condis, (gopt.winsize.ws_row - GS_CONSOLE_ROWS) + 1 + 1, gopt.winsize.ws_col);
 		if (is_console_welcome_msg == 0)
 		{
-			GS_condis_add(&gs_condis, 0, "Press Ctrl-e + DOWN to enter the console. Then type 'help'.");
-			GS_condis_add(&gs_condis, 0, "Press Ctrl-e + c to close the console or Ctrl-e + q to quit.");
+			GS_condis_add(&gs_condis, 0, "Press Ctrl-e + c to close this console or Ctrl-e + q to quit.");
 			GS_condis_add(&gs_condis, 0, "Press Ctrl-e + UP to leave the console.");
+			GS_condis_add(&gs_condis, 0, "Press Ctrl-e + DOWN to enter the console.");
+			GS_condis_add(&gs_condis, 0, "Use UP/DOWN to scroll through the console's log");
+			GS_condis_add(&gs_condis, 0, "Type 'help' for a list of commands.");
 			is_console_welcome_msg = 1;
 		}
+		console_cursor_on(); // Start with cursor in console
 		// Draw console needed? Resizing remote will trigger a CLEAR (=> re-draw)
 		mk_statusbar();
 		console_draw(p->fd_out, 1);
@@ -1181,8 +1190,10 @@ static void
 cmd_help(int fd)
 {
 	GS_condis_add(&gs_condis, 0, "quit       - Quit          | Ctrl-e q : quit    | Ctrl-e c : toggle console");
-	GS_condis_add(&gs_condis, 0, "put <file> - Upload file   | Ctrl-e UP: Go Up   |");
-	GS_condis_add(&gs_condis, 0, "get <file> - Download file | Ctrl-e DN: Go Down |");
+	GS_condis_add(&gs_condis, 0, "ping       - RTT to peer   | Ctrl-e UP: Go Up   | Ctrl-e DN: Go Down");
+	GS_condis_add(&gs_condis, 0, "put <file> - Upload file   - Example: put /usr/./share/ma*");
+	GS_condis_add(&gs_condis, 0, "get <file> - Download file - Example: get ~/*.[ch]");
+	GS_condis_add(&gs_condis, 0, "Other commands: lls, lcd, lmkdir, lpwd, pwd");
 	GS_condis_draw(&gs_condis, 1);	
 }
 
@@ -1221,6 +1232,136 @@ path_resolve(const char *pattern, char *dst, size_t len)
 	return 0;
 }
 
+
+static const char *
+strip_space(const char *str)
+{
+	while (*str == ' ')
+		str++;
+	return str;
+}
+
+// Output single file information
+static void
+cmd_lls_file(const char *name)
+{
+	char buf[1024];
+	struct stat sr;
+	if (stat(name, &sr) != 0)
+	{
+		// ERROR
+		snprintf(buf, sizeof buf, "%s: %s", strerror(errno), name);
+		GS_condis_add(&gs_condis, GS_PKT_APP_LOG_TYPE_DEFAULT, buf);
+		return;
+	}
+#ifdef __APPLE__
+	struct timespec ts = sr.st_mtimespec;
+#else
+	struct timespec ts = sr.st_mtim;
+#endif
+
+	struct tm tm;
+	localtime_r(&ts.tv_sec, &tm);
+	// MS-DOS style output (oldskewl)
+	char tmstr[32];
+	strftime(tmstr, sizeof tmstr, "%Y-%m-%d %H:%M", &tm);
+	const char *typestr = "<\?\?\?>";
+	if (S_ISDIR(sr.st_mode))
+		typestr = "<DIR>";
+	else if (S_ISLNK(sr.st_mode))
+		typestr = "<LNK>";
+	else if (S_ISFIFO(sr.st_mode))
+		typestr = "<FIF>";
+	else if (S_ISBLK(sr.st_mode))
+		typestr = "<BLK>";
+	else if (S_ISCHR(sr.st_mode))
+		typestr = "<DEV>";
+	else if (S_ISREG(sr.st_mode))
+		typestr = "";
+
+	snprintf(buf, sizeof buf, "%16s %5.5s %' 16lld %s", tmstr, typestr, sr.st_size, name);	
+	GS_condis_add(&gs_condis, GS_PKT_APP_LOG_TYPE_DEFAULT, buf);
+}
+
+// List local files.
+static void
+cmd_lls_single(const char *exp)
+{
+	wordexp_t p;
+	char **w;
+	DIR *d = NULL;
+	char buf[PATH_MAX];
+
+	int ret;
+	signal(SIGCHLD, SIG_DFL);
+	ret = wordexp(exp, &p, 0);
+	signal(SIGCHLD, SIG_IGN);
+	if (ret != 0)
+		return; // error (0 found)
+
+	setlocale(LC_NUMERIC, ""); // for printf("'%d" thausand separator
+
+	w = p.we_wordv;
+	// If there is only ONE result and that result is a DIRECTORY then output the content
+	// of that directory instead. (e.g. 'ls .' or 'ls /tmp')
+	struct stat sr;
+	if ((p.we_wordc == 1) && (stat(w[0], &sr) == 0) && S_ISDIR(sr.st_mode))
+	{
+		// Opendir etc..
+		d = opendir(w[0]);
+		if (d == NULL)
+		{
+			// ERROR
+			snprintf(buf, sizeof buf, "%s: %s", strerror(errno), w[0]);
+			GS_condis_add(&gs_condis, GS_PKT_APP_LOG_TYPE_DEFAULT, buf);
+			goto err;
+		}
+
+		struct dirent *entry;
+		for (entry = readdir(d); entry != NULL; entry = readdir(d))
+		{
+			if (memcmp(w[0], ".\0", 2) == 0)
+				snprintf(buf, sizeof buf, "%s", entry->d_name);
+			else
+				snprintf(buf, sizeof buf, "%s/%s", w[0], entry->d_name);
+			cmd_lls_file(buf);
+		}
+	} else {
+		int i;
+		for (i = 0; i < p.we_wordc; i++)
+			cmd_lls_file(w[i]);
+	}
+
+err:
+	if (d != NULL)
+		closedir(d);
+
+	wordfree(&p);
+}
+
+static void
+cmd_lls(const char *str)
+{
+	char *orig = strdup(str);
+	char *next;
+	char *name = orig;
+
+
+	while (name != NULL)
+	{
+		next = strchr(name, ' ');
+		if (next != NULL)
+		{
+			*next = '\0';
+			next += 1;
+		}
+		cmd_lls_single(name);
+		name = next;
+	}
+
+	XFREE(orig);
+}
+
 static int
 console_command(struct _peer *p, const char *cmd)
 {
@@ -1229,6 +1370,7 @@ console_command(struct _peer *p, const char *cmd)
 	char path[PATH_MAX + 1];
 	char *end = buf + sizeof (buf);
 	char *ptr;
+	const char *arg;
 	int row = gopt.winsize.ws_row - (GS_CONSOLE_ROWS - 1);
 
 	if (strlen(cmd) <= 0)
@@ -1261,7 +1403,8 @@ console_command(struct _peer *p, const char *cmd)
 		XFREE(cwd);
 		GS_condis_draw(&gs_condis, 1);
 	} else if (strncmp(cmd, "lcd ", 4) == 0) {
-		path_resolve(cmd + 4, path, sizeof path);
+		arg = strip_space(cmd + 4);
+		path_resolve(arg, path, sizeof path);
 		if (chdir(path) != 0)
 			snprintf(buf, sizeof buf, "%s: %.512s", strerror(errno), path);
 		else {
@@ -1270,6 +1413,20 @@ console_command(struct _peer *p, const char *cmd)
 			XFREE(cwd);
 		}
 		GS_condis_add(&gs_condis, GS_PKT_APP_LOG_TYPE_DEFAULT, buf);
+		GS_condis_draw(&gs_condis, 1);
+	} else if (strncmp(cmd, "lmkdir ", 7) == 0) {
+		arg = strip_space(cmd + 7);
+		if (mkdir(arg, 0777) != 0)
+		{
+			snprintf(buf, sizeof buf, "%s: %.512s", strerror(errno), arg);
+			GS_condis_add(&gs_condis, GS_PKT_APP_LOG_TYPE_DEFAULT, buf);
+			GS_condis_draw(&gs_condis, 1);
+		}
+	} else if (strncmp(cmd, "lls", 3) == 0) {
+		arg = strip_space(cmd + 3);
+		if (*arg == 0)
+			arg = "."; // 'lls' should be 'lls .' (current directory)
+		cmd_lls(arg);
 		GS_condis_draw(&gs_condis, 1);
 	} else {
 		snprintf(buf, sizeof buf, "Command not known: '%s'", cmd);

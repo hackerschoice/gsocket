@@ -1279,7 +1279,7 @@ mk_stats_file(GS_FT *ft, uint32_t id, struct _gs_ft_file *f, const char *name, i
 			DEBUGF_R("Oops, Reporting stats on a suspended file\n");
 			f->usec_suspend_duration += (GS_usec() - f->usec_suspend_start);
 		}
-		DEBUGF_W("end=%"PRIu64", start=%"PRIu64", suspend=%"PRIu64"\n", f->usec_end, f->usec_start, f->usec_suspend_duration);
+		DEBUGF_W("err=%d end=%"PRIu64", start=%"PRIu64", suspend=%"PRIu64"\n", err, f->usec_end, f->usec_start, f->usec_suspend_duration);
 
 		s.xfer_duration = (f->usec_end - f->usec_start) - f->usec_suspend_duration;
 	}
@@ -1401,11 +1401,12 @@ GS_FT_status(GS_FT *ft, uint32_t id, uint8_t code, const char *err_str, size_t l
 					}
 				}
 			}
+		} else {
+			// HERE: Client was waiting for "COMPLETED" message from server.
+			// Was waiting for 'complete' signal. No error if 'complete' is a success.
+			if (code == GS_FT_ERR_COMPLETED)
+				err = 0;
 		}
-	} else {
-		// Was waiting for 'complete' signal. No error if 'complete' is a success.
-		if (code == GS_FT_ERR_COMPLETED)
-			err = 0;
 	}
 
 	const char *name;
@@ -1430,7 +1431,7 @@ GS_FT_status(GS_FT *ft, uint32_t id, uint8_t code, const char *err_str, size_t l
 
 		if (f != NULL)
 		{
-			// Report stats to caller
+			// Report stats to caller. Tread ERR_COMPLETED not as an error.
 			mk_stats_file(ft, id, f, name, err);
 		}
 	}
@@ -1536,12 +1537,12 @@ status_report_error(GS_FT *ft, const char *name, uint8_t code)
  * Make an error packet. Remove errornous file from queue
  */
 static size_t
-ft_mk_error(GS_FT *ft, struct _gs_ft_file *f, void *dst, size_t len, int *pkt_type, GS_LIST_ITEM *li, uint8_t code, const char *str)
+ft_mk_error(GS_FT *ft, struct _gs_ft_file *f, void *dst, size_t len, int *pkt_type, GS_LIST_ITEM *li, uint8_t code, const char *str, int is_report_local)
 {
 	size_t sz;
 
 	// On CLIENT side report this error to caller:
-	if (ft->is_server == 0)
+	if ((ft->is_server == 0) && (is_report_local))
 	{
 		// CLIENT
 		status_report_error(ft, f->fn_relative, code);
@@ -1586,7 +1587,7 @@ mk_xfer_data(GS_FT *ft, struct _gs_ft_file **active, GS_LIST *fcompleted, int *p
 	if (sz <= 0)
 	{
 		*active = NULL;
-		return ft_mk_error(ft, f, dst, len, pkt_type, f->li, errno2code(errno, GS_FT_ERR_BADF), NULL);
+		return ft_mk_error(ft, f, dst, len, pkt_type, f->li, errno2code(errno, GS_FT_ERR_BADF), NULL, 1);
 	}
 	f->fz_remote += sz;
 
@@ -1622,12 +1623,12 @@ mk_switch(GS_FT *ft, struct _gs_ft_file **active, GS_LIST *fsource, GS_LIST *fco
 	if (f->fp == NULL)
 	{
 		DEBUGF("fopen(%s): %s\n", f->fn_local, strerror(errno));
-		return ft_mk_error(ft, f, dst, len, pkt_type, li, errno2code(errno, GS_FT_ERR_PERM), NULL);
+		return ft_mk_error(ft, f, dst, len, pkt_type, li, errno2code(errno, GS_FT_ERR_PERM), NULL, 1);
 	}
 
 	ret = fseek(f->fp, 0, SEEK_END);
 	if (ret != 0)
-		return ft_mk_error(ft, f, dst, len, pkt_type, li, errno2code(errno, GS_FT_ERR_BADF), NULL);
+		return ft_mk_error(ft, f, dst, len, pkt_type, li, errno2code(errno, GS_FT_ERR_BADF), NULL, 1);
 	f->fz_local = ftell(f->fp);
 
 	// Peer already has this file.
@@ -1637,7 +1638,7 @@ mk_switch(GS_FT *ft, struct _gs_ft_file **active, GS_LIST *fsource, GS_LIST *fco
 		DEBUGF("#%u Skipping %s (already on peer)\n", (unsigned int)f->li->id, f->name);
 		if (ft->is_server == 0)
 			mk_stats_file(ft, li->id, f, NULL, 0 /*success*/);
-		return ft_mk_error(ft, f, dst, len, pkt_type, li, GS_FT_ERR_NODATA, NULL);
+		return ft_mk_error(ft, f, dst, len, pkt_type, li, GS_FT_ERR_NODATA, NULL, 0 /* do not report locally */);
 	}
 
 	// Remote size is larger. Overwrite from beginning.
@@ -1647,7 +1648,7 @@ mk_switch(GS_FT *ft, struct _gs_ft_file **active, GS_LIST *fsource, GS_LIST *fco
 	// Remote size is smaller. Restart transmission.
 	ret = fseek(f->fp, f->fz_remote, SEEK_SET);
 	if (ret != 0)
-		return ft_mk_error(ft, f, dst, len, pkt_type, li, errno2code(errno, GS_FT_ERR_BADF), NULL);
+		return ft_mk_error(ft, f, dst, len, pkt_type, li, errno2code(errno, GS_FT_ERR_BADF), NULL, 1);
 
 	struct _gs_ft_switch sw;
 	memset(&sw, 0, sizeof sw);

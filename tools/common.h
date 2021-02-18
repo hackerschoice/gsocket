@@ -66,6 +66,7 @@
 #if defined __sun || defined __hpux /* Solaris, HP-UX */
 # include <stropts.h>
 #endif
+#include <locale.h>
 #include <openssl/ssl.h>
 #include <openssl/srp.h>
 #include <gsocket/gsocket.h>

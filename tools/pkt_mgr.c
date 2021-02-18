@@ -79,6 +79,7 @@ pkt_app_cb_log(uint8_t msg, const uint8_t *data, size_t len, void *ptr)
 
 	sanitize_fname_to_str(log->msg, sizeof log->msg);
 	GS_condis_log(&gs_condis, log->type, (const char *)log->msg);
+	CONSOLE_draw(gs_condis.fd);
 
 	DEBUGF_G("LOG (%d) '%s'\n", log->type, log->msg);
 }
@@ -125,6 +126,7 @@ pkt_app_cb_pwdreply(uint8_t chn, const uint8_t *data, size_t len, void *ptr)
 	
 	DEBUGF_B("REMOTE WD=%s\n", data);
 	GS_condis_add(&gs_condis, GS_PKT_APP_LOG_TYPE_DEFAULT, (char *)data);
+	CONSOLE_draw(gs_condis.fd);
 }
 
 int

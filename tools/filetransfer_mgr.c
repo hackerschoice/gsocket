@@ -172,7 +172,7 @@ cb_stats(struct _gs_ft_stats_file *s, void *arg)
 	char buf[256];
 	snprintf(buf, sizeof buf, "[%s] %s", s->speed_str, s->fname);
 	GS_condis_log(&gs_condis, GS_PKT_APP_LOG_TYPE_DEFAULT, buf);
-	GS_condis_draw(&gs_condis, 1);
+	CONSOLE_draw(gs_condis.fd);
 }
 
 // Status and Error messages
@@ -192,7 +192,7 @@ cb_errors(void *ft_ptr, struct _gs_ft_status *s, void *arg)
 	// char buf[256];
 	// snprintf(buf, sizeof buf, "(%u)%s", s->code, s->err_str);
 	GS_condis_log(&gs_condis, GS_PKT_APP_LOG_TYPE_NOTICE, s->err_str);
-	GS_condis_draw(&gs_condis, 1);
+	CONSOLE_draw(gs_condis.fd);
 }
 
 // Return length of packet created.
@@ -243,7 +243,7 @@ GS_FTM_mk_packet(GS_FT *ft, uint8_t *dst, size_t dlen)
 				snprintf(buf, sizeof buf, "FAILED: %d", st->n_files_error);
 				GS_condis_log(&gs_condis, GS_PKT_APP_LOG_TYPE_ALERT, buf);
 			}
-			GS_condis_draw(&gs_condis, 1);
+			CONSOLE_draw(gs_condis.fd);
 		}
 		if (st->n_files_success + st->n_files_error > 0)
 			GS_FT_stats_reset(ft);
