@@ -159,6 +159,7 @@ AC_SUBST(LDADD_STATIC, "${LDADD_STATIC}")
 AC_SUBST(CFLAGS_STATIC, "${CFLAGS_STATIC}")
 AC_OUTPUT([Makefile lib/Makefile tools/Makefile man/Makefile])
 
+
 echo "
 
       \"If netcat is a swiss army knife then
