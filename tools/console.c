@@ -10,6 +10,8 @@
  * https://www.linuxquestions.org/questions/programming-9/get-cursor-position-in-c-947833/
  */
 #include "common.h"
+#include <wordexp.h>
+#include <dirent.h>
 #include "pkt_mgr.h"
 #include "console.h"
 #include "console_display.h"
@@ -31,7 +33,6 @@
 static void console_start(void);
 static void console_stop(void);
 static int console_command(struct _peer *p, const char *cmd);
-static void get_cursor_pos(int *row, int *col);
 
 static uint8_t chr_last;
 static int tty_fd = -1;
@@ -44,7 +45,7 @@ static int is_console_cursor_needs_reset;
 static const char *sb_color = "\x1B[44m\x1B[30m"; // Black on Blue
 
 #define GS_CONSOLE_BUF_SIZE	    (1024)
-#define GS_CONDIS_ROWS          (3)
+#define GS_CONDIS_ROWS          (GS_CONSOLE_ROWS - 2)
 
 struct _console_info
 {
@@ -63,10 +64,13 @@ struct _console_info
 	int64_t last_pos;
 	double bps;
 	double last_bps;
+
+	float ft_last_perc;
+	float ft_perc;   // FileTransfer percent completion
 };
 
 struct _console_info ci;
-GS_CONDIS gs_condis;
+GS_CONDIS gs_condis; // ConsoleDisplay
 
 static double
 get_usec(void)
@@ -122,59 +126,6 @@ console_init(int fd)
 		return;
 }
 
-static int
-readstring(int fd, char *buf, size_t sz, const char *str)
-{
-    unsigned char last;
-    unsigned char c;
-    int n;
-    int rv = -1;
-    char *end = buf + sz;
-
-    if (fd < 0)
-    	return -1;
-
-    // signal(SIGALRM, resize_timeout);
-    // alarm(10);
-    n = read(fd, &c, 1);
-    if (n <= 0)
-		goto err;
-
-    if (c == 0233)
-    {	/* meta-escape, CSI */
-		*buf++ = ESCAPE("")[0];
-		*buf++ = '[';
-    } else {
-		*buf++ = (char) c;
-    }
-    if (c != *str)
-		goto err;
-
-    last = str[strlen(str) - 1];	// R
-    while (1)
-    {
-		n = read(fd, &c, 1);
-		if (n <= 0)
-			goto err;
-		*buf++ = c;
-		if (c == last)
-			break;
-		if (buf >= end)
-			goto err;
-    }
-
-    alarm(0);
-    *buf = 0;
-    rv = 0;
-err:
-	// if (rv != 0)
-	// {
-	// 	signal(SIGALRM, SIG_DFL);
-	// 	alarm(0);	// CANCEL alarm
-	// }
-    return rv;
-}
-
 static ssize_t
 tty_write(void *src, size_t len)
 {
@@ -192,7 +143,7 @@ static int is_cursor_in_console;
 static void
 console_cursor_off(void)
 {
-	tty_write("\x1B[u", 3); // Move cursor to upper tier
+	tty_write("\x1B""8", 2); // Move cursor to upper tier
 
 	is_cursor_in_console = 0;
 }
@@ -204,9 +155,12 @@ console_cursor_on(void)
 	char *end = buf + sizeof (buf);
 	char *ptr = buf;
 
-	DEBUGF_W("Console Cursor ON\n");
+	int row = gopt.winsize.ws_row;
+	int col = 1 + GS_CONSOLE_PROMPT_LEN + MIN(rl.pos, rl.visible_len);
+
+	DEBUGF_W("Console Cursor ON (%d:%df)\n", row, col);
 	// ESC[?2004l = Reset bracketed paste mode
-	SXPRINTF(ptr, end - ptr, "\x1B[%d;%zuf", gopt.winsize.ws_row, 1 + GS_CONSOLE_PROMPT_LEN + MIN(rl.pos, rl.visible_len));
+	SXPRINTF(ptr, end - ptr, "\x1B[%d;%df", row, col);
 	if (is_console_cursor_needs_reset)
 	{
 		SXPRINTF(ptr, end - ptr, "\x1B[?2004l");
@@ -247,7 +201,6 @@ mk_statusbar(void)
 	else
 		VSADDF(ptr, end, vc, "[%3dms]", (int)ms);
 
-	DEBUGF("Total User: %u\n", ci.n_users);
 	if (ci.load >= 1000)
 		VSADDF(ptr, end, vc, "[Load %02.02f][User(%u) ", (float)ci.load / 100, ci.n_users);
 	else
@@ -269,9 +222,20 @@ mk_statusbar(void)
 		VSADDF(ptr, end, vc, "*idle*");
 	VSADDF(ptr, end, vc, "]");
 
-	char buf[8];
-	format_bps(buf, sizeof buf, (int64_t)ci.bps);
-	VSADDF(ptr, end, vc, "[%s/s]", buf);
+	// BYTES/sec
+	char buf[GS_FT_SPEEDSTR_MAXSIZE];
+	GS_format_bps(buf, sizeof buf, (int64_t)ci.bps, "/s");
+	VSADDF(ptr, end, vc, "[%s]", buf);
+
+	// Percent of FileTransfer completed [99.2%] or [ 0.4%] or [-----]
+	if (ci.ft_perc <= 0)
+	{
+		VSADDF(ptr, end, vc, "[-----]");
+	} else {
+		char perc[5];
+		snprintf(perc, sizeof perc, "%1.1f", ci.ft_perc);
+		VSADDF(ptr, end, vc, "[%4s%%]", perc);
+	}
 
 	// Fill until end
 	size_t v_left = gopt.winsize.ws_col - vc;
@@ -306,6 +270,24 @@ update_bps(struct _peer *p)
 
 	ci.last_usec = now_usec;
 	ci.last_pos = cur_pos;
+
+	if (ci.last_bps != ci.bps)
+		ci.is_sb_redraw_needed += 1;
+
+	// Percentage of File Transfer
+	ci.ft_last_perc = ci.ft_perc;
+	GS_FT *ft = &p->ft;
+	GS_FT_stats *s = &ft->stats;
+
+	if (s->xfer_amount_scheduled == 0)
+		ci.ft_perc = 0;
+	else {
+		float f = ((float)(s->xfer_amount * 100)/ s->xfer_amount_scheduled);
+		ci.ft_perc = MIN(f, 99.9);
+	}
+
+	if (ci.ft_last_perc != ci.ft_perc)
+		ci.is_sb_redraw_needed += 1;
 }
 
 void
@@ -337,6 +319,7 @@ CONSOLE_resize(struct _peer *p)
 	char *end = buf + sizeof buf;
 	int delta;
 
+	DEBUGF_R("RESIZE to %d;%d\n", gopt.winsize.ws_col, gopt.winsize.ws_row);
 	if (gopt.is_console)
 	{
 		delta = gopt.winsize.ws_row - gopt.winsize_prev.ws_row;
@@ -348,7 +331,7 @@ CONSOLE_resize(struct _peer *p)
 			// Assign scrolling area. Will reset cursor to 1;1
 			SXPRINTF(ptr, end - ptr, "\x1b[1;%dr", gopt.winsize.ws_row - GS_CONSOLE_ROWS);
 			// Restore cursor to upper tier
-			SXPRINTF(ptr, end - ptr, "\x1B[u");
+			SXPRINTF(ptr, end - ptr, "\x1B""8");
 			// Clear screen
 			SXPRINTF(ptr, end - ptr, "\x1B[J");
 		}
@@ -356,13 +339,15 @@ CONSOLE_resize(struct _peer *p)
 		if (delta < 0)
 		{
 			// Shorter: 
+			DEBUGF_R("Shorter. ScrollingArea to %d\n", gopt.winsize.ws_row - GS_CONSOLE_ROWS);
 			if (is_cursor_in_console)
 			{
-				SXPRINTF(ptr, end - ptr, "\x1B[u\x1B[J");
+				DEBUGF_R("cursor is IN console\n");
+				SXPRINTF(ptr, end - ptr, "\x1B""8""\x1B[J");
 				SXPRINTF(ptr, end - ptr, "\x1B[%dA", 0-delta);
-				SXPRINTF(ptr, end - ptr, "\x1B[s");
+				SXPRINTF(ptr, end - ptr, "\x1B""7");
 				SXPRINTF(ptr, end - ptr, "\x1b[1;%dr", gopt.winsize.ws_row - GS_CONSOLE_ROWS);
-				SXPRINTF(ptr, end - ptr, "\x1B[u");
+				SXPRINTF(ptr, end - ptr, "\x1B""8");
 
 				// WORKING
 				// SXPRINTF(ptr, end - ptr, "\x1B[u\x1B[J");
@@ -372,9 +357,10 @@ CONSOLE_resize(struct _peer *p)
 				// SXPRINTF(ptr, end - ptr, "\x1B[u");
 			} else {
 				// WORKING
+				DEBUGF_R("cursor is UPPER TIER\n");
 				SXPRINTF(ptr, end - ptr, "\x1B[%dS", 0-delta);
 				SXPRINTF(ptr, end - ptr, "\x1b[1;%dr", gopt.winsize.ws_row - GS_CONSOLE_ROWS);
-				SXPRINTF(ptr, end - ptr, "\x1B[u\x1B[%dA", 0-delta);
+				SXPRINTF(ptr, end - ptr, "\x1B""8""\x1B[%dA", 0-delta);
 			}
 		}
 		tty_write(buf, ptr - buf);
@@ -395,7 +381,7 @@ CONSOLE_update_bps(struct _peer *p)
 		return;
 
 	// Only redraw if there was a change
-	if (ci.last_bps != ci.bps)
+	if (ci.is_sb_redraw_needed)
 	{
 		mk_statusbar();
 		console_draw(p->fd_out, 0);
@@ -417,7 +403,7 @@ GS_sb_draw(int force)
 
 
 static void
-GS_prompt_draw(int row, int force)
+GS_prompt_draw(int force)
 {
 	char buf[512];
 	char *ptr = buf;;
@@ -428,7 +414,7 @@ GS_prompt_draw(int row, int force)
 	ci.is_prompt_redraw_needed = 0;
 
 	ptr = buf;
-	SXPRINTF(ptr, end - ptr, "\x1B[%d;1f" GS_CONSOLE_PROMPT "%s", row + GS_CONSOLE_ROWS, rl.vline);
+	SXPRINTF(ptr, end - ptr, "\x1B[%d;1f" GS_CONSOLE_PROMPT "%s", gopt.winsize.ws_row /*last*/, rl.vline);
 	tty_write(buf, ptr - buf);
 }
 
@@ -436,7 +422,7 @@ GS_prompt_draw(int row, int force)
  * Position active cursor to user input in console
  */
 static void
-GS_prompt_cursor(int row)
+GS_prompt_cursor(void)
 {
 	char buf[64];
 	char *ptr = buf;
@@ -446,23 +432,26 @@ GS_prompt_cursor(int row)
 	tty_write(buf, ptr - buf);
 }
 
+void
+CONSOLE_draw(int fd)
+{
+	console_draw(fd, 0);
+}
+
 static void
 console_draw(int fd, int force)
 {
-	int row = gopt.winsize.ws_row - (GS_CONSOLE_ROWS - 1);
-
 	if (gopt.is_console == 0)
 		return;
-
-	DEBUGF_R("CONSOLE DRAW (force=%d)\n", force);
-	// GS_condis_pos(row + 1, gopt.winsize.ws_col);
 
 	int cursor_to_prompt = 0;
 	cursor_to_prompt += ci.is_sb_redraw_needed;
 	cursor_to_prompt += gs_condis.is_redraw_needed;
+	cursor_to_prompt += ci.is_prompt_redraw_needed;
+	// DEBUGF_W("CONSOLE DRAW (force=%d, cursor-to-prompt=%d)\n", force, cursor_to_prompt);
 
 	if (is_cursor_in_console == 0)
-		tty_write("\x1B[s", 3);
+		tty_write("\x1B""7", 2);  // Save position (upper tier)
 
 	// Status Bar (Normally black on blue)
 	GS_sb_draw(force);
@@ -471,15 +460,15 @@ console_draw(int fd, int force)
 	GS_condis_draw(&gs_condis, force);
 
 	// Prompt
-	GS_prompt_draw(row, force);
+	GS_prompt_draw(force);
 
 	// Restore cursor position
 	if (is_cursor_in_console == 0)
 	{
-		tty_write("\x1B[u", 3);
+		tty_write("\x1B""8", 2);  // Restore position (upper tier)
 	} else {
 		if (cursor_to_prompt)
-			GS_prompt_cursor(row);
+			GS_prompt_cursor();
 	}
 }
 
@@ -536,13 +525,18 @@ check_arrow(int *esc, uint8_t c)
  * 6. ^E + <other> == submit=other. Send ^E + submit. Return -2
  * ==> behavior screen like (see *#1* below)
  * 6. ^E + <other> == do not submit. Return 0
+ *
+ * Return 0 : Caller not to process received character (more data required).
+ * Return -1: Caller to process character in *submit
+ * Return -2: not used.
+ * Return >0: Escaped character.
  */
 int
 CONSOLE_check_esc(uint8_t c, uint8_t *submit)
 {
 	int esc;
 
-	DEBUGF_Y("key = 0x%02x\n", c);
+	// DEBUGF_Y("key = 0x%02x\n", c);
  	if (chr_last == GS_CONSOLE_ESC)
  	{
  		if (check_arrow(&esc, c) == 0)
@@ -606,11 +600,13 @@ CONSOLE_reset(void)
 	if (tty_fd < 0)
 		return;
 
+	DEBUGF_R("Resetting scolling area (rows %d)\n", gopt.winsize.ws_row);
 	if (gopt.is_console)
 	{
-		/* Reset scrolling area */
 		ptr = buf;
-		SXPRINTF(ptr, end - ptr, "\x1B[r");
+		// Reset scrolling area. Will set cursor to 1;1.
+		// SXPRINTF(ptr, end - ptr, "\x1B[r");
+		SXPRINTF(ptr, end - ptr, "\x1b[1;%dr", gopt.winsize.ws_row);
 		/* Move cursor to last line */
 		SXPRINTF(ptr, end - ptr, "\x1B[9999;9999H");
 		/* Restore cursor */
@@ -634,8 +630,118 @@ static struct _pat cls_pattern[] = {
 	{"\x1B[J", 3, 1},      // Clear screen from cursor down
 	{"\x1B[2J", 4, 1},     // Clear entire screen
 	{"\x1B[?1049h", 8, 2}, // Switch Alternate Screen Buffer (clears screen)
-	{"\x1B[?1049l", 8, 3}  // Switch Normal Screen Buffer (clears screen)
+	{"\x1B[?1049l", 8, 3}, // Switch Normal Screen Buffer (clears screen)
+	{"\x1B""c", 2, 4}        // Reset terminal to initial state
 };
+
+#ifdef DEBUG
+/*
+ * For debugging only.
+ * Find the next ansi sequence.
+ * Return the length of the sequence. Set 'is_ansi' if it's an ansi sequence.
+ * The sequence can be a non-ansi sequence (e.g. normal data) or an ansi sequnce.
+ */
+static size_t 
+ansi_next(void *data, size_t len, int *is_ansi)
+{
+	static int in_esc;
+	static int in_esc_pos;
+	uint8_t *src = (uint8_t *)data;
+	uint8_t *src_orig = src;
+	uint8_t *src_end = src + len;
+
+	in_esc_pos = 0;
+	in_esc = 0;
+	*is_ansi = 0;
+	if (*src == '\x1B')
+	{
+		src++;
+		*is_ansi = 1;
+		in_esc = 1;
+	}
+
+	for (; src < src_end; src++)
+	{
+		if (in_esc == 0)
+		{
+			if (*src != '\x1B')
+				continue;
+
+			*is_ansi = 0;
+			return src - src_orig;
+		}
+
+		// HERE: in escape sequence
+		// Check when escape finishes
+		if (*src == '\x1B')
+			break;
+		in_esc_pos++;
+
+		if (in_esc_pos == 1)
+		{
+			// Check if multi character esc sequence
+			if (*src == '[')
+				continue;
+			if (*src == '(')
+				continue;
+			if (*src == ')')
+				continue;
+			if (*src == '#')
+				continue; // Esc-#2
+			if (*src == '6')
+				continue; // Esc-6n
+			if (*src == '5')
+				continue;
+			if (*src == '0')
+				continue;
+			if (*src == '3')
+				continue;
+
+			break;
+		}
+
+		if (in_esc_pos >= 2)
+		{
+			if ((*src >= '0') && (*src <= '9'))
+				continue;
+			if (*src == ';')
+				continue;
+			if (*src == '?')
+				continue;
+
+			break;
+		}
+
+		break;
+	}
+	return src - src_orig + 1;
+}
+
+// For debugging
+static void
+ansi_output(void *data, size_t len)
+{
+	uint8_t *src = (uint8_t *)data;
+	uint8_t *src_end = src + len;
+	int is_ansi;
+	size_t n;
+	char buf[64];
+
+	while (src < src_end)
+	{
+		n = ansi_next(src, src_end - src, &is_ansi);
+		XASSERT(n > 0, "n is 0\n");
+		if (is_ansi)
+		{
+			snprintf(buf, sizeof buf, "%.*s", (int)(n - 1), src + 1);
+			DEBUGF_B("ansi: %s\n", buf);
+		}
+		else
+			HEXDUMP(src, n);
+		src += n;
+	}
+}
+#endif
 
 static uint8_t cls_buf[8];
 static size_t cls_pos;
@@ -656,12 +762,12 @@ static size_t cls_pos;
  * amount => Amount of data save to process (remaining is part of an
  * unfinished ansi sequence).
  */
-static int in_esc;
-static int in_esc_pos;
 
 static void
 ansi_parse(void *data, size_t len, size_t *amount, int *cls_code)
 {
+	static int in_esc;
+	static int in_esc_pos;
 	uint8_t *src = (uint8_t *)data;
 	uint8_t *src_orig = src;
 	uint8_t *src_end = src + len;
@@ -732,8 +838,8 @@ ansi_parse(void *data, size_t len, size_t *amount, int *cls_code)
 		cls_buf[cls_pos] = *src;
 		cls_pos++;
 
-		// Any sequence we are interested in is at least 3 chars long
-		if (cls_pos < 3)
+		// Any sequence we are interested in is at least 2 chars long
+		if (cls_pos < 2)
 			goto skip;
 
 		//Check if any ESC sequence matches
@@ -794,6 +900,9 @@ ansi_write(int fd, void *data, size_t len, int *cls_code)
 
 	if (write(fd, data, amount) != amount)
 		return -1;
+#ifdef DEBUG
+	// ansi_output(data, amount);
+#endif
 
 	if (amount < len)
 	{
@@ -844,7 +953,7 @@ CONSOLE_write(int fd, void *data, size_t len)
 
 	/* Move cursor to upper tier if cursor inside console */
 	if (is_cursor_in_console)
-		tty_write("\x1B[u", 3); // Restore cursor
+		tty_write("\x1B""8", 2); // Restore cursor to upper tier
 
 	ssize_t sz;
 	sz = ansi_write(fd, data, len, &is_detected_clearscreen);
@@ -858,15 +967,17 @@ CONSOLE_write(int fd, void *data, size_t len)
 		// HEXDUMP(data, MIN(16, len));
 
 	if (is_cursor_in_console)
-		tty_write("\x1B[s", 3);  // Save cursor position
+		tty_write("\x1B""7", 2);  // Save new cursor position after writing to upper tier
 
+
+	// Now check if console needs to be re-drawn
 	if (is_detected_clearscreen == 2)
 	{
 		// Switch to Alternate Screen Buffer detected
 		is_console_before_sb = gopt.is_console;
 	}
 
-	// DEBUGF_G("cls = %d before = %d, now %d\n", is_detected_clearscreen, is_console_before_sb, gopt.is_console);
+	// DEBUGF_G("cls = %d iscon-before = %d, iscon-now %d\n", is_detected_clearscreen, is_console_before_sb, gopt.is_console);
 	if (is_detected_clearscreen == 3)
 	{
 		// Switched to Normal Screen Buffer detected
@@ -880,6 +991,13 @@ CONSOLE_write(int fd, void *data, size_t len)
 		}
 	}
 
+	if (is_detected_clearscreen == 4)
+	{
+		DEBUGF_R("RESET of terminal detected.\n");
+		if (gopt.is_console)
+			console_start();
+	}
+
 	if (gopt.is_console == 0)
 		return sz;
 
@@ -887,7 +1005,10 @@ CONSOLE_write(int fd, void *data, size_t len)
 	 	console_draw(fd, 1 /*force*/);
 
 	 if (is_cursor_in_console)
+	 {
+	 	DEBUGF("is_cursor_in_console is true\n");
 	 	console_cursor_on();
+	 }
 
 	return sz;
 }
@@ -914,8 +1035,7 @@ CONSOLE_readline(struct _peer *p, void *data, size_t len)
 
 	for (; src < s_end; src++)
 	{
-		rv = GS_RL_add(&rl, *src, &key, GS_CONSOLE_INPUT_LEN, 1 + GS_CONSOLE_PROMPT_LEN);
-		// HEXDUMP(rl.esc_data, rl.esc_len);
+		rv = GS_RL_add(&rl, *src, &key, gopt.winsize.ws_row, 1 + GS_CONSOLE_PROMPT_LEN);
 		if (write(fd, rl.esc_data, rl.esc_len) != rl.esc_len)
 			ERREXIT("write()\n");
 
@@ -929,12 +1049,10 @@ CONSOLE_readline(struct _peer *p, void *data, size_t len)
 			} else if (key == 'A') {
 				DEBUGF_Y("UP\n");
 				GS_condis_up(&gs_condis);
-				GS_condis_draw(&gs_condis, 1);
-				console_cursor_on();
+				CONSOLE_draw(gs_condis.fd);
 			} else if (key == 'B') {
 				GS_condis_down(&gs_condis);
-				GS_condis_draw(&gs_condis, 1);
-				console_cursor_on();
+				CONSOLE_draw(gs_condis.fd);
 			}
 			/* Unhandled control character */
 			continue;
@@ -950,23 +1068,6 @@ CONSOLE_readline(struct _peer *p, void *data, size_t len)
 	return 1;
 }
 
-static void
-get_cursor_pos(int *row, int *col)
-{
-	*row = -1;
-	*col = -1;
-	int rv;
-	char buf[64];
-
-	tty_write("\x1b" "[6n", 4);
-    rv = readstring(tty_fd, buf, sizeof buf, PTY_SIZE_STR);
-
-    if (rv == 0)
-	    sscanf(buf, PTY_SIZE_STR, row, col);
-
-	DEBUGF_G("Current Cursor row=%d col=%d\n", *row, *col);
-}
-
 /*
  * Set up terminal to display console (e.g. scroll upper tier up
  * and save cursor location of upper tier).
@@ -980,43 +1081,17 @@ console_start(void)
 	int row;
 	row = gopt.winsize.ws_row - GS_CONSOLE_ROWS;
 
-#if 0
-	// Get cursor's current location.
-	// int rv;
-	int current_row;
-	int current_col;
-	get_cursor_pos(&current_row, &current_col);
-
-	// Current cursor is inside console's space. Scroll up...
-	if (current_row > row)
-		SXPRINTF(ptr, end - ptr, "\x1b[%dS", current_row - row);
-
-	// Reduce scrolling area (will reset cursor to 0;0)
-	SXPRINTF(ptr, end - ptr, "\x1b[1;%dr", row);
-
-	// We scrolled up. Cursor was in console area. Set to last row.
-	int new_row = current_row; // Default: Leave cursor where it was
-	if (current_row > row)
-		new_row = row;	// Set cursor to last row of new scrolling area
-
-	// Adjust cursor to new location after [r moved it to 0;0
-	SXPRINTF(ptr, end - ptr, "\x1b[%d;%dH", new_row, current_col);
-
-	// Save the cursor location from upper tier
-	SXPRINTF(ptr, end - ptr, "\x1B[s");
-#else
-
 	int i;
 	// Scroll up i lines
 	for (i = 0; i < GS_CONSOLE_ROWS; i++)
 		SXPRINTF(ptr, end - ptr, "\x1B""D");
-	// Move cursor up as well. Save cursor thereafter.
-	SXPRINTF(ptr, end - ptr, "\x1B[%dA\x1B[s", GS_CONSOLE_ROWS);
-	// Reset scrolling area. Will set cursor to 1;1.
+	// Move cursor up. Then save cursor pos.
+	SXPRINTF(ptr, end - ptr, "\x1B[%dA\x1B""7", GS_CONSOLE_ROWS);
+	// Set scrolling area. Will set cursor to 1;1.
+	DEBUGF("Setting Scrolling area to %d\n", row);
 	SXPRINTF(ptr, end - ptr, "\x1b[1;%dr", row);
 	// Restore cursor to saved location
-	SXPRINTF(ptr, end - ptr, "\x1B[u");
-#endif
+	SXPRINTF(ptr, end - ptr, "\x1B""8");
 
 	tty_write(buf, ptr - buf);
 }
@@ -1037,7 +1112,7 @@ console_stop(void)
 	// Reset scroll size
 	SXPRINTF(ptr, end - ptr, "\x1B[r");
 	// Restore cursor to upper tier (shell)
-	SXPRINTF(ptr, end - ptr, "\x1B[u");
+	SXPRINTF(ptr, end - ptr, "\x1B""8");
 	tty_write(buf, ptr - buf);
 	is_cursor_in_console = 0;
 }
@@ -1050,7 +1125,6 @@ hard_quit(void)
 {
 	CONSOLE_reset();
 	stty_reset();
-	printf("\n[Bye]\n");
 	exit(0); // hard exit.
 }
 
@@ -1067,10 +1141,19 @@ CONSOLE_action(struct _peer *p, uint8_t key)
 	if (key == 'q')
 		hard_quit();
 
+#ifdef DEBUG
+	if (key == 'l')
+	{
+		DEBUGF_B("redraw\n");
+		mk_statusbar();
+		console_draw(p->fd_out, 1);
+	}
+#endif
+
 	if (key == 'c')
 	{
-		/* Trigger: Send new window size to peer */
-		gopt.is_win_resized = 1;
+		gopt.is_win_resized = 1; // Trigger: Send new window size to peer
+		gopt.is_want_ids_on = 1;
 		GS_SELECT_FD_SET_W(p->gs);
 
 		if (gopt.is_console == 1)
@@ -1084,17 +1167,18 @@ CONSOLE_action(struct _peer *p, uint8_t key)
 		console_start();
 		gopt.is_console = 1;
 
-		pkt_app_send_ids(p->gs->ctx->gselect_ctx, p);
-
 		GS_condis_pos(&gs_condis, (gopt.winsize.ws_row - GS_CONSOLE_ROWS) + 1 + 1, gopt.winsize.ws_col);
 		if (is_console_welcome_msg == 0)
 		{
-			GS_condis_add(&gs_condis, 0, "Press Ctrl-e + DOWN to enter the console. Then type 'help'.");
-			GS_condis_add(&gs_condis, 0, "Press Ctrl-e + c to close the console or Ctrl-e + q to quit.");
+			GS_condis_add(&gs_condis, 0, "Press Ctrl-e + c to close this console or Ctrl-e + q to quit.");
 			GS_condis_add(&gs_condis, 0, "Press Ctrl-e + UP to leave the console.");
+			GS_condis_add(&gs_condis, 0, "Press Ctrl-e + DOWN to enter the console.");
+			GS_condis_add(&gs_condis, 0, "Use UP/DOWN to scroll through the console's log");
+			GS_condis_add(&gs_condis, 0, "Type 'help' for a list of commands.");
 			is_console_welcome_msg = 1;
 		}
-		// Draw console neede? Resizing remote will trigger a CLEAR (=> re-draw)
+		console_cursor_on(); // Start with cursor in console
+		// Draw console needed? Resizing remote will trigger a CLEAR (=> re-draw)
 		mk_statusbar();
 		console_draw(p->fd_out, 1);
 	}
@@ -1106,9 +1190,176 @@ static void
 cmd_help(int fd)
 {
 	GS_condis_add(&gs_condis, 0, "quit       - Quit          | Ctrl-e q : quit    | Ctrl-e c : toggle console");
-	GS_condis_add(&gs_condis, 0, "put <file> - Upload file   | Ctrl-e UP: Go Up   |");
-	GS_condis_add(&gs_condis, 0, "get <file> - Download file | Ctrl-e DN: Go Down |");
+	GS_condis_add(&gs_condis, 0, "ping       - RTT to peer   | Ctrl-e UP: Go Up   | Ctrl-e DN: Go Down");
+	GS_condis_add(&gs_condis, 0, "put <file> - Upload file   - Example: put /usr/./share/ma*");
+	GS_condis_add(&gs_condis, 0, "get <file> - Download file - Example: get ~/*.[ch]");
+	GS_condis_add(&gs_condis, 0, "Other commands: lls, lcd, lmkdir, lpwd, pwd");
 	GS_condis_draw(&gs_condis, 1);	
+}
+
+// Use wordexp(3) to resolve path name with ~/ and variable substitution
+static int
+path_resolve(const char *pattern, char *dst, size_t len)
+{
+	wordexp_t p;
+	int ret;
+
+	if (len <= 0)
+		return -1;
+
+	dst[0] = '\0';
+	// On failure return 'pattern' as path 
+	snprintf(dst, len, "%s", pattern); 
+
+	signal(SIGCHLD, SIG_DFL);
+	ret = wordexp(pattern, &p, WRDE_NOCMD);
+	signal(SIGCHLD, SIG_IGN);
+	if (ret != 0)
+	{
+		DEBUGF_R("wordexp(%s) error: %d\n", pattern, ret);
+		return -1;
+	}
+
+	if (p.we_wordc <= 0)
+	{
+		wordfree(&p);
+		return -1;
+	}
+
+	snprintf(dst, len, "%s", p.we_wordv[0]);
+	wordfree(&p);
+
+	return 0;
+}
+
+
+static const char *
+strip_space(const char *str)
+{
+	while (*str == ' ')
+		str++;
+	return str;
+}
+
+// Output single file information
+static void
+cmd_lls_file(const char *name)
+{
+	char buf[1024];
+	struct stat sr;
+	if (stat(name, &sr) != 0)
+	{
+		// ERROR
+		snprintf(buf, sizeof buf, "%s: %s", strerror(errno), name);
+		GS_condis_add(&gs_condis, GS_PKT_APP_LOG_TYPE_DEFAULT, buf);
+		return;
+	}
+#ifdef __APPLE__
+	struct timespec ts = sr.st_mtimespec;
+#else
+	struct timespec ts = sr.st_mtim;
+#endif
+
+	struct tm tm;
+	localtime_r(&ts.tv_sec, &tm);
+	// MS-DOS style output (oldskewl)
+	char tmstr[32];
+	strftime(tmstr, sizeof tmstr, "%Y-%m-%d %H:%M", &tm);
+	const char *typestr = "<\?\?\?>";
+	if (S_ISDIR(sr.st_mode))
+		typestr = "<DIR>";
+	else if (S_ISLNK(sr.st_mode))
+		typestr = "<LNK>";
+	else if (S_ISFIFO(sr.st_mode))
+		typestr = "<FIF>";
+	else if (S_ISBLK(sr.st_mode))
+		typestr = "<BLK>";
+	else if (S_ISCHR(sr.st_mode))
+		typestr = "<DEV>";
+	else if (S_ISREG(sr.st_mode))
+		typestr = "";
+
+	snprintf(buf, sizeof buf, "%16s %5.5s %' 16"PRId64" %s", tmstr, typestr, (int64_t)sr.st_size, name);	
+	GS_condis_add(&gs_condis, GS_PKT_APP_LOG_TYPE_DEFAULT, buf);
+}
+
+// List local files.
+static void
+cmd_lls_single(const char *exp)
+{
+	wordexp_t p;
+	char **w;
+	DIR *d = NULL;
+	char buf[PATH_MAX];
+
+	int ret;
+	signal(SIGCHLD, SIG_DFL);
+	ret = wordexp(exp, &p, 0);
+	signal(SIGCHLD, SIG_IGN);
+	if (ret != 0)
+		return; // error (0 found)
+
+	setlocale(LC_NUMERIC, ""); // for printf("'%d" thausand separator
+
+	w = p.we_wordv;
+	// If there is only ONE result and that result is a DIRECTORY then output the content
+	// of that directory instead. (e.g. 'ls .' or 'ls /tmp')
+	struct stat sr;
+	if ((p.we_wordc == 1) && (stat(w[0], &sr) == 0) && S_ISDIR(sr.st_mode))
+	{
+		// Opendir etc..
+		d = opendir(w[0]);
+		if (d == NULL)
+		{
+			// ERROR
+			snprintf(buf, sizeof buf, "%s: %s", strerror(errno), w[0]);
+			GS_condis_add(&gs_condis, GS_PKT_APP_LOG_TYPE_DEFAULT, buf);
+			goto err;
+		}
+
+		struct dirent *entry;
+		for (entry = readdir(d); entry != NULL; entry = readdir(d))
+		{
+			if (memcmp(w[0], ".\0", 2) == 0)
+				snprintf(buf, sizeof buf, "%s", entry->d_name);
+			else
+				snprintf(buf, sizeof buf, "%s/%s", w[0], entry->d_name);
+			cmd_lls_file(buf);
+		}
+	} else {
+		int i;
+		for (i = 0; i < p.we_wordc; i++)
+			cmd_lls_file(w[i]);
+	}
+
+err:
+	if (d != NULL)
+		closedir(d);
+
+	wordfree(&p);
+}
+
+static void
+cmd_lls(const char *str)
+{
+	char *orig = strdup(str);
+	char *next;
+	char *name = orig;
+
+
+	while (name != NULL)
+	{
+		next = strchr(name, ' ');
+		if (next != NULL)
+		{
+			*next = '\0';
+			next += 1;
+		}
+		cmd_lls_single(name);
+		name = next;
+	}
+
+	XFREE(orig);
 }
 
 static int
@@ -1116,10 +1367,15 @@ console_command(struct _peer *p, const char *cmd)
 {
 	int fd = p->fd_out;
 	char buf[GS_CONSOLE_BUF_SIZE];
+	char path[PATH_MAX + 1];
 	char *end = buf + sizeof (buf);
 	char *ptr;
+	const char *arg;
 	int row = gopt.winsize.ws_row - (GS_CONSOLE_ROWS - 1);
 
+	if (strlen(cmd) <= 0)
+		return 0;
+	
 	if (memcmp(cmd, "help", 4) == 0)
 	{
 		cmd_help(fd);
@@ -1127,17 +1383,50 @@ console_command(struct _peer *p, const char *cmd)
 		cmd_ping(p);
 	} else if (memcmp(cmd, "quit", 4) == 0) {
 		hard_quit();
+	} else if (memcmp(cmd, "pwd", 3) == 0) {
+		cmd_pwd(p);
 	} else if (memcmp(cmd, "clear", 5) == 0) {
 		GS_condis_clear(&gs_condis);
 		GS_condis_draw(&gs_condis, 1);
-	} else if (memcmp(cmd, "put", 3) == 0) {
-		GS_condis_add(&gs_condis, 0, "Not yet implemented.");
-		GS_condis_draw(&gs_condis, 1);
-	} else if (memcmp(cmd, "get", 3) == 0) {
-		GS_condis_add(&gs_condis, 0, "Not yet implemented.");
-		GS_condis_draw(&gs_condis, 1);
+	} else if (memcmp(cmd, "put ", 4) == 0) {
+		GS_FT_put(&p->ft, cmd+4);
+		GS_SELECT_FD_SET_W(p->gs);
+	} else if (memcmp(cmd, "get ", 4) == 0) {
+		GS_FT_get(&p->ft, cmd+4);
+		GS_SELECT_FD_SET_W(p->gs);
 	} else if (memcmp(cmd, "xaitax", 6) == 0) {
-		GS_condis_add(&gs_condis, 0, "Thanks xaitax for testing!");
+		GS_condis_add(&gs_condis, GS_PKT_APP_LOG_TYPE_DEFAULT, "Thanks xaitax for testing!");
+		GS_condis_draw(&gs_condis, 1);
+	} else if (strncmp(cmd, "lpwd", 4) == 0) {
+		char *cwd = getcwdx();
+		GS_condis_add(&gs_condis, GS_PKT_APP_LOG_TYPE_DEFAULT, cwd);
+		XFREE(cwd);
+		GS_condis_draw(&gs_condis, 1);
+	} else if (strncmp(cmd, "lcd ", 4) == 0) {
+		arg = strip_space(cmd + 4);
+		path_resolve(arg, path, sizeof path);
+		if (chdir(path) != 0)
+			snprintf(buf, sizeof buf, "%s: %.512s", strerror(errno), path);
+		else {
+			char *cwd = getcwdx();
+			snprintf(buf, sizeof buf, "%s", cwd);
+			XFREE(cwd);
+		}
+		GS_condis_add(&gs_condis, GS_PKT_APP_LOG_TYPE_DEFAULT, buf);
+		GS_condis_draw(&gs_condis, 1);
+	} else if (strncmp(cmd, "lmkdir ", 7) == 0) {
+		arg = strip_space(cmd + 7);
+		if (mkdir(arg, 0777) != 0)
+		{
+			snprintf(buf, sizeof buf, "%s: %.512s", strerror(errno), arg);
+			GS_condis_add(&gs_condis, GS_PKT_APP_LOG_TYPE_DEFAULT, buf);
+			GS_condis_draw(&gs_condis, 1);
+		}
+	} else if (strncmp(cmd, "lls", 3) == 0) {
+		arg = strip_space(cmd + 3);
+		if (*arg == 0)
+			arg = "."; // 'lls' should be 'lls .' (current directory)
+		cmd_lls(arg);
 		GS_condis_draw(&gs_condis, 1);
 	} else {
 		snprintf(buf, sizeof buf, "Command not known: '%s'", cmd);

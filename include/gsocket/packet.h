@@ -1,13 +1,18 @@
 #ifndef __GS_PACKET_H__
 #define __GS_PACKET_H__ 1
 
-#define GS_PKT_MAX_SIZE		(2048)
+#define GS_PKT_MAX_SIZE		(2048)  // content length without pkt-header (2 or 4 bytes)
+#define GS_PKT_HDR_MAX_SIZE (4)
 #define GS_PKT_MAX_MSG		128  // type = 0..127
 #define GS_PKT_MAX_CHN		128  // type = 128..255 
 // #define GS_PKT_ESC			'e'  // TESTING ONLY
 #ifndef GS_PKT_ESC
 # define GS_PKT_ESC			0xFB // escape character
 #endif
+
+#define GS_PKT_MSG_HDR_LEN	(2)
+#define GS_PKT_CHN_HDR_LEN	(4)
+
 typedef void (*gspkt_cb_t)(uint8_t type, const uint8_t *data, size_t len, void *arg);
 
 /*
@@ -25,7 +30,22 @@ typedef struct
 	void *args[256];
 } GS_PKT;
 
+struct gs_pkt_msg_hdr
+{
+	uint8_t esc;
+	uint8_t type;
+} __attribute__((__packed__));
+
+struct gs_pkt_chn_hdr
+{
+	uint8_t esc;
+	uint8_t type;
+	uint16_t len;
+} __attribute__((__packed__));
+
+
 #define GS_PKT_IS_CHANNEL(a)		(((a) >> 7) & 0x01)
+#define GS_PKT_CHN2TYPE(a)          (GS_PKT_MAX_MSG + a)
 
 int GS_PKT_init(GS_PKT *pkt);
 int GS_PKT_close(GS_PKT *pkt);

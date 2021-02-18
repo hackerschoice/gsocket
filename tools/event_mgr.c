@@ -94,7 +94,7 @@ cbe_ids(void *ptrNOTUSED)
 		gopt.ids_idle = 0; // treat anything below 15 as fully active (0)
 
 	// DEBUGF_C("Least Idle: %s (%d)\n", gopt.ids_active_user, gopt.ids_idle);
-	DEBUGF_W("Login: %d, active %d, Total %d\n", new_login.n_items, new_active.n_items, gopt.n_users);
+	// DEBUGF_W("Login: %d, active %d, Total %d\n", new_login.n_items, new_active.n_items, gopt.n_users);
 
 	/* Search through all peers that want IDS messages */
 	GS_LIST_ITEM *li = NULL;

@@ -90,7 +90,10 @@ visible_create(GS_RL_CTX *rl, int row, int col, uint8_t key)
 	char *ptr = rl->esc_data;
 
 	if (rl->is_need_redraw)
+	{
+		DEBUGF_Y("moving to %d;%df\n", row, col);
 		SXPRINTF(ptr, d_end - ptr, "\x1B[%d;%df", row, col);
+	}
 
 	size_t len;
 	len = MIN(s_end - src, d_end - ptr);
@@ -158,7 +161,7 @@ GS_RL_add(GS_RL_CTX *rl, uint8_t c, uint8_t *key, int row, int col)
 
 	// rl->is_need_redraw = 1;  // DEFAULT: FIXME-PERFORMANCE
 	// ^A or ^OA
-	DEBUGF_W("esc=%d c=0x%02x\n", rl->is_in_esc, c);
+	DEBUGF_W("esc=%d c=0x%02x r%d,c%d\n", rl->is_in_esc, c, row, col);
 	if (rl->is_in_esc)
 	{
 		if ((rl->is_in_esc == 1) && (c == 'O'))
@@ -235,7 +238,10 @@ GS_RL_add(GS_RL_CTX *rl, uint8_t c, uint8_t *key, int row, int col)
 
 	// Unhandled control character
 	if ((c < 0x20) || (c > 0x7E))
+	{
+		DEBUGF("Unhandled: 0x%02x\n", c);
 		goto ret_unhandled;
+	}
 
 	if (rl->pos >= GS_RL_LINE_MAX)
 		return 1;
@@ -249,6 +255,7 @@ GS_RL_add(GS_RL_CTX *rl, uint8_t c, uint8_t *key, int row, int col)
 	return 1;
 
 ret_unhandled:
+	rl->esc_len = 0;
 	*key = k;
 	return -1;
 }

@@ -67,7 +67,7 @@ add_env_argv(int *argcptr, char **argvptr[])
 	*argvptr = newargv;
 	DEBUGF("Total argv[] == %d\n", newargc);
 	int i;
-	for (i = 0; i < newargc + 1; i++)
+	for (i = 0; i < newargc; i++)
 		DEBUGF("argv[%d] = %s\n", i, newargv[i]);
 }
 
@@ -163,7 +163,6 @@ init_vars(void)
 	if ((str != NULL) && (strlen(str) > 0))
 		VLOG("=Extra arguments: '%s'\n", str);
 
-	DEBUGF("sec_str %s\n", gopt.sec_str);
 	gopt.sec_str = GS_user_secret(&gopt.gs_ctx, gopt.sec_file, gopt.sec_str);
 	if (gopt.sec_str == NULL)
 		ERREXIT("%s\n", GS_CTX_strerror(&gopt.gs_ctx));
@@ -237,6 +236,17 @@ zap_arg(char *str)
 
 	len = strlen(str);
 	memset(str, '*', len);
+}
+
+char *
+getcwdx(void)
+{
+#if defined(__sun) && defined(HAVE_OPEN64)
+	// This is solaris 10
+	return getcwd(NULL, PATH_MAX + 1); // solaris10 segfaults if size is 0...
+#else
+	return getcwd(NULL, 0);
+#endif
 }
 
 void
@@ -744,7 +754,7 @@ forkpty(int *fd, void *a, void *b, void *c)
 #endif /* HAVE_FORKPTY */
 
 int
-pty_cmd(const char *cmd)
+pty_cmd(const char *cmd, pid_t *pidptr)
 {
 	pid_t pid;
 	int fd;
@@ -799,7 +809,7 @@ pty_cmd(const char *cmd)
 		 * HISTFILE= does not work on oh-my-zsh (it sets it again)
 		 */
 		char *env_blacklist[] = {"STY", "GSOCKET_ARGS", "HISTFILE", NULL};
-		char *env_addlist[] = {shell_env, "TERM=xterm-256color", "HISTFILE=\"\"", home_env, NULL};
+		char *env_addlist[] = {shell_env, "TERM=xterm-256color", "HISTFILE=/dev/null", home_env, NULL};
 		char **envp = mk_env(env_blacklist, env_addlist);
 
 		if (cmd != NULL)
@@ -819,6 +829,9 @@ pty_cmd(const char *cmd)
 	}
 	/* HERE: Parent */
 
+	if (pidptr)
+		*pidptr = pid;
+
 	return fd;
 }
 
@@ -826,17 +839,15 @@ pty_cmd(const char *cmd)
  * Spawn a cmd and return fd.
  */
 int
-fd_cmd(const char *cmd)
+fd_cmd(const char *cmd, pid_t *pidptr)
 {
 	pid_t pid;
 	int fds[2];
 	int ret;
 
-	DEBUGF("cmd == %s\n", cmd);
-
 	if (gopt.is_interactive)
 	{
-		return pty_cmd(cmd);
+		return pty_cmd(cmd, pidptr);
 	}
 
 	ret = socketpair(AF_UNIX, SOCK_STREAM, 0, fds);
@@ -860,6 +871,8 @@ fd_cmd(const char *cmd)
 	}
 
 	/* HERE: Parent process */
+	if (pidptr)
+		*pidptr = pid;
 	close(fds[0]);
 
 	return fds[1];
@@ -979,6 +992,15 @@ cmd_ping(struct _peer *p)
 	GS_SELECT_FD_SET_W(p->gs);
 }
 
+void
+cmd_pwd(struct _peer *p)
+{
+	if (gopt.is_want_pwd != 0)
+		return;
+
+	gopt.is_want_pwd = 1;
+	GS_SELECT_FD_SET_W(p->gs);
+}
 
 const char fname_valid_char[] = ""
 "................"
@@ -1014,28 +1036,6 @@ sanitize_fname_to_str(uint8_t *str, size_t len)
 	str[i] = 0x00; // always 0 terminate
 }
 
-
-static const char unit[] = "BKMGT";
-void
-format_bps(char *buf, size_t size, int64_t bytes)
-{
-	int i;
-
-	if (bytes < 1000)
-	{
-		snprintf(buf, size, "%3d.0 B", (int)bytes);
-		return;
-	}
-	bytes *= 100;
-
-	for (i = 0; bytes >= 100*1000 && unit[i] != 'T'; i++)
-		bytes = (bytes + 512) / 1024;
-	snprintf(buf, size, "%3lld.%1lld%c%s",
-            (long long) (bytes + 5) / 100,
-            (long long) (bytes + 5) / 10 % 10,
-            unit[i],
-            i ? "B" : " ");
-}
 
 
 

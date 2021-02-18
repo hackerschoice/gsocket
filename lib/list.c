@@ -106,7 +106,18 @@ GS_LIST_relink(GS_LIST_ITEM *li, uint64_t id)
 }
 
 /*
- * Add an item to the list. Sorted by id. Lowest at top.
+ * Move ITEM to a new another list.
+ */
+void
+GS_LIST_move(GS_LIST *gsl, GS_LIST_ITEM *li)
+{
+	if (li->gsl == gsl)
+		return;
+	gs_list_unlink(li);
+	GS_LIST_add(gsl, li, li->data, li->id);
+}
+/*
+ * Add an item to the list. Sorted by id. Smallest at top.
  */
 GS_LIST_ITEM *
 GS_LIST_add(GS_LIST *gsl, GS_LIST_ITEM *src_li, void *data, uint64_t id)
@@ -153,6 +164,20 @@ GS_LIST_by_pos(GS_LIST *gsl, int pos)
 	}
 
 	return li;
+}
+
+GS_LIST_ITEM *
+GS_LIST_by_id(GS_LIST *gsl, uint64_t id)
+{
+	GS_LIST_ITEM *li = GS_LIST_next(gsl, NULL);
+
+	for (; li != NULL; li = GS_LIST_next(gsl, li))
+	{
+		if (id == li->id)
+			return li;
+	}
+	
+	return NULL;
 }
 
 int

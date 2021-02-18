@@ -42,6 +42,7 @@
 #include "pkt_mgr.h"
 #include "ids.h"
 #include "gs-netcat.h"
+#include "filetransfer_mgr.h"
 #include "man_gs-netcat.h"
 
 /* All connected gs-peers indexed by gs->fd */
@@ -96,6 +97,7 @@ peer_free(GS_SELECT_CTX *ctx, struct _peer *p)
 	int is_stdin_forward = p->is_stdin_forward;
 	int fd;
 
+	DEBUGF_W("PEER FREE\n");
 	/* Reset console/stty before outputting stats */
 	if (is_stdin_forward)
 	{
@@ -107,14 +109,18 @@ peer_free(GS_SELECT_CTX *ctx, struct _peer *p)
 	DEBUGF_R("GS_get_fd() == %d\n", GS_get_fd(gs));
 	XASSERT(peers[fd] == p, "Oops, %p != %p on fd = %d, cmd_fd = %d\n", peers[fd], p, fd, p->fd_in);
 
-	ids_gs_logout(p);
+	ids_gs_logout(p);  // Signal all other interactive _clients_ that we are leaving (IDS notification)
 	GS_EVENT_del(&gopt.event_ping);
 	GS_EVENT_del(&gopt.event_bps);
 	GS_PKT_close(&p->pkt);
 
+	// Free Filetransfer subsystem (-i)
+	GS_FTM_free(p);
+
 	// Free all pending log files and their data
 	GS_LIST_del_all(&p->logs, 1);
-	GS_LIST_del(p->ids_li);  // Server only
+	GS_LIST_del(p->ids_li);  // Server only. Remvoe this client from IDS
+	DEBUGF("IDS Peers remaining: %d\n", gopt.ids_peers.n_items);
 	p->ids_li = NULL;
 	/* Exit() if we were reading from stdin/stdout. No other clients
 	 * in this case.
@@ -169,6 +175,7 @@ cb_atexit(void)
 {
 	CONSOLE_reset();
 	stty_reset();
+	fprintf(stderr, "\n[Bye]\n"); // stdout must be clean for pipe & gs-netcat
 }
 
 /* *********************** FD READ / WRITE ******************************/
@@ -198,6 +205,7 @@ read_esc(int fd, uint8_t *buf, size_t len, uint8_t *key)
 	while (n < len)
 	{
 		sz = read(fd, &c, 1);
+		// DEBUGF_M("read() = %zd (0x%02x\n", sz, c);
 		if (sz <= 0)
 		{
 			/* EOF or ERROR */
@@ -210,15 +218,15 @@ read_esc(int fd, uint8_t *buf, size_t len, uint8_t *key)
 		/* Check if this is an ESCAPE and stop reading */
 		ret = CONSOLE_check_esc(c, &c);
 		// DEBUGF_G("con = %d\n", ret);
-		if (ret != -1)
+		if (ret > 0)
 		{
-			if (ret > 0)
-			{
-				*key = ret;
-				break;
-			}
+			// HERE: Was an escaped character. 'ret' contains the escaped character
+			// e.g. when reading ^E+c then ret==c
+			*key = ret;
+			break;
+		}
+		if (ret >= 0)
 			continue;
-		} 
 
 		buf[n] = c;
 		n++;
@@ -228,15 +236,6 @@ read_esc(int fd, uint8_t *buf, size_t len, uint8_t *key)
 
 	return n;
 }
-
-// static ssize_t
-// read_noesc(int fd, uint8_t *buf, size_t len)
-// {
-// 	ssize_t sz = read(fd, buf, len);
-// 	if (sz == 0)
-// 		sz = -1;
-// 	return sz;
-// }
 
 static int
 cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
@@ -392,7 +391,9 @@ cb_read_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	ssize_t len;
 	int ret;
 
-	// XASSERT(p->rlen <= 0, "Already data in input buffer (%zd)\n", p->rlen);
+	if (p->rlen > 0)
+		DEBUGF_C("fd=%d Pending data in nc-read input buffer (len=%zd)\n", fd, p->rlen);
+
 	XASSERT(p->rlen < p->r_max, "rlen=%zd larger than buffer\n", p->rlen);
 	len = GS_read(gs, p->rbuf + p->rlen, p->r_max - p->rlen);
 	// DEBUGF_G("GS_read(fd = %d) == %zd\n", gs->fd, len);
@@ -455,43 +456,83 @@ cb_read_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 			}
 		}
 
-		write_fd(ctx, p);
+		// See if any app data is there for the FD
+		// (Could have been that GS_PKT_decode() consumed all data for channels).
+		if (p->rlen > 0)
+			write_fd(ctx, p);
 	}
 
 	return GS_SUCCESS;
 }
 
+// Attempt to write and set write flag if busy. Non-Recursive.
+// Return len on success.
+//
+// Return 0: SUCCESS (or no data written because p->wlen was empty)
+// Return -1 : Busy (caller to return ECALLAGAIN)
+// Return <-1: Fatal (exit)
+int
+write_gs_atomic(GS_SELECT_CTX *ctx, struct _peer *p)
+{
+	int len;
+
+	if (p->wlen <= 0)
+		return 0;
+
+	len = GS_write(p->gs, p->wbuf, p->wlen);
+	// DEBUGF_R("GS_write(fd==%d), len=%d\n", p->gs->fd, len);
+	if (len == 0)
+	{
+		/* GS_write() would block. */
+		// DEBUGF_M("Pause reading from fd_in=%d\n", p->fd_in);
+		FD_CLR(p->fd_in, ctx->rfd);		// Pause reading from input
+		GS_FT_pause_data(&p->ft);       // Pause FileTransfers
+		return -1; // BUSY
+
+		// STOP HERE: Oops. we then still read from stdin and then try to write - thats bad. 
+		// but why does XASSERT not catch this? 
+		// does gs-select go back into select() or does it process rfds after EBUSY return?
+	}
+
+	if (len > 0)
+	{
+		// Always unpause FileTransfer (even if not paused).
+		GS_FT_unpause_data(&p->ft);
+
+		// Check if FileTransfer still needs to xfer more data
+		if (GS_FT_WANT_WRITE(&p->ft))
+			GS_SELECT_FD_SET_W(p->gs);
+	}
+
+	return len;
+}
+
 int
 write_gs(GS_SELECT_CTX *ctx, struct _peer *p, int *killed)
 {
-	GS *gs = p->gs;
-	int len = 0;
+	int len;
 
-	if (p->wlen > 0)
-	{
-		len = GS_write(gs, p->wbuf, p->wlen);
-		// DEBUGF_R("GS_write(fd==%d) = %d\n", gs->fd, len);
-		if (len == 0)
-		{
-			/* GS_write() would block. */
-			FD_CLR(p->fd_in, ctx->rfd);		// Stop reading from input
-			return GS_ECALLAGAIN;
-		}
-	}
+	len = write_gs_atomic(ctx, p);
+	if (len == -1)
+		return GS_ECALLAGAIN;
 
 	if (len == p->wlen)
 	{
-		/* GS_write() was a success or p->wlen == 0 */
+		// SUCCESS of GS_write() (or p->wlen was 0)
 		p->wlen = 0;
 		if (p->is_fd_connected)
 		{
 			/* SOCKS subsystem calls write_gs() before p->fd_in is connected
 			 * Make sure XFD_SET() is only called on a connected() socket.
 			 */
+			// DEBUGF_M("Start reading from fd_in(=%d) again\n", p->fd_in);
 			FD_CLR(p->gs->fd, ctx->wfd);
 			XFD_SET(p->fd_in, ctx->rfd);	// Start reading from input again
 		}
-		/* Check if there is any other data we like to write... */
+		// FIXME-PERFORMANCE: Could change this to 'make' packets and append them to
+		// p->wbuf and do one large atomic write instead of recursive calls....
+
+		// Check if there is any other data we like to write...
 		if (gopt.is_win_resized)
 		{
 			get_winsize();
@@ -515,14 +556,35 @@ write_gs(GS_SELECT_CTX *ctx, struct _peer *p, int *killed)
 			gopt.is_want_ping = 0;
 			return pkt_app_send_ping(ctx, p);
 		}
+		if (gopt.is_want_pwd)
+		{
+			gopt.is_want_pwd = 0;
+			return pkt_app_send_pwdrequest(ctx, p);
+		}
+		if (gopt.is_pwdreply_pending)
+		{
+			gopt.is_pwdreply_pending = 0;
+			return pkt_app_send_pwdreply(ctx, p);
+		}
+		if (gopt.is_want_ids_on)
+		{
+			gopt.is_want_ids_on = 0;
+			return pkt_app_send_ids(ctx, p);
+		}
 		if (p->is_pending_logs)
 		{
 			return pkt_app_send_all_log(ctx, p);
 		}
 
-		return GS_SUCCESS;
-	}
+		// Last: Send data from FileTransfer subsystem.
+		int ret;
+		ret = pkt_app_send_ft(ctx, p);
+		if ((ret == GS_ERROR) || (ret == GS_ERR_FATAL))
+			goto err;
 
+		return ret; // ECALLAGAIN==1 || ESUCCESS==0
+	}
+err:
 	/* HERE: ERROR on GS_write() */
 	peer_free(ctx, p);
 	if (killed != NULL)
@@ -632,11 +694,7 @@ peer_new_init(GS *gs)
 			GS_EVENT_add_by_ts(&gs->ctx->gselect_ctx->emgr, &gopt.event_bps, 0, GS_APP_BPSFREQ, cbe_bps, p, 0);
 		} else {
 			/* SERVER, interactive */
-			ids_gs_login(p);
-			// Let all others know what we have logged in:
-			// p->ids_li = GS_LIST_add(&gopt.ids_peers, NULL, p, 0);
-			// if (gopt.event_ids == NULL)
-			// 	gopt.event_ids = GS_EVENT_add_by_ts(&gs->ctx->gselect_ctx->emgr, NULL, 0, GS_APP_IDSFREQ, cbe_ids, NULL, 0);
+			ids_gs_login(p); // Let all others know what we have logged in:
 		}
 	}
 	DEBUGF_M("[ID=%d] (fd=%d) Number of connected gs-peers: %d\n", p->id, fd, gopt.peer_count);
@@ -701,18 +759,12 @@ peer_new(GS_SELECT_CTX *ctx, GS *gs)
 
 	p = peer_new_init(gs);
 
-	if (gopt.is_interactive)
-	{
-		/* SERVER */
-		GS_PKT_assign_msg(&p->pkt, PKT_MSG_WSIZE, pkt_app_cb_wsize, p);
-		GS_PKT_assign_msg(&p->pkt, PKT_MSG_PING, pkt_app_cb_ping, p);
-		GS_PKT_assign_msg(&p->pkt, PKT_MSG_IDS, pkt_app_cb_ids, p);
-	}
 
 	/* Create a new fd to relay gs-traffic to/from */
 	if ((gopt.cmd != NULL) || (gopt.is_interactive))
 	{
-		p->fd_in = fd_cmd(gopt.cmd);// Forward to forked process stdin/stdout
+		p->fd_in = fd_cmd(gopt.cmd, &p->pid);// Forward to forked process stdin/stdout
+		DEBUGF_W("pid =%d\n", p->pid);
 		p->fd_out = p->fd_in;
 		p->is_app_forward = 1;
 	} else if (gopt.port != 0) {
@@ -733,6 +785,17 @@ peer_new(GS_SELECT_CTX *ctx, GS *gs)
 	if (p->fd_in < 0)
 	{
 		ERREXIT("Cant create forward...%s\n", GS_strerror(gs));
+	}
+
+	if (gopt.is_interactive)
+	{
+		/* SERVER */
+		GS_PKT_assign_msg(&p->pkt, PKT_MSG_WSIZE, pkt_app_cb_wsize, p);
+		GS_PKT_assign_msg(&p->pkt, PKT_MSG_PING, pkt_app_cb_ping, p);
+		GS_PKT_assign_msg(&p->pkt, PKT_MSG_IDS, pkt_app_cb_ids, p);
+		GS_PKT_assign_msg(&p->pkt, PKT_MSG_PWD, pkt_app_cb_pwdrequest, p);
+
+		GS_FTM_init(p, 1);
 	}
 
 	if (p->is_network_forward == 0)
@@ -908,9 +971,14 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd_notused, void *arg, int val)
 	// }
 	if (gopt.is_interactive)
 	{
-		pkt_app_send_wsize(ctx, p, gopt.winsize.ws_row);
+		// pkt_app_send_wsize(ctx, p, gopt.winsize.ws_row);
+		gopt.is_win_resized = 1; // Trigger: Send new window size to peer
+		GS_SELECT_FD_SET_W(p->gs);
 		GS_PKT_assign_msg(&p->pkt, PKT_MSG_PONG, pkt_app_cb_pong, p);
 		GS_PKT_assign_msg(&p->pkt, PKT_MSG_LOG, pkt_app_cb_log, p);
+		GS_PKT_assign_chn(&p->pkt, GS_CHN_PWD, pkt_app_cb_pwdreply, p); // Channel
+
+		GS_FTM_init(p, 0 /*client*/);
 	}
 
 	return GS_SUCCESS;
@@ -1138,43 +1206,7 @@ my_test(void)
 
 	GS_LIST_init(&new_login, 0);
 	GS_LIST_init(&new_active, 0);
-	int idle;
-	char *user;
 
-	while (1)
-	{
-		GS_IDS_utmp(&new_login, &new_active, &user, &idle);
-		if (new_login.n_items > 0)
-		{
-			li = NULL;
-			while (1)
-			{
-				li = GS_LIST_next(&new_login, li);
-				if (li == NULL)
-					break;
-				DEBUGF_G("New User Login: %s\n", (char *)li->data);
-			}
-			GS_LIST_del_all(&new_login, 0);
-		}
-
-		if (new_active.n_items > 0)
-		{
-			li = NULL;
-			while (1)
-			{
-				li = GS_LIST_next(&new_active, li);
-				if (li == NULL)
-					break;
-				DEBUGF("Newly active: %s\n", (char *)li->data);
-			}
-			GS_LIST_del_all(&new_active, 0);
-		}
-		if (user != NULL)
-		{
-			DEBUGF_C("Least Idle: %s (%d)\n", user, idle);
-		}
-		sleep(1);
-	}
 
 	// double load;
 	// int ret = getloadavg(&load, 1);
@@ -1226,9 +1258,63 @@ my_test(void)
 	// DEBUGF("[% 4.02f]\n", (float)load / 100);
 	// DEBUGF("[%4.02f]\n", (float)load / 100);
 	// DEBUGF("[% -4.02f]\n", (float)load / 100);
+
+#if 0
+	// FBSD getppidcwd() test to find out cwd of parent pid
+	#include <sys/types.h>
+	#include <sys/sysctl.h>
+	#include <sys/caprights.h>
+	#include <sys/param.h>
+	#include <sys/queue.h>
+	#include <sys/socket.h>
+	#ifndef cap_rights_t
+	typedef struct cap_rights       cap_rights_t;
+	#endif
+	#include <libprocstat.h>
+
+	chdir("/tmp");
+
+	char *wd = NULL;
+	struct procstat *procstat;
+	struct kinfo_proc *kipp;
+	struct filestat_list *head;
+	struct filestat *fst;
+	pid_t pid;
+	unsigned int cnt;
+
+	procstat = procstat_open_sysctl();
+	if (procstat == NULL)
+		goto done;
+
+	pid = getppid();
+
+	kipp = procstat_getprocs(procstat, KERN_PROC_PID, pid, &cnt);
+	if ((kipp == NULL) || (cnt <= 0))
+		goto done;
+
+	head = procstat_getfiles(procstat, kipp, 0);
+	if (head == NULL)
+		goto done;
+
+	STAILQ_FOREACH(fst, head, next)
+	{
+		if (!(fst->fs_uflags & PS_FST_UFLAG_CDIR))
+			continue;
+		if (fst->fs_path == NULL)
+			continue;
+		wd = strdup(fst->fs_path);
+		break;
+			printf("cwd %-18s\n", fst->fs_path != NULL ? fst->fs_path : "-");
+	}
+
+	procstat_freefiles(procstat, head);
+done:
+	printf("wd='%s'\n", wd);
+#endif
 	exit(0);
 }
 #endif
+
 
 int
 main(int argc, char *argv[])

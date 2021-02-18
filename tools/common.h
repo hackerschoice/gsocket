@@ -15,6 +15,9 @@
 #ifdef HAVE_SYS_LOADAVG_H
 # include <sys/loadavg.h> // Solaris11
 #endif
+#ifdef HAVE_SYS_ENDIAN_H
+# include <sys/endian.h>
+#endif
 #include <netinet/in.h>
 #ifdef HAVE_NETINET_IN_SYSTM_H
 # include <netinet/in_systm.h>
@@ -29,8 +32,12 @@
 #ifdef HAVE_UNISTD_H
 # include <unistd.h>
 #endif
+#ifdef HAVE_FNMATCH_H
+#include <fnmatch.h>
+#endif
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>    // Solaris11
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -40,6 +47,7 @@
 #include <libgen.h>		/* basename() */
 #include <termios.h>
 #include <pwd.h>
+#include <wordexp.h>
 #ifdef HAVE_UTMPX_H
 # include <utmpx.h>
 #endif
@@ -58,10 +66,12 @@
 #if defined __sun || defined __hpux /* Solaris, HP-UX */
 # include <stropts.h>
 #endif
+#include <locale.h>
 #include <openssl/ssl.h>
 #include <openssl/srp.h>
 #include <gsocket/gsocket.h>
 #include <gsocket/gs-select.h>
+#include "filetransfer.h"
 
 #ifndef O_NOCTTY
 # warning "O_NOCTTY not defined. Using 0."
@@ -71,6 +81,29 @@
 // Older fbsd's dont have this defined
 #ifndef UT_NAMESIZE
 # define UT_NAMESIZE	32
+#endif
+
+#if defined(__sun)
+# if !defined(be64toh) // Solaris11
+#  define be64toh(x) ntohll(x)
+#  define htobe64(x) htonll(x)
+# endif
+# if !defined(htonll) // Solaris10
+#  if __BIG_ENDIAN__
+#   define htonll(x) (x)
+#   define ntohll(x) (x)
+#  else
+#   define htonll(x) ((uint64_t)htonl((x) & 0xFFFFFFFF) << 32) | htonl((uint64_t)(x) >> 32)
+#   define ntohll(x) ((uint64_t)ntohl((x) & 0xFFFFFFFF) << 32) | ntohl((uint64_t)(x) >> 32)
+#  endif
+# endif
+#endif
+
+#ifndef htonll
+# define htonll(x)	htobe64(x)
+#endif
+#ifndef ntohll
+# define ntohll(x)  be64toh(x)
 #endif
 
 struct _gopt
@@ -102,6 +135,10 @@ struct _gopt
 	int is_console;		    // console is being displayed
 	int is_pong_pending;    // Server: Answer to PING waiting to be send
 	int is_want_ping;       // Client: Wants to send a ping
+	int is_want_pwd;        // Client: Wants server to send cwd
+	int is_pwdreply_pending; // Server: Answer to pwd-request
+	int is_want_chdir; 
+	int is_want_ids_on;     
 	uint64_t ts_ping_sent;  // TimeStamp ping sent
 	fd_set rfd, r;
 	fd_set wfd, w;
@@ -163,9 +200,11 @@ struct _peer
 	int id;			/* Stats: assign an ID to each pere */
 	struct _socks socks;
 	GS_PKT pkt;		// In-band data for interactive shell (-i)
+	GS_FT ft;       // Filetransfer (-i)
 	GS_LIST logs;   // Queue for log messages from Server to Client (-i)
 	int is_pending_logs; // Log files need to be send to peer.
 	GS_LIST_ITEM *ids_li;  // Peer is interested in global IDS logs
+	pid_t pid;
 };
 
 #define GSC_FL_IS_SERVER		(0x01)
@@ -220,6 +259,9 @@ extern struct _gopt gopt;
 	ptr += MIN(n, len); \
 } while(0)
 
+// Overcome GCC warning for truncation. Abort() if truncation happen.
+#define SNPRINTF_ABORT(...)	(snprintf(__VA_ARGS__) < 0 ? abort() : (void)0)
+
 #define VOUT(level, a...) do { \
 	if (level > gopt.verboselevel) \
 		break; \
@@ -262,16 +304,23 @@ extern struct _gopt gopt;
         fd = -1; \
 } while (0)
 
+#define XFCLOSE(fp)		do { \
+		if (fp == NULL) { DEBUGF_R("*** WARNING *** Closing BAD fp\n"); break; } \
+		fclose(fp); \
+		fp = NULL; \
+} while (0)
+
+
 #define XFD_SET(fd, set) do { \
         if (fd < 0) { DEBUGF_R("WARNING: FD_SET(%d, )\n", fd); break; } \
         FD_SET(fd, set); \
 } while (0)
 
 #ifdef DEBUG
-# define HEXDUMP(a, len)        do { \
-        int n = 0; \
+# define HEXDUMP(a, _len)        do { \
+        size_t _n = 0; \
         xfprintf(gopt.err_fp, "%s:%d HEX ", __FILE__, __LINE__); \
-        while (n < len) xfprintf(gopt.err_fp, "%2.2x", ((unsigned char *)a)[n++]); \
+        while (_n < (_len)) xfprintf(gopt.err_fp, "%2.2x", ((unsigned char *)a)[_n++]); \
         xfprintf(gopt.err_fp, "\n"); \
 } while (0)
 # define HEXDUMPF(a, len, m...) do{xfprintf(gopt.err_fp, m); HEXDUMP(a, len);}while(0)

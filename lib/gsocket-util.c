@@ -172,6 +172,118 @@ GS_user_secret(GS_CTX *ctx, const char *sec_file, const char *sec_str)
 	return ptr;
 }
 
+uint64_t
+GS_usec(void)
+{
+	struct timeval tv;
+
+	gettimeofday(&tv, NULL);
+	return GS_TV_TO_USEC(&tv);
+}
+
+// 7 readable characters + suffix + 0
+static const char unit[] = "BKMGT";
+void
+GS_format_bps(char *dst, size_t size, int64_t bytes, const char *suffix)
+{
+	int i;
+
+	if (suffix == NULL)
+		suffix = "";
+
+	if (bytes < 1000)
+	{
+		snprintf(dst, size, "%3d.0 B%s", (int)bytes, suffix);
+		return;
+	}
+	bytes *= 100;
+
+	for (i = 0; bytes >= 100*1000 && unit[i] != 'T'; i++)
+		bytes = (bytes + 512) / 1024;
+	snprintf(dst, size, "%3lld.%1lld%c%s%s",
+            (long long) (bytes + 5) / 100,
+            (long long) (bytes + 5) / 10 % 10,
+            unit[i],
+            i ? "B" : " ", suffix);
+}
+
+// Get Working Directory of process with id pid or if this fails then current cwd
+// of this process.
+char *
+GS_getpidwd(pid_t pid)
+{
+	char *wd = NULL;
+
+	if (pid <= 0)
+		goto err;
+
+#if defined(__APPLE__) && defined(HAVE_LIBPROC_H)
+	// OSX (and others?)
+	int ret;
+	struct proc_vnodepathinfo vpi;
+	ret = proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &vpi, sizeof vpi);
+	if (ret <= 0)
+		goto err;
+
+	wd = strdup(vpi.pvi_cdir.vip_path);
+#elif __FREEBSD__
+	struct procstat *procstat;
+	struct kinfo_proc *kipp;
+	struct filestat_list *head;
+	struct filestat *fst;
+	unsigned int cnt;
+
+	procstat = procstat_open_sysctl();
+	if (procstat == NULL)
+		goto err;
+
+	kipp = procstat_getprocs(procstat, KERN_PROC_PID, pid, &cnt);
+	if ((kipp == NULL) || (cnt <= 0))
+		goto err;
+
+	head = procstat_getfiles(procstat, kipp, 0);
+	if (head == NULL)
+		goto err;
+
+	STAILQ_FOREACH(fst, head, next)
+	{
+		if (!(fst->fs_uflags & PS_FST_UFLAG_CDIR))
+			continue;
+		if (fst->fs_path == NULL)
+			continue;
+		wd = strdup(fst->fs_path);
+		break;
+	}
+
+	procstat_freefiles(procstat, head);
+#else
+	// Linux & other unix (solaris etc)
+	char buf[1024];
+	char res[PATH_MAX + 1];
+	ssize_t sz;
+	
+	snprintf(buf, sizeof buf, "/proc/%d/cwd", (int)pid);
+	sz = readlink(buf, res, sizeof res - 1);
+	if (sz < 0)
+		goto err;
+	res[sz] = '\0';
+	wd = strdup(res); 
+#endif
+err:
+	if (wd == NULL)
+	{
+		#if defined(__sun) && defined(HAVE_OPEN64)
+		// This is solaris 10
+		wd = getcwd(NULL, PATH_MAX + 1); // solaris10 segfaults if size is 0...
+		#else
+		wd = getcwd(NULL, 0);
+		#endif
+		XASSERT(wd != NULL, "getcwd(): %s\n", strerror(errno)); // hard fail
+	}
+	DEBUGF_W("PID %d CWD=%s\n", pid, wd);
+	return wd;
+}
+
 /*
  * Duplicate the process. Child returns. Parent monitors child
  * and re-spwans child if it dies.

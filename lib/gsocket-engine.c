@@ -1885,7 +1885,7 @@ GS_read(GS *gsocket, void *buf, size_t count)
 		/* Mark if there is still data in the input buffer so another cb is done */
 #ifdef WITH_GSOCKET_SSL
 		if ((gsocket->ssl) && (SSL_pending(gsocket->ssl) > 0))
-			gs_select_set_rdata_pending(gsocket->ctx->gselect_ctx, gsocket->fd);
+			gs_select_set_rdata_pending(gsocket->ctx->gselect_ctx, gsocket->fd, SSL_pending(gsocket->ssl));
 #endif
 	}
 
@@ -2080,12 +2080,6 @@ GS_usecstr(char *buf, size_t len, uint64_t usec)
 	sec -= min * 60;
 
 	*ptr = 0;
-#if 0
-	if (hr != 0)
-		snprintf(ptr, len, "%d:%02d:%02d.%03d", hr, min, sec, msec);
-	else
-		snprintf(ptr, len, "%02d:%02d.%03d", min, sec, msec);
-#endif
 
 	if (hr != 0)
 		snprintf(ptr, len, "%dhrs %2dmin %2d.%03dsec", hr, min, sec, msec);

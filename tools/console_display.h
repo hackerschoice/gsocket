@@ -2,11 +2,10 @@
 #define __CONSOLE_DISPLAY_H__ 1
 
 #define CONDIS_LINE_MAX_LEN			(125)
-#define CONDIS_MAX_HISTORY			(64)
+#define CONDIS_MAX_HISTORY			(256)
 
 struct condis_line
 {
-	// int type;
 	const char *color_str;
 	char line[CONDIS_LINE_MAX_LEN];
 };

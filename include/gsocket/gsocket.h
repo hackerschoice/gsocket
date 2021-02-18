@@ -56,6 +56,7 @@
 #include <gsocket/gs-select.h>
 #include <gsocket/packet.h>
 #include <gsocket/gs-readline.h>
+#include <gsocket/buf.h>
 
 /* ###########################
  * ### PROTOCOL DEFINITION ###
@@ -371,6 +372,9 @@ uint32_t GS_hton(const char *hostname);
 void GS_SELECT_FD_SET_W(GS *gs);
 
 void GS_daemonize(FILE *logfp);
+uint64_t GS_usec(void);
+void GS_format_bps(char *dst, size_t size, int64_t bytes, const char *suffix);
+char *GS_getpidwd(pid_t pid);
 
 const char *GS_gen_secret(void);
 const char *GS_user_secret(GS_CTX *ctx, const char *file, const char *sec_str);

@@ -126,8 +126,10 @@ GS_PKT_decode_single(GS_PKT *pkt, const uint8_t *src, size_t slen, uint8_t *dst,
 
 				/* Check for BO (should not never happen) */
 				size_t available = sizeof pkt->inband - pkt->len;
-				XASSERT(len <= available, "len = %zd, left = %zd\n", len, available);
+				XASSERT(len <= available, "len = %zu, left = %zu\n", len, available);
+				XASSERT(len <= pkt->esc_len_rem, "len=%zu, len_rem=%zu\n", len, pkt->esc_len_rem);
 
+				// DEBUGF("Copying %zu to inband data (total after: %zu, dsz=%zu)\n", len, pkt->len + len, dst - dst_orig);
 				memcpy(pkt->inband + pkt->len, src, len);
 				pkt->len += len;
 				src += len;
@@ -140,7 +142,7 @@ GS_PKT_decode_single(GS_PKT *pkt, const uint8_t *src, size_t slen, uint8_t *dst,
 						memcpy(&nlen, &pkt->inband, 2);
 						pkt->is_got_chn_len = 1;
 						pkt->esc_len_rem = ntohs(nlen);
-						// DEBUGF("Len remaining: %zu\n", pkt->esc_len_rem);
+						// DEBUGF_B("Len of channel message: %zu (dsz=%zu)\n", pkt->esc_len_rem, dst - dst_orig);
 						pkt->len = 0;
 						if (pkt->esc_len_rem != 0)
 							continue;
@@ -156,6 +158,7 @@ GS_PKT_decode_single(GS_PKT *pkt, const uint8_t *src, size_t slen, uint8_t *dst,
 						val = pkt->type;
 						if (val >= GS_PKT_MAX_MSG)
 							val -= GS_PKT_MAX_MSG;
+						// DEBUGF("PKT cb type %d, data left=%zu (dsz=%zu)\n", pkt->type, send - src, dst - dst_orig);
 						(*pkt->funcs[pkt->type])(val, pkt->inband, pkt->len, pkt->args[pkt->type]);
 					}
 
@@ -178,7 +181,10 @@ GS_PKT_decode_single(GS_PKT *pkt, const uint8_t *src, size_t slen, uint8_t *dst,
 			/* First character after ESC is TYPE || CHN */			
 			pkt->type = *src;
 			if (pkt->type == 0x0)
+			{
+				DEBUGF_R("ERROR TYPE IS 0x00\n");
 				return -1;	// Protocol Error (FATAL)
+			}
 
 			if (GS_PKT_IS_CHANNEL(pkt->type))
 			{
@@ -221,6 +227,9 @@ GS_PKT_decode_single(GS_PKT *pkt, const uint8_t *src, size_t slen, uint8_t *dst,
 	return src - src_orig;
 }
 
+/*
+ * Return 0 on success.
+ */
 int
 GS_PKT_decode(GS_PKT *pkt, const uint8_t *src, size_t slen, uint8_t *dst, size_t *dlen)
 {
