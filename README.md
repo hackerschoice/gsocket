@@ -3,8 +3,6 @@
 
 [![Watch the video](https://github.com/hackerschoice/hackerschoice.github.io/blob/master/eeelite-console.png)](https://www.youtube.com/watch?v=tmf9VGDPILE)
 
-![anim](https://github.com/hackerschoice/hackerschoice.github.io/blob/master/gsocket-anim2.gif)
-
 Global Socket allows two users behind NAT/Firewall to establish a TCP connection with each other. Securely.
 
 **Features:**
