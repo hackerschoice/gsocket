@@ -2,7 +2,7 @@
 **Moving data from here to there. Securely, Fast and trough NAT/Firewalls.**
 
 ![Anim](http://www.thc.org/gsocket-anim2.gif)
-[video](https://www.thc.org/gsocket-anim2.gif)
+![video](https://www.thc.org/gsocket-anim2.gif)
 
 Global Socket allows two users behind NAT/Firewall to establish a TCP connection with each other. Securely.
 
