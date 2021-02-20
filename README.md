@@ -1,10 +1,7 @@
 # Global Socket
 **Moving data from here to there. Securely, Fast and trough NAT/Firewalls.**
 
-![Anim](http://www.thc.org/gsocket-anim2.gif)
-![video](https://thc.org/gsocket-anim2.gif)
-![video](https://hackerschoice.github.io/gsocket-anim2.gif)
-![video](http://hackerschoice.github.io/gsocket-anim2.gif)
+![anim](https://github.com/hackerschoice/hackerschoice.github.io/blob/master/gsocket-anim2.gif)
 
 Global Socket allows two users behind NAT/Firewall to establish a TCP connection with each other. Securely.
 
@@ -36,7 +33,8 @@ Man Page| [gs-netcat(1)](https://hackerschoice.github.io/gs-netcat.1.html), [gs-
 Docker|  docker run --rm -it hackerschoice/gsocket
 Docker| docker run --rm -it hackerschoice/gsocket-tor # gs via TOR
 
-Video 1:[https://www.youtube.com/watch?v=tmf9VGDPILE](https://www.youtube.com/watch?v=tmf9VGDPILE)
+Video 1: [https://www.thc.org/gsocket-anim2.gif](https://www.thc.org/gsocket-anim2.gif)
+Video 2: [https://www.youtube.com/watch?v=tmf9VGDPILE](https://www.youtube.com/watch?v=tmf9VGDPILE)
 
 **BETA BETA BETA. PRIVATE RELEASE ONLY.**
 ---
