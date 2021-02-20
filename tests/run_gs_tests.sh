@@ -29,6 +29,7 @@ command -v md5 >/dev/null 2>&1 		&& MD5(){ md5 -q "${1}";}
 command -v md5sum >/dev/null 2>&1 	&& MD5() { md5sum "${1}" | cut -f1 -d' ';}
 command -v bc >/dev/null 2>&1 || { echo >&2 "bc not installed. apt-get install bc."; exit 255; }
 command -v rsync >/dev/null 2>&1 || { echo >&2 "rsync not installed. apt-get install rsync."; exit 255; }
+command -v netstat >/dev/null 2>&1 || { echo >&2 "netstat not installed. apt-get install net-tools."; exit 255; }
 # Use traditional netcat that supports "netcat -nlp" for cross-platform comp.
 # on CentOS there is only nmap's netcat as 'nc' but we are expecting 'netcat()'.
 if [[ "$(nc --version 2>&1)" =~ Ncat ]]; then
