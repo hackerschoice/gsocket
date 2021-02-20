@@ -33,7 +33,7 @@ Man Page| [gs-netcat(1)](https://hackerschoice.github.io/gs-netcat.1.html), [gs-
 Docker|  docker run --rm -it hackerschoice/gsocket
 Docker| docker run --rm -it hackerschoice/gsocket-tor # gs via TOR
 
-Video 1: [https://www.thc.org/gsocket-anim2.gif](https://www.thc.org/gsocket-anim2.gif) 
+Video 1: [https://www.thc.org/gsocket-anim2.gif](https://www.thc.org/gsocket-anim2.gif)  
 Video 2: [https://www.youtube.com/watch?v=tmf9VGDPILE](https://www.youtube.com/watch?v=tmf9VGDPILE)
 
 **BETA BETA BETA. PRIVATE RELEASE ONLY.**
