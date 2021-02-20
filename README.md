@@ -3,7 +3,7 @@
 
 Global Socket allows two users behind NAT/Firewall to establish a TCP connection with each other. Securely.
 
-[![Watch the video](https://github.com/hackerschoice/hackerschoice.github.io/blob/master/eeelite-console-blank.png)](https://www.youtube.com/watch?v=tmf9VGDPILE)
+[![Watch the video](https://github.com/hackerschoice/hackerschoice.github.io/blob/master/eeelite-console-blank2.png)](https://www.youtube.com/watch?v=tmf9VGDPILE)
 
 **Features:**
 - Uses the Global Socket Relay Network to connect TCP pipes
