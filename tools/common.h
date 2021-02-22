@@ -210,7 +210,8 @@ struct _peer
 #define GSC_FL_IS_SERVER		(0x01)
 
 
-extern struct _gopt gopt;
+extern struct _gopt gopt; // declared in utils.c
+
 #define xfprintf(fp, a...) do {if (fp != NULL) { fprintf(fp, a); fflush(fp); } } while (0)
 
 #define int_ntoa(x)	inet_ntoa(*((struct in_addr *)&x))
@@ -223,6 +224,25 @@ extern struct _gopt gopt;
 # define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
 #endif
 
+#ifdef DEBUG
+struct _g_debug_ctx
+{
+	struct timeval tv_last;
+	struct timeval tv_now;
+};
+
+extern struct _g_debug_ctx g_dbg_ctx; // declared in utils.c
+
+#define DEBUGF_T(xcolor, a...) do { \
+	gettimeofday(&g_dbg_ctx.tv_now, NULL); \
+	if (g_dbg_ctx.tv_last.tv_sec == 0) { memcpy(&g_dbg_ctx.tv_last, &g_dbg_ctx.tv_now, sizeof g_dbg_ctx.tv_last); } \
+	xfprintf(gopt.err_fp, "DEBUG %4llu %s:%d %s", GS_TV_TO_MSEC(&g_dbg_ctx.tv_now) - GS_TV_TO_MSEC(&g_dbg_ctx.tv_last), __func__, __LINE__, xcolor?xcolor:""); \
+	memcpy(&g_dbg_ctx.tv_last, &g_dbg_ctx.tv_now, sizeof g_dbg_ctx.tv_last); \
+	xfprintf(gopt.err_fp, a); \
+	if (xcolor) { xfprintf(gopt.err_fp, "\033[0m"); } \
+} while (0)
+
+
 #define D_RED(a)	"\033[0;31m"a"\033[0m"
 #define D_GRE(a)	"\033[0;32m"a"\033[0m"
 #define D_YEL(a)	"\033[0;33m"a"\033[0m"
@@ -233,16 +253,15 @@ extern struct _gopt gopt;
 #define D_BYEL(a)	"\033[1;33m"a"\033[0m"
 #define D_BBLU(a)	"\033[1;34m"a"\033[0m"
 #define D_BMAG(a)	"\033[1;35m"a"\033[0m"
-#ifdef DEBUG
-# define DEBUGF(a...)   do{xfprintf(gopt.err_fp, "DEBUG %s:%d: ", __func__, __LINE__); xfprintf(gopt.err_fp, a); }while(0)
-# define DEBUGF_R(a...) do{xfprintf(gopt.err_fp, "DEBUG %s:%d: ", __func__, __LINE__); xfprintf(gopt.err_fp, "\033[1;31m"); xfprintf(gopt.err_fp, a); xfprintf(gopt.err_fp, "\033[0m"); }while(0)
-# define DEBUGF_G(a...) do{xfprintf(gopt.err_fp, "DEBUG %s:%d: ", __func__, __LINE__); xfprintf(gopt.err_fp, "\033[1;32m"); xfprintf(gopt.err_fp, a); xfprintf(gopt.err_fp, "\033[0m"); }while(0)
-# define DEBUGF_B(a...) do{xfprintf(gopt.err_fp, "DEBUG %s:%d: ", __func__, __LINE__); xfprintf(gopt.err_fp, "\033[1;34m"); xfprintf(gopt.err_fp, a); xfprintf(gopt.err_fp, "\033[0m"); }while(0)
-# define DEBUGF_Y(a...) do{xfprintf(gopt.err_fp, "DEBUG %s:%d: ", __func__, __LINE__); xfprintf(gopt.err_fp, "\033[1;33m"); xfprintf(gopt.err_fp, a); xfprintf(gopt.err_fp, "\033[0m"); }while(0)
-# define DEBUGF_M(a...) do{xfprintf(gopt.err_fp, "DEBUG %s:%d: ", __func__, __LINE__); xfprintf(gopt.err_fp, "\033[1;35m"); xfprintf(gopt.err_fp, a); xfprintf(gopt.err_fp, "\033[0m"); }while(0)
-# define DEBUGF_C(a...) do{xfprintf(gopt.err_fp, "DEBUG %s:%d: ", __func__, __LINE__); xfprintf(gopt.err_fp, "\033[1;36m"); xfprintf(gopt.err_fp, a); xfprintf(gopt.err_fp, "\033[0m"); }while(0)
-# define DEBUGF_W(a...) do{xfprintf(gopt.err_fp, "DEBUG %s:%d: ", __func__, __LINE__); xfprintf(gopt.err_fp, "\033[1;37m"); xfprintf(gopt.err_fp, a); xfprintf(gopt.err_fp, "\033[0m"); }while(0)
-#else
+# define DEBUGF(a...) do{DEBUGF_T(NULL, a); } while(0)
+# define DEBUGF_R(a...) do{DEBUGF_T("\033[1;31m", a); } while(0)
+# define DEBUGF_G(a...) do{DEBUGF_T("\033[1;32m", a); } while(0)
+# define DEBUGF_B(a...) do{DEBUGF_T("\033[1;34m", a); } while(0)
+# define DEBUGF_Y(a...) do{DEBUGF_T("\033[1;33m", a); } while(0)
+# define DEBUGF_M(a...) do{DEBUGF_T("\033[1;35m", a); } while(0)
+# define DEBUGF_C(a...) do{DEBUGF_T("\033[1;36m", a); } while(0)
+# define DEBUGF_W(a...) do{DEBUGF_T("\033[1;37m", a); } while(0)
+#else // DEBUG
 # define DEBUGF(a...)
 # define DEBUGF_R(a...)
 # define DEBUGF_G(a...)
@@ -251,6 +270,7 @@ extern struct _gopt gopt;
 # define DEBUGF_M(a...)
 # define DEBUGF_C(a...)
 # define DEBUGF_W(a...)
+# define DEBUGF_A(a...)
 #endif
 
 // Increase ptr by number of characters added to ptr.
