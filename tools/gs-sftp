@@ -32,5 +32,5 @@ else
 	ARGS=" -q"
 	[[ -n ${ARGS_NEW[*]} ]] && ARGS=" ${ARGS_NEW[*]}"
 	# shellcheck disable=SC2086 # Double quote to prevent globbing and word splitting. ${RSYNC_ARGS} -> We want word splitting for multiple arugments.
-	GSOCKET_ARGS="${ENV_ARGS}${ARGS}" exec sftp -D "${GS_NETCAT_BIN}"
+	GSOCKET_NO_GREETINGS="1" GSOCKET_ARGS="${ENV_ARGS}${ARGS}" exec sftp -D "${GS_NETCAT_BIN}"
 fi

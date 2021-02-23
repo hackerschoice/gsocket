@@ -205,6 +205,11 @@ do_getopt()
 	OPTERR=0
 	FL_NEED_PASSWORD=1
 	IS_UCHROOT=1
+	# Check if -s or -k is already supplied in environment and dont ask again.
+	[[ "$GSOCKET_ARGS" =~ ^'-s' ]] && unset FL_NEED_PASSWORD
+	[[ "$GSOCKET_ARGS" =~ ' -s' ]] && unset FL_NEED_PASSWORD
+	[[ "$GSOCKET_ARGS" =~ ^'-k' ]] && unset FL_NEED_PASSWORD
+	[[ "$GSOCKET_ARGS" =~ ' -k' ]] && unset FL_NEED_PASSWORD
 	# shellcheck disable=SC2220 # Invalid flags are not handled. Add a *) case.
 	while getopts ":hURgls:k:L:" opt; do
 		case ${opt} in
@@ -272,6 +277,9 @@ env_arg_init()
 		GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-s"		# Add to end of array			
 		GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="$password"	# Add to end of array			
 	fi
+	# Have to output it here because gs-netcat might be started from withing
+	# sshfs or sftpd where stderr is no longer available to gs-netcat
+	echo "=Encryption     : SRP-AES-256-CBC-SHA-End2End (Prime: 4096 bits)"
 	ENV_ARGS="${GSOCKET_ARGS}${GSNC_ENV_ARGS[*]}"
 }
 
@@ -315,7 +323,7 @@ sftp_server_start()
 		echo -e >&2 "\033[1;31mWARNING\033[0m: uchroot disabled. Allowing access to *ALL* files on this host."
 		unset PRELOAD
 	fi
-	GSOCKET_ARGS="${ENV_ARGS}" exec "${GS_NETCAT_BIN}" "${ARGS_NEW[@]}" -e "${PRELOAD} ${SFTP_SERVER_BIN} ${SFTP_ARGS[*]} 2>/dev/null"
+	GSOCKET_NO_GREETINGS="1" GSOCKET_ARGS="${ENV_ARGS}" exec "${GS_NETCAT_BIN}" "${ARGS_NEW[@]}" -e "${PRELOAD} ${SFTP_SERVER_BIN} ${SFTP_ARGS[*]} 2>/dev/null"
 }
 
 

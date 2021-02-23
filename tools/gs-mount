@@ -46,7 +46,7 @@ else
 	ARGS=" -q"
 	[[ -n ${ARGS_NEW[*]} ]] && ARGS=" ${ARGS_NEW[*]}"
 
-	GSOCKET_ARGS="${ENV_ARGS}" sshfs -o "${SSHFS_OPT}${FUSE_OPT}" -o ssh_command="${GS_NETCAT_BIN}${ARGS} --" x@127.1:. "${1}" || exit 1
+	GSOCKET_NO_GREETINGS="1" GSOCKET_ARGS="${ENV_ARGS}" sshfs -o "${SSHFS_OPT}${FUSE_OPT}" -o ssh_command="${GS_NETCAT_BIN}${ARGS} --" x@127.1:. "${1}" || exit 1
 	echo "Successfully mounted on ${1}."
 	command -v fusermount >/dev/null 2>&1 && echo "To unmount use: fusermount -zu ${1}"
 fi

@@ -67,6 +67,11 @@ read_password()
 # Copy all other
 OPTERR=0
 FL_NEED_PASSWORD=1
+# Check if -s or -k is already supplied in environment and dont ask again.
+[[ "$GSOCKET_ARGS" =~ ^'-s' ]] && unset FL_NEED_PASSWORD
+[[ "$GSOCKET_ARGS" =~ ' -s' ]] && unset FL_NEED_PASSWORD
+[[ "$GSOCKET_ARGS" =~ ^'-k' ]] && unset FL_NEED_PASSWORD
+[[ "$GSOCKET_ARGS" =~ ' -k' ]] && unset FL_NEED_PASSWORD
 # Current options are options for gs-netcat followed by a list of files. We
 # need to split off the gs-netcat options (all but -o/-s/-k) without the
 # files. To do so we need to know which gs-netcat options takes an argument
@@ -136,6 +141,7 @@ if [[ -n "$FL_NEED_PASSWORD" ]]; then
 	GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-s"	# Add to end of array			
 	GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="$password"	# Add to end of array			
 fi
+echo "=Encryption     : SRP-AES-256-CBC-SHA-End2End (Prime: 4096 bits)"
 ENV_ARGS="${GSOCKET_ARGS}${GSNC_ENV_ARGS[*]}"
 
 # echo $OPTIND
@@ -146,13 +152,13 @@ ENV_ARGS="${GSOCKET_ARGS}${GSNC_ENV_ARGS[*]}"
 if [[ -n ${IS_SERVER} ]]; then
 	# SERVER
 	ENV_ARGS="${GSOCKET_ARGS}${GSNC_ENV_ARGS[*]}"
-	GSOCKET_ARGS="${ENV_ARGS}" exec "${GS_NETCAT_BIN}" "${ARGS_NEW[@]}" -e "rsync ${RSYNC_SERVER_DEFAULTS} ${RSYNC_ARGS} ."
+	GSOCKET_NO_GREETINGS="1" GSOCKET_ARGS="${ENV_ARGS}" exec "${GS_NETCAT_BIN}" "${ARGS_NEW[@]}" -e "rsync ${RSYNC_SERVER_DEFAULTS} ${RSYNC_ARGS} ."
 else
 	# CLIENT
 	ARGS=" -q"
 	# ARGS=""
 	[[ -n ${ARGS_NEW[*]} ]] && ARGS+=" ${ARGS_NEW[*]}"
 	# shellcheck disable=SC2086 # Double quote to prevent globbing and word splitting. ${RSYNC_ARGS} -> We want word splitting for multiple arugments.
-	GSOCKET_ARGS="${ENV_ARGS}" exec rsync ${RSYNC_CLIENT_DEFAULTS} -e "${GS_NETCAT_BIN}${ARGS} --" ${RSYNC_ARGS} "${@}" 127.1:.
+	GSOCKET_NO_GREETINGS="1" GSOCKET_ARGS="${ENV_ARGS}" exec rsync ${RSYNC_CLIENT_DEFAULTS} -e "${GS_NETCAT_BIN}${ARGS} --" ${RSYNC_ARGS} "${@}" 127.1:.
 fi
 

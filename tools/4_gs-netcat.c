@@ -1076,7 +1076,7 @@ my_usage(void)
 
 	usage("skrlSgqwCTL");
 	fprintf(stderr, ""
-"  -S           Act as a Socks server [needs -l]\n"
+"  -S           Act as a SOCKS server [needs -l]\n"
 "  -D           Daemon & Watchdog mode [background]\n"
 "  -d <IP>      IPv4 address for port forwarding\n"
 "  -p <port>    TCP Port to listen on or forward to\n"
@@ -1088,7 +1088,7 @@ my_usage(void)
 "Example to forward traffic from port 2222 to 192.168.6.7:22:\n"
 "    $ gs-netcat -l -d 192.168.6.7 -p 22     # Server\n"
 "    $ gs-netcat -p 2222                     # Client\n"
-"Example to act as a Socks proxy\n"
+"Example to act as a SOCKS proxy\n"
 "    $ gs-netcat -l -S                       # Server\n"
 "    $ gs-netcat -p 1080                     # Client\n"
 "Example file transfer:\n"
@@ -1190,7 +1190,9 @@ my_getopt(int argc, char *argv[])
 	}
 
 	init_vars();			/* from utils.c */
-	VLOG("=Encryption     : %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
+	
+	if (getenv("GSOCKET_NO_GREETINGS") == NULL)
+		VLOG("=Encryption     : %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
 
 	atexit(cb_atexit);
 }

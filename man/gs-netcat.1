@@ -64,7 +64,7 @@ Use TOR. The
 .Nm
 tool will connect via TOR to the GSRN. This requires TOR to be installed and running. The IP and PORT of the TOR server can be set using environment variables.
 .It Fl S
-Server. Act as a Socks4/4a/5 server. Needs -l. The server acts as a Socks4/4a/5 proxy. It allows multiple
+Server. Act as a SOCKS4/4a/5 server. Needs -l. The server acts as a SOCKS4/4a/5 proxy. It allows multiple
 .Nm
 clients to (securely) relay traffic via the server.
 .It Fl D
@@ -160,10 +160,10 @@ Client to read \'warez.tar.gz\' and pipe it to the server.
 .Dl $ gs-netcat -s MySecret <warez.tar.gz
 .Pp
 .Nm Example 5
-- Server to act as a Socks4/4a/5 server:
+- Server to act as a SOCKS4/4a/5 server:
 .Dl $ gs-netcat -s MySecret -l -S
 .Pp
-Client to listen on TCP port 1080 and forward any new connection to the server\'s Socks server:
+Client to listen on TCP port 1080 and forward any new connection to the server\'s SOCKS server:
 .Dl $ gs-netcat -s MySecret -p 1080
 .Pp
 .Nm Example 6

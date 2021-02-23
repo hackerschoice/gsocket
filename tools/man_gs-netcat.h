@@ -58,8 +58,8 @@ OPTIONS\n\
 	     This requires TOR to be installed and running. The IP and PORT of\n\
 	     the TOR server can be set using environment variables.\n\
 \n\
-     -S      Server. Act as a Socks4/4a/5 server. Needs -l. The server acts as\n\
-	     a Socks4/4a/5 proxy. It allows multiple gs-netcat clients to\n\
+     -S      Server. Act as a SOCKS4/4a/5 server. Needs -l. The server acts as\n\
+	     a SOCKS4/4a/5 proxy. It allows multiple gs-netcat clients to\n\
 	     (securely) relay traffic via the server.\n\
 \n\
      -D      Server. Daemon & Watchdog mode.  gs-netcat will run as a back-\n\
@@ -74,12 +74,61 @@ OPTIONS\n\
 \n\
      -i      Interactive login shell. The server spawns a true PTY login\n\
 	     shell. The client acts as a true PTY client (with Ctrl-C etc\n\
-	     working). The client can terminate the session by typing '~.' at\n\
-	     any time or by typing 'exit'. The server supports multiple\n\
+	     working). The client can terminate the session by typing 'Ctrl-e\n\
+	     q' at any time or by typing 'exit'. The server supports multiple\n\
 	     clients at the same time.\n\
 \n\
 \n\
      port can be a numerical value between 1-65535.\n\
+\n\
+CONSOLE\n\
+     Pressing 'Ctrl-e c' (e for EEEElite) opens the command console. The com-\n\
+     mand console displays the following information:\n\
+\n\
+	   o   Latency (in milliseconds) to the remote host\n\
+	   o   Warning when a user logs into the system or becomes active\n\
+	   o   Data troughput\n\
+	   o   File transfer logs\n\
+     Type 'help' for a list of available commands.\n\
+\n\
+\n\
+FILETRANSFER\n\
+     File transfer is available from the command console. Files are transfered\n\
+     with the permission and modification timestamp unchanged. Partially\n\
+     transfered files are re-started where the transfer was left off.\n\
+\n\
+     The 'put' command is used for uploading:\n\
+\n\
+	   put foobar.txt\n\
+	   put $HOME/foobar.txt\n\
+	   put /tmp/*.log\n\
+	   put $(find. -type f -name '*.c')\n\
+\n\
+     (The above example shows Shell Variable substitution and word expansion)\n\
+\n\
+     It is possible to limit the amount of path information that is sent as\n\
+     implied directories for each path you specify. You can insert a dot and a\n\
+     slash into the source path, like this:\n\
+\n\
+	   put /foo/./bar/baz.c\n\
+\n\
+     That would create /tmp/bar/baz.c on the remote machine.\n\
+\n\
+     The 'get' command is used for downloading:\n\
+\n\
+	   get foobar.txt\n\
+	   get $(find /var/./ -name '*.log')\n\
+\n\
+     Transfering a directory automatically transfers all files and directories\n\
+     within that directory (recursively):\n\
+\n\
+	   get /var/log\n\
+	   get /\n\
+     The first command transfers all directories and files in /var/log/*. The\n\
+     latter command transfers the entire filesystem.\n\
+\n\
+     Multiple get/put commands can be scheduled at the same time.\n\
+\n\
 \n\
 EXAMPLES\n\
      Example 1 - Listen for a new connection using the password 'MySecret':\n\
@@ -106,11 +155,11 @@ EXAMPLES\n\
      Client to read 'warez.tar.gz' and pipe it to the server.\n\
 	   $ gs-netcat -s MySecret <warez.tar.gz\n\
 \n\
-     Example 5 - Server to act as a Socks4/4a/5 server:\n\
+     Example 5 - Server to act as a SOCKS4/4a/5 server:\n\
 	   $ gs-netcat -s MySecret -l -S\n\
 \n\
      Client to listen on TCP port 1080 and forward any new connection to the\n\
-     server's Socks server:\n\
+     server's SOCKS server:\n\
 	   $ gs-netcat -s MySecret -p 1080\n\
 \n\
      Example 6 - TCP Port Forward all connections to 192.168.6.7:22. Server:\n\

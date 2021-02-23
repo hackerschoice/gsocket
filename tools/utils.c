@@ -159,15 +159,22 @@ init_vars(void)
 	if (gopt.is_multi_peer == 0)
 		GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_SINGLESHOT, NULL, 0);
 
+	// Prevent startup messages if gs-netcat is started as sub-system from
+	// gs-sftp or gs-mount
+	int is_greetings = 1;
+	if (getenv("GSOCKET_NO_GREETINGS") != NULL)
+		is_greetings = 0;
+
 	char *str = getenv("GSOCKET_ARGS");
-	if ((str != NULL) && (strlen(str) > 0))
+	if ((str != NULL) && (strlen(str) > 0) && (is_greetings))
 		VLOG("=Extra arguments: '%s'\n", str);
 
 	gopt.sec_str = GS_user_secret(&gopt.gs_ctx, gopt.sec_file, gopt.sec_str);
 	if (gopt.sec_str == NULL)
 		ERREXIT("%s\n", GS_CTX_strerror(&gopt.gs_ctx));
 
-	VLOG("=Secret         : \"%s\"\n", gopt.sec_str);
+	if (is_greetings)
+		VLOG("=Secret         : \"%s\"\n", gopt.sec_str);
 
 	/* Convert a secret string to an address */
 	GS_ADDR_str2addr(&gopt.gs_addr, gopt.sec_str);
