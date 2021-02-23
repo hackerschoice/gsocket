@@ -26,7 +26,7 @@ Includes:
 
 <A></A>|<A></A>
 ----------|-------------
-Download|[gsocket-1.4.24.tar.gz](https://github.com/hackerschoice/gsocket/releases/download/v1.4.24/gsocket-1.4.24.tar.gz) (Linux, MacOS, FreeBSD, Solaris)
+Download|[gsocket-1.4.25.tar.gz](https://github.com/hackerschoice/gsocket/releases/download/v1.4.25/gsocket-1.4.25.tar.gz) (Linux, MacOS, FreeBSD, Solaris)
 Debian/Ubuntu| [gsocket_1.4.24_all.deb](https://github.com/hackerschoice/binary/raw/main/gsocket/latest/gsocket_1.4.24_all.deb)
 Windows| use docker (see below)
 Man Page| [gs-netcat(1)](https://hackerschoice.github.io/gs-netcat.1.html), [gs-mount(1)](https://hackerschoice.github.io/gs-mount.1.html), [gs-sftp(1)](https://hackerschoice.github.io/gs-sftp.1.html), [blitz(1)](https://hackerschoice.github.io/blitz.1.html)
