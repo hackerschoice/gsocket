@@ -1147,10 +1147,10 @@ my_getopt(int argc, char *argv[])
 	if (gopt.is_daemon)
 	{
 		if (gopt.is_logfile == 0)
-			gopt.is_quite = 1;
+			gopt.is_quiet = 1;
 	}
 
-	if (gopt.is_quite != 0)
+	if (gopt.is_quiet != 0)
 	{
 		gopt.log_fp = NULL;
 		gopt.err_fp = NULL;

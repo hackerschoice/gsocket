@@ -130,7 +130,7 @@ struct _gopt
 	int is_multi_peer;		/* -p / -S / -d [client & server] */
 	int is_daemon;
 	int is_logfile;
-	int is_quite;
+	int is_quiet;
 	int is_win_resized;     // window size changed (signal)
 	int is_console;		    // console is being displayed
 	int is_pong_pending;    // Server: Answer to PING waiting to be send
