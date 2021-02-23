@@ -14,9 +14,10 @@ typedef struct
 void GS_BUF_init(GS_BUF *gsb, size_t sz_min_free);
 void GS_BUF_free(GS_BUF *gsb);
 int GS_BUF_resize(GS_BUF *gsb, size_t sz_new);
-int GS_BUF_add(GS_BUF *gsb, size_t len);
+int GS_BUF_add_length(GS_BUF *gsb, size_t len);
 int GS_BUF_add_data(GS_BUF *gsb, void *data, size_t len);
 int GS_BUF_del(GS_BUF *gsb, size_t len);
+int GS_BUF_memmove(GS_BUF *gsb, void *data, size_t len);
 
 #define GS_BUF_empty(gsb)   (gsb)->sz_used = 0;
 #define GS_BUF_DATA(gsb)    (gsb)->data

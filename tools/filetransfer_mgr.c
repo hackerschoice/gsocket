@@ -233,7 +233,7 @@ GS_FTM_mk_packet(GS_FT *ft, uint8_t *dst, size_t dlen)
 		// DEBUGF_G("TYPE NONE\n");
 		return 0;
 	case GS_FT_TYPE_DONE:
-		DEBUGF_W("GS_FT_TYPE_DONE\n");
+		// DEBUGF_W("GS_FT_TYPE_DONE\n");
 		// CLIENT only: done with all files.
 		// FIXME: for a 'get' request this is triggered very late and not as soon
 		// as the filetransfer is done (because select() only waits for reading

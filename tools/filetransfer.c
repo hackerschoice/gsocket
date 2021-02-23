@@ -698,7 +698,7 @@ done:
 	if (cwd_fd >= 0)
 	{
 		// Change back to original CWD.
-		fchdir(cwd_fd);
+		if (fchdir(cwd_fd) == 0) {} // ignore results
 		close(cwd_fd);
 	}
 	XFREE(ptr);

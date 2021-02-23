@@ -339,7 +339,7 @@ extern struct _g_debug_ctx g_dbg_ctx; // declared in utils.c
 #ifdef DEBUG
 # define HEXDUMP(a, _len)        do { \
         size_t _n = 0; \
-        xfprintf(gopt.err_fp, "%s:%d HEX ", __FILE__, __LINE__); \
+        xfprintf(gopt.err_fp, "%s:%d HEX[%zd] ", __FILE__, __LINE__, _len); \
         while (_n < (_len)) xfprintf(gopt.err_fp, "%2.2x", ((unsigned char *)a)[_n++]); \
         xfprintf(gopt.err_fp, "\n"); \
 } while (0)
