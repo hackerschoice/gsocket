@@ -224,6 +224,17 @@ extern struct _gopt gopt; // declared in utils.c
 # define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
 #endif
 
+#define D_RED(a)	"\033[0;31m"a"\033[0m"
+#define D_GRE(a)	"\033[0;32m"a"\033[0m"
+#define D_YEL(a)	"\033[0;33m"a"\033[0m"
+#define D_BLU(a)	"\033[0;34m"a"\033[0m"
+#define D_MAG(a)	"\033[0;35m"a"\033[0m"
+#define D_BRED(a)	"\033[1;31m"a"\033[0m"
+#define D_BGRE(a)	"\033[1;32m"a"\033[0m"
+#define D_BYEL(a)	"\033[1;33m"a"\033[0m"
+#define D_BBLU(a)	"\033[1;34m"a"\033[0m"
+#define D_BMAG(a)	"\033[1;35m"a"\033[0m"
+
 #ifdef DEBUG
 struct _g_debug_ctx
 {
@@ -242,17 +253,6 @@ extern struct _g_debug_ctx g_dbg_ctx; // declared in utils.c
 	if (xcolor) { xfprintf(gopt.err_fp, "\033[0m"); } \
 } while (0)
 
-
-#define D_RED(a)	"\033[0;31m"a"\033[0m"
-#define D_GRE(a)	"\033[0;32m"a"\033[0m"
-#define D_YEL(a)	"\033[0;33m"a"\033[0m"
-#define D_BLU(a)	"\033[0;34m"a"\033[0m"
-#define D_MAG(a)	"\033[0;35m"a"\033[0m"
-#define D_BRED(a)	"\033[1;31m"a"\033[0m"
-#define D_BGRE(a)	"\033[1;32m"a"\033[0m"
-#define D_BYEL(a)	"\033[1;33m"a"\033[0m"
-#define D_BBLU(a)	"\033[1;34m"a"\033[0m"
-#define D_BMAG(a)	"\033[1;35m"a"\033[0m"
 # define DEBUGF(a...) do{DEBUGF_T(NULL, a); } while(0)
 # define DEBUGF_R(a...) do{DEBUGF_T("\033[1;31m", a); } while(0)
 # define DEBUGF_G(a...) do{DEBUGF_T("\033[1;32m", a); } while(0)

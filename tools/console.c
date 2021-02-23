@@ -618,118 +618,6 @@ CONSOLE_reset(void)
 	tty_fd = -1;
 }
 
-
-#ifdef DEBUG
-/*
- * For debugging only.
- * Find the next ansi sequence.
- * Return the length of the sequence. Set 'is_ansi' if it's an ansi sequence.
- * The sequence can be a non-ansi sequence (e.g. normal data) or an ansi sequnce.
- */
-static size_t 
-ansi_next(void *data, size_t len, int *is_ansi)
-{
-	static int in_esc;
-	static int in_esc_pos;
-	uint8_t *src = (uint8_t *)data;
-	uint8_t *src_orig = src;
-	uint8_t *src_end = src + len;
-
-	in_esc_pos = 0;
-	in_esc = 0;
-	*is_ansi = 0;
-	if (*src == '\x1B')
-	{
-		src++;
-		*is_ansi = 1;
-		in_esc = 1;
-	}
-
-	for (; src < src_end; src++)
-	{
-		if (in_esc == 0)
-		{
-			if (*src != '\x1B')
-				continue;
-
-			*is_ansi = 0;
-			return src - src_orig;
-		}
-
-		// HERE: in escape sequence
-		// Check when escape finishes
-		if (*src == '\x1B')
-			break;
-		in_esc_pos++;
-
-		if (in_esc_pos == 1)
-		{
-			// Check if multi character esc sequence
-			if (*src == '[')
-				continue;
-			if (*src == '(')
-				continue;
-			if (*src == ')')
-				continue;
-			if (*src == '#')
-				continue; // Esc-#2
-			if (*src == '6')
-				continue; // Esc-6n
-			if (*src == '5')
-				continue;
-			if (*src == '0')
-				continue;
-			if (*src == '3')
-				continue;
-
-			break;
-		}
-
-		if (in_esc_pos >= 2)
-		{
-			if ((*src >= '0') && (*src <= '9'))
-				continue;
-			if (*src == ';')
-				continue;
-			if (*src == '?')
-				continue;
-
-			break;
-		}
-
-		break;
-	}
-	return src - src_orig + 1;
-}
-
-// For debugging
-static void
-ansi_output(void *data, size_t len)
-{
-	uint8_t *src = (uint8_t *)data;
-	uint8_t *src_end = src + len;
-	int is_ansi;
-	size_t n;
-	char buf[64];
-
-	while (src < src_end)
-	{
-		n = ansi_next(src, src_end - src, &is_ansi);
-		XASSERT(n > 0, "n is 0\n");
-		if (is_ansi)
-		{
-			snprintf(buf, sizeof buf, "%.*s", (int)(n - 1), src + 1);
-			DEBUGF_B("ansi: %s\n", buf);
-		}
-		else
-			HEXDUMP(src, n);
-		src += n;
-	}
-}
-#endif
-
-static uint8_t cls_buf[8];
-static size_t cls_pos;
 struct _pat
 {
 	char *data;
@@ -767,28 +655,45 @@ static struct _pat cls_pattern[] = {
 // Parse through the ansi sequence until it is finished.
 // Return length of ansi sequence or 0 if more data is required (ansi sequence hasnt finished yet)
 static size_t
-ansi_until_end(uint8_t *src, size_t src_sz)
+ansi_until_end(uint8_t *src, size_t src_sz, int *ignore)
 {
 	uint8_t *src_end = src + src_sz;
 	uint8_t *src_orig = src;
 
+	// Must start with ^[
+	XASSERT(*src == '\x1b', "src not starting with 0x1B (0x02%c)\n", *src);
+	src += 1;
+	*ignore = 0;
+
 	while (src < src_end)
 	{
-		DEBUGF_B("%02x\n", *src);
 		if (*src == '\x1B')
 		{
 			// Huh? An ESC inside an ansi sequence?
+			*ignore = 1;
 			return src - src_orig;
 		}
 
-		// Check here
-		if (*src == '[')
-			goto skip;
+		if (src > src_orig + 16)
+		{
+			// ESC sequence is to long. We are not interested....
+			*ignore = 1;
+			return src - src_orig;
+		}
 
-		// Found the end of the ansi sequence (hoho)
+		// Check if this is the end of an ansi sequence
+		if ((*src >= 'a') && (*src <= 'z'))
+		{
+			src++;
+			break;
+		}
 
-		break;
-skip:
+		if ((*src >= 'A') && (*src <= 'Z'))
+		{
+			src++;
+			break;
+		}
+
 		src++;
 	}
 
@@ -806,8 +711,8 @@ ansi_until_esc(uint8_t *src, size_t src_sz, int *in_esc)
 		if (*src == '\x1B')
 		{
 			*in_esc = 1;
-			DEBUGF("at pos %zd=%02x\n", src - src_orig - 1, *src);
-			return src - src_orig;
+			// DEBUGF("at pos %zd=0x%02x\n", src - src_orig, *src);
+			break;
 		}
 		src++;
 	}
@@ -816,31 +721,26 @@ ansi_until_esc(uint8_t *src, size_t src_sz, int *in_esc)
 }
 
 static int in_esc;
-static uint8_t ansi_buf[64];
-static size_t ansi_buf_len;
+
 
 // Parse 'src' for an ansi sequence that we might be interested in.
 // *tail_len contains a number of bytes if there is an incomplete ansi-sequence (and we
 // do not have enough data yet)
 //
 // Return: Length of data in dst.
-static size_t
-ansi_parse(uint8_t *src, size_t src_sz, uint8_t *dst, size_t dst_sz, size_t *tail_len, int *cls_code)
+static void
+ansi_parse(uint8_t *src, size_t src_sz, GS_BUF *dst, size_t *tail_len, int *cls_code)
 {
-	uint8_t *src_orig = src;
 	uint8_t *src_end = src + src_sz;
-	uint8_t *dst_orig = dst;
-	uint8_t *dst_end = dst + dst_sz;
 	size_t len;
+	int ignore;
 
-	DEBUGF("ansi_buf_len=%zd\n", ansi_buf_len);
 	while (src < src_end)
 	{
 		if (in_esc)
 		{
-			DEBUGF_Y("IN esc\n");
-			len = ansi_until_end(src, src_end - src);
-			DEBUGF("esc len = %zd\n", len);
+			len = ansi_until_end(src, src_end - src, &ignore);
+			// DEBUGF("esc len=%zd, ignore=%d, dst=%zd, left=%zd\n", len, ignore, GS_BUF_USED(dst), src_end - src);
 			if (len == 0)
 			{
 				// Not enough data
@@ -848,53 +748,85 @@ ansi_parse(uint8_t *src, size_t src_sz, uint8_t *dst, size_t dst_sz, size_t *tai
 				break;
 			}
 
-			// HERE: Got a full ansi sequence. Either in ansi_buf or src.
-			// Copy into ansi-buf to make it easier:
-			if (ansi_buf_len + len > sizeof ansi_buf)
+			in_esc = 0;
+			DEBUGF_B("ANSI %.*s\n", (int)len -1, src+1);
+			if (ignore)
 			{
-				// Does not fit.
-				// Copy into dst
-				XASSERT(dst_end - dst <= ansi_buf_len, "Buffer to small\n");
-				memcpy(dst, ansi_buf, ansi_buf_len);
-				dst += ansi_buf_len;
-
-				XASSERT(dst_end - dst <= len, "Buffer to small\n");
-				memcpy(dst, src, len);
-				dst += len;
+				GS_BUF_add_data(dst, src, len);
 				src += len;
-				in_esc = 0;
 				continue;
 			}
-			STOP HERE: damn. need ot think this better. perhaps easier to have a temp buffer of 64 or so
-			and if ansi_buf contains data then just check on ansi_buf + src if there is a match and otherwise
-			check on src.
 
-			// Append to internal ansi buffer
-			memcpy(ansi_buf + ansi_buf_len, src, len);
-			ansi_buf_len += len;
+			// If console is not open then we do not have to check or substitute any ansi sequences
+			if (gopt.is_console == 0)
+			{
+				GS_BUF_add_data(dst, src, len);
+				src += len;
+				continue;
+			}
 
-			// Check if we are interested in this ansi squence
+			// Check if this was a cursor-position request that moved the course
+			// outside its boundary (and into our console, like debian's top does (!))
+			//  '\x1b' + '[1;1h'
+			int is_substitute = 0;
+			while (1)
+			{
+				if (len < 6)
+					break;
+				// DEBUGF_W("len %d\n", len);
+				if ((src[len-1] != 'H') && (src[len-1] != 'h'))
+					break;
+				// search for ';' between src+2 and src+len
+				uint8_t *ptr = src+2;
+				for (ptr = src + 2; ptr < src+len; ptr++)
+				{
+					if (*ptr == ';')
+						break;
+				}
+				if (*ptr != ';')
+					break;
 
-			// We let this sequence pass through to the terminal:
-			if (dst_end - dst >= ansi_buf_len)
-				memcpy(dst, ansi_buf, ansi_buf_len);
-			dst += ansi_buf_len;
+				int row = atoi((char *)src+2);
+				int col = atoi((char *)ptr+1);
+				// DEBUGF_W("pos %d:%d\n", row, col);
+ 				if (row > gopt.winsize.ws_row - GS_CONSOLE_ROWS)
+				{
+					char buf[32];
+					snprintf(buf, sizeof buf, "\x1B[%d;%dH\r\n", gopt.winsize.ws_row - GS_CONSOLE_ROWS, col);
+					DEBUGF_R("DENIED. Changed to: %s\n", buf + 1);
+
+					GS_BUF_add_data(dst, buf, strlen(buf));
+					src += len;
+					is_substitute = 1;
+				}
+				break;
+			}
+			if (is_substitute)
+				continue;
+
+			// Check for any ANSI sequence that may have cleared the screen:
+			int i;
+			for (i = 0; i < sizeof cls_pattern / sizeof *cls_pattern; i++)
+			{
+				if (cls_pattern[i].len != len)
+					continue;
+				if (memcmp(cls_pattern[i].data, src, len) != 0)
+					continue;
+				DEBUGF_W("CLS found %d\n", cls_pattern[i].type);
+				*cls_code = cls_pattern[i].type;
+			}
+
+			// We are not interested to substitute it. Let it pass through.
+			GS_BUF_add_data(dst, src, len);
 			src += len;
-
-			// len is the length of the ansi sequence 
-			ansi_buf_len = 0;
-			in_esc = 0;
 		} else {
-			DEBUGF_Y("not esc\n");
+			// DEBUGF_Y("#%zd not in esc\n", src - src_orig);
 			len = ansi_until_esc(src, src_end - src, &in_esc);
-			memcpy(dst, src, len);
-			dst += len;
+			GS_BUF_add_data(dst, src, len);
 			src += len; // *src points to ESC or is done.
 		}
 
 	}
-
-	return dst - dst_orig;
 }
 #if 0
 
@@ -1059,6 +991,8 @@ skip:
 }
 #endif
 
+GS_BUF g_dst;
+GS_BUF g_ansi;
 /*
  * Buffered write to ansi terminal. All output to terminal needs to be analyzed
  * and checked for 'clear screen' ansi code. If found then the console needs
@@ -1084,56 +1018,44 @@ skip:
 static ssize_t
 ansi_write(int fd, void *src, size_t src_len, int *cls_code)
 {
-	size_t amount = 0;
-	size_t dst_sz = src_len;
-	uint8_t dst[dst_sz + sizeof ansi_buf]; // alloc()
-	size_t dst_len;
+	// size_t amount = 0;
 	size_t tail_len = 0;
+	size_t src_len_orig = src_len;
 
-	HEXDUMP(src, src_len);
-	dst_len = ansi_parse(src, src_len, dst, dst_sz, &tail_len, cls_code);
-
-	if (dst_len > 0)
+	if (!GS_BUF_IS_INIT(&g_dst))
 	{
-		if (write(fd, dst, dst_len) != dst_len)
-			return -1;
-#ifdef DEBUG
-	ansi_output(dst, dst_len);
-#endif
+		GS_BUF_init(&g_dst, 1024);
+		GS_BUF_init(&g_ansi, 1024);
 	}
+
+	// HEXDUMP(src, src_len);
+	if (GS_BUF_USED(&g_ansi) > 0)
+	{
+		GS_BUF_add_data(&g_ansi, src, src_len);
+		src = GS_BUF_DATA(&g_ansi);
+		src_len = GS_BUF_USED(&g_ansi);
+	}
+	ansi_parse(src, src_len, &g_dst, &tail_len, cls_code);
+
+	if (GS_BUF_USED(&g_dst) > 0)
+	{
+		if (write(fd, GS_BUF_DATA(&g_dst), GS_BUF_USED(&g_dst)) != GS_BUF_USED(&g_dst))
+			return -1;
+	}
+	GS_BUF_empty(&g_dst);
 
 	if (tail_len > 0)
 	{
-		// Check if there is enough space in our ansi-buf
-		if (ansi_buf_len + tail_len < sizeof ansi_buf)
-		{
-			memcpy(ansi_buf + ansi_buf_len, src - tail_len, tail_len);
-			ansi_buf_len += tail_len;
-			goto done;
-		}
-
-		// NOT enough space.
-		in_esc = 0;
-
-		// ANSI esc sequence that does not fit into our ansi buffer.
-		// Output it (ignore such sequences - we are not interested)
-		if (ansi_buf_len > 0)
-		{
-			if (write(fd, ansi_buf, ansi_buf_len) != ansi_buf_len)
-				return -1;
-			ansi_buf_len = 0;
-		}
-		// And output the 'tail' that does not fit in.
-		if (write(fd, src - tail_len, tail_len) != tail_len)
-			return -1;
+		GS_BUF_empty(&g_ansi);
+		GS_BUF_add_data(&g_ansi, src + src_len - tail_len, tail_len);
+		DEBUGF_W("TAIL length %zd\n", GS_BUF_USED(&g_ansi));
 	}
 
-done:
 	// From the caller's perspective this function has processed all data
 	// and this function will buffer (if needed) any data not yet passed
 	// to 'write()'. Thus return 'len' here to satisfy caller that all supplied
 	// data is or will be processed.
-	return src_len;
+	return src_len_orig;
 }
 
 static int is_console_before_sb;  // before Alternate Screen Buffer
@@ -1216,7 +1138,9 @@ CONSOLE_write(int fd, void *data, size_t len)
 	// 	return sz;
 
 	if (is_detected_clearscreen)
+	{
 	 	console_draw(fd, 1 /*force*/);
+	}
 
 	 if (is_cursor_in_console)
 	 {
