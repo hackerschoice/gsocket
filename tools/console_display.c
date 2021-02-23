@@ -41,7 +41,7 @@ GS_condis_add(GS_CONDIS *cd, int level, const char *str)
 	size_t len;
 	struct condis_line *cdl = &cd->cdl[cd->pos_add];
 
-	DEBUGF("-> '%s'\n", str);
+	DEBUGF("%s\n", str);
 	len = MIN(sizeof cdl->line - 1, strlen(str));
 	memcpy(cdl->line, str, len);
 	cdl->line[len] = 0x00;

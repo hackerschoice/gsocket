@@ -1,11 +1,16 @@
 
+// #define DEBUG_CTX_DECLARED (1)  // All others define this as extern
+
 #include "common.h"
 #include "utils.h"
 #include "console.h"
 
 struct _gopt gopt;
-
+#ifdef DEBUG
+struct _g_debug_ctx g_dbg_ctx;
+#endif
 extern char **environ;
+
 
 /*
  * Add list of argv's from GSOCKET_ARGS to argv[]
@@ -198,7 +203,7 @@ usage(const char *params)
 				fprintf(stderr, "  -L <file>    Logfile\n");
 				break;
 			case 'q':
-				fprintf(stderr, "  -q           Quite. No log output\n");
+				fprintf(stderr, "  -q           Quiet. No log output\n");
 				break;
 			case 'r':
 				fprintf(stderr, "  -r           Receive-only. Terminate when no more data.\n");
@@ -277,7 +282,7 @@ do_getopt(int argc, char *argv[])
 				gopt.is_use_tor = 1;
 				break;
 			case 'q':
-				gopt.is_quite = 1;
+				gopt.is_quiet = 1;
 				break;
 			case 'r':
 				gopt.is_receive_only = 1;

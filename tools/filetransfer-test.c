@@ -241,7 +241,7 @@ mk_packet(void)
 	// DEBUGF("Packet type=%u length %zu + %zu\n", hdr->type, sizeof *hdr, sz);
 
 	XASSERT(sz + sizeof *hdr <= GS_BUF_UNUSED(&gsb), "Oops, GS_FT_packet() to long. sz=%zu, unusued=%zu.\n", sz, GS_BUF_UNUSED(&gsb));
-	GS_BUF_add(&gsb, sizeof *hdr + sz);
+	GS_BUF_add_length(&gsb, sizeof *hdr + sz);
 
 	return 0;
 }

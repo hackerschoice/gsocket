@@ -40,7 +40,7 @@ GS_BUF_resize(GS_BUF *gsb, size_t sz_new)
 }
 
 int
-GS_BUF_add(GS_BUF *gsb, size_t len)
+GS_BUF_add_length(GS_BUF *gsb, size_t len)
 {
 	// Bail. There is sz_max_add space available but looks like caller wrote
 	// more ata...
@@ -59,6 +59,17 @@ GS_BUF_add_data(GS_BUF *gsb, void *data, size_t len)
 {
 	GS_BUF_resize(gsb, len);
 	memcpy((uint8_t *)gsb->data + gsb->sz_used, data, len);
+
+	gsb->sz_used += len;
+
+	return 0;
+}
+
+int
+GS_BUF_memmove(GS_BUF *gsb, void *data, size_t len)
+{
+	GS_BUF_resize(gsb, len);
+	memmove((uint8_t *)gsb->data + gsb->sz_used, data, len);
 
 	gsb->sz_used += len;
 

@@ -209,7 +209,7 @@ GS_FT_add_file(GS_FT *ft, uint32_t id, const char *fname, size_t len, int64_t fs
 		return -1; // protocol error. Not 0 terminated.
 
 	// FIXME: sanitize file name
-	DEBUGF_Y("#%u ADD-FILE - size %"PRIu64", fperm 0%o, '%s' mtime=%d flags=0x%02x\n", id, fsize, fperm, fname, mtime, flags);
+	DEBUGF_Y("#%u ADD-FILE - size %"PRIu64", fperm 0%o, '%s' mtime=%d flags=0x%02x (n_items=%d)\n", id, fsize, fperm, fname, mtime, flags, ft->fadded.n_items);
 
 	char fn_local[4096];
 	char *wdir = GS_getpidwd(ft->pid);
@@ -359,6 +359,12 @@ done:
 	{
 		DEBUGF_G("Last file for this globbing id. Free'ing get-list\n");
 		free_get_li(li);
+
+		// Scenario: All requested files got skipped (already exist).
+		// - no get request (for file data) outstanding.
+		// Trigger that GS_FT_packet() is called to return GS_FT_TYPE_DONE (all files transfered)
+		if ((ft->n_files_waiting == 0) && (ft->plistreq_waiting.n_items == 0))
+			ft->is_want_write = 1;
 	}
 	return 0;
 }
@@ -657,13 +663,18 @@ GS_FT_list_add_files(GS_FT *ft, uint32_t globbing_id, const char *pattern, size_
 {
 	int ret;
 	char err[128];
+	int cwd_fd;
 
 	if (pattern[len] != '\0')
 		return -1; // protocol error. Not 0-terminated.
 
 	DEBUGF_Y("G#%u GET-ADD-FILE: %s\n", globbing_id, pattern);
+
+	cwd_fd = open(".", O_RDONLY);
+	if (cwd_fd < 0)
+		DEBUGF_R("open(.): %s\n", strerror(errno));
 	char *ptr = GS_getpidwd(ft->pid);
-	ret = chdir(ptr);
+	ret = chdir(ptr); // Temporarily change CWD for globbing to work.
 
 	if (ret != 0)
 	{
@@ -684,6 +695,12 @@ GS_FT_list_add_files(GS_FT *ft, uint32_t globbing_id, const char *pattern, size_
 	}
 
 done:
+	if (cwd_fd >= 0)
+	{
+		// Change back to original CWD.
+		if (fchdir(cwd_fd) == 0) {} // ignore results
+		close(cwd_fd);
+	}
 	XFREE(ptr);
 	ft->is_want_write = 1;
 	return ret;
@@ -791,6 +808,10 @@ receiving_complete(GS_FT *ft, struct _gs_ft_file *f)
 
 		ft_done(ft);
 		ft_del(f->li);
+
+		// Trigger that GS_FT_packet() is called to return GS_FT_TYPE_DONE (all files transfered)
+		if ((ft->n_files_waiting == 0) && (ft->plistreq_waiting.n_items == 0))
+			ft->is_want_write = 1;
 	} else {
 		// SERVER (put, upload: all data received)
 		XFCLOSE(f->fp);
@@ -962,7 +983,7 @@ mkdirpm(const char *path, mode_t mode, uint32_t mtime)
 	struct stat res;
 	char *f = NULL;
 
-	DEBUGF("mkdirpm(%s)\n", path);
+	// DEBUGF("mkdirpm(%s)\n", path);
 	// Return 0 if directory already exist
 	if (stat(path, &res) == 0)
 	{
@@ -993,7 +1014,7 @@ mkdirpm(const char *path, mode_t mode, uint32_t mtime)
 		if (S_ISDIR(res.st_mode))
 		{
 			// HERE: Parent directory exists.
-			DEBUGF_W("1-mkdir(%s)\n", path);
+			// DEBUGF_W("1-mkdir(%s)\n", path);
 			if (mkdir_agressive(path, mode, mtime) != 0)
 				rv = -1;
 			goto done;
@@ -1035,7 +1056,7 @@ mkdirpm(const char *path, mode_t mode, uint32_t mtime)
 			*ptr = '\0';
 		else
 			new_mode = mode; // last part of directory
-		DEBUGF_W("2-mkdir(%s, 0%o)\n", f, new_mode);
+		// DEBUGF_W("2-mkdir(%s, 0%o)\n", f, new_mode);
 		if (mkdir_agressive(f, new_mode, mtime) != 0)
 		{
 			rv = -1;
@@ -1168,6 +1189,7 @@ gs_ft_switch(GS_FT *ft, uint32_t id, int64_t fz_remote, struct _gs_ft_file **act
 	if (new->fz_remote == 0)
 	{
 		// Zero File Size
+		DEBUGF("ZERO sized file received\n");
 		receiving_complete(ft, new);
 		return;
 	}
@@ -1238,13 +1260,20 @@ ft_del(GS_LIST_ITEM *li)
 
 // Human readable bps string
 static void
-mk_bps(char *str, size_t sz, uint64_t duration, uint64_t amount, int err)
+mk_bps(char *str, size_t sz, uint64_t duration, uint64_t amount, int err, int is_zero)
 {
 	if (err != 0)
 	{
 		snprintf(str, sz, "ERROR");
 		return;
 	}
+
+	if (is_zero)
+	{
+		snprintf(str, sz, "zero size");
+		return;
+	}
+
 	if (duration > 0)
 		GS_format_bps(str, sz, (amount * 1000000 / duration), "/s");
 	else
@@ -1270,7 +1299,12 @@ mk_stats_file(GS_FT *ft, uint32_t id, struct _gs_ft_file *f, const char *name, i
 
 	if (f != NULL)
 	{
+		// Check if this file had zero size
+		if ((f->fz_remote == 0) && (f->fz_local == 0))
+			s.is_zero = 1;
+
 		s.xfer_amount = f->xfer_amount;
+
 		if (f->usec_start > f->usec_end)
 			f->usec_end = GS_usec();
 
@@ -1283,7 +1317,8 @@ mk_stats_file(GS_FT *ft, uint32_t id, struct _gs_ft_file *f, const char *name, i
 
 		s.xfer_duration = (f->usec_end - f->usec_start) - f->usec_suspend_duration;
 	}
-	mk_bps(s.speed_str, sizeof s.speed_str, s.xfer_duration, s.xfer_amount, err);
+
+	mk_bps(s.speed_str, sizeof s.speed_str, s.xfer_duration, s.xfer_amount, err, s.is_zero);
 
 	// Global stats for all files
 	ft->stats.xfer_duration += s.xfer_duration;
@@ -1313,7 +1348,7 @@ mk_stats_ft(GS_FT *ft)
 {
 	GS_FT_stats *st = &ft->stats;
 
-	mk_bps(st->speed_str, sizeof st->speed_str, st->xfer_duration, st->xfer_amount, st->n_files_success==0?1:0);
+	mk_bps(st->speed_str, sizeof st->speed_str, st->xfer_duration, st->xfer_amount, st->n_files_success==0?1:0, 0 /*is_zero*/);
 }
 
 void
@@ -1359,7 +1394,7 @@ GS_FT_status(GS_FT *ft, uint32_t id, uint8_t code, const char *err_str, size_t l
 
 	if (err_str[len] != '\0')
 		return; // protocol error. Not 0 terminated.
-	DEBUGF_R("#%u STATUS: code=%u (%s)\n", id, code, err_str);
+	DEBUGF_R("#%u STATUS: code=%u [%s](remote says='%s')\n", id, code, GS_FT_strerror(code), err_str);
 
 	// There can not be an error in fqueue or plistreq or flist as those are
 	// local lists. Here we only care about lists that send a request
@@ -1432,6 +1467,7 @@ GS_FT_status(GS_FT *ft, uint32_t id, uint8_t code, const char *err_str, size_t l
 			// Report stats to caller. Tread ERR_COMPLETED not as an error.
 			mk_stats_file(ft, id, f, name, err);
 		}
+
 	}
 
 	if (f != NULL)
@@ -1439,13 +1475,26 @@ GS_FT_status(GS_FT *ft, uint32_t id, uint8_t code, const char *err_str, size_t l
 		if (li->data == ft->active_put_file)
 			ft->active_put_file = NULL;
 
-		ft_done(ft);
-		ft_del(li);
+		if (ft->is_server ==  0)
+			ft_done(ft);
+
+		ft_del(li); // SERVER & CLIENT
 	} else {
 		// From a PATTERN request (LISTREQ, Client, get, download).
 		// File structure is not available.
 		// Or SERVER list
 		GS_LIST_del(li);
+	}
+
+	DEBUGF("WAITING: %d %d\n", ft->n_files_waiting, ft->plistreq_waiting.n_items);
+	if (ft->is_server == 0)
+	{
+		// CLIENT
+		// Trigger caller to call GS_FT_packet() so that caller gets the GS_FT_DONE return
+		// value to then output (and reset) the stats. This can happen when a zero-sized file
+		// is transfered.
+		if ((ft->n_files_waiting == 0) && (ft->plistreq_waiting.n_items == 0))
+			ft->is_want_write = 1;
 	}
 
 }

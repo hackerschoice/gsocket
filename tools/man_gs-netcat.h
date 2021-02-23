@@ -45,7 +45,7 @@ OPTIONS\n\
 \n\
      -l      Server mode. The default mode is client.\n\
 \n\
-     -q      Quite mode. Do not output any warnings or errors.\n\
+     -q      Quiet mode. Do not output any warnings or errors.\n\
 \n\
      -w      Client to wait for the listening server to become available.\n\
 \n\

@@ -101,6 +101,8 @@ pkt_cb_switch(uint8_t chn, const uint8_t *data, size_t len, void *arg)
 
 	memcpy(&hdr, data, sizeof hdr);
 	GS_FT_switch(ft, ntohl(hdr.id), ntohll(hdr.offset));
+	if (GS_FT_WANT_WRITE(ft))
+		GS_SELECT_FD_SET_W(peer->gs);
 }
 
 /* SERVER receiving DATA from client */
@@ -147,6 +149,13 @@ pkt_cb_error(uint8_t chn, const uint8_t *data, size_t len, void *arg)
 
 	memcpy(&hdr, data, sizeof hdr);
 	GS_FT_status(ft, ntohl(hdr.id), hdr.code, (char *)p->str, len - sizeof hdr - 1);
+	if (GS_FT_WANT_WRITE(ft))
+	{
+		// GS_FT-stack wants caller to call GS_FT_packet(). The only way we can
+		// trigger this is to set FD_SET_W() and we know that after select()
+		// we call GS_FT_packet()...
+		GS_SELECT_FD_SET_W(peer->gs);
+	}
 }
 
 // Output total stats
@@ -224,6 +233,7 @@ GS_FTM_mk_packet(GS_FT *ft, uint8_t *dst, size_t dlen)
 		// DEBUGF_G("TYPE NONE\n");
 		return 0;
 	case GS_FT_TYPE_DONE:
+		// DEBUGF_W("GS_FT_TYPE_DONE\n");
 		// CLIENT only: done with all files.
 		// FIXME: for a 'get' request this is triggered very late and not as soon
 		// as the filetransfer is done (because select() only waits for reading

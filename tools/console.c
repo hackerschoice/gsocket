@@ -47,6 +47,13 @@ static const char *sb_color = "\x1B[44m\x1B[30m"; // Black on Blue
 #define GS_CONSOLE_BUF_SIZE	    (1024)
 #define GS_CONDIS_ROWS          (GS_CONSOLE_ROWS - 2)
 
+enum _gs_ut_cursor_flags {
+	GS_UT_CURSOR_ON    = 0x01,
+	GS_UT_CURSOR_OFF   = 0x02
+};
+enum _gs_ut_cursor_flags ut_cursor;
+
+
 struct _console_info
 {
 	char statusbar[512];
@@ -141,15 +148,24 @@ tty_write(void *src, size_t len)
 static int is_cursor_in_console;
 
 static void
-console_cursor_off(void)
+cursor_to_ut(void)
 {
-	tty_write("\x1B""8", 2); // Move cursor to upper tier
+	char buf[64];
+	char *end = buf + sizeof (buf);
+	char *ptr = buf;
 
+	// If Upper Tier disabled the cursor then do NOT show it.
+	if (ut_cursor == GS_UT_CURSOR_OFF)
+		SXPRINTF(ptr, end - ptr, "\x1B[?25l");
+
+	SXPRINTF(ptr, end - ptr, "\x1B""8");
+
+	tty_write(buf, ptr - buf);
 	is_cursor_in_console = 0;
 }
 
 static void
-console_cursor_on(void)
+cursor_to_lt(void)
 {
 	char buf[64];
 	char *end = buf + sizeof (buf);
@@ -158,14 +174,19 @@ console_cursor_on(void)
 	int row = gopt.winsize.ws_row;
 	int col = 1 + GS_CONSOLE_PROMPT_LEN + MIN(rl.pos, rl.visible_len);
 
-	DEBUGF_W("Console Cursor ON (%d:%df)\n", row, col);
-	// ESC[?2004l = Reset bracketed paste mode
+	// DEBUGF_W("Cursor to CONSOLE (Lower Tier) (%d:%df)\n", row, col);
 	SXPRINTF(ptr, end - ptr, "\x1B[%d;%df", row, col);
+	// ESC[?2004l = Reset bracketed paste mode
 	if (is_console_cursor_needs_reset)
 	{
 		SXPRINTF(ptr, end - ptr, "\x1B[?2004l");
 		is_console_cursor_needs_reset = 0;
 	}
+
+	// If Upper Tier disabled the cursor then show it in console
+	// DEBUGF_R("ut-cursor = %d\n", ut_cursor);
+	if (ut_cursor == GS_UT_CURSOR_OFF)
+		SXPRINTF(ptr, end - ptr, "\x1B[?25h");
 
 	tty_write(buf, ptr - buf);
 
@@ -551,9 +572,7 @@ CONSOLE_check_esc(uint8_t c, uint8_t *submit)
  			if (gopt.is_console == 0)
  				return 0; // Ignore if no console
 
- 			console_cursor_off();
- 			// console_stop();
- 			// gopt.is_console = 0;
+ 			cursor_to_ut();
  			return 0;
  		case 'B': // DOWN
  			if (esc == 0)
@@ -561,7 +580,7 @@ CONSOLE_check_esc(uint8_t c, uint8_t *submit)
  			if (gopt.is_console == 0)
  				return 0; // Ignore if no console
  			// Arrow Down
- 			console_cursor_on();
+ 			cursor_to_lt();
  			return 0;
  		case GS_CONSOLE_ESC_CHR:
  		case GS_CONSOLE_ESC_LCHR:
@@ -634,117 +653,6 @@ static struct _pat cls_pattern[] = {
 	{"\x1B""c", 2, 4}        // Reset terminal to initial state
 };
 
-#ifdef DEBUG
-/*
- * For debugging only.
- * Find the next ansi sequence.
- * Return the length of the sequence. Set 'is_ansi' if it's an ansi sequence.
- * The sequence can be a non-ansi sequence (e.g. normal data) or an ansi sequnce.
- */
-static size_t 
-ansi_next(void *data, size_t len, int *is_ansi)
-{
-	static int in_esc;
-	static int in_esc_pos;
-	uint8_t *src = (uint8_t *)data;
-	uint8_t *src_orig = src;
-	uint8_t *src_end = src + len;
-
-	in_esc_pos = 0;
-	in_esc = 0;
-	*is_ansi = 0;
-	if (*src == '\x1B')
-	{
-		src++;
-		*is_ansi = 1;
-		in_esc = 1;
-	}
-
-	for (; src < src_end; src++)
-	{
-		if (in_esc == 0)
-		{
-			if (*src != '\x1B')
-				continue;
-
-			*is_ansi = 0;
-			return src - src_orig;
-		}
-
-		// HERE: in escape sequence
-		// Check when escape finishes
-		if (*src == '\x1B')
-			break;
-		in_esc_pos++;
-
-		if (in_esc_pos == 1)
-		{
-			// Check if multi character esc sequence
-			if (*src == '[')
-				continue;
-			if (*src == '(')
-				continue;
-			if (*src == ')')
-				continue;
-			if (*src == '#')
-				continue; // Esc-#2
-			if (*src == '6')
-				continue; // Esc-6n
-			if (*src == '5')
-				continue;
-			if (*src == '0')
-				continue;
-			if (*src == '3')
-				continue;
-
-			break;
-		}
-
-		if (in_esc_pos >= 2)
-		{
-			if ((*src >= '0') && (*src <= '9'))
-				continue;
-			if (*src == ';')
-				continue;
-			if (*src == '?')
-				continue;
-
-			break;
-		}
-
-		break;
-	}
-	return src - src_orig + 1;
-}
-
-// For debugging
-static void
-ansi_output(void *data, size_t len)
-{
-	uint8_t *src = (uint8_t *)data;
-	uint8_t *src_end = src + len;
-	int is_ansi;
-	size_t n;
-	char buf[64];
-
-	while (src < src_end)
-	{
-		n = ansi_next(src, src_end - src, &is_ansi);
-		XASSERT(n > 0, "n is 0\n");
-		if (is_ansi)
-		{
-			snprintf(buf, sizeof buf, "%.*s", (int)(n - 1), src + 1);
-			DEBUGF_B("ansi: %s\n", buf);
-		}
-		else
-			HEXDUMP(src, n);
-		src += n;
-	}
-}
-#endif
-
-static uint8_t cls_buf[8];
-static size_t cls_pos;
 /*
  * Parse output and check for a any terminal escape sequence that clears
  * the screen.
@@ -763,106 +671,235 @@ static size_t cls_pos;
  * unfinished ansi sequence).
  */
 
-static void
-ansi_parse(void *data, size_t len, size_t *amount, int *cls_code)
+// Parse through the ansi sequence until it is finished.
+// Return length of ansi sequence or 0 if more data is required (ansi sequence hasnt finished yet)
+static size_t
+ansi_until_end(uint8_t *src, size_t src_sz, int *ignore)
 {
-	static int in_esc;
-	static int in_esc_pos;
-	uint8_t *src = (uint8_t *)data;
+	uint8_t *src_end = src + src_sz;
 	uint8_t *src_orig = src;
-	uint8_t *src_end = src + len;
-	int rv = 0;
+
+	// Must start with ^[
+	XASSERT(*src == '\x1b', "src not starting with 0x1B (0x02%c)\n", *src);
+	src += 1;
+	*ignore = 0;
 
 	while (src < src_end)
 	{
 		if (*src == '\x1B')
 		{
-			in_esc = 1;
-			*amount = src - src_orig; 
-			in_esc_pos = 0;
-			/* Start of pattern */
-			cls_pos = 0;
-		} else {
-			if (in_esc == 0)
-				goto skip;  // ESC not yet encountered
+			// Huh? An ESC inside an ansi sequence?
+			*ignore = 1;
+			return src - src_orig;
 		}
 
-		// Check when escape finishes
-		while (in_esc != 0)
+		if (src > src_orig + 16)
 		{
-			if (*src == '\x1B')
-				break;
-			in_esc_pos++;
-
-			if (in_esc_pos == 1)
-			{
-				// Check if multi character esc sequence
-				if (*src == '[')
-					break;
-				if (*src == '(')
-					break;
-				if (*src == ')')
-					break;
-				if (*src == '#')
-					break; // Esc-#2
-				if (*src == '6')
-					break; // Esc-6n
-				if (*src == '5')
-					break;
-				if (*src == '0')
-					break;
-				if (*src == '3')
-					break;
-			}
-
-			if (in_esc_pos >= 2)
-			{
-				if ((*src >= '0') && (*src <= '9'))
-					break;
-				if (*src == ';')
-					break;
-				if (*src == '?')
-					break;
-			}
-
-			// *src is last character of escape sequence
-			in_esc = 0;
-			break;
+			// ESC sequence is to long. We are not interested....
+			*ignore = 1;
+			return src - src_orig;
 		}
 
-		// None of our sequences is longer than this.
-		if (cls_pos >= sizeof cls_buf)
-			goto skip;
-
-		/* Record sequence */
-		cls_buf[cls_pos] = *src;
-		cls_pos++;
-
-		// Any sequence we are interested in is at least 2 chars long
-		if (cls_pos < 2)
-			goto skip;
-
-		//Check if any ESC sequence matches
-		int i;
-		for (i = 0; i < sizeof cls_pattern / sizeof *cls_pattern; i++)
+		// Check if this is the end of an ansi sequence
+		if ((*src >= 'a') && (*src <= 'z'))
 		{
-			if (cls_pattern[i].len != cls_pos)
-				continue;
-			if (memcmp(cls_pattern[i].data, cls_buf, cls_pos) != 0)
-				continue;
-			rv = cls_pattern[i].type;
-			cls_pos = 0;
+			src++;
+			return src - src_orig;
 		}
-skip:
+
+		if ((*src >= 'A') && (*src <= 'Z'))
+		{
+			src++;
+			return src - src_orig;
+		}
+
 		src++;
 	}
-	// Not stuck inside esc sequence.
-	if (in_esc == 0)
-		*amount = len;
 
-	*cls_code = rv;
+	return 0; // Not enough data // src - src_orig;
 }
 
+static size_t
+ansi_until_esc(uint8_t *src, size_t src_sz, int *in_esc)
+{
+	uint8_t *src_end = src + src_sz;
+	uint8_t *src_orig = src;
+
+	while (src < src_end)
+	{
+		if (*src == '\x1B')
+		{
+			*in_esc = 1;
+			// DEBUGF("at pos %zd=0x%02x\n", src - src_orig, *src);
+			break;
+		}
+		src++;
+	}
+
+	return src - src_orig;
+}
+
+static int in_esc;
+
+// Parse 'src' for an ansi sequence that we might be interested in.
+// *tail_len contains a number of bytes if there is an incomplete ansi-sequence (and we
+// do not have enough data yet)
+//
+// Return: Length of data in dst.
+static void
+ansi_parse(uint8_t *src, size_t src_sz, GS_BUF *dst, size_t *tail_len, int *cls_code)
+{
+	uint8_t *src_end = src + src_sz;
+	size_t len;
+	int ignore;
+
+	*tail_len = 0;
+	while (src < src_end)
+	{
+		if (in_esc)
+		{
+			len = ansi_until_end(src, src_end - src, &ignore);
+			// DEBUGF("esc len=%zd, ignore=%d, dst=%zd, left=%zd\n", len, ignore, GS_BUF_USED(dst), src_end - src);
+			if (len == 0)
+			{
+				// Not enough data
+				DEBUGF_R("Not Enough Data. TAIL %zd\n", src_end - src);
+				DEBUGF("esc len=%zd, ignore=%d, dst=%zd, left=%zd\n", len, ignore, GS_BUF_USED(dst), src_end - src);
+				HEXDUMP(src, src_end - src);
+				*tail_len = src_end - src;
+				return; //break;
+			}
+
+			in_esc = 0;
+#ifdef DEBUG
+			// Output some ANSI but ignore some often re-occuring codes:
+			while (1)
+			{
+				if (len <= 4)
+					break;  // Ignore short ones...like [1m
+				if ((len == 8) && (src[7] == 'm'))
+					break; // Ingore [39;49m to debug 'top'
+				DEBUGF_B("ANSI %.*s\n", (int)len -1, src+1);
+				break;
+			}
+#endif
+			if (ignore)
+			{
+				GS_BUF_add_data(dst, src, len);
+				src += len;
+				continue;
+			}
+
+			// Check if the Upper Tier (ut) wants the cursor prompt ON or OFF
+			// Check for this even if the console is closed so that when we open the console
+			// that the right cursor can be displayed
+			int is_substitute = 0;
+			while (len == 6)
+			{
+				if (memcmp(src + 1, "[?25l", 5) == 0)
+					ut_cursor = GS_UT_CURSOR_OFF; // OFF
+				else if (memcmp(src + 1, "[?25h", 5) == 0)
+					ut_cursor = GS_UT_CURSOR_ON; // ON
+				else
+					break;
+
+				// DEBUGF_R("ut_cursor=%d, in-console=%d\n", ut_cursor, is_cursor_in_console);
+				// If cursor is in console then ignore all requests
+				if (is_cursor_in_console)
+				{
+					is_substitute = 1;
+					src += len;
+					break;
+				}
+				break;
+			}
+			if (is_substitute)
+				continue;
+
+			// Check for Bracketed paste mode [?2004l
+			if (len == 8)
+			{
+				if (memcmp(src + 1, "[?2004l", 7) == 0)
+					is_console_cursor_needs_reset = 0;
+				else if (memcmp(src + 1, "[?2004h", 7) == 0)
+					is_console_cursor_needs_reset = 1;
+			}
+
+
+			// If console is not open then we do not have to check any other ansi symboles
+			if (gopt.is_console == 0)
+			{
+				GS_BUF_add_data(dst, src, len);
+				src += len;
+				continue;
+			}
+
+			// Check if this was a cursor-position request that moved the course
+			// outside its boundary (and into our console, like debian's top does (!))
+			//  '\x1b' + '[1;1h'
+			is_substitute = 0;
+			while (1)
+			{
+				if (len < 6)
+					break;
+				// DEBUGF_W("len %d\n", len);
+				if ((src[len-1] != 'H') && (src[len-1] != 'h'))
+					break;
+				// search for ';' between src+2 and src+len
+				uint8_t *ptr = src+2;
+				for (ptr = src + 2; ptr < src+len; ptr++)
+				{
+					if (*ptr == ';')
+						break;
+				}
+				if (*ptr != ';')
+					break;
+
+				int row = atoi((char *)src+2);
+				int col = atoi((char *)ptr+1);
+				// DEBUGF_W("pos %d:%d\n", row, col);
+ 				if (row > gopt.winsize.ws_row - GS_CONSOLE_ROWS)
+				{
+					char buf[32];
+					snprintf(buf, sizeof buf, "\x1B[%d;%dH\r\n", gopt.winsize.ws_row - GS_CONSOLE_ROWS, col);
+					DEBUGF_R("DENIED. Changed to: %s\n", buf + 1);
+
+					GS_BUF_add_data(dst, buf, strlen(buf));
+					src += len;
+					is_substitute = 1;
+				}
+				break;
+			}
+			if (is_substitute)
+				continue;
+
+			// Check for any ANSI sequence that may have cleared the screen:
+			int i;
+			for (i = 0; i < sizeof cls_pattern / sizeof *cls_pattern; i++)
+			{
+				if (cls_pattern[i].len != len)
+					continue;
+				if (memcmp(cls_pattern[i].data, src, len) != 0)
+					continue;
+				DEBUGF_W("CLS found %d\n", cls_pattern[i].type);
+				*cls_code = cls_pattern[i].type;
+			}
+
+			// We are not interested to substitute it. Let it pass through.
+			GS_BUF_add_data(dst, src, len);
+			src += len;
+		} else {
+			// DEBUGF_Y("#%zd not in esc\n", src - src_orig);
+			len = ansi_until_esc(src, src_end - src, &in_esc);
+			GS_BUF_add_data(dst, src, len);
+			src += len; // *src points to ESC or is done.
+		}
+
+	}
+}
+
+GS_BUF g_dst;
+GS_BUF g_ansi;
 /*
  * Buffered write to ansi terminal. All output to terminal needs to be analyzed
  * and checked for 'clear screen' ansi code. If found then the console needs
@@ -879,49 +916,58 @@ skip:
  * - If half way inside an ansi sequence then buffer the remaining
  * - Also return if an ansi sequence was sent that clears the screen
  */
-static uint8_t ansi_buf[64];
-static size_t ansi_buf_len;
 
+// Parse ANSI:
+// 1. Find any ansi sequence that clears the screen (so we know when to draw our console again)
+// 2. Substitute ESC-sequences with our own to stop console from getting fucked.
+// 3. If the ESC-sequence stops half way then write *dst and record
+//    the remaining sequence (if we have that much space)
 static ssize_t
-ansi_write(int fd, void *data, size_t len, int *cls_code)
+ansi_write(int fd, void *src, size_t src_len, int *cls_code)
 {
-	size_t amount = 0;
+	// size_t amount = 0;
+	size_t tail_len = 0;
+	size_t src_len_orig = src_len;
 
-	ansi_parse(data, len, &amount, cls_code);
-	// DEBUGF_W("len = %zd amount = %zd\n", len, amount);
-	if (amount == 0)
-		goto done;
-	if (ansi_buf_len > 0)
+	if (!GS_BUF_IS_INIT(&g_dst))
 	{
-		if (write(fd, ansi_buf, ansi_buf_len) != ansi_buf_len)
+		GS_BUF_init(&g_dst, 1024);
+		GS_BUF_init(&g_ansi, 1024);
+	}
+
+	if (GS_BUF_USED(&g_ansi) > 0)
+	{
+		GS_BUF_add_data(&g_ansi, src, src_len);
+		src = GS_BUF_DATA(&g_ansi);
+		src_len = GS_BUF_USED(&g_ansi);
+	}
+
+	// HEXDUMP(src, src_len);
+	ansi_parse(src, src_len, &g_dst, &tail_len, cls_code);
+
+	if (GS_BUF_USED(&g_dst) > 0)
+	{
+		if (write(fd, GS_BUF_DATA(&g_dst), GS_BUF_USED(&g_dst)) != GS_BUF_USED(&g_dst))
+		{
+			DEBUGF_R("Failed to write() all data...\n"); // SHOULD NOT HAPPEN
 			return -1;
-		ansi_buf_len = 0;
+		}
 	}
+	GS_BUF_empty(&g_dst);
+	GS_BUF_empty(&g_ansi);
 
-	if (write(fd, data, amount) != amount)
-		return -1;
-#ifdef DEBUG
-	// ansi_output(data, amount);
-#endif
-
-	if (amount < len)
+	if (tail_len > 0)
 	{
-		uint8_t *end = ansi_buf + sizeof (ansi_buf);
-		uint8_t *ptr = ansi_buf + ansi_buf_len;
-
-		XASSERT(end - ptr >= len - amount, "ANSI buffer to small\n");
-
-		memcpy(ptr, (uint8_t *)data + amount, len - amount);
-		ansi_buf_len += (len - amount);
-		// HEXDUMPF(ansi_buf, ansi_buf_len, "ansi buffer (%zd)", ansi_buf_len);
+		// Use memmove() here because src might be pointing to same data but further along
+		GS_BUF_memmove(&g_ansi, src + src_len - tail_len, tail_len);
 	}
 
-done:
+
 	// From the caller's perspective this function has processed all data
 	// and this function will buffer (if needed) any data not yet passed
 	// to 'write()'. Thus return 'len' here to satisfy caller that all supplied
 	// data is or will be processed.
-	return len;
+	return src_len_orig;
 }
 
 static int is_console_before_sb;  // before Alternate Screen Buffer
@@ -953,15 +999,22 @@ CONSOLE_write(int fd, void *data, size_t len)
 
 	/* Move cursor to upper tier if cursor inside console */
 	if (is_cursor_in_console)
-		tty_write("\x1B""8", 2); // Restore cursor to upper tier
+	{
+		if (ut_cursor == GS_UT_CURSOR_OFF)
+			tty_write("\x1B[?25l\x1B""8", 6+2); // Restore cursor to upper tier
+		else
+			tty_write("\x1B""8", 2); // Restore cursor to upper tier
+	}
 
 	ssize_t sz;
 	sz = ansi_write(fd, data, len, &is_detected_clearscreen);
+	if (gopt.is_console == 0)
+		return sz;
 
 	// The write() to upper tier may have set some funky paste modes
 	// and we need to reset this for console input.
-	if (sz > 0)
-		is_console_cursor_needs_reset = 1;
+	// if (sz > 0)
+		// is_console_cursor_needs_reset = 1;
 
 	// if (len > 16)
 		// HEXDUMP(data, MIN(16, len));
@@ -998,16 +1051,17 @@ CONSOLE_write(int fd, void *data, size_t len)
 			console_start();
 	}
 
-	if (gopt.is_console == 0)
-		return sz;
+	// if (gopt.is_console == 0)
+	// 	return sz;
 
 	if (is_detected_clearscreen)
+	{
 	 	console_draw(fd, 1 /*force*/);
+	}
 
 	 if (is_cursor_in_console)
 	 {
-	 	DEBUGF("is_cursor_in_console is true\n");
-	 	console_cursor_on();
+	 	cursor_to_lt();
 	 }
 
 	return sz;
@@ -1092,8 +1146,11 @@ console_start(void)
 	SXPRINTF(ptr, end - ptr, "\x1b[1;%dr", row);
 	// Restore cursor to saved location
 	SXPRINTF(ptr, end - ptr, "\x1B""8");
-
 	tty_write(buf, ptr - buf);
+
+	gopt.is_console = 1;
+
+	cursor_to_lt(); // Start with cursor in console
 }
 
 /*
@@ -1111,10 +1168,15 @@ console_stop(void)
 	SXPRINTF(ptr, end - ptr, "\x1B[J");
 	// Reset scroll size
 	SXPRINTF(ptr, end - ptr, "\x1B[r");
+	// Upper Tier wants cursor OFF
+	if (ut_cursor == GS_UT_CURSOR_OFF)
+		SXPRINTF(ptr, end - ptr, "\x1B[?25l");
 	// Restore cursor to upper tier (shell)
 	SXPRINTF(ptr, end - ptr, "\x1B""8");
+
 	tty_write(buf, ptr - buf);
 	is_cursor_in_console = 0;
+	gopt.is_console = 0;
 }
 
 /*
@@ -1160,12 +1222,10 @@ CONSOLE_action(struct _peer *p, uint8_t key)
 		{
 			// Close console and restore cursor
 			console_stop();
-			gopt.is_console = 0;
 			return 0;
 		}
 
 		console_start();
-		gopt.is_console = 1;
 
 		GS_condis_pos(&gs_condis, (gopt.winsize.ws_row - GS_CONSOLE_ROWS) + 1 + 1, gopt.winsize.ws_col);
 		if (is_console_welcome_msg == 0)
@@ -1177,7 +1237,6 @@ CONSOLE_action(struct _peer *p, uint8_t key)
 			GS_condis_add(&gs_condis, 0, "Type 'help' for a list of commands.");
 			is_console_welcome_msg = 1;
 		}
-		console_cursor_on(); // Start with cursor in console
 		// Draw console needed? Resizing remote will trigger a CLEAR (=> re-draw)
 		mk_statusbar();
 		console_draw(p->fd_out, 1);

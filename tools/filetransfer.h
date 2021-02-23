@@ -44,6 +44,7 @@ struct _gs_ft_stats_file
 	const char *fname;
 	uint64_t xfer_duration; // Actual transfer time (without suspension)
 	uint64_t xfer_amount;   // Actual data transfered
+	int is_zero;
 	char speed_str[GS_FT_SPEEDSTR_MAXSIZE];     // Speed (bps). Human readable string.
 };
 
@@ -114,9 +115,7 @@ typedef struct
 	int is_paused_data;    // write() blocked. Queue control data. Pause sending file data
 
 	int n_files_waiting;   // Files waiting for completion or error FIXME: This should be n_requests_waiting
-	int is_want_write;
-	// ..and be a counter of all outstanding requests we are awaiting an answer for....
-	// int n_listreply_waiting;
+	int is_want_write;     // FT has data to write. Requesting call to GS_FT_packet().
 
 	// Statistics total (all files)
 	GS_FT_stats stats;
