@@ -30,6 +30,7 @@
 
 #define GS_CON_SB_MAX_USERLEN	8  // StatusBar Max User Len
 
+static void console_reset(void);
 static void console_start(void);
 static void console_stop(void);
 static int console_command(struct _peer *p, const char *cmd);
@@ -147,6 +148,8 @@ tty_write(void *src, size_t len)
 
 static int is_cursor_in_console;
 
+// For the upper tier we do not know the coordinates.
+// Rely on Saved-cursor position instead.
 static void
 cursor_to_ut(void)
 {
@@ -158,12 +161,14 @@ cursor_to_ut(void)
 	if (ut_cursor == GS_UT_CURSOR_OFF)
 		SXPRINTF(ptr, end - ptr, "\x1B[?25l");
 
-	SXPRINTF(ptr, end - ptr, "\x1B""8");
+	DEBUGF_C("cursor-restore (cursor_to_upper_tier)\n");
+	SXPRINTF(ptr, end - ptr, "\x1B""8"); // Restore cursor
 
 	tty_write(buf, ptr - buf);
 	is_cursor_in_console = 0;
 }
 
+// For the lower tier we know exactly our cordinates.
 static void
 cursor_to_lt(void)
 {
@@ -344,8 +349,6 @@ CONSOLE_resize(struct _peer *p)
 	if (gopt.is_console)
 	{
 		delta = gopt.winsize.ws_row - gopt.winsize_prev.ws_row;
-		// FIXME-resize-cursor: On some shells this is not working right.
-		// for example: cursor in console. Make 1x shorter. 1x longer.
 		if (delta > 0)
 		{
 			// Longer:
@@ -384,6 +387,7 @@ CONSOLE_resize(struct _peer *p)
 				SXPRINTF(ptr, end - ptr, "\x1B""8""\x1B[%dA", 0-delta);
 			}
 		}
+		// do nothing if idendical (no change)
 		tty_write(buf, ptr - buf);
 	}
 
@@ -465,14 +469,23 @@ console_draw(int fd, int force)
 	if (gopt.is_console == 0)
 		return;
 
-	int cursor_to_prompt = 0;
-	cursor_to_prompt += ci.is_sb_redraw_needed;
-	cursor_to_prompt += gs_condis.is_redraw_needed;
-	cursor_to_prompt += ci.is_prompt_redraw_needed;
-	// DEBUGF_W("CONSOLE DRAW (force=%d, cursor-to-prompt=%d)\n", force, cursor_to_prompt);
+	int redraw_needed = 0;
+	redraw_needed += ci.is_sb_redraw_needed;
+	redraw_needed += gs_condis.is_redraw_needed;
+	redraw_needed += ci.is_prompt_redraw_needed;
+	// DEBUGF_W("CONSOLE DRAW (force=%d, redraw_needed=%d, cursor-in-console=%d)\n", force, redraw_needed, is_cursor_in_console);
+
+	if ((force == 0) && (redraw_needed == 0))
+	{
+		// DEBUGF("nothing to draw..\n");
+		return;
+	}
 
 	if (is_cursor_in_console == 0)
+	{
+		// DEBUGF_G("saving cursor (draw)\n");
 		tty_write("\x1B""7", 2);  // Save position (upper tier)
+	}
 
 	// Status Bar (Normally black on blue)
 	GS_sb_draw(force);
@@ -487,9 +500,10 @@ console_draw(int fd, int force)
 	if (is_cursor_in_console == 0)
 	{
 		tty_write("\x1B""8", 2);  // Restore position (upper tier)
+		// DEBUGF_G("C restored...(draw)\n");
 	} else {
-		if (cursor_to_prompt)
-			GS_prompt_cursor();
+		// if (redraw_needed)
+		GS_prompt_cursor();
 	}
 }
 
@@ -572,6 +586,7 @@ CONSOLE_check_esc(uint8_t c, uint8_t *submit)
  			if (gopt.is_console == 0)
  				return 0; // Ignore if no console
 
+			DEBUGF_G("^E-UP received. Calling cursor_to_ut()\n");
  			cursor_to_ut();
  			return 0;
  		case 'B': // DOWN
@@ -584,7 +599,7 @@ CONSOLE_check_esc(uint8_t c, uint8_t *submit)
  			return 0;
  		case GS_CONSOLE_ESC_CHR:
  		case GS_CONSOLE_ESC_LCHR:
- 			DEBUGF_Y("esc-chr (last = 0x%02x)\n", chr_last);
+			DEBUGF_Y("esc-chr (last=0x%02x, this=0x%02x)\n", GS_CONSOLE_ESC, c);
  			*submit = GS_CONSOLE_ESC;
  			return -1;
  		case GS_CONSOLE_ESC:  // ^E + ^E
@@ -648,9 +663,11 @@ static struct _pat cls_pattern[] = {
 	{"\x1B[0J", 4, 1},     // Clear screen from cursor down
 	{"\x1B[J", 3, 1},      // Clear screen from cursor down
 	{"\x1B[2J", 4, 1},     // Clear entire screen
-	{"\x1B[?1049h", 8, 2}, // Switch Alternate Screen Buffer (clears screen)
-	{"\x1B[?1049l", 8, 3}, // Switch Normal Screen Buffer (clears screen)
 	{"\x1B""c", 2, 4}        // Reset terminal to initial state
+};
+static struct _pat sb_pattern[] = {
+	{"\x1B[?1049h", 8, 2}, // Switch Alternate Screen Buffer (clears screen)
+	{"\x1B[?1049l", 8, 3} // Switch Normal Screen Buffer (clears screen)
 };
 
 /*
@@ -747,7 +764,7 @@ static int in_esc;
 //
 // Return: Length of data in dst.
 static void
-ansi_parse(uint8_t *src, size_t src_sz, GS_BUF *dst, size_t *tail_len, int *cls_code)
+ansi_parse(uint8_t *src, size_t src_sz, GS_BUF *dst, size_t *tail_len, int *cls_code, int *sb_code)
 {
 	uint8_t *src_end = src + src_sz;
 	size_t len;
@@ -775,10 +792,14 @@ ansi_parse(uint8_t *src, size_t src_sz, GS_BUF *dst, size_t *tail_len, int *cls_
 			// Output some ANSI but ignore some often re-occuring codes:
 			while (1)
 			{
-				if (len <= 4)
-					break;  // Ignore short ones...like [1m
+				// if (len <= 4)
+					// break;  // Ignore short ones...like [1m
 				if ((len == 8) && (src[7] == 'm'))
 					break; // Ingore [39;49m to debug 'top'
+				if ((len == 5) && (src[4] == 'm'))
+					break; // Ingore [39m to debug 'mc'
+				if ((len == 4) && (src[3] == 'm'))
+					break; // Ingore [1m to debug
 				DEBUGF_B("ANSI %.*s\n", (int)len -1, src+1);
 				break;
 			}
@@ -834,6 +855,19 @@ ansi_parse(uint8_t *src, size_t src_sz, GS_BUF *dst, size_t *tail_len, int *cls_
 				continue;
 			}
 
+			if ((len == 3) && memcmp(src + 1, "[r", 2) == 0)
+			{
+				DEBUGF_R("Scrolling area reset received.\n");
+				if (gopt.is_console)
+				{
+					char buf[32];
+					snprintf(buf, sizeof buf, "\x1B[1;%dr", gopt.winsize.ws_row - GS_CONSOLE_ROWS);
+					GS_BUF_add_data(dst, buf, strlen(buf));
+					src += len;
+					continue;
+				}
+			}
+
 			// Check if this was a cursor-position request that moved the course
 			// outside its boundary (and into our console, like debian's top does (!))
 			//  '\x1b' + '[1;1h'
@@ -885,6 +919,26 @@ ansi_parse(uint8_t *src, size_t src_sz, GS_BUF *dst, size_t *tail_len, int *cls_
 				*cls_code = cls_pattern[i].type;
 			}
 
+			// Check for any ANSI sequence that changed Screen Buffer
+			for (i = 0; i < sizeof sb_pattern / sizeof *sb_pattern; i++)
+			{
+				if (sb_pattern[i].len != len)
+					continue;
+				if (memcmp(sb_pattern[i].data, src, len) != 0)
+					continue;
+				// Handle if we receive [?1049h + [?1049l in one go then do nothing.
+				if (*sb_code == 0)
+				{
+					*sb_code = sb_pattern[i].type;
+				} else {
+					if (*sb_code != sb_pattern[i].type)
+						*sb_code = 0;
+					else
+						*sb_code = sb_pattern[i].type;
+				}
+				DEBUGF_W("SB change found (%d), sb_code set to %d\n", sb_pattern[i].type, *sb_code);
+			}
+
 			// We are not interested to substitute it. Let it pass through.
 			GS_BUF_add_data(dst, src, len);
 			src += len;
@@ -923,7 +977,7 @@ GS_BUF g_ansi;
 // 3. If the ESC-sequence stops half way then write *dst and record
 //    the remaining sequence (if we have that much space)
 static ssize_t
-ansi_write(int fd, void *src, size_t src_len, int *cls_code)
+ansi_write(int fd, void *src, size_t src_len, int *cls_code, int *sb_code)
 {
 	// size_t amount = 0;
 	size_t tail_len = 0;
@@ -943,7 +997,7 @@ ansi_write(int fd, void *src, size_t src_len, int *cls_code)
 	}
 
 	// HEXDUMP(src, src_len);
-	ansi_parse(src, src_len, &g_dst, &tail_len, cls_code);
+	ansi_parse(src, src_len, &g_dst, &tail_len, cls_code, sb_code);
 
 	if (GS_BUF_USED(&g_dst) > 0)
 	{
@@ -984,22 +1038,38 @@ static int is_console_before_sb;  // before Alternate Screen Buffer
  * -> Still need to parse all output to check when we switch back to normal
  *    buffer. The console was VISIBILE before we entered 'top' and now
  *    need to be diabled after exiting 'top'.
- * FIXME: mc issue such as these
+ * Midnight commander:
  * - console is visible
  * - launch mc. mc does not use Screen Buffer (as it should!) but instead remembers
  *   the max screen size.
  * - while in mc, turn the console off. Then exit mc.
  * - mc will set the scroll area as when the console was visibile (but it aint
  *   anymore).
+ *
+ * FIXME unsolved nested console problem:
+ * - Both consoles fight to use ^[8 to restore the cursor.
+ *   Start outter gs-netcat. Open console.
+ *   Start inner gs-netcat (from within outter). Open console. Cursor moved to prompt (inner).
+ *   Outter updates its StatusBar (every second): Save cursor. Update. Restore cursor (to inner's prompt).
+ *   Press CTRL-E CTRL-E UP and inner gs-netcat tries to move cursor
+ *   to Upper Tier (restore cursor).
+ *   However, that stored cursor position was overwritten by the outter when the outter's
+ *   Status Bar was updated (cursor was at inner's prompt).
+ * - Workaround: Always leave cursor in up-most tier. Use a 'fake' cursor for the console
+ *   (like '_') and if cursor is supposed to be in the console then make it invisible
+ *   in upper tier (but move it back to upper tier [while invisilbe] as soon as console
+ *   update is completed).
  */
 ssize_t
 CONSOLE_write(int fd, void *data, size_t len)
 {
 	int is_detected_clearscreen = 0;
+	int is_sb_detected = 0;
 
 	/* Move cursor to upper tier if cursor inside console */
 	if (is_cursor_in_console)
 	{
+		// DEBUGF_C("CURSOR-restore\n");
 		if (ut_cursor == GS_UT_CURSOR_OFF)
 			tty_write("\x1B[?25l\x1B""8", 6+2); // Restore cursor to upper tier
 		else
@@ -1007,40 +1077,39 @@ CONSOLE_write(int fd, void *data, size_t len)
 	}
 
 	ssize_t sz;
-	sz = ansi_write(fd, data, len, &is_detected_clearscreen);
-	if (gopt.is_console == 0)
-		return sz;
+	sz = ansi_write(fd, data, len, &is_detected_clearscreen, &is_sb_detected);
 
-	// The write() to upper tier may have set some funky paste modes
-	// and we need to reset this for console input.
-	// if (sz > 0)
-		// is_console_cursor_needs_reset = 1;
-
-	// if (len > 16)
-		// HEXDUMP(data, MIN(16, len));
+	// The write() to upper tier may have set some funky paste modes and
+	// screen-buffer modes. Track this (even if console is currently
+	// closed - because it may have been closed while in a screen-buffer).
 
 	if (is_cursor_in_console)
+	{
+		// DEBUGF_C("CURSOR-save\n");
 		tty_write("\x1B""7", 2);  // Save new cursor position after writing to upper tier
+	}
 
 
 	// Now check if console needs to be re-drawn
-	if (is_detected_clearscreen == 2)
+	if (is_sb_detected == 2)
 	{
 		// Switch to Alternate Screen Buffer detected
 		is_console_before_sb = gopt.is_console;
+		DEBUGF_W("saving is_console=%d\n", gopt.is_console);
 	}
 
 	// DEBUGF_G("cls = %d iscon-before = %d, iscon-now %d\n", is_detected_clearscreen, is_console_before_sb, gopt.is_console);
-	if (is_detected_clearscreen == 3)
+	if (is_sb_detected == 3)
 	{
 		// Switched to Normal Screen Buffer detected
+		DEBUGF_W("saved-is-console=%d, is_console=%d\n", is_console_before_sb, gopt.is_console);
 		if (is_console_before_sb != gopt.is_console)
 		{
 			// Console has changed while operating on screen buffer
 			if (gopt.is_console == 0)
 				console_stop();
 			else
-				console_start();
+				console_reset();
 		}
 	}
 
@@ -1048,21 +1117,18 @@ CONSOLE_write(int fd, void *data, size_t len)
 	{
 		DEBUGF_R("RESET of terminal detected.\n");
 		if (gopt.is_console)
-			console_start();
+			console_reset();
 	}
 
-	// if (gopt.is_console == 0)
-	// 	return sz;
+	// Now we can safely return (after we tracked the ansi codes).
+	if (gopt.is_console == 0)
+		return sz;
 
-	if (is_detected_clearscreen)
-	{
+	if ((is_detected_clearscreen) || (is_sb_detected))
 	 	console_draw(fd, 1 /*force*/);
-	}
 
-	 if (is_cursor_in_console)
-	 {
+	if (is_cursor_in_console)
 	 	cursor_to_lt();
-	 }
 
 	return sz;
 }
@@ -1090,8 +1156,11 @@ CONSOLE_readline(struct _peer *p, void *data, size_t len)
 	for (; src < s_end; src++)
 	{
 		rv = GS_RL_add(&rl, *src, &key, gopt.winsize.ws_row, 1 + GS_CONSOLE_PROMPT_LEN);
-		if (write(fd, rl.esc_data, rl.esc_len) != rl.esc_len)
-			ERREXIT("write()\n");
+		if (rl.esc_len > 0)
+		{
+			if (write(fd, rl.esc_data, rl.esc_len) != rl.esc_len)
+				ERREXIT("write()\n");
+		}
 
 		if (rv < 0)
 		{
@@ -1108,7 +1177,7 @@ CONSOLE_readline(struct _peer *p, void *data, size_t len)
 				GS_condis_down(&gs_condis);
 				CONSOLE_draw(gs_condis.fd);
 			}
-			/* Unhandled control character */
+			// Unhandled control character (ignore for input)
 			continue;
 		}
 	}
@@ -1125,9 +1194,10 @@ CONSOLE_readline(struct _peer *p, void *data, size_t len)
 /*
  * Set up terminal to display console (e.g. scroll upper tier up
  * and save cursor location of upper tier).
+ * Called when console starts or when change in screenbuffer is detected.
  */
 static void
-console_start(void)
+console_reset(void)
 {
 	char buf[GS_CONSOLE_BUF_SIZE];
 	char *end = buf + sizeof (buf);
@@ -1147,6 +1217,12 @@ console_start(void)
 	// Restore cursor to saved location
 	SXPRINTF(ptr, end - ptr, "\x1B""8");
 	tty_write(buf, ptr - buf);
+}
+
+static void
+console_start(void)
+{
+	console_reset();
 
 	gopt.is_console = 1;
 
@@ -1430,7 +1506,6 @@ console_command(struct _peer *p, const char *cmd)
 	char *end = buf + sizeof (buf);
 	char *ptr;
 	const char *arg;
-	int row = gopt.winsize.ws_row - (GS_CONSOLE_ROWS - 1);
 
 	if (strlen(cmd) <= 0)
 		return 0;
@@ -1494,7 +1569,7 @@ console_command(struct _peer *p, const char *cmd)
 	}
 
 	ptr = buf;
-	SXPRINTF(ptr, end - ptr, "\x1B[%d;%zuf\x1B[K", row + GS_CONSOLE_ROWS, 1 + GS_CONSOLE_PROMPT_LEN);
+	SXPRINTF(ptr, end - ptr, "\x1B[%d;%zuf\x1B[K", gopt.winsize.ws_row, 1 + GS_CONSOLE_PROMPT_LEN);
 	tty_write(buf, ptr - buf);
 
 	return 0;

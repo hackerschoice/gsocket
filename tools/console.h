@@ -14,7 +14,7 @@
 #define GS_CONSOLE_ESC_LCHR 'e'
 #define GS_CONSOLE_ESC_STR  "^E"
 
-#define GS_CONSOLE_ROWS     (8)    // 1x Line + 4 real rows
+#define GS_CONSOLE_ROWS     (8)    // Status-bar + Display + Prompt
 
 ssize_t CONSOLE_write(int fd, void *data, size_t len);
 int CONSOLE_check_esc(uint8_t c, uint8_t *submit);
