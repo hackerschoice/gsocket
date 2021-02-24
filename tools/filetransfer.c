@@ -858,7 +858,7 @@ GS_FT_data(GS_FT *ft, const void *data, size_t len)
 	if (f->fz_local + len > f->fz_remote)
 	{
 		DEBUGF_R("More data than we want (%"PRIu64")! (fz_local=%"PRIu64", len == %zu, fz_remote = %"PRIu64"\n", f->fz_local + len - f->fz_remote, f->fz_local, len, f->fz_remote);
-		HEXDUMP((uint8_t *)data + (f->fz_remote - f->fz_local), f->fz_local + len - f->fz_remote);
+		HEXDUMP((uint8_t *)data + (f->fz_remote - f->fz_local), (size_t)(f->fz_local + len - f->fz_remote));
 		len = f->fz_remote - f->fz_local; // truncating
 	}
 

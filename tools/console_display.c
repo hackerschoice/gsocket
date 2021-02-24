@@ -154,8 +154,8 @@ GS_condis_draw(GS_CONDIS *cd, int force)
 	{
 		if (cd->is_redraw_needed == 0)
 			return;
-		cd->is_redraw_needed = 0;
 	}
+	cd->is_redraw_needed = 0;
 
 	char buf[1024];
 	char *end = buf + sizeof (buf) - 1; // Space for \n
