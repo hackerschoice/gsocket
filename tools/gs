@@ -1,0 +1,50 @@
+#! /usr/bin/env bash
+
+gs_init()
+{
+	GS_NETCAT_BIN="gs-netcat"
+	BIN="${BASEDIR}/${GS_NETCAT_BIN}"
+	[[ -f "${BIN}" ]] && GS_NETCAT_BIN="${BIN}"
+	# shellcheck disable=SC2034 # appears unused. Verify use (or export if used externally).
+	EXE=""
+	if [[ x"$OSTYPE" == "xcygwin"* ]]; then
+		EXE=".exe"
+	fi
+
+	GS_SO_BIN="${BASEDIR}/gs_so${EXE}"
+	[[ -f "${GS_SO_BIN}" ]] || { echo >&2 "${GS_SO_BIN} not found."; exit 2; }
+
+	# To find sftp-server in PREFIX/lib
+	PREFIX="$(cd "$(dirname "${0}")/../" || exit; pwd)"
+
+
+	command -v "${GS_NETCAT_BIN}" >/dev/null 2>&1 || { echo >&2 "${GS_NETCAT_BIN} not found. Check PATH=?"; exit 1; }
+}
+
+
+# Try to use the gs-netcat that's in the same directory as this executable.
+BASEDIR="$(cd "$(dirname "${0}")" || exit; pwd)"
+gs_init $@
+
+if [[ x"$OSTYPE" == "xdarwin"* ]]; then
+	# OSX does not allow LD_PRELOAD of binaries in /usr/. Copy to tmp...
+	ROOTDIR=$(mktemp -d -t thc-gs)
+	PBIN_FULLPATH=$(which $1)
+	[[ $? -ne 0 ]] && { $1; exit 1; }
+	# FIXME: temp file only cleaned on reboot. Hmm...
+	cp "${PBIN_FULLPATH}" "${ROOTDIR}/" &>/dev/null
+else
+	ROOTDIR=""
+fi
+PBIN_NAME="$(basename "${1}")"
+PBIN="${ROOTDIR}/${PBIN_NAME}"
+shift 1
+
+echo "${PRELOAD}" "${PBIN}" $@
+
+if [[ x"$OSTYPE" == "xdarwin"* ]]; then
+	DYLD_INSERT_LIBRARIES=${GS_SO_BIN} DYLD_FORCE_FLAT_NAMESPACE=1 exec "${PBIN}" $@
+else
+	LD_PRELOAD=${GS_SO_BIN} DYLD_FORCE_FLAT_NAMESPACE=1 exec "${PBIN}" $@
+fi
+
