@@ -66,6 +66,19 @@ GS_condis_add(GS_CONDIS *cd, int level, const char *str)
 	cd->is_redraw_needed = 1;
 }
 
+void
+GS_condis_printf(GS_CONDIS *cd, int level, const char *fmt, ...)
+{
+	va_list ap;
+	char buf[CONDIS_LINE_MAX_LEN];
+
+	va_start(ap, fmt);
+	vsnprintf(buf, sizeof buf, fmt, ap);
+	va_end(ap);
+
+	GS_condis_add(cd, level, buf);
+}
+
 // Add "<TIMESTAMP> <str>" to console display.
 void
 GS_condis_log(GS_CONDIS *cd, int level, const char *str)

@@ -16,6 +16,7 @@ void GS_BUF_free(GS_BUF *gsb);
 int GS_BUF_resize(GS_BUF *gsb, size_t sz_new);
 int GS_BUF_add_length(GS_BUF *gsb, size_t len);
 int GS_BUF_add_data(GS_BUF *gsb, void *data, size_t len);
+int GS_BUF_printf(GS_BUF *gsb, const char *fmt, ...);
 int GS_BUF_del(GS_BUF *gsb, size_t len);
 int GS_BUF_memmove(GS_BUF *gsb, void *data, size_t len);
 
