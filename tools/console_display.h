@@ -25,6 +25,7 @@ typedef struct
 
 int GS_condis_init(GS_CONDIS *cd, int fd, int rows);
 void GS_condis_add(GS_CONDIS *cd, int color, const char *str);
+void GS_condis_printf(GS_CONDIS *cd, int color, const char *fmt, ...);
 void GS_condis_log(GS_CONDIS *cd, int color, const char *str);
 void GS_condis_pos(GS_CONDIS *cd, int y, int maxlen);
 void GS_condis_draw(GS_CONDIS *cd, int force);

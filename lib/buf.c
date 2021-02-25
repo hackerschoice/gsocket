@@ -32,9 +32,17 @@ GS_BUF_resize(GS_BUF *gsb, size_t sz_new)
 	if (GS_BUF_UNUSED(gsb) >= sz_new + gsb->sz_max_add)
 		return 0;
 
-	gsb->sz_total = gsb->sz_used + sz_new + gsb->sz_max_add;
+	size_t t = gsb->sz_used + sz_new + gsb->sz_max_add;
+	// Round the new size to the next 1k boundary
+	gsb->sz_total = t - (t % 1024) + 1024;
 	DEBUGF_R("realloc to %zu, used %zu\n", gsb->sz_total, gsb->sz_used);
 	gsb->data = realloc(gsb->data, gsb->sz_total);
+	if (gsb->data == NULL)
+	{
+		// Fatal.
+		GS_BUF_free(gsb);
+		return -1;
+	}
 
 	return 0;
 }
@@ -61,6 +69,37 @@ GS_BUF_add_data(GS_BUF *gsb, void *data, size_t len)
 	memcpy((uint8_t *)gsb->data + gsb->sz_used, data, len);
 
 	gsb->sz_used += len;
+
+	return 0;
+}
+
+int
+GS_BUF_printf(GS_BUF *gsb, const char *fmt, ...)
+{
+	va_list ap;
+	int rv;
+
+	va_start(ap, fmt);
+	rv = vsnprintf((char *)GS_BUF_WDST(gsb), GS_BUF_UNUSED(gsb), fmt, ap);
+	va_end(ap);
+
+	if (rv <= 0)
+		return 0;
+
+	if (rv >= GS_BUF_UNUSED(gsb))
+	{
+		// Make buffer larger...
+		GS_BUF_resize(gsb, rv - GS_BUF_UNUSED(gsb) + 1 /*\0*/);
+		va_start(ap, fmt);
+		rv = vsnprintf((char *)GS_BUF_WDST(gsb), GS_BUF_UNUSED(gsb), fmt, ap);
+		va_end(ap);
+
+		if (rv <= 0)
+			return 0;
+	}
+
+	gsb->sz_used += rv;
+	GS_BUF_resize(gsb, 0);
 
 	return 0;
 }
