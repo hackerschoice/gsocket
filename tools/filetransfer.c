@@ -8,6 +8,7 @@ static void ft_del(GS_LIST_ITEM *li);
 static void free_get_li(GS_LIST_ITEM *li);
 static void ft_done(GS_FT *ft);
 static void qerr_add(GS_FT *ft, uint32_t id, uint8_t code, const char *str);
+static void qerr_add_printf(GS_FT *ft, uint32_t id, uint8_t code, const char *fmt, ...);
 static void mk_stats_ft(GS_FT *ft);
 static void mk_stats_file(GS_FT *ft, uint32_t id, struct _gs_ft_file *f, const char *fname, int err);
 static mode_t GS_fperm2mode(uint32_t u);
@@ -246,9 +247,7 @@ GS_FT_dl_add_file(GS_FT *ft, uint32_t id, const char *fname, size_t len, int64_t
 	if (ret != 0)
 	{
 		DEBUGF_R("NOT FOUND: %s\n", fname);
-		char err[128];
-		snprintf(err, sizeof err, "Not found: %s", fname);
-		qerr_add(ft, id, GS_FT_ERR_NOENT, err);
+		qerr_add_printf(ft, id, GS_FT_ERR_NOENT, "Not found: %s", fname);
 		return -1;
 	}
 
@@ -662,7 +661,6 @@ int
 GS_FT_list_add_files(GS_FT *ft, uint32_t globbing_id, const char *pattern, size_t len)
 {
 	int ret;
-	char err[128];
 	int cwd_fd;
 
 	if (pattern[len] != '\0')
@@ -679,8 +677,7 @@ GS_FT_list_add_files(GS_FT *ft, uint32_t globbing_id, const char *pattern, size_
 	if (ret != 0)
 	{
 		DEBUGF_R("chdir(%s): %s\n", ptr, strerror(errno));
-		snprintf(err, sizeof err, "chdir(%s): %s\n", ptr, strerror(errno));
-		qerr_add(ft, globbing_id, errno2code(errno, GS_FT_ERR_NOENT), err);
+		qerr_add_printf(ft, globbing_id, errno2code(errno, GS_FT_ERR_NOENT), "chdir(%s): %s\n", ptr, strerror(errno));
 
 		goto done;
 	}
@@ -690,8 +687,7 @@ GS_FT_list_add_files(GS_FT *ft, uint32_t globbing_id, const char *pattern, size_
 	if (ret <= 0)
 	{
 		DEBUGF_R("NOT FOUND: %s\n", pattern);
-		snprintf(err, sizeof err, "Not found: %s", pattern);
-		qerr_add(ft, globbing_id, GS_FT_ERR_NOENT, err);
+		qerr_add_printf(ft, globbing_id, GS_FT_ERR_NOENT, "Not found: %s", pattern);
 	}
 
 done:
@@ -742,6 +738,19 @@ qerr_add(GS_FT *ft, uint32_t id, uint8_t code, const char *str)
 	// Must add in sequence of occurance (add_count)
 	GS_LIST_add(&ft->qerrs, NULL, qerr, ft->qerrs.add_count);
 	ft->is_want_write = 1;
+}
+
+static void
+qerr_add_printf(GS_FT *ft, uint32_t id, uint8_t code, const char *fmt, ...)
+{
+	va_list ap;
+	char buf[128];
+
+	va_start(ap, fmt);
+	vsnprintf(buf, sizeof buf, fmt, ap);
+	va_end(ap);
+
+	qerr_add(ft, id, code, buf);
 }
 
 // Send status to peer (error-msg) and free the file structure.
