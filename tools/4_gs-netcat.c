@@ -44,6 +44,7 @@
 #include "gs-netcat.h"
 #include "filetransfer_mgr.h"
 #include "man_gs-netcat.h"
+#include "gs_so-lib.h"
 
 /* All connected gs-peers indexed by gs->fd */
 static struct _peer *peers[FD_SETSIZE];
@@ -175,7 +176,8 @@ cb_atexit(void)
 {
 	CONSOLE_reset();
 	stty_reset();
-	fprintf(stderr, "\n[Bye]\n"); // stdout must be clean for pipe & gs-netcat
+	if (gopt.is_interactive)
+		fprintf(stderr, "\n[Bye]\n"); // stdout must be clean for pipe & gs-netcat
 }
 
 /* *********************** FD READ / WRITE ******************************/
@@ -237,6 +239,43 @@ read_esc(int fd, uint8_t *buf, size_t len, uint8_t *key)
 	return n;
 }
 
+// 
+static ssize_t
+authcookie_add(uint8_t *buf, size_t len)
+{
+	static char ac_buf[GS_AUTHCOOKIE_LEN];
+	static size_t ac_len;
+
+	size_t copied = MIN(sizeof ac_buf - ac_len, len);
+	memcpy(ac_buf + ac_len, buf, copied);
+	ac_len += copied;
+
+	if (ac_len >= sizeof ac_buf)
+	{
+		gopt.is_want_authcookie = 0;
+		uint8_t cookie[GS_AUTHCOOKIE_LEN];
+		authcookie_gen(cookie, gopt.sec_str, 0);
+		if (memcmp(cookie, ac_buf, sizeof cookie) != 0)
+			return -1; // ERROR
+		DEBUGF_Y("auth-cookie matches\n");
+	}
+
+	return copied;
+}
+
+// gs-netcat (internal mode) check stdin to notice when parent process
+// has died (and then exits hard).
+static int
+cb_read_stdin(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
+{
+	DEBUGF_R("STDIN closed. HARD EXIT\n");
+	int rv;
+	char c;
+	rv = read(fd, &c, sizeof c);
+	DEBUGF_R("%d %s\n", rv, strerror(errno));
+	exit(255); // hard exit. 
+}
+
 static int
 cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 {
@@ -277,6 +316,21 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 		peer_free(ctx, p);
 		return GS_SUCCESS;	/* SUCCESS. fd had no errors [ssl may have had] */
 
+	}
+
+	// Check if this was internal data for gs-netcat -I
+	if ((gopt.is_internal) && (gopt.is_want_authcookie != 0))
+	{
+		ssize_t sz;
+		sz = authcookie_add(p->wbuf, p->wlen);
+		if (sz < 0)
+		{
+			DEBUGF_R("BAD AUTH COOKIE\n");
+			peer_free(ctx, p);
+			return GS_SUCCESS;
+		}
+		memmove(p->wbuf, p->wbuf + sz, p->wlen - sz);
+		p->wlen -= sz;
 	}
 
 	// First offer data to console
@@ -639,6 +693,13 @@ cb_complete_connect(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 		return GS_SUCCESS;
 	}
 
+	if ((gopt.is_internal) && (gopt.is_send_authcookie != 0))
+	{
+		// Send auth-cookie to TCP (incoming)
+		authcookie_gen(p->rbuf, gopt.sec_str, 0);
+		p->rlen = GS_AUTHCOOKIE_LEN;
+	}
+
 	completed_connect(ctx, p, p->fd_in, p->fd_out);
 
 	return GS_SUCCESS;
@@ -657,8 +718,6 @@ cb_sigwinch(int sig)
 	gopt.is_win_resized = 1;
 	GS_SELECT_FD_SET_W(my_peer->gs);
 }
-
-
 
 /*
  * Server & Client
@@ -736,17 +795,6 @@ peer_forward_connect(struct _peer *p, uint32_t ip, uint16_t port)
 
 	return 0;
 }
-
-
-#if 0
-// FIXME: display alarm in xterm title if root logs in?
-static void
-pkt_cb_title(uint8_t msg, const uint8_t *data, size_t len, void *ptr)
-{
-	struct _peer *p = (struct _peer *)ptr;
-
-}
-#endif
 
 /*
  * SERVER
@@ -888,6 +936,12 @@ do_server(void)
 
 	/* Add all listening fd's to select()-subsystem */
 	GS_listen_add_gs_select(gopt.gsocket, &ctx, cb_listen, gopt.gsocket, 0);
+	if (gopt.is_internal)
+	{
+		GS_SELECT_add_cb_r(&ctx, cb_read_stdin, STDIN_FILENO, NULL, 0);
+		XFD_SET(STDIN_FILENO, ctx.rfd);
+	}
+
 
 	while (1)
 	{
@@ -900,21 +954,6 @@ do_server(void)
 }
 
 /********************** CLIENT *************************************/
-/*
- * A hack to set the remote window size without inband
- * communication. Only used with -i.
- */
-#if 0
-static void
-stty_set_remote_size(GS_SELECT_CTX *ctx, struct _peer *p)
-{
-	snprintf((char *)p->wbuf, sizeof p->wbuf, GS_STTY_INIT_HACK, gopt.winsize.ws_row, gopt.winsize.ws_col);
-	p->wlen = (ssize_t)strlen((char *)p->wbuf);
-	write_gs(ctx, p);
-}
-#endif
-
-
 
 /*
  * CLIENT
@@ -948,6 +987,7 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd_notused, void *arg, int val)
 		return GS_ECALLAGAIN;
 
 	DEBUGF_M("*** GS_connect() SUCCESS *****\n");
+	DEBUGF_M("*** GS_connect() SUCCESS ***** %d %d %d\n", gs->fd, p->fd_in, p->fd_out);
 	/* HERE: Connection successfully established */
 	/* Start reading from Network (SRP is handled by GS_read()/GS_write()) */
 	GS_SELECT_add_cb(ctx, cb_read_gs, cb_write_gs, gs->fd, p, 0);
@@ -958,6 +998,7 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd_notused, void *arg, int val)
 	XFD_SET(p->fd_in, ctx->rfd);	/* Start reading */
 	p->is_fd_connected = 1;
 
+	
 	/* -i specified and we are a client: Set TTY to raw for a real shell
 	 * experience. Ignore this for this example.
 	 */
@@ -996,6 +1037,7 @@ gs_and_peer_connect(GS_SELECT_CTX *ctx, GS *gs, int fd_in, int fd_out)
 	ret = GS_connect(gs);	// First call always returns -1 (waiting)
 	XASSERT(ret == GS_ERR_WAITING, "ERROR GS_connect() == %d\n", ret);
 	DEBUGF_B("GS_connect(GS->fd = %d)\n", GS_get_fd(gs));
+
 	p = peer_new_init(gs);
 	p->fd_in = fd_in;
 	p->fd_out = fd_out;
@@ -1052,9 +1094,15 @@ do_client(void)
 		p = gs_and_peer_connect(&ctx, gopt.gsocket, STDIN_FILENO, STDOUT_FILENO);
 		p->is_stdin_forward = 1;
 	} else {
+		if (gopt.is_internal)
+		{
+			GS_SELECT_add_cb_r(&ctx, cb_read_stdin, STDIN_FILENO, NULL, 0);
+			XFD_SET(STDIN_FILENO, ctx.rfd);
+		}
 		GS_SELECT_add_cb(&ctx, cb_accept, cb_accept, gopt.listen_fd, NULL, 0);
 		XFD_SET(gopt.listen_fd, ctx.rfd);	/* listening socket */
 	}
+
 
 	int n;
 	while (1)
@@ -1144,6 +1192,17 @@ my_getopt(int argc, char *argv[])
 		}
 	}
 
+	if (getenv("_GSOCKET_WANT_AUTHCOOKIE") != NULL)
+		gopt.is_want_authcookie = 1;
+	if (getenv("_GSOCKET_SEND_AUTHCOOKIE") != NULL)
+		gopt.is_send_authcookie = 1;
+
+	if (getenv("_GSOCKET_INTERNAL") != NULL)
+	{
+		DEBUGF_G("IS_INTERNAL\n");
+		gopt.is_internal = 1;
+	}
+
 	if (gopt.is_daemon)
 	{
 		if (gopt.is_logfile == 0)
@@ -1170,12 +1229,24 @@ my_getopt(int argc, char *argv[])
 		/* HERE: Client */
 		if (gopt.is_multi_peer == 1)
 		{
-			XASSERT(gopt.port != 0, "Client listening port is 0 but want multple peers.\n");
+			if (gopt.is_internal == 0)
+				XASSERT(gopt.port != 0, "Client listening port is 0 but wants multple peers.\n");
+
 			gopt.listen_fd = fd_new_socket();
 			int ret;
-			ret = fd_net_listen(gopt.listen_fd, gopt.port);
+			ret = fd_net_listen(gopt.listen_fd, &gopt.port);
 			if (ret != 0)
 				ERREXIT("Listening on port %d failed: %s\n", ntohs(gopt.port), strerror(errno));
+			// gs and gs_so use STDIN/STDOUT as IPC communication. If -p0 is specified for
+			// listening than a port is choosen at random and that port information is
+			// written to stdout.
+			if (gopt.is_internal)
+			{
+				uint16_t port = ntohs(gopt.port);
+				DEBUGF_G("Listening on port %u\n", port);
+				write(1, &port, sizeof port);
+			}
+
 		}
 	}
 

@@ -143,6 +143,12 @@ typedef struct cap_rights       cap_rights_t;
         FD_SET(fd, set); \
 } while (0)
 
+#define XFD_CLR(fd, set) do { \
+        if (fd <= 0) { DEBUGF_R("WARNING: FD_CLR(%d, )\n", fd); } \
+        if (fd < 0) { break; } \
+        FD_CLR(fd, set); \
+} while (0)
+
 #ifdef DEBUG
 # define HEXDUMP(a, len)        do { \
         int n = 0; \

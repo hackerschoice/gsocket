@@ -5,10 +5,6 @@
 #include "utils.h"
 #include "console.h"
 
-struct _gopt gopt;
-#ifdef DEBUG
-struct _g_debug_ctx g_dbg_ctx;
-#endif
 extern char **environ;
 
 
@@ -51,7 +47,7 @@ add_env_argv(int *argcptr, char **argvptr[])
 		{
 			/* *next == '\0'; str points to argument (0-terminated) */
 			newargc++;
-			DEBUGF("%d. arg = '%s'\n", newargc, str);
+			// DEBUGF("%d. arg = '%s'\n", newargc, str);
 			newargv = realloc(newargv, newargc * sizeof newargv);
 			newargv[newargc - 1] = str;
 		}
@@ -70,10 +66,10 @@ add_env_argv(int *argcptr, char **argvptr[])
 
 	*argcptr = newargc;
 	*argvptr = newargv;
-	DEBUGF("Total argv[] == %d\n", newargc);
-	int i;
-	for (i = 0; i < newargc; i++)
-		DEBUGF("argv[%d] = %s\n", i, newargv[i]);
+	// DEBUGF("Total argv[] == %d\n", newargc);
+	// int i;
+	// for (i = 0; i < newargc; i++)
+	// 	DEBUGF("argv[%d] = %s\n", i, newargv[i]);
 }
 
 void
@@ -949,21 +945,38 @@ fd_net_accept(int listen_fd)
  * Create a listening fd on port.
  */
 int
-fd_net_listen(int fd, uint16_t port)
+fd_net_listen(int fd, uint16_t *port)
 {
 	struct sockaddr_in addr;
 	int ret;
+	int is_random_port = 0;
+
+	if ((port == NULL) || (*port == 0))
+		is_random_port = 1;
 
 	setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof (int));
 
 	memset(&addr, 0, sizeof addr);
 	addr.sin_family = AF_INET;
-	addr.sin_addr.s_addr = htonl(INADDR_ANY);
-	addr.sin_port = port;
+	if (is_random_port == 0)
+	{
+		addr.sin_port = *port;
+		addr.sin_addr.s_addr = htonl(INADDR_ANY);
+	} else {
+		addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+	}
 
 	ret = bind(fd, (struct sockaddr *)&addr, sizeof addr);
 	if (ret < 0)
 		return ret;
+
+	if (is_random_port)
+	{
+		struct sockaddr_in paddr;
+		socklen_t plen = sizeof addr;
+		ret = getsockname(fd, (struct sockaddr *)&paddr, &plen);
+		*port = paddr.sin_port;
+	}
 
 	ret = listen(fd, 1);
 	if (ret != 0)
@@ -1048,8 +1061,21 @@ sanitize_fname_to_str(uint8_t *str, size_t len)
 	str[i] = 0x00; // always 0 terminate
 }
 
+// void
+// authcookie_gen(uint8_t *cookie, const char *secret, uint16_t port)
+// {
+// 	char buf[128];
 
+// 	// gs-netcat -I is passed the secret as '<secret>-<port>' and thus
+// 	// when called from gs-netcat -I we do not need to append the port here.
+// 	if (port == 0)
+// 		snprintf(buf, sizeof buf, "AUTHCOOKIE-%s", secret);
+// 	else
+// 		snprintf(buf, sizeof buf, "AUTHCOOKIE-%u-%s", port, secret);
 
+// 	DEBUGF_Y("AC='%s'\n", buf);
+// 	SHA256((unsigned char *)buf, strlen(buf), cookie);
+// }
 
 
 

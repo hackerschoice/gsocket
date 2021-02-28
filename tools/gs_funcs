@@ -176,6 +176,9 @@ gs_init()
 	UCHROOT_BIN="${BASEDIR}/gs_uchroot_so${EXE}"
 	[[ -f "${UCHROOT_BIN}" ]] || { echo >&2 "${UCHROOT_BIN} not found."; exit 2; }
 
+	GS_SO_BIN="${BASEDIR}/gs_so${EXE}"
+	[[ -f "${GS_SO_BIN}" ]] || { echo >&2 "${GS_SO_BIN} not found."; exit 2; }
+
 	# To find sftp-server in PREFIX/lib
 	PREFIX="$(cd "$(dirname "${0}")/../" || exit; pwd)"
 	# shellcheck disable=SC2034 # appears unused. Verify use (or export if used externally).
@@ -211,7 +214,7 @@ do_getopt()
 	[[ "$GSOCKET_ARGS" =~ ^'-k' ]] && unset FL_NEED_PASSWORD
 	[[ "$GSOCKET_ARGS" =~ ' -k' ]] && unset FL_NEED_PASSWORD
 	# shellcheck disable=SC2220 # Invalid flags are not handled. Add a *) case.
-	while getopts ":hURgls:k:L:" opt; do
+	while getopts ":qhURgls:k:L:" opt; do
 		case ${opt} in
 			s )
 				GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-s"	# Add to end of array
@@ -233,6 +236,10 @@ do_getopt()
 				;;
 			h )
 				my_usage
+				;;
+			q )
+				IS_QUIET=1
+				ARGS_NEW[${#ARGS_NEW[@]}]="-q"
 				;;
 			l )
 				# shellcheck disable=SC2034 # appears unused. Verify use (or export if used externally).
@@ -273,13 +280,14 @@ env_arg_init()
 	[[ -n "$GSOCKET_ARGS" ]] && GSOCKET_ARGS+=" "
 	if [[ -n "$FL_NEED_PASSWORD" ]]; then
 		password=$(read_password)
+		GSOCKET_SECRET="${password}"
 		echo "=Secret         :\"${password}\""
 		GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-s"		# Add to end of array			
 		GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="$password"	# Add to end of array			
 	fi
 	# Have to output it here because gs-netcat might be started from withing
 	# sshfs or sftpd where stderr is no longer available to gs-netcat
-	echo "=Encryption     : SRP-AES-256-CBC-SHA-End2End (Prime: 4096 bits)"
+	[[ -n "$IS_QUIET" ]] || echo "=Encryption     : SRP-AES-256-CBC-SHA-End2End (Prime: 4096 bits)"
 	ENV_ARGS="${GSOCKET_ARGS}${GSNC_ENV_ARGS[*]}"
 }
 

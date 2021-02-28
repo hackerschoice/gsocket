@@ -366,6 +366,11 @@ GS_new(GS_CTX *ctx, GS_ADDR *addr)
 	gsocket->net.fd_accepted = -1;
 
 	gsocket->net.n_sox = 1;
+	int i;
+	for (i = 0; i < gsocket->net.n_sox; i++)
+	{
+		gsocket->net.sox[i].fd = -1;
+	}
 	gsocket->flags = ctx->gs_flags;
 
 	memcpy(&gsocket->gs_addr, addr, sizeof gsocket->gs_addr);
@@ -1211,8 +1216,8 @@ gs_net_connect(GS *gsocket)
 static void
 gs_net_init_by_sox(GS_CTX *ctx, struct gs_sox *sox)
 {
-	FD_CLR(sox->fd, ctx->wfd);
-	FD_CLR(sox->fd, ctx->rfd);
+	XFD_CLR(sox->fd, ctx->wfd);
+	XFD_CLR(sox->fd, ctx->rfd);
 	// FD_CLR(sox->fd, ctx->w);
 	// FD_CLR(sox->fd, ctx->r);
 	memset(sox, 0, sizeof *sox);

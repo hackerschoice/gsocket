@@ -139,6 +139,9 @@ struct _gopt
 	int is_pwdreply_pending; // Server: Answer to pwd-request
 	int is_want_chdir; 
 	int is_want_ids_on;     
+	int is_want_authcookie;
+	int is_send_authcookie;
+	int is_internal;        // -I flag
 	uint64_t ts_ping_sent;  // TimeStamp ping sent
 	fd_set rfd, r;
 	fd_set wfd, w;
@@ -247,7 +250,7 @@ extern struct _g_debug_ctx g_dbg_ctx; // declared in utils.c
 #define DEBUGF_T(xcolor, a...) do { \
 	gettimeofday(&g_dbg_ctx.tv_now, NULL); \
 	if (g_dbg_ctx.tv_last.tv_sec == 0) { memcpy(&g_dbg_ctx.tv_last, &g_dbg_ctx.tv_now, sizeof g_dbg_ctx.tv_last); } \
-	xfprintf(gopt.err_fp, "DEBUG %4llu %s:%d %s", GS_TV_TO_MSEC(&g_dbg_ctx.tv_now) - GS_TV_TO_MSEC(&g_dbg_ctx.tv_last), __func__, __LINE__, xcolor?xcolor:""); \
+	xfprintf(gopt.err_fp, "DEBUG %4"PRIu64" %s:%d %s", GS_TV_TO_MSEC(&g_dbg_ctx.tv_now) - GS_TV_TO_MSEC(&g_dbg_ctx.tv_last), __func__, __LINE__, xcolor?xcolor:""); \
 	memcpy(&g_dbg_ctx.tv_last, &g_dbg_ctx.tv_now, sizeof g_dbg_ctx.tv_last); \
 	xfprintf(gopt.err_fp, a); \
 	if (xcolor) { xfprintf(gopt.err_fp, "\033[0m"); } \

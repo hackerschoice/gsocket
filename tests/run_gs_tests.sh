@@ -529,8 +529,8 @@ if [[ "$tests" =~ '8.2' ]]; then
 # nc -> Port 12344 -> GS-NET -> Port 12345 -> nc -ln
 test_start -n "Running: netcat #8.2 (port forward both sides)............"
 GSPID1="$(sh -c '../tools/gs-netcat -k id_sec.txt -l -d 127.0.0.1 -p 12345 2>server_err.txt >server_out.dat & echo ${!}')"
-GSPID2="$(sh -c '(sleep 10) | $NC_LISTEN 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
-GSPID3="$(sh -c '../tools/gs-netcat -k id_sec.txt -w -p 12344 2>server_err.txt >server_out.dat & echo ${!}')"
+GSPID2="$(sh -c '(sleep 1) | $NC_LISTEN 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
+GSPID3="$(sh -c '../tools/gs-netcat -k id_sec.txt -w -p 12344 2>server2_err.txt >server2_out.dat & echo ${!}')"
 waittcp 12344
 waittcp 12345
 GSPID4="$(sh -c '(cat test50k.dat; sleep 15) | $NC -vn 127.0.0.1 12344 >nc2_out.dat 2>nc2_err.txt & echo ${!}')"

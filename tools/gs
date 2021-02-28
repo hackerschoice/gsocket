@@ -1,50 +1,106 @@
 #! /usr/bin/env bash
 
-gs_init()
-{
-	GS_NETCAT_BIN="gs-netcat"
-	BIN="${BASEDIR}/${GS_NETCAT_BIN}"
-	[[ -f "${BIN}" ]] && GS_NETCAT_BIN="${BIN}"
-	# shellcheck disable=SC2034 # appears unused. Verify use (or export if used externally).
-	EXE=""
-	if [[ x"$OSTYPE" == "xcygwin"* ]]; then
-		EXE=".exe"
-	fi
-
-	GS_SO_BIN="${BASEDIR}/gs_so${EXE}"
-	[[ -f "${GS_SO_BIN}" ]] || { echo >&2 "${GS_SO_BIN} not found."; exit 2; }
-
-	# To find sftp-server in PREFIX/lib
-	PREFIX="$(cd "$(dirname "${0}")/../" || exit; pwd)"
-
-
-	command -v "${GS_NETCAT_BIN}" >/dev/null 2>&1 || { echo >&2 "${GS_NETCAT_BIN} not found. Check PATH=?"; exit 1; }
-}
 
 
 # Try to use the gs-netcat that's in the same directory as this executable.
 BASEDIR="$(cd "$(dirname "${0}")" || exit; pwd)"
-gs_init $@
+# shellcheck disable=SC1090 # Can't follow non-constant source. Use a directive to specify location.
+source "${BASEDIR}/gs_funcs" || exit 3
+
+my_usage()
+{
+	echo "
+${BIN_NAME} [-k file] [-s password] <programm> <parameters>
+   -s <secret>  Secret (e.g. password).
+   -k <file>    Read Secret from file.
+
+Example:
+    $ ${1} -s MySecret /usr/bin/sshd -d -p 31337         # Server
+    $ ${1} -s MySecret ssh -p 31337 root@foobar.gsocket  # Client
+
+See 'gs-netcat -h' for more options."
+	exit 0
+}
+
+my_getopt()
+{
+	OPTERR=0
+	FL_NEED_PASSWORD=1
+	# Check if -s or -k is already supplied in environment and dont ask again.
+	[[ "$GSOCKET_ARGS" =~ ^'-s' ]] && unset FL_NEED_PASSWORD
+	[[ "$GSOCKET_ARGS" =~ ' -s' ]] && unset FL_NEED_PASSWORD
+	[[ "$GSOCKET_ARGS" =~ ^'-k' ]] && unset FL_NEED_PASSWORD
+	[[ "$GSOCKET_ARGS" =~ ' -k' ]] && unset FL_NEED_PASSWORD
+	# shellcheck disable=SC2220 # Invalid flags are not handled. Add a *) case.
+	while getopts ":qhgs:k:L:" opt; do
+		case ${opt} in
+			s )
+				# GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-s"	# Add to end of array
+				# GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="$OPTARG"	# Add to end of array
+				GSOCKET_SECRET="$OPTARG"
+				unset FL_NEED_PASSWORD
+				;;
+			k )
+				# GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-k"	# Add to end of array
+				KFILE=$(cd "$(dirname "$OPTARG")" && pwd)/$(basename "$OPTARG")
+				[[ -f "${KFILE}" ]] || { echo >&2 "File not found: ${KFILE}"; exit 255; }
+				GSOCKET_SECRET=$(<${KFILE})
+				# GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="${KFILE}"	# Add to end of array
+				# KFILE=$(eval echo "$OPTARG")	# Add to end of array
+				# GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]=$(eval echo "$OPTARG")	# Add to end of array
+				unset FL_NEED_PASSWORD
+				;;
+			g )
+				"${GS_NETCAT_BIN}" -g
+				exit
+				;;
+			h )
+				my_usage "${BIN_NAME}"
+				;;
+			q )
+				IS_QUIET=1
+				ARGS_NEW[${#ARGS_NEW[@]}]="-q"
+				;;
+			\? )
+				# UNKNOWN option. Handle before '*' (e.g. -l)
+				ARGS_NEW[${#ARGS_NEW[@]}]="-${OPTARG}"	# Add to end of array			
+				;;
+			* )
+				# Other (known opts from opstring) w parameters (e.g. -L <file>)
+				ARGS_NEW[${#ARGS_NEW[@]}]="-${opt}"		# Add to end of array			
+				ARGS_NEW[${#ARGS_NEW[@]}]="${OPTARG}"	# Add to end of array			
+				;;
+		esac
+	done
+
+	[[ -n "${GSOCKET_SECRET}" ]] && unset FL_NEED_PASSWORD
+}
+
+gs_init
+my_getopt $@
+shift $((OPTIND -1))
+env_arg_init
 
 if [[ x"$OSTYPE" == "xdarwin"* ]]; then
 	# OSX does not allow LD_PRELOAD of binaries in /usr/. Copy to tmp...
 	ROOTDIR=$(mktemp -d -t thc-gs)
 	PBIN_FULLPATH=$(which $1)
 	[[ $? -ne 0 ]] && { $1; exit 1; }
-	# FIXME: temp file only cleaned on reboot. Hmm...
+	# FIXME: temp file is only cleaned on reboot. Hmm...
 	cp "${PBIN_FULLPATH}" "${ROOTDIR}/" &>/dev/null
+	PBIN_NAME="$(basename "${1}")" # programm binary
+	PBIN="${ROOTDIR}/${PBIN_NAME}"
 else
 	ROOTDIR=""
+	PBIN="${1}"
 fi
-PBIN_NAME="$(basename "${1}")"
-PBIN="${ROOTDIR}/${PBIN_NAME}"
 shift 1
 
-echo "${PRELOAD}" "${PBIN}" $@
+# echo  GS_NETCAT_BIN=${GS_NETCAT_BIN} GSOCKET_ARGS="${ENV_ARGS} ${ARGS_NEW[*]}" GSOCKET_SECRET="${GSOCKET_SECRET}" DYLD_INSERT_LIBRARIES=${GS_SO_BIN} DYLD_FORCE_FLAT_NAMESPACE=1 exec "${PBIN}" $@
 
 if [[ x"$OSTYPE" == "xdarwin"* ]]; then
-	DYLD_INSERT_LIBRARIES=${GS_SO_BIN} DYLD_FORCE_FLAT_NAMESPACE=1 exec "${PBIN}" $@
+	GS_NETCAT_BIN=${GS_NETCAT_BIN} GSOCKET_ARGS="${ENV_ARGS} ${ARGS_NEW[*]}" GSOCKET_SECRET="${GSOCKET_SECRET}" DYLD_INSERT_LIBRARIES=${GS_SO_BIN} DYLD_FORCE_FLAT_NAMESPACE=1 exec "${PBIN}" $@
 else
-	LD_PRELOAD=${GS_SO_BIN} DYLD_FORCE_FLAT_NAMESPACE=1 exec "${PBIN}" $@
+	GS_NETCAT_BIN=${GS_NETCAT_BIN} GSOCKET_ARGS="${ENV_ARGS} ${ARGS_NEW[*]}" GSOCKET_SECRET="${GSOCKET_SECRET}" LD_PRELOAD=${GS_SO_BIN} exec "${PBIN}" $@
 fi
 
