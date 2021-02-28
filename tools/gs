@@ -13,10 +13,11 @@ my_usage()
 ${BIN_NAME} [-k file] [-s password] <programm> <parameters>
    -s <secret>  Secret (e.g. password).
    -k <file>    Read Secret from file.
+   -p <ports>   Range of listening ports to redirect [default=all]
 
 Example:
-    $ ${1} -s MySecret /usr/bin/sshd -d -p 31337         # Server
-    $ ${1} -s MySecret ssh -p 31337 root@foobar.gsocket  # Client
+    $ ${1} -s MySecret /usr/bin/sshd -d         # Server
+    $ ${1} -s MySecret ssh root@gsocket         # Client
 
 See 'gs-netcat -h' for more options."
 	exit 0
@@ -32,7 +33,7 @@ my_getopt()
 	[[ "$GSOCKET_ARGS" =~ ^'-k' ]] && unset FL_NEED_PASSWORD
 	[[ "$GSOCKET_ARGS" =~ ' -k' ]] && unset FL_NEED_PASSWORD
 	# shellcheck disable=SC2220 # Invalid flags are not handled. Add a *) case.
-	while getopts ":qhgs:k:L:" opt; do
+	while getopts ":qhgp:s:k:L:" opt; do
 		case ${opt} in
 			s )
 				# GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-s"	# Add to end of array
@@ -56,6 +57,9 @@ my_getopt()
 				;;
 			h )
 				my_usage "${BIN_NAME}"
+				;;
+			p )
+				GS_HIJACK_PORTS="${OPTARG}"
 				;;
 			q )
 				IS_QUIET=1
@@ -99,8 +103,8 @@ shift 1
 # echo  GS_NETCAT_BIN=${GS_NETCAT_BIN} GSOCKET_ARGS="${ENV_ARGS} ${ARGS_NEW[*]}" GSOCKET_SECRET="${GSOCKET_SECRET}" DYLD_INSERT_LIBRARIES=${GS_SO_BIN} DYLD_FORCE_FLAT_NAMESPACE=1 exec "${PBIN}" $@
 
 if [[ x"$OSTYPE" == "xdarwin"* ]]; then
-	GS_NETCAT_BIN=${GS_NETCAT_BIN} GSOCKET_ARGS="${ENV_ARGS} ${ARGS_NEW[*]}" GSOCKET_SECRET="${GSOCKET_SECRET}" DYLD_INSERT_LIBRARIES=${GS_SO_BIN} DYLD_FORCE_FLAT_NAMESPACE=1 exec "${PBIN}" $@
+	GS_NETCAT_BIN=${GS_NETCAT_BIN} GS_HIJACK_PORTS="${GS_HIJACK_PORTS}" GSOCKET_ARGS="${ENV_ARGS} ${ARGS_NEW[*]}" GSOCKET_SECRET="${GSOCKET_SECRET}" DYLD_INSERT_LIBRARIES=${GS_SO_BIN} DYLD_FORCE_FLAT_NAMESPACE=1 exec "${PBIN}" $@
 else
-	GS_NETCAT_BIN=${GS_NETCAT_BIN} GSOCKET_ARGS="${ENV_ARGS} ${ARGS_NEW[*]}" GSOCKET_SECRET="${GSOCKET_SECRET}" LD_PRELOAD=${GS_SO_BIN} exec "${PBIN}" $@
+	GS_NETCAT_BIN=${GS_NETCAT_BIN} GS_HIJACK_PORTS="${GS_HIJACK_PORTS}" GSOCKET_ARGS="${ENV_ARGS} ${ARGS_NEW[*]}" GSOCKET_SECRET="${GSOCKET_SECRET}" LD_PRELOAD=${GS_SO_BIN} exec "${PBIN}" $@
 fi
 

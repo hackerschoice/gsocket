@@ -38,6 +38,7 @@ struct _fd_info
 	int is_connect;
 	int is_listen;
 	int is_tor;
+	int is_hijack;
 	uint16_t port_orig; // Fixme, this is confusing with gs_so_mgr. duplicate?
 	uint16_t port_fake;
 };
@@ -88,6 +89,7 @@ static int is_nohijack;
 static struct _fd_info fd_list[FD_SETSIZE];
 static struct _gs_so_mgr mgr_list[FD_SETSIZE];
 static char *g_secret; // global secret
+static struct _gs_portrange_list hijack_ports;
 
 #ifdef __CYGWIN__
 # define RTLD_NEXT dl_handle
@@ -106,6 +108,7 @@ thc_init(void)
 {
 	if (is_init)
 		return;
+	is_init = 1;
 
 	gopt.err_fp = stderr;
 	thc_init_cyg();
@@ -117,9 +120,10 @@ thc_init(void)
 	if (getenv("_GSOCKET_NOHIJACK"))
 		is_nohijack = 1;
 
-	g_secret = getenv("GSOCKET_SECRET");
+	char *ptr = getenv("GS_HIJACK_PORTS");
+	GS_portrange_new(&hijack_ports, ptr?ptr:"1-65535");
 
-	is_init = 1;
+	g_secret = getenv("GSOCKET_SECRET");
 }
 
 typedef int (*real_close_t)(int fd);
@@ -129,9 +133,7 @@ thc_close(const char *fname, int fd)
 {
 	if (fd >= 0)
 	{
-		fd_list[fd].is_connect = 0;
-		fd_list[fd].is_bind = 0;
-		fd_list[fd].is_listen = 0;
+		memset(&fd_list[fd], 0, sizeof fd_list[fd]);
 	}
 
 	return real_close(fd);
@@ -246,30 +248,26 @@ thc_bind(const char *fname, int sox, const struct sockaddr *addr, socklen_t addr
 		return real_bind(sox, addr, addr_len);
 
 	fdi = &fd_list[sox];
-	if ((is_nohijack) || (fdi->is_bind))
+	if ((is_nohijack) || (fdi->is_bind) || (addr->sa_family != AF_INET))
 		return real_bind(sox, addr, addr_len);
 
 	int is_call_hijack = 0;
-	if (addr->sa_family == AF_INET)
+	a = (struct sockaddr_in *)addr;
+	if (a->sin_addr.s_addr == inet_addr("127.31.33.7"))
+		is_call_hijack = 1;
+	if (a->sin_addr.s_addr == inet_addr("127.31.33.8"))
 	{
-		if (((struct sockaddr_in *)addr)->sin_addr.s_addr == inet_addr("127.31.33.7"))
-			is_call_hijack = 1;
-		if (((struct sockaddr_in *)addr)->sin_addr.s_addr == inet_addr("127.31.33.8"))
-		{
-			is_call_hijack = 1;
-			fdi->is_tor = 1;
-		}
-		if (((struct sockaddr_in *)addr)->sin_port == ntohs(31337))
-			is_call_hijack = 1;
+		is_call_hijack = 1;
+		fdi->is_tor = 1;
 	}
-	is_call_hijack = 1; // FIXME: For listen() we hijack all connections
+	if (GS_portrange_is_match(&hijack_ports, ntohs(a->sin_port)))
+		is_call_hijack = 1;
 
 	if (is_call_hijack == 0)
 		return real_bind(sox, (struct sockaddr *)addr, addr_len);
 
 	// Backup original address in case this bind() is followed by connect() and not listen().
 	memcpy(&fdi->addr, addr, sizeof fdi->addr);
-	a = (struct sockaddr_in *)addr;
 	fdi->port_orig = ntohs(a->sin_port);
 
 	a->sin_addr.s_addr = inet_addr("127.0.0.1");
@@ -284,6 +282,7 @@ thc_bind(const char *fname, int sox, const struct sockaddr *addr, socklen_t addr
 	uint16_t port = ntohs(paddr.sin_port);
 	fdi->port_fake = port;
 	fdi->is_bind = 1;
+	fdi->is_hijack = 1;
 	DEBUGF_G("Bind to port=%u (orig=%u, rv=%d)\n", fdi->port_fake, fdi->port_orig, rv);
 
 	return 0;
@@ -318,7 +317,7 @@ thc_listen(const char *fname, int sox, int backlog)
 
 	fdi = &fd_list[sox];
 
-	if ((is_nohijack) || (fdi->is_listen))
+	if ((is_nohijack) || (fdi->is_listen) || (fdi->is_hijack == 0))
 		return real_listen(sox, backlog);
 
 	fdi->is_listen = 1;
@@ -412,7 +411,6 @@ gs_type_hijack_domain(const char *name, size_t len)
 	return 0;
 }
 
-// FIXME: getnameinfo()
 struct hostent *
 thc_gethostbyname(const char *fname, const char *name)
 {

@@ -1388,6 +1388,17 @@ done:
 }
 #endif
 
+// static void
+// my_test(void)
+// {
+// 	struct _gs_portrange_list ports;
+
+// 	DEBUGF("MARK\n");
+// 	GS_portrange_new(&ports, getenv("GS_HIJACK_PORTS"));
+// 	DEBUGF("MARK\n");
+// 	exit(0);
+// }
+
 
 int
 main(int argc, char *argv[])
