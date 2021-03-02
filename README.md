@@ -1,7 +1,7 @@
 # Global Socket
-**Connecting as if there was no firewall. Securely.**
+**Connect as if there was no firewall. Securely.**
 
-Global Socket Tookit allows two users behind NAT/Firewall to establish a TCP connection with each other. Securely.
+The Global Socket Tookit allows two users behind NAT/Firewall to establish a TCP connection with each other. Securely.
 
 [![Watch the video](https://github.com/hackerschoice/hackerschoice.github.io/blob/master/eeelite-console-blank2.png)](https://www.youtube.com/watch?v=tmf9VGDPILE)
 
@@ -18,7 +18,7 @@ Abandon the thinking of IP Addresses and Port Numbers. Instead start thinking th
 The GSRN is a free cloud service and is free to use by anyone.
 
 The Global Socket Toolkit comes with a set of tools:
-* **gs** - Make any client or server available via the GSRN. It does so by analying the program and replacing the IP-Layer with its own transport via the GSRN.
+* **gs** - Make an existing program accessible via the GSRN. It does so by analyzing the program and replacing the IP-Layer with its own Gsocket-Layer. Any connection to a hostname ending in \'*.gsocket\' is redirected via the GSRN to the listening server.
 * **gs-netcat** - Netcat on steroids. Turn gs-netcat into an AES-256 encrypted reverse backdoor via TOR (optional) with a true PTY/interactive command shell (```gs-netcat -s MySecret -i```) with integrated file-transfer, spawn a Socks4/4a/5 proxy or forward TCP connections or give somebody temporary shell access.
 * **gs-sftp** - sftp server & client between two firewalled workstations (```gs-sftp -s MySecret```)
 * **gs-mount** - Access and mount a remote file system (```gs-mount -s MySecret ~/mnt/warez```)
@@ -30,7 +30,7 @@ The Global Socket Toolkit comes with a set of tools:
 Download|[gsocket-1.4.25.tar.gz](https://github.com/hackerschoice/gsocket/releases/download/v1.4.25/gsocket-1.4.25.tar.gz) (Linux, MacOS, FreeBSD, Solaris)
 Debian/Ubuntu| [gsocket_1.4.25_all.deb](https://github.com/hackerschoice/binary/raw/main/gsocket/latest/gsocket_1.4.25_all.deb)
 Windows| use docker (see below)
-Man Page| [gs(1)](https://hackerschoice.github.io/gs.1.html),[gs-netcat(1)](https://hackerschoice.github.io/gs-netcat.1.html), [gs-mount(1)](https://hackerschoice.github.io/gs-mount.1.html), [gs-sftp(1)](https://hackerschoice.github.io/gs-sftp.1.html), [blitz(1)](https://hackerschoice.github.io/blitz.1.html)
+Man Page| [gs(1)](https://hackerschoice.github.io/gs.1.html), [gs-netcat(1)](https://hackerschoice.github.io/gs-netcat.1.html), [gs-mount(1)](https://hackerschoice.github.io/gs-mount.1.html), [gs-sftp(1)](https://hackerschoice.github.io/gs-sftp.1.html), [blitz(1)](https://hackerschoice.github.io/blitz.1.html)
 Docker|  docker run --rm -it hackerschoice/gsocket
 Docker| docker run --rm -it hackerschoice/gsocket-tor # gs via TOR
 
@@ -69,14 +69,14 @@ $ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/hackerschoice/gso
 ---
 **Usage:**
 
-1. OpenSSH from *Workstation B* to *Workstation A* trough any firewall/NAT
+1. SSH from *Workstation B* to *Workstation A* trough any firewall/NAT
 ```
 $ gs /usr/sbin/sshd     # Workstation A
 $ gs ssh root@gsocket   # Workstation B
 ```
 See also: [gs(1)](https://hackerschoice.github.io/gs.1.html)
 
-2. OpenVPN between two workstations:
+2. OpenVPN between two firewalled workstations:
 ```
 $ gs openvpn --dev tun1 --proto tcp-server --ifconfig 10.9.8.1 10.9.8.2                   # Workstation A
 $ gs openvpn --dev tun1 --proto tcp-client --ifconfig 10.9.8.2 10.9.8.1 --remote gsocket  # Workstation B
