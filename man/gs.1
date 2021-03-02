@@ -1,0 +1,154 @@
+\# .TH gs-netcat 1 "08 October 2020" "1.0" "gs-netcat man page"
+.Dd March 02, 2021
+.Dt gs 1
+.Os
+.Sh NAME
+.Nm gs
+.Nd connect as if there was no firewall. Securely.
+.Sh SYNOPSIS
+.Nm gs
+.Bk -words
+.Op Fl qT
+.Op Fl s Ar secret
+.Op Fl k Ar keyfile
+.Op Fl p Ar port
+.Op Ar programm
+.Op Ar args ...
+.Ek
+.Sh DESCRIPTION
+The
+.Nm
+tool can be used to enable a programm to communicate trough a firewall in situations were it would not be possible to establish a direct connection to another host/workstation (NATed/firewalled). The typical scenario is two workstations that are on separate private networks and behind separate firewalls. The
+.Nm
+tool hijacks the network library functions (such as connect() and accept()) of the programm and encrypts and redirects the traffic through the Global Socket Relay Network (GSRN). 
+.Pp
+Neither workstation needs to open a port in their firewall or accept incoming TCP connections.
+.Pp
+The connection is end-2-end encrypted using SRP (RFC 5054) with AES-256 and a 4096 Prime. The GSRN sees only the encrypted traffic. 
+.Pp
+Common uses include:
+.Pp
+.Bl -bullet -offset indent -compact
+.It
+ssh from one workstation to another
+.It
+OpenVPN between two workstations
+.It
+netcat between two workstations
+.It
+and much, much more.
+.El
+.Pp
+ ...while both workstations are behind NAT and firewalled.
+.Pp
+Abandon the thinking of IP addresses and port numbers: Two programms should be able to communicate with each other as long as they know the same secret (rather than each others IP address and port number). The
+.Nm
+tools establishes a such connection regardless and independent of the local IP address or geographical location. It does so by analyzing the programm and replacing the IP-Layer with its own transport via the GSRN. The connection is End-2-End encrypted. The GSRN sees only the encrypted traffic.
+.Pp
+The typical scenario is a client/server arrangement such as ssh and sshd: All connections to any hostname that end with \'.gsocket\' are redirected (via the GSRN) to the server on a separate network (as long as both programms use the same secret).
+.Pp
+The redirection is done per programm (and limited to that program only). The
+.Nm
+tool does not change the routing table and does not change the NAT or firewall settings.
+.Pp
+.Sh OPTIONS
+.Bl -tag -width Ds
+.It Fl s Ar secret
+A secret chosen by the user. Both ends need to use the same secret to connect.
+.It Fl k Ar file
+A file containing the secret.
+.It Fl g
+Generate a secure random secret and output it to standard output.
+.It Fl q
+Quiet mode. Do not output any warnings or errors.
+.It Fl T
+Use TOR. The
+.Nm
+tool will connect via TOR to the GSRN. This requires TOR to be installed and running.
+.It Fl p Ar port
+TCP port range of listening ports to redirect [default=all].
+.El
+.Pp
+.Sh EXAMPLES
+.Nm Example 1
+- OpenSSH between two firewalled workstations:
+.Pp
+Server:
+.Dl $ gs -s MySecret /usr/sbin/sshd
+.Pp
+Client:
+.Dl $ gs -s MySecret ssh root@gsocket
+.Pp
+.Nm Example 2
+- netcat between two firewalled workstations:
+.Pp
+Server:
+.Dl $ gs -s MySecret nc -lp 31337
+Client:
+.Dl $ gs -s MySecret nc gsocket 31337
+.Pp
+.Nm Example 3
+- OpenVPN between two firewalled workstations:
+.Pp
+Server:
+.Dl $ gs -s MySecret openvpn --dev tun1 --proto tcp-server --ifconfig 10.9.8.1 10.9.8.2
+Client:
+.Dl $ gs -s MySecret openvpn --dev tun1 --proto tcp-client --ifconfig 10.9.8.2 10.9.8.1 --remote gsocket
+.Pp
+.Sh ENVIRONMENT
+The following environment variables can be set to control the behavior of
+.Nm
+.Pp
+.Nm GSOCKET_SOCKS_IP
+.Dl Specify the IP address of the TOR server (or any other SOCKS server). Default is 127.0.0.1.
+.Pp
+.Nm GSOCKET_SOCKS_PORT
+.Dl The port number of the TOR server (or any other SOCKS server). Default is 9050.
+.Pp
+.Nm GSOCKET_ARGS
+.Dl A string containing additional command line parameters. First the normal command line parameters are processed and then the command line parameters from GSOCKET_ARGS.
+
+.Sh SECURITY
+Passing the password as command line parameter is not secure. Consider using the -k option or GSOCKET_ARGS or enter the password when prompted:
+.Pp
+.Dl $ gs -k <file>
+.Pp
+.Dl $ export GSOCKET_ARGS="-s MySecret"
+.Dl $ gs
+.Pp
+.Nm 1.
+The security is end-2-end. This means from User-2-User (and not just to the GSRN). The GSRN relays only (encrypted) data to and from the users.
+.Pp
+.Nm 2.
+The session is 256 bit and ephemeral. It is freshly generated for every session and generated randomly (and is not based on the password). It uses OpenSSL\'s SRP with AES-256 and a 4096 Prime.
+.Pp
+.Nm 3.
+The password can be \'weak\' without weakening the security of the session. A brute force attack against a weak password requires a new TCP connection for every guess.
+.Pp
+.Nm 4.
+Do not use stupid passwords like \'password123\'. Malice might pick the same (stupid) password by chance and connect. If in doubt use gs-netcat -g to generate a strong one. Alice\'s and Bob\'s password should at least be strong enough so that Malice can not guess it by chance while Alice is waiting for Bob to connect.
+.Pp
+.Nm 5.
+If Alice shares the same password with Bob and Charlie and either one of them connects then Alice can not tell if it is Bob or Charlie who connected.
+.Pp
+.Nm 6.
+Assume Alice shares the same password with Bob and Malice. When Alice stops listening for a connection then Malice could start to listen for the connection instead. Bob (when opening a new connection) can not tell if he is connecting to Alice or to Malice. Use -a <token> if you worry about this. TL;DR: When sharing the same password with a group larger than 2 then it is assumed that everyone in that group plays nicely. Otherwise use SSH over the GS/TLS connection.
+.Pp
+.Nm 7.
+SRP has Perfect Forward Secrecy. This means that past sessions can not be decrypted even if the password becomes known.
+
+.Sh NOTES
+The latest version is available from https://github.com/hackerschoice/gsocket/.
+
+.Sh SEE ALSO
+.Xr gs-netcat(1) ,
+.Xr gs-sftp(1) ,
+.Xr gs-mount(1) ,
+.Xr blitz(1) ,
+.Xr nc(1) ,
+.Xr socat(1)
+
+.Sh BUGS
+Efforts have been made to have
+.Nm
+"do the right thing" in all its various modes. If you believe that it is doing the wrong thing under whatever circumstances, please notify me (skyper@thc.org) and tell me how you think it should behave.
