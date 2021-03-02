@@ -13,7 +13,7 @@ The Global Socket Tookit allows two users behind NAT/Firewall to establish a TCP
 - Perfect Forward Secrecy
 - TOR support (optional)
 
-Abandon the thinking of IP Addresses and Port Numbers. Instead start thinking that two programs should be able to communicate with each other as long as they know the same secret (rather than each others IP Address and Port Number). The Global Socket library facilitates this: It locally derives temporary session keys and IDs and connects two programs trough the Global Socket Relay Network (GSRN) regardless and independent of the local IP Address or geographical location. Once connected the library then negotiates a secure TLS connection(End-2-End). The secret never leaves your workstation. **The GSRN sees only the encrypted traffic**.
+Abandon the thought of IP Addresses and Port Numbers. Instead start thinking that two programs should be able to communicate with each other as long as they know the same secret (rather than each other\'s IP Address and Port Number). The Global Socket library facilitates this: It locally derives temporary session keys and IDs and connects two programs trough the Global Socket Relay Network (GSRN) regardless and independent of the local IP Address or geographical location. Once connected the library then negotiates a secure TLS connection(End-2-End). The secret never leaves your workstation. **The GSRN sees only the encrypted traffic**.
 
 The GSRN is a free cloud service and is free to use by anyone.
 
