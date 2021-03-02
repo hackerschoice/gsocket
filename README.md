@@ -85,8 +85,8 @@ See also: [gs(1)](https://hackerschoice.github.io/gs.1.html)
 
 3. Log in to Workstation A from Workstation B through any firewall/NAT
 ```
-$ ./gs-netcat -l -i   # Workstation A
-$ ./gs-netcat -i      # Workstation B
+$ gs-netcat -l -i   # Workstation A
+$ gs-netcat -i      # Workstation B
 ```
 See also: [gs-netcat(1)](https://hackerschoice.github.io/gs-netcat.1.html)
 
