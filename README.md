@@ -19,7 +19,7 @@ The GSRN is a free cloud service and is free to use by anyone.
 
 The Global Socket Toolkit comes with a set of tools:
 * **gs** - Make an existing program accessible via the GSRN. It does so by analyzing the program and replacing the IP-Layer with its own Gsocket-Layer. Any connection to a hostname ending in *'\*.gsocket'* is redirected via the GSRN to the listening server.
-* **gs-netcat** - Netcat on steroids. Turn gs-netcat into an AES-256 encrypted reverse backdoor via TOR (optional) with a true PTY/interactive command shell (```gs-netcat -s MySecret -i```) with integrated file-transfer, spawn a Socks4/4a/5 proxy or forward TCP connections or give somebody temporary shell access.
+* **gs-netcat** - Netcat on steroids. Turn gs-netcat into an AES-256 encrypted reverse backdoor via TOR (optional) with a true PTY/interactive command shell (```gs-netcat -s MySecret -i```), integrated file-transfer, spawn a Socks4/4a/5 proxy or forward TCP connections or give somebody temporary shell access.
 * **gs-sftp** - sftp server & client between two firewalled workstations (```gs-sftp -s MySecret```)
 * **gs-mount** - Access and mount a remote file system (```gs-mount -s MySecret ~/mnt/warez```)
 * **blitz** - Copy data (single or recursivley) (```blitz -s MySecret /usr/share/*```)
@@ -85,8 +85,8 @@ See also: [gs(1)](https://hackerschoice.github.io/gs.1.html)
 
 3. Log in to Workstation A from Workstation B through any firewall/NAT
 ```
-$ ./gs-netcat -l -i   # Workstation A
-$ ./gs-netcat -i      # Workstation B
+$ gs-netcat -l -i   # Workstation A
+$ gs-netcat -i      # Workstation B
 ```
 See also: [gs-netcat(1)](https://hackerschoice.github.io/gs-netcat.1.html)
 
