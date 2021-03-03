@@ -75,6 +75,8 @@ tests+="7.1 7.2 7.3 7.4 "
 tests+="8.1 8.2 8.3 "
 tests+="9.1 9.2 9.3 9.4 "
 tests+="10.1 10.2 10.3 10.4 "		# blitz, gs-sftp, gs-mount
+tests+="10.5 "		# gs socat
+tests+="10.6 "		# gs ssh
 
 if [ x"$1" != x ]; then
 	tests="$@ "
@@ -731,6 +733,42 @@ else
 	$ECHO "${OK}"
 	fi
 fi
+
+if [[ "${tests}" =~ '10.5' ]]; then
+test_start -n "Running: gs socat #10.5 (stdin)............................"
+socat -h 2>/dev/null | grep socks4 &>/dev/null
+if [ $? -ne 0 ]; then
+	skip "(no socat)"
+else
+	# Can not use nc here because nc does not terminate on EOF from stdin.
+	# Socat can be configured to terminate 1 second after EOF has been received.
+	GSPID1="$(sh -c '../tools/gs -k id_sec.txt socat -T1 -,ignoreeof TCP-LISTEN:31337 <test4k.dat 2>server_err.txt >server_out.dat & echo ${!}')"
+	GSPID2="$(sh -c 'GSOCKET_ARGS=-w ../tools/gs -k id_sec.txt socat -T1 -,ignoreeof TCP:gsocket:31337 <test1k.dat 2>client_err.txt >client_out.dat & echo ${!}')"
+	waitk $GSPID2
+	kill $GSPID1 &>/dev/null
+	md5fail 1 test1k.dat server_out.dat
+	md5fail 2 test4k.dat client_out.dat
+	$ECHO "${OK}"
+fi
+fi
+
+if [[ "${tests}" =~ '10.6' ]]; then
+test_start -n "Running: gs ssh #10.6 (stdin)............................"
+[[ -f ssh_host_rsa_key ]] || ssh-keygen -q -N "" -t rsa -b 2048 -f ssh_host_rsa_key
+[[ -d ~/.ssh ]] || mkdir ~/.ssh
+[[ -f id_rsa ]] || ssh-keygen -q -N "" -t rsa -b 2048 -f id_rsa
+[[ -f ~/.ssh/authorized_keys ]] && cp -a ~/.ssh/authorized_keys ~/.ssh/authorized_keys-backup
+cat id_rsa.pub >>~/.ssh/authorized_keys
+GSPID1="$(sh -c '../tools/gs -k id_sec.txt /usr/sbin/sshd -o HostKey=${PWD}/ssh_host_rsa_key -p 31338 -D 2>server_err.txt >server_out.dat & echo ${!}')"
+GSPID2="$(sh -c 'GSOCKET_ARGS=-w ../tools/gs -k id_sec.txt ssh -i id_rsa -o StrictHostKeyChecking=no -p 31338 ${LOGNAME}@gsocket echo Hello World 2>client_err.txt >client_out.dat & echo ${!}')"
+waitk $GSPID2
+kill $GSPID1 &>/dev/null
+[[ -f ~/.ssh/authorized_keys-backup ]] && cp -a ~/.ssh/authorized_keys-backup ~/.ssh/authorized_keys
+rm ~/.ssh/authorized_keys-backup
+if [ "${MDHELLOW}" != "$(MD5 client_out.dat)" ]; then fail 1; fi
+$ECHO "${OK}"
+fi
+
 
 if [ x"$1" == x ]; then
 	### Clean-up

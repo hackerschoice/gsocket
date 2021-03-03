@@ -94,7 +94,7 @@ GS_portrange_is_match(struct _gs_portrange_list *l, uint16_t port)
 	{
 		if ((l->list[i].low <= port) && (port <= l->list[i].high))
 		{
-			DEBUGF("%u <= port %u <= %u", l->list[i].low, port, l->list[i].high);
+			DEBUGF("%u <= port %u <= %u\n", l->list[i].low, port, l->list[i].high);
 			return 1; // TRUE
 		}
 	}
@@ -106,12 +106,12 @@ GS_portrange_is_match(struct _gs_portrange_list *l, uint16_t port)
 int
 GS_portrange_new(struct _gs_portrange_list *l, const char *range_orig)
 {
-	char *range = strdup(range_orig);
-	char *last = range;
 	char *ptr;
 	int added = 0; // no port range added (zero)
 
-	DEBUGF("ORIG=%s\n", range_orig);
+	DEBUGF("ORIG=%s %zu\n", range_orig, strlen(range_orig));
+	char *range = strdup(range_orig);
+	char *last = range;
 	memset(l, 0, sizeof *l);
 	if (range_orig == NULL)
 		return 0;

@@ -40,4 +40,4 @@ console_display_test_LDADD = ../lib/libgsocket.a
 filetransfer_test_SOURCES = filetransfer.c filetransfer-test.c utils.c gs_so-lib.c globbing.c
 filetransfer_test_LDADD = ../lib/libgsocket.a
 
-noinst_HEADERS = common.h utils.h socks.h console.h ids.h event_mgr.h pkt_mgr.h gs-netcat.h console_display.h filetransfer.h man_gs-netcat.h globbing.h filetransfer_mgr.h
+noinst_HEADERS = common.h utils.h socks.h console.h ids.h event_mgr.h pkt_mgr.h gs-netcat.h console_display.h filetransfer.h man_gs-netcat.h globbing.h filetransfer_mgr.h gs_so-lib.h

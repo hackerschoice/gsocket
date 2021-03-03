@@ -7,22 +7,20 @@
 .Nd connect as if there was no firewall. Securely.
 .Sh SYNOPSIS
 .Nm gs
-.Bk -words
 .Op Fl qT
 .Op Fl s Ar secret
 .Op Fl k Ar keyfile
 .Op Fl p Ar port
-.Op Ar programm
+.Op Ar program
 .Op Ar args ...
-.Ek
 .Sh DESCRIPTION
 The
 .Nm
-tool can be used to enable a programm to communicate trough a firewall in situations were it would not be possible to establish a direct connection to another host/workstation (NATed/firewalled). The typical scenario is two workstations that are on separate private networks and behind separate firewalls. The
+tool can be used to enable a program to communicate trough a firewall in situations where it would not be possible to establish a direct connection to another host/workstation (NATed/firewalled). The typical scenario is two workstations that are on separate private networks and behind separate firewalls. The
 .Nm
-tool hijacks the network library functions (such as connect() and accept()) of the programm and encrypts and redirects the traffic through the Global Socket Relay Network (GSRN). 
+tool hijacks the network library functions (such as connect() and accept()) of the program and encrypts and redirects the traffic through the Global Socket Relay Network (GSRN). 
 .Pp
-Neither workstation needs to open a port in their firewall or accept incoming TCP connections.
+Neither workstation needs to open a port in their firewall nor accept incoming TCP connections.
 .Pp
 The connection is end-2-end encrypted using SRP (RFC 5054) with AES-256 and a 4096 Prime. The GSRN sees only the encrypted traffic. 
 .Pp
@@ -41,15 +39,15 @@ and much, much more.
 .Pp
  ...while both workstations are behind NAT and firewalled.
 .Pp
-Abandon the thinking of IP addresses and port numbers: Two programms should be able to communicate with each other as long as they know the same secret (rather than each others IP address and port number). The
+Abandon the thought of IP addresses and port numbers: Two programs should be able to communicate with each other as long as they know the same secret (rather than each other\'s IP address and port number). The
 .Nm
-tools establishes a such connection regardless and independent of the local IP address or geographical location. It does so by analyzing the programm and replacing the IP-Layer with its own transport via the GSRN. The connection is End-2-End encrypted. The GSRN sees only the encrypted traffic.
+tools establishes a such connection regardless and independent of the local IP address or geographical location. It does so by analyzing the program and replacing the IP-Layer with its own transport through GSRN. The connection is End-2-End encrypted. The GSRN sees only the encrypted traffic.
 .Pp
-The typical scenario is a client/server arrangement such as ssh and sshd: All connections to any hostname that end with \'.gsocket\' are redirected (via the GSRN) to the server on a separate network (as long as both programms use the same secret).
+The typical scenario is a client/server arrangement such as ssh and sshd: Connections by ssh to any hostname ending in \'.gsocket\' are redirected (through the GSRN) to the (firewalled) sshd server.  
 .Pp
-The redirection is done per programm (and limited to that program only). The
+The redirection is done per program (and limited to that program only). The
 .Nm
-tool does not change the routing table and does not change the NAT or firewall settings.
+tool does not change the routing table and does not change the NAT or firewall settings. It does not require superuser privileges either.
 .Pp
 .Sh OPTIONS
 .Bl -tag -width Ds
@@ -64,20 +62,22 @@ Quiet mode. Do not output any warnings or errors.
 .It Fl T
 Use TOR. The
 .Nm
-tool will connect via TOR to the GSRN. This requires TOR to be installed and running.
+tool will connect through TOR to the GSRN. This requires TOR to be installed and running.
 .It Fl p Ar port
 TCP port range of listening ports to redirect [default=all].
 .El
 .Pp
+Connections to any hostname ending in \'*.gsocket\' or to the IP Address \'127.31.33.7\' are redirected through the GSRN.
+.Pp
+Connections to any hostname ending in \'*.thc\' or to the IP Address \'127.31.33.8\' are first redirected through TOR and then through the GSRN.
 .Sh EXAMPLES
 .Nm Example 1
 - OpenSSH between two firewalled workstations:
 .Pp
 Server:
 .Dl $ gs -s MySecret /usr/sbin/sshd
-.Pp
 Client:
-.Dl $ gs -s MySecret ssh root@gsocket
+.Dl $ gs -s MySecret ssh xaitax@gsocket
 .Pp
 .Nm Example 2
 - netcat between two firewalled workstations:
@@ -94,6 +94,22 @@ Server:
 .Dl $ gs -s MySecret openvpn --dev tun1 --proto tcp-server --ifconfig 10.9.8.1 10.9.8.2
 Client:
 .Dl $ gs -s MySecret openvpn --dev tun1 --proto tcp-client --ifconfig 10.9.8.2 10.9.8.1 --remote gsocket
+.Pp
+.Nm Example 4
+- IRCD between two firewalled workstations:
+.Pp
+Server:
+.Dl $ gs -s MySecret inspircd --nolog --nofork
+Client:
+.Dl $ gs -s MySecret irssi -c gsocket
+.Pp
+.Nm Example 5
+- Socat between two firewalled workstations:
+.Pp
+Server:
+.Dl $ gs -s MySecret socat - TCP_LISTEN:31337
+Client:
+.Dl $ gs -s MySecret socat - TCP:gsocket:31337
 .Pp
 .Sh ENVIRONMENT
 The following environment variables can be set to control the behavior of
@@ -141,12 +157,12 @@ SRP has Perfect Forward Secrecy. This means that past sessions can not be decryp
 The latest version is available from https://github.com/hackerschoice/gsocket/.
 
 .Sh SEE ALSO
-.Xr gs-netcat(1) ,
-.Xr gs-sftp(1) ,
-.Xr gs-mount(1) ,
-.Xr blitz(1) ,
-.Xr nc(1) ,
-.Xr socat(1)
+.Xr gs-netcat 1 ,
+.Xr gs-sftp 1 ,
+.Xr gs-mount 1 ,
+.Xr blitz 1 ,
+.Xr nc 1 ,
+.Xr socat 1
 
 .Sh BUGS
 Efforts have been made to have

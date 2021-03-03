@@ -1061,29 +1061,64 @@ sanitize_fname_to_str(uint8_t *str, size_t len)
 	str[i] = 0x00; // always 0 terminate
 }
 
-// void
-// authcookie_gen(uint8_t *cookie, const char *secret, uint16_t port)
-// {
-// 	char buf[128];
+void
+gs_watchdog(void)
+{
+	pid_t pid;
 
-// 	// gs-netcat -I is passed the secret as '<secret>-<port>' and thus
-// 	// when called from gs-netcat -I we do not need to append the port here.
-// 	if (port == 0)
-// 		snprintf(buf, sizeof buf, "AUTHCOOKIE-%s", secret);
-// 	else
-// 		snprintf(buf, sizeof buf, "AUTHCOOKIE-%u-%s", port, secret);
+	while (1) // LOOP FOREVER
+	{
 
-// 	DEBUGF_Y("AC='%s'\n", buf);
-// 	SHA256((unsigned char *)buf, strlen(buf), cookie);
-// }
+		int fds[2];
+		socketpair(AF_UNIX, SOCK_STREAM, 0, fds);
+		pid = fork();
+		XASSERT(pid >= 0, "fork(): %s\n", strerror(errno));
 
+		if (pid == 0)
+		{
+			// CHILD
+			close(fds[1]);
+			dup2(fds[0], STDIN_FILENO);
+			return; // CHILD continues to execute
+		}
 
+		// PARENT:
+		close(fds[0]);
+		// fdsp[1] is a socket to the child. We can detect when it dies....
+		fd_set rfds;
+		FD_ZERO(&rfds);
 
+		int n;
+		while (1)
+		{
+			FD_SET(STDIN_FILENO, &rfds);
+			FD_SET(fds[1], &rfds);
+			n = select(fds[1] + 1, &rfds, NULL, NULL, NULL);
+			if (n < 0)
+			{
+				if (errno == EINTR)
+					continue;
+				exit(255); // FATAL
+			}
 
+			// If parent dies then die immediately (this closes fds[0] and all child will die)
+			if (FD_ISSET(STDIN_FILENO, &rfds))
+			{
+				// DEBUGF_Y("watchdog STDIN is set. EOF (parent died)?\n");
+				exit(0);
+			}
+			if (FD_ISSET(fds[1], &rfds))
+			{
+				// Oops. Child died. Restart.
+				close(fds[1]);
+				sleep(5); // Grace period to prevent exessive restarts...
+				break;
+			}
+			sleep(1); // Grace period (not needed, unless select() goes haywire...)
+		}
+	}
 
-
-
-
-
+	// NOT REACHED
+}
 
 

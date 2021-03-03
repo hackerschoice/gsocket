@@ -280,6 +280,7 @@ env_arg_init()
 	[[ -n "$GSOCKET_ARGS" ]] && GSOCKET_ARGS+=" "
 	if [[ -n "$FL_NEED_PASSWORD" ]]; then
 		password=$(read_password)
+		# shellcheck disable=SC2034 # GSOCKET_SECRET appears unused => It's used in 'gs'
 		GSOCKET_SECRET="${password}"
 		echo "=Secret         :\"${password}\""
 		GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-s"		# Add to end of array			
@@ -287,7 +288,7 @@ env_arg_init()
 	fi
 	# Have to output it here because gs-netcat might be started from withing
 	# sshfs or sftpd where stderr is no longer available to gs-netcat
-	[[ -n "$IS_QUIET" ]] || echo "=Encryption     : SRP-AES-256-CBC-SHA-End2End (Prime: 4096 bits)"
+	[[ -n "$IS_QUIET" ]] || echo >&2 "=Encryption     : SRP-AES-256-CBC-SHA-End2End (Prime: 4096 bits)"
 	ENV_ARGS="${GSOCKET_ARGS}${GSNC_ENV_ARGS[*]}"
 }
 

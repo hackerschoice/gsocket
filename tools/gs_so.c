@@ -1,31 +1,20 @@
 
+
+// TODO:
+// - Support IPv6
+// - Suppport UDP
+
 #define _GNU_SOURCE
 #include "common.h"
 
-
-// #include <sys/types.h>
-// #include <sys/socket.h>
-// #include <sys/stat.h>
-// #include <arpa/inet.h>
-// #include <fcntl.h>
-// #include <errno.h>
+#include <sys/wait.h>
 #include <dlfcn.h>
-// #include <stdio.h>
-// #include <stdlib.h>
-// #ifdef HAVE_UNISTD_H
-// # include <unistd.h>
-// #endif
-// #include <errno.h>
 #include <limits.h>
 #include <netdb.h>
-// #include <string.h>
-// #include <libgen.h>
 #ifdef __CYGWIN__
 # include <sys/cygwin.h>
 # include <windows.h>
 #endif
-// #include <openssl/sha.h>
-// #include "gs_so-protocol.h"
 #include "gs_so-lib.h"
 
 #define GS_WITH_AUTHCOOKIE   1
@@ -39,6 +28,7 @@ struct _fd_info
 	int is_listen;
 	int is_tor;
 	int is_hijack;
+	sa_family_t sa_family;
 	uint16_t port_orig; // Fixme, this is confusing with gs_so_mgr. duplicate?
 	uint16_t port_fake;
 };
@@ -62,30 +52,32 @@ struct _gs_so_mgr
 };
 
 // HOOK definitions
+// Note: Set errno=0 before libcall => Some programs (e.g. netcat) ignore
+// return value of listen() and just check if errno has changed.
+// Our .so may have changed errno...
 typedef int (*real_bind_t)(int sox, const struct sockaddr *addr, socklen_t addr_len);
-static int real_bind(int sox, const struct sockaddr *addr, socklen_t addr_len) { return ((real_bind_t)dlsym(RTLD_NEXT, "bind"))(sox, addr, addr_len); }
+static int real_bind(int sox, const struct sockaddr *addr, socklen_t addr_len) { errno=0; return ((real_bind_t)dlsym(RTLD_NEXT, "bind"))(sox, addr, addr_len); }
 typedef int (*real_listen_t)(int sox, int backlog);
-static int real_listen(int sox, int backlog) { return ((real_listen_t)dlsym(RTLD_NEXT, "listen"))(sox, backlog); }
+static int real_listen(int sox, int backlog) { errno=0; return ((real_listen_t)dlsym(RTLD_NEXT, "listen"))(sox, backlog); }
 typedef int (*real_connect_t)(int sox, const struct sockaddr *addr, socklen_t addr_len);
-static int real_connect(int sox, const struct sockaddr *addr, socklen_t addr_len) { return ((real_connect_t)dlsym(RTLD_NEXT, "connect"))(sox, addr, addr_len); }
+static int real_connect(int sox, const struct sockaddr *addr, socklen_t addr_len) { errno=0; return ((real_connect_t)dlsym(RTLD_NEXT, "connect"))(sox, addr, addr_len); }
 typedef int (*real_accept_t)(int sox, const struct sockaddr *addr, socklen_t *addr_len);
-static int real_accept(int sox, const struct sockaddr *addr, socklen_t *addr_len) { return ((real_accept_t)dlsym(RTLD_NEXT, "accept"))(sox, addr, addr_len); }
+static int real_accept(int sox, const struct sockaddr *addr, socklen_t *addr_len) { errno=0; return ((real_accept_t)dlsym(RTLD_NEXT, "accept"))(sox, addr, addr_len); }
 typedef struct hostent *(*real_gethostbyname_t)(const char *name);
-static struct hostent *real_gethostbyname(const char *name) { return ((real_gethostbyname_t)dlsym(RTLD_NEXT, "gethostbyname"))(name); }
+static struct hostent *real_gethostbyname(const char *name) { errno=0; return ((real_gethostbyname_t)dlsym(RTLD_NEXT, "gethostbyname"))(name); }
 typedef int (*real_getaddrinfo_t)(const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **res);
-static int real_getaddrinfo(const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **res) { return ((real_getaddrinfo_t)dlsym(RTLD_NEXT, "getaddrinfo"))(node, service, hints, res); }
+static int real_getaddrinfo(const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **res) { errno=0; return ((real_getaddrinfo_t)dlsym(RTLD_NEXT, "getaddrinfo"))(node, service, hints, res); }
 
 // FUNCTION definitions
-static void gs_so_listen(const char *secret, uint16_t port_orig, uint16_t *port_fake, int is_tor);
-static void gs_so_connect(const char *secret, uint16_t port_orig, uint16_t *port_fake, int is_tor);
+static struct _gs_so_mgr *gs_so_listen(const char *secret, uint16_t port_orig, uint16_t *port_fake, int is_tor);
+static struct _gs_so_mgr *gs_so_connect(const char *secret, uint16_t port_orig, uint16_t *port_fake, int is_tor);
 static struct _gs_so_mgr *gs_mgr_lookup(const char *secret, uint16_t port_orig, enum gs_so_mgr_type_t gs_type, int is_tor);
 static struct _gs_so_mgr *gs_mgr_new_by_ipc(int ipc_fd, int is_tor);
 static struct _gs_so_mgr *gs_mgr_new(const char *secret, uint16_t port_orig, uint16_t *port_fake, enum gs_so_mgr_type_t gs_type, int is_tor);
+static void gs_mgr_free(struct _gs_so_mgr *m);
 
 // STATIC variables
 static int is_init;
-static int is_debug;
-static int is_nohijack;
 static struct _fd_info fd_list[FD_SETSIZE];
 static struct _gs_so_mgr mgr_list[FD_SETSIZE];
 static char *g_secret; // global secret
@@ -104,21 +96,35 @@ static void thc_init_cyg(void) {}	// Do nothing.
 #endif
 
 static void
-thc_init(void)
+thc_init(const char *fname)
 {
 	if (is_init)
 		return;
 	is_init = 1;
 
-	gopt.err_fp = stderr;
 	thc_init_cyg();
 
-	if (getenv("GSOCKET_DEBUG"))
-		is_debug = 1;
-	DEBUGF("%s called\n", __func__);
+	if (getenv("GS_DEBUG"))
+	{
+		char *ptr = getenv("GS_LOGFILE");
+		if (ptr)
+			gopt.err_fp = fopen(ptr, "w");
+		if (gopt.err_fp == NULL)
+			gopt.err_fp = stderr;
+	}
+	DEBUGF("%s called from %s()\n", __func__, fname);
 
-	if (getenv("_GSOCKET_NOHIJACK"))
-		is_nohijack = 1;
+	// struct sigaction sa;
+	// memset(&sa, 0, sizeof sa);
+	// sa.sa_sigaction = &cb_sigchld;
+	// sa.sa_flags = SA_SIGINFO | SA_RESTART | SA_NOCLDWAIT;
+	// sigaction(SIGCHLD, &sa, NULL);
+
+	// Disable LD_PRELOAD so that any further exec*() is not hijacked again.
+	// (e.g. when starting gs-netcat or when ssh starts a /bin/bash...)
+	unsetenv("LD_PRELOAD");
+	unsetenv("DYLD_INSERT_LIBRARIES");
+	unsetenv("DYLD_FORCE_FLAT_NAMESPACE");
 
 	char *ptr = getenv("GS_HIJACK_PORTS");
 	GS_portrange_new(&hijack_ports, ptr?ptr:"1-65535");
@@ -131,6 +137,11 @@ static int real_close(int fd) { return ((real_close_t)dlsym(RTLD_NEXT, "close"))
 static int
 thc_close(const char *fname, int fd)
 {
+	// thc_init(fname); // OSX: segfault. strdup() and unsetenv() seem to segfault.
+
+	DEBUGF_Y("close(%d)\n", fd);
+	if (fd > 1000)
+		return 0; // FIXME
 	if (fd >= 0)
 	{
 		memset(&fd_list[fd], 0, sizeof fd_list[fd]);
@@ -145,7 +156,7 @@ thc_connect(const char *fname, int sox, const struct sockaddr *addr, socklen_t a
 	int rv;
 	struct _fd_info *fdi;
 
-	thc_init();
+	thc_init(fname);
 
 	// DEBUGF("-> %s (nohijack=%d, sox=%d, af-family=%d)\n", fname, is_nohijack, sox, addr->sa_family);
 	if ((sox < 0) || (addr == NULL))
@@ -179,7 +190,7 @@ thc_connect(const char *fname, int sox, const struct sockaddr *addr, socklen_t a
 		is_call_orig = 0;
 		fdi->is_tor = 1;
 	}
-	if ((is_call_orig) || (is_nohijack))
+	if (is_call_orig)
 		return real_connect(sox, addr, addr_len);
 
 	fdi = &fd_list[sox];
@@ -197,6 +208,12 @@ thc_connect(const char *fname, int sox, const struct sockaddr *addr, socklen_t a
 	}
 
 	gs_so_connect(g_secret, fdi->port_orig, &fdi->port_fake, fdi->is_tor);
+	if (fdi->port_fake == 0)
+	{
+		// could not start gs-netcat port forwarding sub-process
+		errno = ECONNREFUSED;
+		return -1;
+	}
 
 	DEBUGF("Connecting to 127.0.0.1:%u instead (sox=%d)\n", fdi->port_fake, sox);
 	a->sin_port = htons(fdi->port_fake);
@@ -207,7 +224,10 @@ thc_connect(const char *fname, int sox, const struct sockaddr *addr, socklen_t a
 	// may never call 'write()' and might be receiving only.
 	int flags = fcntl(sox, F_GETFL, 0);
 	if (flags & O_NONBLOCK)
+	{
+		DEBUGF_B("Setting sox=%d to BLOCKING\n", sox);
 		fcntl(sox, F_SETFL, ~O_NONBLOCK & flags);
+	}
 	rv = real_connect(sox, (struct sockaddr *)a, sizeof *a);
 	if (rv != 0)
 	{
@@ -225,7 +245,10 @@ thc_connect(const char *fname, int sox, const struct sockaddr *addr, socklen_t a
 	rv = write(sox, cookie, sizeof cookie);
 #endif
 	if (flags & O_NONBLOCK)
+	{
+		DEBUGF_B("Setting sox=%d to NONBLOCKING\n", sox);
 		fcntl(sox, F_SETFL, O_NONBLOCK | flags);
+	}
 
 	return 0;
 err:
@@ -238,27 +261,31 @@ static int
 thc_bind(const char *fname, int sox, const struct sockaddr *addr, socklen_t addr_len)
 {
 	struct sockaddr_in *a;
+	struct sockaddr_in6 *a6;
 	int rv;
 	struct _fd_info *fdi;
 
-	thc_init();
-	DEBUGF_W("BIND  called\n");
+	thc_init(fname);
+	DEBUGF_W("BIND  called (sox=%d, addr=%p, family=%d)\n", sox, addr, addr->sa_family);
 
 	if ((sox < 0) || (addr == NULL))
 		return real_bind(sox, addr, addr_len);
 
+
 	fdi = &fd_list[sox];
-	if ((is_nohijack) || (fdi->is_bind) || (addr->sa_family != AF_INET))
+	if ((fdi->is_bind) || !( (addr->sa_family == AF_INET) || (addr->sa_family == AF_INET6)) )
+	{
+		DEBUGF("is_bind=%d, family=%d\n", fdi->is_bind, addr->sa_family);
 		return real_bind(sox, addr, addr_len);
+	}
 
 	int is_call_hijack = 0;
 	a = (struct sockaddr_in *)addr;
-	if (a->sin_addr.s_addr == inet_addr("127.31.33.7"))
-		is_call_hijack = 1;
-	if (a->sin_addr.s_addr == inet_addr("127.31.33.8"))
+	a6 = (struct sockaddr_in6 *)addr;
+	if (addr->sa_family == AF_INET)
 	{
-		is_call_hijack = 1;
-		fdi->is_tor = 1;
+		if (a->sin_addr.s_addr == inet_addr("127.31.33.8"))
+			fdi->is_tor = 1;
 	}
 	if (GS_portrange_is_match(&hijack_ports, ntohs(a->sin_port)))
 		is_call_hijack = 1;
@@ -270,69 +297,70 @@ thc_bind(const char *fname, int sox, const struct sockaddr *addr, socklen_t addr
 	memcpy(&fdi->addr, addr, sizeof fdi->addr);
 	fdi->port_orig = ntohs(a->sin_port);
 
-	a->sin_addr.s_addr = inet_addr("127.0.0.1");
-	a->sin_port = 0; // Pick any port at random to listen on.
-	rv = real_bind(sox, (struct sockaddr *)a, sizeof *a);
+	if (addr->sa_family == AF_INET6)
+	{
+		inet_pton(AF_INET6, "::1", (void *)&a6->sin6_addr);
+		a6->sin6_port = 0;
+	} else {
+		a->sin_addr.s_addr = inet_addr("127.0.0.1");
+		a->sin_port = 0; // Pick any port at random to listen on.
+	}
+	rv = real_bind(sox, (struct sockaddr *)addr, addr_len);
 	if (rv != 0)
+	{
+		DEBUGF_R("bind(): %s\n", strerror(errno));
 		return rv;
+	}
 
-	struct sockaddr_in paddr;
-	socklen_t plen = sizeof addr;
-	rv = getsockname(sox, (struct sockaddr *)&paddr, &plen);
-	uint16_t port = ntohs(paddr.sin_port);
+	// Retrieve (random) local port we bind() to.
+	socklen_t plen;
+	uint16_t port;
+	if (addr->sa_family == AF_INET)
+	{
+		struct sockaddr_in paddr;
+		plen = sizeof paddr;
+		rv = getsockname(sox, (struct sockaddr *)&paddr, &plen);
+		port = ntohs(paddr.sin_port);
+	} else {
+		struct sockaddr_in6 paddr6;
+		plen = sizeof paddr6;
+		rv = getsockname(sox, (struct sockaddr *)&paddr6, &plen);
+		port = ntohs(paddr6.sin6_port);
+	}
 	fdi->port_fake = port;
 	fdi->is_bind = 1;
 	fdi->is_hijack = 1;
+	fdi->sa_family = addr->sa_family;
 	DEBUGF_G("Bind to port=%u (orig=%u, rv=%d)\n", fdi->port_fake, fdi->port_orig, rv);
 
 	return 0;
 }
 
-int g_ls = -1;
-
-static void
-cb_sigchld(int sig)
-{
-
-	// pid_t = wait find out pid but let caller still call wait()?
-	DEBUGF("SIGNAL CHLD %d\n", sig);
-	// FIXME: forward to original signal function (hijack it?)
-	// if signal was set up for that...
-	// FIXME: only close if this was our pid..
-	XCLOSE(g_ls);
-
-	// FIXME
-}
 
 static int
 thc_listen(const char *fname, int sox, int backlog)
 {
 	struct _fd_info *fdi;
 
-	thc_init();
-	DEBUGF_W("LISTEN called\n");
+	thc_init(fname);
+	DEBUGF_W("LISTEN called (sox=%d)\n", sox);
 
 	if (sox < 0)
 		return real_listen(sox, backlog); // good luck! let glibc handle crap.
 
 	fdi = &fd_list[sox];
 
-	if ((is_nohijack) || (fdi->is_listen) || (fdi->is_hijack == 0))
+	// IPv6: Allow app to listen() but then deny accept() later.
+	if ((fdi->is_listen) || (fdi->is_hijack == 0) || (fdi->sa_family == AF_INET6))
 		return real_listen(sox, backlog);
 
 	fdi->is_listen = 1;
-	// The GS-Netcal process might exit (for example, if it cant connect to GSRN or
-	// the gsocket-address is already taken.)
-	// The caller might be waiting in signal() and we need a way to make it fail.
-	// We detect by sigchld if our gs-netcat process died and then close the listening socket.
-	// That will make the caller's select() return and the caller's call to accept() will fail.
-	signal(SIGCHLD, cb_sigchld);
-	g_ls = sox;
 	// Send Secret and listening port to manager
 	gs_so_listen(g_secret, fdi->port_orig, &fdi->port_fake, fdi->is_tor);
 
 	int ret;
 	ret = real_listen(sox, backlog);
+	DEBUGF("listen(%d)=%d, %s\n", sox, ret, strerror(errno));
 
 	return ret;
 }
@@ -343,27 +371,41 @@ thc_accept(const char *fname, int ls, const struct sockaddr *addr, socklen_t *ad
 {
 	int sox;
 
-	thc_init();
-	DEBUGF_W("ACCEPT called\n");
+	errno = 0;
+	thc_init(fname);
+	DEBUGF_W("ACCEPT called (ls=%d)\n", ls);
 
 	if (ls < 0)
 		return real_accept(ls, addr, addr_len);
 
+	if (fd_list[ls].sa_family == AF_INET6)
+	{
+		DEBUGF("foobar\n");
+		// IPv6: Do not allow connection (until we implement propper support for it)
+		errno = EINVAL;
+		return -1;
+	}
+	DEBUGF("FOOBAR\n");
 	sox = real_accept(ls, addr, addr_len);
-	DEBUGF("sox = %d\n", sox);
+	DEBUGF("accept()=%d (new socket)\n", sox);
 	if (sox < 0)
 		return sox;
 
 #ifdef GS_WITH_AUTHCOOKIE
 	struct _fd_info *fdi;
 	fdi = &fd_list[ls];
+	int rv;
 	uint8_t cookie[GS_AUTHCOOKIE_LEN];
 	uint8_t ac_buf[GS_AUTHCOOKIE_LEN];
 	int flags = fcntl(sox, F_GETFL, 0);
 	if (flags & O_NONBLOCK)
 		fcntl(sox, F_SETFL, ~O_NONBLOCK & flags);
-	if (read(sox, ac_buf, sizeof ac_buf) != sizeof ac_buf)
+	rv = read(sox, ac_buf, sizeof ac_buf);
+	if (rv != sizeof ac_buf)
+	{
+		DEBUGF("read(%d)=%d\n", sox, rv);
 		return -1;
+	}
 	if (flags & O_NONBLOCK)
 		fcntl(sox, F_SETFL, O_NONBLOCK | flags);
 
@@ -414,7 +456,7 @@ gs_type_hijack_domain(const char *name, size_t len)
 struct hostent *
 thc_gethostbyname(const char *fname, const char *name)
 {
-	thc_init();
+	thc_init(fname);
 
 	DEBUGF_W("GETHOSTBYNAME called\n");
 	if (name == NULL)
@@ -435,7 +477,7 @@ thc_gethostbyname(const char *fname, const char *name)
 int
 thc_getaddrinfo(const char *fname, const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **res)
 {
-	thc_init();
+	thc_init(fname);
 
 	if (node == NULL)
 		return real_getaddrinfo(node, service, hints, res);
@@ -464,9 +506,9 @@ gs_mgr_lookup(const char *secret, uint16_t port_orig, enum gs_so_mgr_type_t gs_t
 	for (i = 0; i < sizeof mgr_list / sizeof *mgr_list; i++)
 	{
 		m = &mgr_list[i];
-		if (gs_type != m->gs_type)
+		if (m->gs_type != gs_type)
 			continue;
-		if (port_orig != m->port_orig)
+		if (m->port_orig != port_orig)
 			continue;
 		if (m->secret == NULL)
 			continue;
@@ -478,9 +520,28 @@ gs_mgr_lookup(const char *secret, uint16_t port_orig, enum gs_so_mgr_type_t gs_t
 	}
 
 	if (i >= sizeof mgr_list / sizeof *mgr_list)
+	{
+		DEBUGF("MGR not found (secret=%s, port_orig=%u, gs_type=%d, is_tor=%d)\n", secret, port_orig, gs_type, is_tor);
 		return NULL; // not found.
+	}
+	DEBUGF("MGR found with IPC_ID=%d\n", m->ipc_fd);
 
-	return m;
+	// FOUND but check if this one is still alive:
+	char c;
+	int rv;
+	rv = read(m->ipc_fd, &c, sizeof c);
+	if (rv == sizeof c)
+		return m; // SHOULD NOT HAPPEN. Child never sends us data via stdin
+	if ((rv < 0) && (errno == EWOULDBLOCK))
+		return m; // still alive
+
+	DEBUGF("MGR dead (pid=%d)? %s\n", m->pid, strerror(errno));
+	int wstatus;
+	waitpid(m->pid, &wstatus, WNOHANG); // No defunct/zombie children
+
+	gs_mgr_free(m);
+
+	return NULL; // DIED. Will create new MGR
 }
 
 // Allocate an Manager/IPC structure
@@ -489,13 +550,13 @@ gs_mgr_new_by_ipc(int ipc_fd, int is_tor)
 {
 	if (mgr_list[ipc_fd].is_used)
 	{
-		DEBUGF("ERROR: IPC already assigned (%d)", ipc_fd);
+		DEBUGF("ERROR: IPC already assigned (%d)\n", ipc_fd);
 		return NULL;
 	}
 
 	mgr_list[ipc_fd].ipc_fd = ipc_fd;
 	mgr_list[ipc_fd].is_used = 1;
-	mgr_list[ipc_fd].is_tor = 1;
+	mgr_list[ipc_fd].is_tor = is_tor;
 
 	return &mgr_list[ipc_fd]; 
 }
@@ -514,8 +575,19 @@ close_all_fd(int fd)
 #endif
 		if (i == fd)
 			continue;
-		close(i);
+		real_close(i);
 	}
+}
+
+// Close FD and clear memory
+static void
+gs_mgr_free(struct _gs_so_mgr *m)
+{
+	if (m->ipc_fd >= 0)
+		real_close(m->ipc_fd);
+
+	memset(m, 0, sizeof *m);
+	m->ipc_fd = -1;
 }
 
 // Open an IPC connection to the Manager
@@ -525,14 +597,32 @@ gs_mgr_new(const char *secret, uint16_t port_orig, uint16_t *port_fake, enum gs_
 	int fds[2];
 
 	// This socketpair ensures that the client can detect if the parent
-	// exits.
+	// exits. Creates fds = [4, 5].
 	socketpair(AF_UNIX, SOCK_STREAM, 0, fds);
+	// OpenSSH calls dup2(10, 5 [REEXEC_STARTUP_PIPE_FD]) in sshd.c for rexec.
+	// That dup2() call will first close fd==5. However, that might be our fd from the socketpair!
+	// REEXEC_STARTUP_PIPE_FD is defined as STDOUT + 3 and OpenSSH does not give a damn if that socket
+	// is already used or not. It blindly calls dup2(, 5). Instead we do a hack to use
+	// a high socket number for our IPC comm.
+	// FIXME: OpenSSH run in debug mode (-d) calls execve() on itself. The OpenSSL/selinux subsystem
+	// then closes all 'not needed' open fd's including our fd. We would need to intercept
+	// execve() to add LD_PRELOAD again and then track close() not to close our IPC fd.
+	int free_fd;
+	for (free_fd = getdtablesize() - 1; free_fd >= 0; free_fd--)
+	{
+		if (fcntl(free_fd, F_GETFD, 0) != 0)
+			break;
+	}
+	dup2(fds[1], free_fd);
+	real_close(fds[1]);
+	fds[1] = free_fd;
+
 	struct _gs_so_mgr *m;
 	m = gs_mgr_new_by_ipc(fds[1], is_tor);
 	if (m == NULL)
 		return NULL;
 
-	DEBUGF_C("IS_TOR=%d\n", is_tor);
+	DEBUGF_C("IS_TOR=%d, port_fake=%d, [%d, %d]\n", is_tor, *port_fake, fds[0], fds[1]);
 	// FIXME: For now we spawn a gs-netcat for each port number & type
 	// Later we may unify this into a single new 'gsd' daemon
 	pid_t pid;
@@ -543,10 +633,12 @@ gs_mgr_new(const char *secret, uint16_t port_orig, uint16_t *port_fake, enum gs_
 	if (pid == 0)
 	{
 		// CHILD
-
-		m->ipc_fd = fds[0];
-		dup2(m->ipc_fd, STDOUT_FILENO);
-		dup2(m->ipc_fd, STDIN_FILENO);
+		// STDOUT: gs-netcat allocates a random port number and outputs that port number (16 bit) to stdout.
+		// The parent process will read it from ipc_fd to then redirect that connect() call to that
+		// port number.
+		dup2(fds[0], STDOUT_FILENO);
+		// STDIN: gs-netcat monitors stdin to check if parent dies.
+		dup2(fds[0], STDIN_FILENO);
 
 		close_all_fd(fds[0] /*except this one*/);
 
@@ -561,7 +653,9 @@ gs_mgr_new(const char *secret, uint16_t port_orig, uint16_t *port_fake, enum gs_
 			setenv("_GSOCKET_SEND_AUTHCOOKIE", "1", 1);
 #endif
 			unsetenv("_GSOCKET_WANT_AUTHCOOKIE");
-			snprintf(buf, sizeof buf, "%s %s-s%u-%s -l -d127.0.0.1 -p%u", env_args?env_args:"", is_tor?"-T ":"", port_orig, secret, *port_fake);
+			// Note: Must start with -q: We close(stderr) and gs-netcat
+			// will SIGPIPE (on OSX) when trying to write stats to stderr.
+			snprintf(buf, sizeof buf, "%s %s-s%u-%s -q -W -l -d127.0.0.1 -p%u", env_args?env_args:"", is_tor?"-T ":"", port_orig, secret, *port_fake);
 			snprintf(prg, sizeof prg, "gs-netcat [S-%u]", port_orig);
 		}
 			
@@ -574,16 +668,14 @@ gs_mgr_new(const char *secret, uint16_t port_orig, uint16_t *port_fake, enum gs_
 			setenv("_GSOCKET_WANT_AUTHCOOKIE", "1", 1);
 #endif
 			unsetenv("_GSOCKET_SEND_AUTHCOOKIE");
-			snprintf(buf, sizeof buf, "%s %s-s%u-%s -p0", env_args?env_args:"", is_tor?"-T ":"", port_orig, secret);
+			snprintf(buf, sizeof buf, "%s %s-s%u-%s -q -p0", env_args?env_args:"", is_tor?"-T ":"", port_orig, secret);
 			snprintf(prg, sizeof prg, "gs-netcat [C-%u]", port_orig);
 		}
 		setenv("GSOCKET_ARGS", buf, 1);
 
-		setenv("_GSOCKET_NOHIJACK", "1", 1);
+		// unsetenv("LD_PRELOAD");
 		setenv("_GSOCKET_INTERNAL", "1", 1);
 		setenv("GSOCKET_NO_GREETINGS", "1", 1);
-		unsetenv("LD_PRELOAD");
-		unsetenv("DYLD_INSERT_LIBRARIES");
 		char *bin = getenv("GS_NETCAT_BIN");
 		if (bin == NULL)
 			bin = "gs-netcat";
@@ -591,49 +683,65 @@ gs_mgr_new(const char *secret, uint16_t port_orig, uint16_t *port_fake, enum gs_
 		execlp(bin, prg, NULL); // Try local dir first
 		DEBUGF("FAILED\n");
 
+		sleep(1); // Good to sleep to prevent rapit auto-restart
 		exit(255); // NOT REACHED
 	}
 	// PARENT
-	close(fds[0]);
+	real_close(fds[0]);
+
+	m->ipc_fd = fds[1];
+	DEBUGF_W("IPC_FD=%d\n", fds[1]);
 	if (gs_type == GS_SO_MGR_TYPE_CONNECT)
 	{
-		read(fds[1], port_fake, sizeof *port_fake);
+		int rv;
+		rv = read(m->ipc_fd, port_fake, sizeof *port_fake);
+		if (rv != sizeof *port_fake)
+		{
+			*port_fake = 0;
+			DEBUGF_R("read(%d)=%d: %s\n", fds[1], rv, strerror(errno));
+			gs_mgr_free(m);
+			return NULL;
+		}
 		DEBUGF("Received port %u\n", *port_fake);
 		m->port_fake = *port_fake;
 	}
 
+	// Set Parent's IPC FD to non-blocking so that we can read() and check
+	// if child is still alive...
+	fcntl(m->ipc_fd, F_SETFL, O_NONBLOCK | fcntl(m->ipc_fd, F_GETFL, 0));
+
 	return m;
 }
 
-static void
+static struct _gs_so_mgr *
 gs_mgr_connect(const char *secret, uint16_t port_orig, uint16_t *port_fake, enum gs_so_mgr_type_t gs_type, int is_tor)
 {
 	struct _gs_so_mgr *m;
 	m = gs_mgr_lookup(secret, port_orig, gs_type, is_tor);
 	if (m != NULL)
-		return;
+		return m;
 
-	gs_mgr_new(secret, port_orig, port_fake, gs_type, is_tor);
+	return gs_mgr_new(secret, port_orig, port_fake, gs_type, is_tor);
 }
 
 // Send a message to the Manager for a listening port.
 // This function is called by the hijacked listen() to request a new GS-Listen()
 // forward from the daemon.
-static void
+static struct _gs_so_mgr *
 gs_so_listen(const char *secret, uint16_t port_orig, uint16_t *port_fake, int is_tor)
 {
 	// Contact the GS-MGR and send him our port and secret (via local socket controller by this user! not tcp)
 	// or use IPC / socketpair (FIXME: implement this!)
-	gs_mgr_connect(secret, port_orig, port_fake, GS_SO_MGR_TYPE_LISTEN, is_tor);
+	return gs_mgr_connect(secret, port_orig, port_fake, GS_SO_MGR_TYPE_LISTEN, is_tor);
 
 	// Nothing to send or do at we are (currently, as a hack) using
 	// gs-netcat (a new gs-netcat process for every [port_orig, type] combination
 }
 
-static void
+static struct _gs_so_mgr *
 gs_so_connect(const char *secret, uint16_t port_orig, uint16_t *port_fake, int is_tor)
 {
-	gs_mgr_connect(secret, port_orig, port_fake, GS_SO_MGR_TYPE_CONNECT, is_tor);
+	return gs_mgr_connect(secret, port_orig, port_fake, GS_SO_MGR_TYPE_CONNECT, is_tor);
 }
 
 // HOOKS

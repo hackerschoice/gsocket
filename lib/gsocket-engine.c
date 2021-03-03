@@ -214,7 +214,7 @@ GS_CTX_init(GS_CTX *ctx, fd_set *rfd, fd_set *wfd, fd_set *r, fd_set *w, struct 
 	ctx->socks_port = htons(GS_SOCKS_DFL_PORT);
 	char *ptr;
 	ptr = getenv("GSOCKET_SOCKS_IP");
-	if (ptr != NULL)
+	if ((ptr != NULL) && (*ptr != '\0'))
 		ctx->socks_ip = inet_addr(ptr);
 
 	ptr = getenv("GSOCKET_SOCKS_PORT");

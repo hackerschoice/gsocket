@@ -129,6 +129,7 @@ struct _gopt
 	int is_socks_server;	/* -S flag */
 	int is_multi_peer;		/* -p / -S / -d [client & server] */
 	int is_daemon;
+	int is_watchdog;        // Never die but die if stdin closes
 	int is_logfile;
 	int is_quiet;
 	int is_win_resized;     // window size changed (signal)

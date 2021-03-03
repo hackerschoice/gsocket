@@ -269,10 +269,12 @@ static int
 cb_read_stdin(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 {
 	DEBUGF_R("STDIN closed. HARD EXIT\n");
+#ifdef DEBUG
 	int rv;
 	char c;
 	rv = read(fd, &c, sizeof c);
 	DEBUGF_R("%d %s\n", rv, strerror(errno));
+#endif
 	exit(255); // hard exit. 
 }
 
@@ -331,6 +333,7 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 		}
 		memmove(p->wbuf, p->wbuf + sz, p->wlen - sz);
 		p->wlen -= sz;
+		DEBUGF_G("%zd bytes left after auth cookie...\n", p->wlen);
 	}
 
 	// First offer data to console
@@ -1156,7 +1159,7 @@ my_getopt(int argc, char *argv[])
 
 	do_getopt(argc, argv);	/* from utils.c */
 	optind = 1;	/* Start from beginning */
-	while ((c = getopt(argc, argv, UTILS_GETOPT_STR "m")) != -1)
+	while ((c = getopt(argc, argv, UTILS_GETOPT_STR "mW")) != -1)
 	{
 		switch (c)
 		{
@@ -1166,6 +1169,9 @@ my_getopt(int argc, char *argv[])
 				break;	// NOT REACHED
 			case 'D':
 				gopt.is_daemon = 1;
+				break;
+			case 'W':
+				gopt.is_watchdog = 1;
 				break;
 			case 'p':
 				gopt.port = htons(atoi(optarg));
@@ -1248,6 +1254,11 @@ my_getopt(int argc, char *argv[])
 			}
 
 		}
+	}
+
+	if ((gopt.is_internal) && (gopt.is_watchdog))
+	{
+		gs_watchdog();
 	}
 
 	/* Become a daemon & watchdog (auto-restart)

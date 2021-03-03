@@ -327,7 +327,7 @@ GS_daemonize(FILE *logfp)
 
 		if (pid == 0)
 		{
-			signal(SIGCHLD, SIG_IGN);;
+			signal(SIGCHLD, SIG_IGN);
 			return;
 		}
 		/* HERE: Parent. We are the watchdog. */
