@@ -51,6 +51,18 @@ struct _gs_so_mgr
 	enum gs_so_mgr_type_t gs_type;
 };
 
+#ifdef __CYGWIN__
+# define RTLD_NEXT dl_handle
+static void *dl_handle;
+static void
+thc_init_cyg(void)
+{
+	dl_handle = dlopen("cygwin1.dll", RTLD_LAZY);
+}
+#else	/* !__CYGWIN__ */
+static void thc_init_cyg(void) {}	// Do nothing.
+#endif
+
 // HOOK definitions
 // Note: Set errno=0 before libcall => Some programs (e.g. netcat) ignore
 // return value of listen() and just check if errno has changed.
@@ -82,18 +94,6 @@ static struct _fd_info fd_list[FD_SETSIZE];
 static struct _gs_so_mgr mgr_list[FD_SETSIZE];
 static char *g_secret; // global secret
 static struct _gs_portrange_list hijack_ports;
-
-#ifdef __CYGWIN__
-# define RTLD_NEXT dl_handle
-static void *dl_handle;
-static void
-thc_init_cyg(void)
-{
-	dl_handle = dlopen("cygwin1.dll", RTLD_LAZY);
-}
-#else	/* !__CYGWIN__ */
-static void thc_init_cyg(void) {}	// Do nothing.
-#endif
 
 static void
 thc_init(const char *fname)
@@ -380,12 +380,10 @@ thc_accept(const char *fname, int ls, const struct sockaddr *addr, socklen_t *ad
 
 	if (fd_list[ls].sa_family == AF_INET6)
 	{
-		DEBUGF("foobar\n");
 		// IPv6: Do not allow connection (until we implement propper support for it)
 		errno = EINVAL;
 		return -1;
 	}
-	DEBUGF("FOOBAR\n");
 	sox = real_accept(ls, addr, addr_len);
 	DEBUGF("accept()=%d (new socket)\n", sox);
 	if (sox < 0)
@@ -608,7 +606,7 @@ gs_mgr_new(const char *secret, uint16_t port_orig, uint16_t *port_fake, enum gs_
 	// then closes all 'not needed' open fd's including our fd. We would need to intercept
 	// execve() to add LD_PRELOAD again and then track close() not to close our IPC fd.
 	int free_fd;
-	for (free_fd = getdtablesize() - 1; free_fd >= 0; free_fd--)
+	for (free_fd = MIN(getdtablesize(), FD_SETSIZE) - 1; free_fd >= 0; free_fd--)
 	{
 		if (fcntl(free_fd, F_GETFD, 0) != 0)
 			break;
@@ -759,12 +757,13 @@ int getaddrinfo(const char *node, const char *service, const struct addrinfo *hi
 #ifdef __CYGWIN__
 static int fci_connect(int socket, const struct sockaddr *addr, socklen_t addr_len) {return thc_connect("connect", socket, addr, addr_len); }
 static int fci_close(int fd) {return thc_close("close", fd); }
-static int fci_bind(int fd, sockaddr *addr, socklen_t addr_len) {return thc_bind("bind", fd, addr, addr_len); }
+static int fci_bind(int fd, const struct sockaddr *addr, socklen_t addr_len) {return thc_bind("bind", fd, addr, addr_len); }
 static int fci_listen(int socket, int backlog) {return thc_listen("listen", socket, backlog); }
-static int fci_accept(int fd, sockaddr *addr, socklen_t addr_len) {return thc_accept("accept", fd, addr, addr_len); }
-static struct hostend *fci_gethostbyname(const char *name) {return thc_gethostbyname("gethostbyname", name); }
+static int fci_accept(int fd, const struct sockaddr *addr, socklen_t *addr_len) {return thc_accept("accept", fd, addr, addr_len); }
+static struct hostent *fci_gethostbyname(const char *name) {return thc_gethostbyname("gethostbyname", name); }
 static int fci_getaddrinfo(const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **res) {return thc_getaddrinfo("getaddrinfo", node, service, hints, res); }
 __attribute__((constructor))
+int
 fci_init(void)
 {
 	cygwin_internal(CW_HOOK, "connect", fci_connect);
@@ -774,6 +773,8 @@ fci_init(void)
 	cygwin_internal(CW_HOOK, "accept", fci_accept);
 	cygwin_internal(CW_HOOK, "gethostbyname", fci_gethostbyname);
 	cygwin_internal(CW_HOOK, "getaddrinfo", fci_getaddrinfo);
+
+	return 0;
 }
 
 #endif

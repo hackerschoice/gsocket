@@ -297,7 +297,10 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	} else {
 		p->wlen = read(fd, p->wbuf, p->w_max);
 		if (p->wlen == 0)
+		{
+			DEBUGF_R("read(%d)==EOF\n", fd);
 			p->wlen = -1; // treat EOF as -1 (error)
+		}
 	}
 	// HEXDUMPF(p->wbuf, p->wlen, "read(%zd): ", p->wlen);
 
@@ -315,6 +318,7 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 			if (ret != GS_ERR_FATAL)
 				return GS_SUCCESS;
 		} 
+		DEBUGF("%s\n", __func__);
 		peer_free(ctx, p);
 		return GS_SUCCESS;	/* SUCCESS. fd had no errors [ssl may have had] */
 
@@ -394,6 +398,7 @@ write_fd(GS_SELECT_CTX *ctx, struct _peer *p)
 			XFD_SET(p->fd_out, ctx->wfd);	// Mark cmd_fd for writing	
 			return GS_ECALLAGAIN; //GS_SUCCESS;	/* Successfully handled */
 		}
+		DEBUGF("%s\n", __func__);
 
 		peer_free(ctx, p);
 		return GS_SUCCESS;	/* Succesfully removed peer */
@@ -643,6 +648,8 @@ write_gs(GS_SELECT_CTX *ctx, struct _peer *p, int *killed)
 	}
 err:
 	/* HERE: ERROR on GS_write() */
+	DEBUGF("%s\n", __func__);
+
 	peer_free(ctx, p);
 	if (killed != NULL)
 		*killed = 1;
@@ -692,6 +699,7 @@ cb_complete_connect(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 		return GS_ECALLAGAIN;
 	if (ret == GS_ERR_FATAL)
 	{
+		DEBUGF("%s\n", __func__);
 		peer_free(ctx, p);
 		return GS_SUCCESS;
 	}
@@ -787,6 +795,8 @@ peer_forward_connect(struct _peer *p, uint32_t ip, uint16_t port)
 	ret = fd_net_connect(ctx, p->fd_in, ip, port);
 	if (ret <= -2)
 	{
+		
+		DEBUGF("%s peer-free\n", __func__);
 		peer_free(ctx, p);
 		return -1;
 	}
@@ -983,6 +993,7 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd_notused, void *arg, int val)
 		 * -> Connection 2x to 127.1:1080 should keep 1st connection alive and 2nd
 		 * should (gracefully) fail.
 		 */
+		DEBUGF("peer free %s\n", __func__);
 		peer_free(ctx, p);
 		return GS_SUCCESS;
 	}
@@ -1250,7 +1261,8 @@ my_getopt(int argc, char *argv[])
 			{
 				uint16_t port = ntohs(gopt.port);
 				DEBUGF_G("Listening on port %u\n", port);
-				write(1, &port, sizeof port);
+				if (write(1, &port, sizeof port) != sizeof port)
+					exit(252); // FATAL
 			}
 
 		}

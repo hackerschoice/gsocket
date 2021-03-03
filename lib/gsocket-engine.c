@@ -518,6 +518,9 @@ gs_pkt_ping_write(GS *gsocket, struct gs_sox *sox)
 	int ret;
 
 	DEBUGF("### PKT PING write(fd = %d)\n", sox->fd);
+	// Might be 0 if SSL has not completed yet
+	if (sox->fd < 0)
+		return 0;
 
 	/* Do not send PING if there is already data in output queue */
 	if (FD_ISSET(sox->fd, gsocket->ctx->wfd))

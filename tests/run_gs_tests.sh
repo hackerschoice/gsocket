@@ -229,7 +229,7 @@ test_start -n "Running: Hello World #1.1 ................................"
 GSPID="$(sh -c '../tools/gs-helloworld -k id_sec.txt -l 2>server_err.txt >server_out.dat & echo ${!}')"
 # sleep 0.5 required or otherwise kernel will send both strings in single
 # tcp and that would result in a single read() call on other side.
-sleep_ct && (echo "Hello World"; sleep 1; echo "That's the end") | ../tools/gs-helloworld -k id_sec.txt 2>client_err.txt >client_out.dat
+sleep_ct && (echo "Hello World"; sleep 1; echo "That's the end") | ../tools/gs-helloworld -w -k id_sec.txt 2>client_err.txt >client_out.dat
 waitk $GSPID
 if [ "$(MD5 client_out.dat)" != "628eca04c4cb6c8f539381be1c5cd325" ]; then fail 1; fi
 $ECHO "${OK}"
@@ -372,12 +372,16 @@ fi
 
 if [[ "$tests" =~ '6.2' ]]; then
 test_start -n "Running: netcat #6.2 (stdin, assymetric sizes)............"
-GSPID="$(sh -c '../tools/gs-netcat -k id_sec.txt -w <test1M.dat 2>client_err.txt >client_out.dat & echo ${!}')"
+# GSPID="$(sh -c '../tools/gs-netcat -k id_sec.txt -w <test1M.dat 2>client_err.txt >client_out.dat & echo ${!}')"
+GSPID="$(sh -c '../tools/gs-netcat -k id_sec.txt -w <test50k.dat 2>client_err.txt >client_out.dat & echo ${!}')"
 sleep_ct
-../tools/gs-netcat -k id_sec.txt -l <test50k.dat 2>server_err.txt >server_out.dat
+# ../tools/gs-netcat -k id_sec.txt -l <test50k.dat 2>server_err.txt >server_out.dat
+../tools/gs-netcat -k id_sec.txt -l <test1M.dat 2>server_err.txt >server_out.dat
 waitk $GSPID
-if [ "$MD1MB" != "$(MD5 server_out.dat)" ]; then fail 1; fi
-if [ "$(MD5 test50k.dat)" != "$(MD5 client_out.dat)" ]; then fail 2; fi
+if [ "$MD1MB" != "$(MD5 client_out.dat)" ]; then fail 1; fi
+if [ "$(MD5 test50k.dat)" != "$(MD5 server_out.dat)" ]; then fail 2; fi
+# if [ "$MD1MB" != "$(MD5 server_out.dat)" ]; then fail 1; fi
+# if [ "$(MD5 test50k.dat)" != "$(MD5 client_out.dat)" ]; then fail 2; fi
 $ECHO "${OK}"
 fi
 
@@ -459,7 +463,7 @@ fi
 
 if [[ "$tests" =~ '7.1' ]]; then
 test_start -n "Running: netcat #7.1 (cmd, multi connect)................."
-GSPID1="$(sh -c '../tools/gs-netcat -k id_sec.txt -l -e "echo Hello World" 2>server_err.txt >server_out.dat & echo ${!}')"
+GSPID1="$(sh -c '../tools/gs-netcat -k id_sec.txt -l -e "sleep 0.1 && echo Hello World" 2>server_err.txt >server_out.dat & echo ${!}')"
 GSPID2="$(sh -c '../tools/gs-netcat -k id_sec.txt -w </dev/null 2>client2_err.txt >client2_out.dat & echo ${!}')"
 GSPID3="$(sh -c '../tools/gs-netcat -k id_sec.txt -w </dev/null 2>client3_err.txt >client3_out.dat & echo ${!}')"
 ../tools//gs-netcat -k id_sec.txt -w </dev/null 2>client_err.txt >client_out.dat
@@ -633,8 +637,8 @@ curl --help all 2>/dev/null | grep socks5-hostname &>/dev/null
 if [ $? -ne 0 ]; then
 	skip "(no curl)"
 else
-	GSPID1="$(sh -c '../tools/gs-netcat -k id_sec.txt -lS 2>server1_err.txt >server1_out.dat & echo ${!}')"
-	GSPID3="$(sh -c '../tools/gs-netcat -k id_sec.txt -p 1085 2>client_err.txt >client_out.dat & echo ${!}')"
+	GSPID1="$(sh -c '../tools/gs-netcat -k id_sec.txt -lS 2>server_err.txt >server_out.dat & echo ${!}')"
+	GSPID3="$(sh -c '../tools/gs-netcat -k id_sec.txt -w -p 1085 2>client_err.txt >client_out.dat & echo ${!}')"
 	waittcp 1085
 	touch testmp3.dat testmp3-2.dat
 	GSPID4="$(sh -c 'curl --socks5-hostname 127.0.0.1:1085 --output testmp3.dat https://raw.githubusercontent.com/hackerschoice/thc-art/master/deep-phreakin.mp3 >client1_out.dat 2>client1_err.txt & echo ${!}')"
@@ -735,7 +739,7 @@ else
 fi
 
 if [[ "${tests}" =~ '10.5' ]]; then
-test_start -n "Running: gs socat #10.5 (stdin)............................"
+test_start -n "Running: gs socat #10.5 (stdin)..........................."
 socat -h 2>/dev/null | grep socks4 &>/dev/null
 if [ $? -ne 0 ]; then
 	skip "(no socat)"
@@ -753,13 +757,13 @@ fi
 fi
 
 if [[ "${tests}" =~ '10.6' ]]; then
-test_start -n "Running: gs ssh #10.6 (stdin)............................"
+test_start -n "Running: gs ssh #10.6 (stdin)............................."
 [[ -f ssh_host_rsa_key ]] || ssh-keygen -q -N "" -t rsa -b 2048 -f ssh_host_rsa_key
 [[ -d ~/.ssh ]] || mkdir ~/.ssh
 [[ -f id_rsa ]] || ssh-keygen -q -N "" -t rsa -b 2048 -f id_rsa
 [[ -f ~/.ssh/authorized_keys ]] && cp -a ~/.ssh/authorized_keys ~/.ssh/authorized_keys-backup
 cat id_rsa.pub >>~/.ssh/authorized_keys
-GSPID1="$(sh -c '../tools/gs -k id_sec.txt /usr/sbin/sshd -o HostKey=${PWD}/ssh_host_rsa_key -p 31338 -D 2>server_err.txt >server_out.dat & echo ${!}')"
+GSPID1="$(sh -c '../tools/gs -k id_sec.txt /usr/sbin/sshd -f /dev/null -o HostKey=${PWD}/ssh_host_rsa_key -p 31338 -D 2>server_err.txt >server_out.dat & echo ${!}')"
 GSPID2="$(sh -c 'GSOCKET_ARGS=-w ../tools/gs -k id_sec.txt ssh -i id_rsa -o StrictHostKeyChecking=no -p 31338 ${LOGNAME}@gsocket echo Hello World 2>client_err.txt >client_out.dat & echo ${!}')"
 waitk $GSPID2
 kill $GSPID1 &>/dev/null

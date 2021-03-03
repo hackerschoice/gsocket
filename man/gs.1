@@ -41,13 +41,13 @@ and much, much more.
 .Pp
 Abandon the thought of IP addresses and port numbers: Two programs should be able to communicate with each other as long as they know the same secret (rather than each other\'s IP address and port number). The
 .Nm
-tools establishes a such connection regardless and independent of the local IP address or geographical location. It does so by analyzing the program and replacing the IP-Layer with its own transport through GSRN. The connection is End-2-End encrypted. The GSRN sees only the encrypted traffic.
+tools establishes such a connection regardless and independent of the local IP address or geographical location. It does so by analyzing the program and replacing the IP Layer with its own transport through GSRN. The connection is end-2-end encrypted. The GSRN sees only the encrypted traffic.
 .Pp
 The typical scenario is a client/server arrangement such as ssh and sshd: Connections by ssh to any hostname ending in \'.gsocket\' are redirected (through the GSRN) to the (firewalled) sshd server.  
 .Pp
 The redirection is done per program (and limited to that program only). The
 .Nm
-tool does not change the routing table and does not change the NAT or firewall settings. It does not require superuser privileges either.
+tool does not change the routing table and does not change the NAT nor the firewall settings. It does not require superuser privileges either.
 .Pp
 .Sh OPTIONS
 .Bl -tag -width Ds
@@ -133,7 +133,7 @@ Passing the password as command line parameter is not secure. Consider using the
 .Dl $ gs
 .Pp
 .Nm 1.
-The security is end-2-end. This means from User-2-User (and not just to the GSRN). The GSRN relays only (encrypted) data to and from the users.
+The security is end-2-end. This means from user-2-user (and not just to the GSRN). The GSRN relays only (encrypted) data to and from the users.
 .Pp
 .Nm 2.
 The session is 256 bit and ephemeral. It is freshly generated for every session and generated randomly (and is not based on the password). It uses OpenSSL\'s SRP with AES-256 and a 4096 Prime.
