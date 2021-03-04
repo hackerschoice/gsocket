@@ -111,6 +111,25 @@ Server:
 Client:
 .Dl $ gs -s MySecret socat - TCP:gsocket:31337
 .Pp
+.Sh SYSTEMCTL INSTALLATION
+It is possible to make any service/daemon accessible through any firewall. The service is then only acessible through the GSRN and only if the client knows the secret. No port or service is exposed to the public Internet and the existence of the service remains hidden. This example makes openssh-server (sshd) accessible through the GSRN. Nobody, not even the GSRN operators, have access to the port, daemon or service (they do not know the secret). The new service co-exists with the existing openssh-server and does not interfere with the existing openssh-server.
+.Pp
+1. Copy /etc/systemd/system/sshd to /etc/systemd/system/gs-sshd
+.Pp
+2. Edit /etc/systemd/system/gs-sshd and change this line:
+.Dl ExecStart=/usr/sbin/sshd -D $SSHD_OPTS
+to
+.Dl ExecStart=gs -s MySecret /usr/sbin/sshd -D $SSHD_OPTS
+.Pp
+3. Start the newly created service
+.Dl # systemctl start gs-sshd
+.Pp
+4. Check the status
+.Dl # systemctl status gs-sshd
+.Pp
+5. Connect from any other host to the newly created (hidden) openssh-server:
+.Dl $ gs -s MySecret ssh user@gsocket
+.Pp
 .Sh ENVIRONMENT
 The following environment variables can be set to control the behavior of
 .Nm
@@ -123,7 +142,6 @@ The following environment variables can be set to control the behavior of
 .Pp
 .Nm GSOCKET_ARGS
 .Dl A string containing additional command line parameters. First the normal command line parameters are processed and then the command line parameters from GSOCKET_ARGS.
-
 .Sh SECURITY
 Passing the password as command line parameter is not secure. Consider using the -k option or GSOCKET_ARGS or enter the password when prompted:
 .Pp

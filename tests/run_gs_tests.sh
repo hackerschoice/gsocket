@@ -763,7 +763,11 @@ test_start -n "Running: gs ssh #10.6 (stdin)............................."
 [[ -f id_rsa ]] || ssh-keygen -q -N "" -t rsa -b 2048 -f id_rsa
 [[ -f ~/.ssh/authorized_keys ]] && cp -a ~/.ssh/authorized_keys ~/.ssh/authorized_keys-backup
 cat id_rsa.pub >>~/.ssh/authorized_keys
-GSPID1="$(sh -c '../tools/gs -k id_sec.txt /usr/sbin/sshd -f /dev/null -o HostKey=${PWD}/ssh_host_rsa_key -p 31338 -D 2>server_err.txt >server_out.dat & echo ${!}')"
+SSHD_BIN=$(which sshd 2>/dev/null)
+[[ -z $SSHD_BIN ]] && SSHD_BIN="/usr/lib/ssh/sshd"
+export SSHD_BIN
+[[ -f "$SSHD_BIN" ]] || { echo &>2 "sshd not found"; exit 255; }
+GSPID1="$(sh -c '../tools/gs -k id_sec.txt $SSHD_BIN -f /dev/null -o HostKey=${PWD}/ssh_host_rsa_key -p 31338 -D 2>server_err.txt >server_out.dat & echo ${!}')"
 GSPID2="$(sh -c 'GSOCKET_ARGS=-w ../tools/gs -k id_sec.txt ssh -i id_rsa -o StrictHostKeyChecking=no -p 31338 ${LOGNAME}@gsocket echo Hello World 2>client_err.txt >client_out.dat & echo ${!}')"
 waitk $GSPID2
 kill $GSPID1 &>/dev/null
