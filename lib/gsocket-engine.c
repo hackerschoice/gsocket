@@ -24,6 +24,7 @@
 
 #ifdef DEBUG
 FILE *gs_dout;		/* DEBUG OUTPUT */
+int gs_did;         // debug ID
 int gs_debug_level;
 fd_set *gs_debug_rfd;
 fd_set *gs_debug_wfd;
@@ -410,8 +411,9 @@ gs_net_connect_by_sox(GS *gsocket, struct gs_sox *sox)
 	addr.sin_family = AF_INET;
 	addr.sin_addr.s_addr = gsocket->net.addr;
 	addr.sin_port = gsocket->net.port;
+	errno = 0;
 	ret = connect(sox->fd, (struct sockaddr *)&addr, sizeof addr);
-	DEBUGF("connect(%s:%d, fd = %d): %d (errno = %d)\n", int_ntoa(gsocket->net.addr), ntohs(addr.sin_port), sox->fd, ret, errno);
+	DEBUGF("connect(%s:%d, fd = %d): %d (errno = %d, %s)\n", int_ntoa(gsocket->net.addr), ntohs(addr.sin_port), sox->fd, ret, errno, strerror(errno));
 	gsocket->net.tv_connect = GS_TV_TO_USEC(gsocket->ctx->tv_now);
 	if (ret != 0)
 	{
@@ -1388,6 +1390,8 @@ GS_connect(GS *gsocket)
 {
 	int ret;
 
+	DEBUG_SETID(gsocket);
+
 	if (gsocket->net.fd_accepted >= 0)
 	{
 		/* This GS-socket is already connected.... */
@@ -1429,6 +1433,8 @@ GS_connect(GS *gsocket)
 int
 GS_listen(GS *gsocket, int backlog)
 {
+	DEBUG_SETID(gsocket);
+
 	gsocket->flags |= GS_FL_AUTO_RECONNECT;
 	gs_net_init(gsocket, backlog);
 	gs_net_connect(gsocket);
@@ -1563,6 +1569,8 @@ GS_accept(GS *gsocket, int *err)
 	GS gs_tmp;
 	int ret;
 
+	DEBUG_SETID(gsocket);
+
 	if (err != NULL)
 		*err = 0;
 
@@ -1657,6 +1665,8 @@ gs_close(GS *gsocket)
 int
 GS_close(GS *gsocket)
 {
+	DEBUG_SETID(gsocket);
+
 	DEBUGF_B("read: %"PRId64", written: %"PRId64"\n", gsocket->bytes_read, gsocket->bytes_written);
 	if (gsocket == NULL)
 		return -2;
@@ -1692,6 +1702,7 @@ int
 GS_shutdown(GS *gsocket)
 {
 	int ret;
+	DEBUG_SETID(gsocket);
 
 	if (gsocket->flags & GSC_FL_USE_SRP)
 	{
@@ -1703,7 +1714,6 @@ GS_shutdown(GS *gsocket)
 			gsocket->is_want_shutdown = 1;
 			return GS_SUCCESS;
 		}
-		gsocket->is_sent_shutdown = 1;
 		ret = gs_ssl_shutdown(gsocket);
 		return ret;
 	} else {
@@ -1834,13 +1844,15 @@ GS_read(GS *gsocket, void *buf, size_t count)
 	int err = 0;
 	// DEBUGF("GS_read(fd = %d)...\n", gsocket->fd);
 	GS_SELECT_CTX *sctx = gsocket->ctx->gselect_ctx;
+	DEBUG_SETID(gsocket);
 
 	if (gsocket->flags & GSC_FL_USE_SRP)
 	{
 #ifndef WITH_GSOCKET_SSL
 		return GS_ERR_FATAL;
 #else
-		len = gs_ssl_continue(gsocket);
+		len = gs_ssl_continue(gsocket, GS_CAN_READ);
+		// DEBUGF("gs_ssl_continue()==%zd, state=%d\n", len, gsocket->ssl_state);
 		if (len <= 0)
 			return len;
 
@@ -1960,10 +1972,12 @@ GS_write(GS *gsocket, const void *buf, size_t count)
 	ssize_t len;
 	int err;
 
+	DEBUG_SETID(gsocket);
 	// If already in a stored state then modify the stored state and return to caller
 	// that to be called again (caller must not modify rfd/wfd as this is used by SSL...)
 	GS_SELECT_CTX *sctx = gsocket->ctx->gselect_ctx;
 #if 1
+	DEBUGF("fd=%d, count=%zu is_state_saved=%d(==%d), pending=%d\n", gsocket->fd, count, sctx->is_rw_state_saved[gsocket->fd], sctx->saved_rw_state[gsocket->fd], gsocket->write_pending);
 	if (sctx->is_rw_state_saved[gsocket->fd])
 	{
 		/* HERE: *write() blocked previously or SSL_read() WANTS-WRITE */
@@ -1990,9 +2004,12 @@ GS_write(GS *gsocket, const void *buf, size_t count)
 #ifndef WITH_GSOCKET_SSL
 		return -1;
 #else
-		len = gs_ssl_continue(gsocket);
+		len = gs_ssl_continue(gsocket, GS_CAN_WRITE);
 		if (len <= 0)
+		{
+			DEBUGF("gs_ssl_continue()==%zd\n", len);
 			return len;
+		}
 
 		len = SSL_write(gsocket->ssl, buf, count);
 		// DEBUGF_M("SSL_write(%zu) == %zd\n", count, len);

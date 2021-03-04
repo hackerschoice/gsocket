@@ -307,6 +307,7 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	// DEBUGF_M("Read %zd from fd_cmd = %d (errno %d)\n", p->wlen, fd, errno);
 	if (p->wlen < 0)
 	{
+		DEBUGF_R("FD=%d error: %s\n", fd, strerror(errno));
 		if (p->is_stdin_forward)
 		{
 			/* Gracefully half-duplex. We can not read from fd but
@@ -318,7 +319,7 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 			if (ret != GS_ERR_FATAL)
 				return GS_SUCCESS;
 		} 
-		DEBUGF("%s\n", __func__);
+		DEBUGF("%s(%d) %s\n", __func__, fd, strerror(errno));
 		peer_free(ctx, p);
 		return GS_SUCCESS;	/* SUCCESS. fd had no errors [ssl may have had] */
 
@@ -538,9 +539,10 @@ write_gs_atomic(GS_SELECT_CTX *ctx, struct _peer *p)
 {
 	int len;
 
-	if (p->wlen <= 0)
-		return 0;
+	// if (p->wlen <= 0)
+		// return 0;
 
+	// p->wlen might be == 0 when SSL_shutdown() was called but yielded SSL_WANT_WRITE
 	len = GS_write(p->gs, p->wbuf, p->wlen);
 	// DEBUGF_R("GS_write(fd==%d), len=%d\n", p->gs->fd, len);
 	if (len == 0)
@@ -588,7 +590,8 @@ write_gs(GS_SELECT_CTX *ctx, struct _peer *p, int *killed)
 			 * Make sure XFD_SET() is only called on a connected() socket.
 			 */
 			// DEBUGF_M("Start reading from fd_in(=%d) again\n", p->fd_in);
-			FD_CLR(p->gs->fd, ctx->wfd);
+			// FD_CLR(p->gs->fd, ctx->wfd);
+			GS_SELECT_FD_CLR_W(ctx, p->gs->fd);
 			XFD_SET(p->fd_in, ctx->rfd);	// Start reading from input again
 		}
 		// FIXME-PERFORMANCE: Could change this to 'make' packets and append them to
@@ -825,7 +828,7 @@ peer_new(GS_SELECT_CTX *ctx, GS *gs)
 	if ((gopt.cmd != NULL) || (gopt.is_interactive))
 	{
 		p->fd_in = fd_cmd(gopt.cmd, &p->pid);// Forward to forked process stdin/stdout
-		DEBUGF_W("pid =%d\n", p->pid);
+		DEBUGF_W("fd=%d, pid=%d\n", p->fd_in, p->pid);
 		p->fd_out = p->fd_in;
 		p->is_app_forward = 1;
 	} else if (gopt.port != 0) {

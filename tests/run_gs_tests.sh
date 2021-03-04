@@ -463,7 +463,7 @@ fi
 
 if [[ "$tests" =~ '7.1' ]]; then
 test_start -n "Running: netcat #7.1 (cmd, multi connect)................."
-GSPID1="$(sh -c '../tools/gs-netcat -k id_sec.txt -l -e "sleep 0.1 && echo Hello World" 2>server_err.txt >server_out.dat & echo ${!}')"
+GSPID1="$(sh -c '../tools/gs-netcat -k id_sec.txt -l -e "echo Hello World && sleep 1" 2>server_err.txt >server_out.dat & echo ${!}')"
 GSPID2="$(sh -c '../tools/gs-netcat -k id_sec.txt -w </dev/null 2>client2_err.txt >client2_out.dat & echo ${!}')"
 GSPID3="$(sh -c '../tools/gs-netcat -k id_sec.txt -w </dev/null 2>client3_err.txt >client3_out.dat & echo ${!}')"
 ../tools//gs-netcat -k id_sec.txt -w </dev/null 2>client_err.txt >client_out.dat

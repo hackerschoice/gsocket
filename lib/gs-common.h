@@ -76,14 +76,15 @@ typedef struct cap_rights       cap_rights_t;
 #define D_BBLU(a)	"\033[1;34m"a"\033[0m"
 #define D_BMAG(a)	"\033[1;35m"a"\033[0m"
 #ifdef DEBUG
-# define DEBUGF(a...)   do{ xfprintf(gs_dout, D_BLU("LIB")" %s:%d: ", __func__, __LINE__); xfprintf(gs_dout, a); }while(0)
-# define DEBUGF_R(a...) do{ xfprintf(gs_dout, D_BLU("LIB")" %s:%d: ", __func__, __LINE__); xfprintf(gs_dout, "\033[1;31m"); xfprintf(gs_dout, a); xfprintf(gs_dout, "\033[0m"); }while(0)
-# define DEBUGF_G(a...) do{ xfprintf(gs_dout, D_BLU("LIB")" %s:%d: ", __func__, __LINE__); xfprintf(gs_dout, "\033[1;32m"); xfprintf(gs_dout, a); xfprintf(gs_dout, "\033[0m"); }while(0)
-# define DEBUGF_B(a...) do{ xfprintf(gs_dout, D_BLU("LIB")" %s:%d: ", __func__, __LINE__); xfprintf(gs_dout, "\033[1;34m"); xfprintf(gs_dout, a); xfprintf(gs_dout, "\033[0m"); }while(0)
-# define DEBUGF_Y(a...) do{ xfprintf(gs_dout, D_BLU("LIB")" %s:%d: ", __func__, __LINE__); xfprintf(gs_dout, "\033[1;33m"); xfprintf(gs_dout, a); xfprintf(gs_dout, "\033[0m"); }while(0)
-# define DEBUGF_M(a...) do{ xfprintf(gs_dout, D_BLU("LIB")" %s:%d: ", __func__, __LINE__); xfprintf(gs_dout, "\033[1;35m"); xfprintf(gs_dout, a); xfprintf(gs_dout, "\033[0m"); }while(0)
-# define DEBUGF_C(a...) do{ xfprintf(gs_dout, D_BLU("LIB")" %s:%d: ", __func__, __LINE__); xfprintf(gs_dout, "\033[1;36m"); xfprintf(gs_dout, a); xfprintf(gs_dout, "\033[0m"); }while(0)
-# define DEBUGF_W(a...) do{ xfprintf(gs_dout, D_BLU("LIB")" %s:%d: ", __func__, __LINE__); xfprintf(gs_dout, "\033[1;37m"); xfprintf(gs_dout, a); xfprintf(gs_dout, "\033[0m"); }while(0)
+# define DEBUGF(a...)   do{ xfprintf(gs_dout, D_BLU("LIB")"-%d %s:%d: ", gs_did, __func__, __LINE__); xfprintf(gs_dout, a); }while(0)
+# define DEBUGF_R(a...) do{ xfprintf(gs_dout, D_BLU("LIB")"-%d %s:%d: ", gs_did, __func__, __LINE__); xfprintf(gs_dout, "\033[1;31m"); xfprintf(gs_dout, a); xfprintf(gs_dout, "\033[0m"); }while(0)
+# define DEBUGF_G(a...) do{ xfprintf(gs_dout, D_BLU("LIB")"-%d %s:%d: ", gs_did, __func__, __LINE__); xfprintf(gs_dout, "\033[1;32m"); xfprintf(gs_dout, a); xfprintf(gs_dout, "\033[0m"); }while(0)
+# define DEBUGF_B(a...) do{ xfprintf(gs_dout, D_BLU("LIB")"-%d %s:%d: ", gs_did, __func__, __LINE__); xfprintf(gs_dout, "\033[1;34m"); xfprintf(gs_dout, a); xfprintf(gs_dout, "\033[0m"); }while(0)
+# define DEBUGF_Y(a...) do{ xfprintf(gs_dout, D_BLU("LIB")"-%d %s:%d: ", gs_did, __func__, __LINE__); xfprintf(gs_dout, "\033[1;33m"); xfprintf(gs_dout, a); xfprintf(gs_dout, "\033[0m"); }while(0)
+# define DEBUGF_M(a...) do{ xfprintf(gs_dout, D_BLU("LIB")"-%d %s:%d: ", gs_did, __func__, __LINE__); xfprintf(gs_dout, "\033[1;35m"); xfprintf(gs_dout, a); xfprintf(gs_dout, "\033[0m"); }while(0)
+# define DEBUGF_C(a...) do{ xfprintf(gs_dout, D_BLU("LIB")"-%d %s:%d: ", gs_did, __func__, __LINE__); xfprintf(gs_dout, "\033[1;36m"); xfprintf(gs_dout, a); xfprintf(gs_dout, "\033[0m"); }while(0)
+# define DEBUGF_W(a...) do{ xfprintf(gs_dout, D_BLU("LIB")"-%d %s:%d: ", gs_did, __func__, __LINE__); xfprintf(gs_dout, "\033[1;37m"); xfprintf(gs_dout, a); xfprintf(gs_dout, "\033[0m"); }while(0)
+# define DEBUG_SETID(xgs)    gs_did = (xgs)->fd
 #else
 # define DEBUGF(a...)
 # define DEBUGF_R(a...)
@@ -93,6 +94,7 @@ typedef struct cap_rights       cap_rights_t;
 # define DEBUGF_M(a...)
 # define DEBUGF_C(a...)
 # define DEBUGF_W(a...)
+# define DEBUG_SETID(xgs)
 #endif
 
 #define SXPRINTF(ptr, len, a...) do {\

@@ -54,6 +54,11 @@ void GS_SELECT_del_cb_callagain(GS_SELECT_CTX *ctx, int fd);
 	FD_CLR(fd, (ctx)->rfd); \
 } while (0)
 
+#define GS_SELECT_FD_CLR_W(ctx, fd)	do { \
+	if ((ctx)->is_rw_state_saved[fd]) { ctx->saved_rw_state[fd] &= ~0x02; } \
+	FD_CLR(fd, (ctx)->wfd); \
+} while (0)
+
 #define GS_SELECT_FD_SET_R(ctx, fd) do { \
 	if ((ctx)->is_rw_state_saved[fd]) { \
 		ctx->saved_rw_state[fd] |= 0x01; \

@@ -286,8 +286,9 @@ gs_ssl_shutdown(GS *gsocket)
 	DEBUGF_Y("SSL_shutdown() = %d (%s)\n", ret, ret==1?"COMPLETE":"waiting (stopped writing)");
 	/* 1 == SUCCESS (close notify received)
 	 * 0 == Close-sent (check SSL_read() for EOF).
-	 *      So not send any further data (but still receive data)
+	 *      Do not send any further data (but still receive data)
 	 */
+	gsocket->is_sent_shutdown = 1;
 	if (ret == 1)
 	{
 		/* SUCCESS (close notify received & sent) */
@@ -295,6 +296,7 @@ gs_ssl_shutdown(GS *gsocket)
 	}
 	if (ret == 0)
 	{
+		gsocket->is_want_shutdown = 0;
 		/* HERE: Expecting more data (check SSL_read() */
 		// gsocket->ssl_wait_for_eof = 1;
 		return GS_SUCCESS;		/* Connection open for reading only */
@@ -309,6 +311,7 @@ gs_ssl_shutdown(GS *gsocket)
 
 	gsocket->ctx->gselect_ctx->blocking_func[gsocket->fd] |= GS_CALLWRITE;
 	gsocket->write_pending = 1;
+	gsocket->is_want_shutdown = 1;
 
 	return GS_ERR_WAITING;	/* Waiting for I/O */ 
 }
@@ -362,12 +365,14 @@ ssl_shutdown(GS *gs)
 
 	ret = SSL_shutdown(gs->ssl);
 	DEBUGF_Y("SSL_shutdown() = %d\n", ret);
-	/* 0 = Not yet finished.
+	/* 0 = Not yet finished. (do not call SSL_get_error())
 	 * 1 = complete
 	 * <0 = would-block (WANT-WRITE or WANT-READ)
 	 */
-	if (ret != 1)
-		return ret;
+	if (ret < 0)
+		return ret; // WANT-WRITE or WANT-READ
+
+	gs->is_sent_shutdown = 1;
 
 	return 1;
 }
@@ -397,14 +402,23 @@ ssl_state_str(enum ssl_state_t state)
  * Return 1 if unknown state (and SSL_read() or SSL_write() should handle it.
  */
 int
-gs_ssl_continue(GS *gsocket)
+gs_ssl_continue(GS *gsocket, enum gs_rw_state_t rw_state)
 {
 	int ret;
 	int state = gsocket->ssl_state;
 
 	/* FIXME: This check could be done in the calling function for speedup */
-	if ((state != GS_SSL_STATE_ACCEPT) && (state != GS_SSL_STATE_CONNECT) && (state != GS_SSL_STATE_SHUTDOWN))
-		return 1;
+	// DEBUGF("ssl-state=%d, rw_state=%d\n", state, rw_state);
+	if (rw_state == GS_CAN_WRITE)
+	{
+		// write wont block.
+		if (gsocket->is_want_shutdown == 0)
+			if ((state != GS_SSL_STATE_ACCEPT) && (state != GS_SSL_STATE_CONNECT) && (state != GS_SSL_STATE_SHUTDOWN))
+				return 1;
+	} else {
+		if ((state != GS_SSL_STATE_ACCEPT) && (state != GS_SSL_STATE_CONNECT) && (state != GS_SSL_STATE_SHUTDOWN))
+			return 1;
+	}
 
 	/* SSL Handshake not yet complete. Complete it. */
 	if (state == GS_SSL_STATE_ACCEPT)
@@ -414,6 +428,7 @@ gs_ssl_continue(GS *gsocket)
 		ret = ssl_connect(gsocket);
 	} else {
 		ret = ssl_shutdown(gsocket);
+		gsocket->is_want_shutdown = 0;
 	}
 	if (ret == 1)
 	{
@@ -483,7 +498,7 @@ gs_srp_init(GS *gsocket)
 		gsocket->ssl_state = GS_SSL_STATE_ACCEPT;
 	}
 	int ret;
-	ret = gs_ssl_continue(gsocket);
+	ret = gs_ssl_continue(gsocket, GS_CAN_RW);
 	DEBUGF("gs_srp_init() will return %d\n", ret);
 
 	return ret;

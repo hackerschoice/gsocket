@@ -5,6 +5,7 @@
 
 #ifdef DEBUG
 extern FILE *gs_dout;
+extern int gs_did;
 extern int gs_debug_level;
 #endif
 extern FILE *gs_errfp;

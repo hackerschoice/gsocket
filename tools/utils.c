@@ -538,12 +538,16 @@ mk_env(char **blacklist, char **addlist)
 }
 
 static void
-setup_cmd_child(void)
+setup_cmd_child(int except_fd)
 {
 	/* Close all (but 1 end of socketpair) fd's */
 	int i;
 	for (i = 3; i < FD_SETSIZE; i++)
+	{
+		if (i == except_fd)
+			continue;
 		close(i);
+	}
 
 	signal(SIGCHLD, SIG_DFL);
 	signal(SIGPIPE, SIG_DFL);
@@ -647,14 +651,13 @@ pty_cmd(const char *cmd, pid_t *pidptr)
 		#ifdef HAVE_FORKPTY
 		fd = open("/dev/tty", O_NOCTTY | O_RDWR);
 		#endif
-		if (fd >= 0)
-		{
-			//pty_resize(fd);
-			close(fd);
-		}
+		// if (fd >= 0)
+		// {
+		// 	close(fd);
+		// }
 
 		/* HERE: Child */
-		setup_cmd_child();
+		setup_cmd_child(fd);
 
 		/* Find out default ENV (just in case they do not exist in current
 		 * env-variable such as when started during bootup
@@ -736,10 +739,22 @@ fd_cmd(const char *cmd, pid_t *pidptr)
 	if (pid == 0)
 	{
 		/* HERE: Child process */
+		setup_cmd_child(fds[0]);
 		dup2(fds[0], STDOUT_FILENO);
 		dup2(fds[0], STDERR_FILENO);
 		dup2(fds[0], STDIN_FILENO);
-		setup_cmd_child();
+#ifdef __CYGWIN__
+		// Cygwin throws "Connection reset by peer" on socketpair when system
+		// is under heavy load if we execl() immediately.
+		// It appears that perhaps the child executes to quickly. Any pending data
+		// on stdout is then lost and the parent gets a read-error on the
+		// socketpair-fd (Connection reset by peer). The only work around
+		// is to add a 'sleep 0.2' to any executed command. Happens very
+		// rarely. It can easily be reproduced by running test 7.1 with these
+		// two lines:
+		// write(fds[0], "Hello World\n", 12);
+		// exit(0);
+#endif
 
 		execl("/bin/sh", cmd, "-c", cmd, NULL);
 		ERREXIT("exec(%s) failed: %s\n", cmd, strerror(errno));
