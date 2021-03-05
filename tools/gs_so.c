@@ -73,8 +73,10 @@ typedef int (*real_listen_t)(int sox, int backlog);
 static int real_listen(int sox, int backlog) { errno=0; return ((real_listen_t)dlsym(RTLD_NEXT, "listen"))(sox, backlog); }
 typedef int (*real_connect_t)(int sox, const struct sockaddr *addr, socklen_t addr_len);
 static int real_connect(int sox, const struct sockaddr *addr, socklen_t addr_len) { errno=0; return ((real_connect_t)dlsym(RTLD_NEXT, "connect"))(sox, addr, addr_len); }
-typedef int (*real_accept_t)(int sox, const struct sockaddr *addr, socklen_t *addr_len);
-static int real_accept(int sox, const struct sockaddr *addr, socklen_t *addr_len) { errno=0; return ((real_accept_t)dlsym(RTLD_NEXT, "accept"))(sox, addr, addr_len); }
+// typedef int (*real_accept_t)(int sox, const struct sockaddr *addr, socklen_t *addr_len);
+// static int real_accept(int sox, const struct sockaddr *addr, socklen_t *addr_len) { errno=0; return ((real_accept_t)dlsym(RTLD_NEXT, "accept"))(sox, addr, addr_len); }
+typedef int (*real_accept4_t)(int sox, const struct sockaddr *addr, socklen_t *addr_len, int flags);
+static int real_accept4(int sox, const struct sockaddr *addr, socklen_t *addr_len, int flags) { errno=0; return ((real_accept4_t)dlsym(RTLD_NEXT, "accept4"))(sox, addr, addr_len, flags); }
 typedef struct hostent *(*real_gethostbyname_t)(const char *name);
 static struct hostent *real_gethostbyname(const char *name) { errno=0; return ((real_gethostbyname_t)dlsym(RTLD_NEXT, "gethostbyname"))(name); }
 typedef int (*real_getaddrinfo_t)(const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **res);
@@ -84,7 +86,8 @@ static int real_getaddrinfo(const char *node, const char *service, const struct 
 static struct _gs_so_mgr *gs_so_listen(const char *secret, uint16_t port_orig, uint16_t *port_fake, int is_tor);
 static struct _gs_so_mgr *gs_so_connect(const char *secret, uint16_t port_orig, uint16_t *port_fake, int is_tor);
 static struct _gs_so_mgr *gs_mgr_lookup(const char *secret, uint16_t port_orig, enum gs_so_mgr_type_t gs_type, int is_tor);
-static struct _gs_so_mgr *gs_mgr_new_by_ipc(int ipc_fd, int is_tor);
+static struct _gs_so_mgr *gs_mgr_new_by_ipc(int ipc_fd, uint16_t port_orig, enum gs_so_mgr_type_t gs_type, int is_tor);
+
 static struct _gs_so_mgr *gs_mgr_new(const char *secret, uint16_t port_orig, uint16_t *port_fake, enum gs_so_mgr_type_t gs_type, int is_tor);
 static void gs_mgr_free(struct _gs_so_mgr *m);
 
@@ -94,6 +97,7 @@ static struct _fd_info fd_list[FD_SETSIZE];
 static struct _gs_so_mgr mgr_list[FD_SETSIZE];
 static char *g_secret; // global secret
 static struct _gs_portrange_list hijack_ports;
+static int is_debug;
 
 static void
 thc_init(const char *fname)
@@ -106,6 +110,7 @@ thc_init(const char *fname)
 
 	if (getenv("GS_DEBUG"))
 	{
+		is_debug = 1;
 		char *ptr = getenv("GS_LOGFILE");
 		if (ptr)
 			gopt.err_fp = fopen(ptr, "w");
@@ -140,8 +145,6 @@ thc_close(const char *fname, int fd)
 	// thc_init(fname); // OSX: segfault. strdup() and unsetenv() seem to segfault.
 
 	DEBUGF_Y("close(%d)\n", fd);
-	if (fd > 1000)
-		return 0; // FIXME
 	if (fd >= 0)
 	{
 		memset(&fd_list[fd], 0, sizeof fd_list[fd]);
@@ -266,11 +269,10 @@ thc_bind(const char *fname, int sox, const struct sockaddr *addr, socklen_t addr
 	struct _fd_info *fdi;
 
 	thc_init(fname);
-	DEBUGF_W("BIND  called (sox=%d, addr=%p, family=%d)\n", sox, addr, addr->sa_family);
+	DEBUGF_W("BIND  called (sox=%d, addr=%p, family=%d (%s))\n", sox, addr, addr->sa_family, addr->sa_family==AF_INET?"IPv4":"IPv6");
 
 	if ((sox < 0) || (addr == NULL))
 		return real_bind(sox, addr, addr_len);
-
 
 	fdi = &fd_list[sox];
 	if ((fdi->is_bind) || !( (addr->sa_family == AF_INET) || (addr->sa_family == AF_INET6)) )
@@ -299,7 +301,14 @@ thc_bind(const char *fname, int sox, const struct sockaddr *addr, socklen_t addr
 
 	if (addr->sa_family == AF_INET6)
 	{
+		// a6->sin6_addr = in6addr_any;
+#ifndef IS_SOLARIS
+		// NOT Solaris. Solaris creates an IPv4 _and_ IPv6 listening socket
+		// when AF_INET6 is set and addr==in6addr_any. Thus on SOLARIS we keep it
+		// on in6addr_any and not to localhost. FIXME: Can remove once gs-netcat
+		// supports IPv6.
 		inet_pton(AF_INET6, "::1", (void *)&a6->sin6_addr);
+#endif
 		a6->sin6_port = 0;
 	} else {
 		a->sin_addr.s_addr = inet_addr("127.0.0.1");
@@ -350,10 +359,18 @@ thc_listen(const char *fname, int sox, int backlog)
 
 	fdi = &fd_list[sox];
 
-	// IPv6: Allow app to listen() but then deny accept() later.
-	if ((fdi->is_listen) || (fdi->is_hijack == 0) || (fdi->sa_family == AF_INET6))
+	if ((fdi->is_listen) || (fdi->is_hijack == 0))
 		return real_listen(sox, backlog);
 
+#ifndef IS_SOLARIS
+	// Anyone (but solaris) returns here.
+	// Solaris uses AF_INET6 to listen to IPv4 _and_ IPv6 port with
+	// single syscall.
+	if (fdi->sa_family == AF_INET6)
+		return real_listen(sox, backlog);
+#endif
+
+	// HERE: IPv6 or IPv4
 	fdi->is_listen = 1;
 	// Send Secret and listening port to manager
 	gs_so_listen(g_secret, fdi->port_orig, &fdi->port_fake, fdi->is_tor);
@@ -367,25 +384,20 @@ thc_listen(const char *fname, int sox, int backlog)
 
 
 static int
-thc_accept(const char *fname, int ls, const struct sockaddr *addr, socklen_t *addr_len)
+thc_accept4(const char *fname, int ls, const struct sockaddr *addr, socklen_t *addr_len, int flags)
 {
 	int sox;
 
 	errno = 0;
 	thc_init(fname);
-	DEBUGF_W("ACCEPT called (ls=%d)\n", ls);
+	DEBUGF_W("%s called (ls=%d)\n", fname, ls);
 
 	if (ls < 0)
-		return real_accept(ls, addr, addr_len);
+		return real_accept4(ls, addr, addr_len, flags);
 
-	if (fd_list[ls].sa_family == AF_INET6)
-	{
-		// IPv6: Do not allow connection (until we implement propper support for it)
-		errno = EINVAL;
-		return -1;
-	}
-	sox = real_accept(ls, addr, addr_len);
-	DEBUGF("accept()=%d (new socket)\n", sox);
+	// IPv4 or IPv6
+	sox = real_accept4(ls, addr, addr_len, flags);
+	DEBUGF("%s()=%d (new socket)\n", fname, sox);
 	if (sox < 0)
 		return sox;
 
@@ -395,26 +407,39 @@ thc_accept(const char *fname, int ls, const struct sockaddr *addr, socklen_t *ad
 	int rv;
 	uint8_t cookie[GS_AUTHCOOKIE_LEN];
 	uint8_t ac_buf[GS_AUTHCOOKIE_LEN];
-	int flags = fcntl(sox, F_GETFL, 0);
-	if (flags & O_NONBLOCK)
-		fcntl(sox, F_SETFL, ~O_NONBLOCK & flags);
+	int fl = fcntl(sox, F_GETFL, 0);
+	if (fl & O_NONBLOCK)
+		fcntl(sox, F_SETFL, ~O_NONBLOCK & fl);
 	rv = read(sox, ac_buf, sizeof ac_buf);
 	if (rv != sizeof ac_buf)
 	{
 		DEBUGF("read(%d)=%d\n", sox, rv);
+		real_close(sox);
 		return -1;
 	}
-	if (flags & O_NONBLOCK)
-		fcntl(sox, F_SETFL, O_NONBLOCK | flags);
+	if (fl & O_NONBLOCK)
+		fcntl(sox, F_SETFL, O_NONBLOCK | fl);
 
 	authcookie_gen(cookie, g_secret, fdi->port_orig);
 	if (memcmp(cookie, ac_buf, sizeof cookie) != 0)
+	{
+		DEBUGF_R("AUTH-COOKIE MISMATCH\n");
+		HEXDUMP(cookie, sizeof cookie);
+		HEXDUMP(ac_buf, sizeof cookie);
+		real_close(sox);
 		return -1;
+	}
 	DEBUGF_Y("auth-cookie matches\n");
 #endif
 
 	return sox;
 }
+
+// static int
+// thc_accept(const char *fname, int ls, const struct sockaddr *addr, socklen_t *addr_len)
+// {
+// 	return thc_accept4(fname, ls, addr, addr_len, 0);
+// }
 
 static struct hostent he;
 static uint32_t thc_ip;
@@ -516,7 +541,6 @@ gs_mgr_lookup(const char *secret, uint16_t port_orig, enum gs_so_mgr_type_t gs_t
 			continue;
 
 	}
-
 	if (i >= sizeof mgr_list / sizeof *mgr_list)
 	{
 		DEBUGF("MGR not found (secret=%s, port_orig=%u, gs_type=%d, is_tor=%d)\n", secret, port_orig, gs_type, is_tor);
@@ -544,7 +568,7 @@ gs_mgr_lookup(const char *secret, uint16_t port_orig, enum gs_so_mgr_type_t gs_t
 
 // Allocate an Manager/IPC structure
 static struct _gs_so_mgr *
-gs_mgr_new_by_ipc(int ipc_fd, int is_tor)
+gs_mgr_new_by_ipc(int ipc_fd, uint16_t port_orig, enum gs_so_mgr_type_t gs_type, int is_tor)
 {
 	if (mgr_list[ipc_fd].is_used)
 	{
@@ -555,6 +579,7 @@ gs_mgr_new_by_ipc(int ipc_fd, int is_tor)
 	mgr_list[ipc_fd].ipc_fd = ipc_fd;
 	mgr_list[ipc_fd].is_used = 1;
 	mgr_list[ipc_fd].is_tor = is_tor;
+	mgr_list[ipc_fd].port_orig = port_orig;
 
 	return &mgr_list[ipc_fd]; 
 }
@@ -564,12 +589,16 @@ static void
 close_all_fd(int fd)
 {
 	int i;
-	for (i = 2; i < FD_SETSIZE; i++)
+
+	for (i = 2; i < MIN(getdtablesize(), FD_SETSIZE); i++)
 	{
 #ifdef DEBUG
 		// Leave STDERR open when debugging
 		if (i == STDERR_FILENO)
+		{
+			DEBUGF_B("NOT closing %d\n", STDERR_FILENO);
 			continue;
+		}
 #endif
 		if (i == fd)
 			continue;
@@ -597,6 +626,7 @@ gs_mgr_new(const char *secret, uint16_t port_orig, uint16_t *port_fake, enum gs_
 	// This socketpair ensures that the client can detect if the parent
 	// exits. Creates fds = [4, 5].
 	socketpair(AF_UNIX, SOCK_STREAM, 0, fds);
+	DEBUGF("fds[%d, %d]\n", fds[0], fds[1]);
 	// OpenSSH calls dup2(10, 5 [REEXEC_STARTUP_PIPE_FD]) in sshd.c for rexec.
 	// That dup2() call will first close fd==5. However, that might be our fd from the socketpair!
 	// REEXEC_STARTUP_PIPE_FD is defined as STDOUT + 3 and OpenSSH does not give a damn if that socket
@@ -616,7 +646,7 @@ gs_mgr_new(const char *secret, uint16_t port_orig, uint16_t *port_fake, enum gs_
 	fds[1] = free_fd;
 
 	struct _gs_so_mgr *m;
-	m = gs_mgr_new_by_ipc(fds[1], is_tor);
+	m = gs_mgr_new_by_ipc(fds[1], port_orig, gs_type, is_tor);
 	if (m == NULL)
 		return NULL;
 
@@ -631,6 +661,8 @@ gs_mgr_new(const char *secret, uint16_t port_orig, uint16_t *port_fake, enum gs_
 	if (pid == 0)
 	{
 		// CHILD
+		close_all_fd(fds[0]);
+
 		// STDOUT: gs-netcat allocates a random port number and outputs that port number (16 bit) to stdout.
 		// The parent process will read it from ipc_fd to then redirect that connect() call to that
 		// port number.
@@ -638,11 +670,11 @@ gs_mgr_new(const char *secret, uint16_t port_orig, uint16_t *port_fake, enum gs_
 		// STDIN: gs-netcat monitors stdin to check if parent dies.
 		dup2(fds[0], STDIN_FILENO);
 
-		close_all_fd(fds[0] /*except this one*/);
-
 		char *env_args = getenv("GSOCKET_ARGS");
 		char buf[1024];
 		char prg[256];
+		char *quiet_str = is_debug?"":"-q ";
+
 		if (gs_type == GS_SO_MGR_TYPE_LISTEN)
 		{
 			// The Caller wants to listen(). We redirect to listen on any random free port (fake_port)
@@ -653,7 +685,7 @@ gs_mgr_new(const char *secret, uint16_t port_orig, uint16_t *port_fake, enum gs_
 			unsetenv("_GSOCKET_WANT_AUTHCOOKIE");
 			// Note: Must start with -q: We close(stderr) and gs-netcat
 			// will SIGPIPE (on OSX) when trying to write stats to stderr.
-			snprintf(buf, sizeof buf, "%s %s-s%u-%s -q -W -l -d127.0.0.1 -p%u", env_args?env_args:"", is_tor?"-T ":"", port_orig, secret, *port_fake);
+			snprintf(buf, sizeof buf, "%s %s-s%u-%s  %s-W -l -d127.0.0.1 -p%u", env_args?env_args:"", is_tor?"-T ":"", port_orig, secret, quiet_str, *port_fake);
 			snprintf(prg, sizeof prg, "gs-netcat [S-%u]", port_orig);
 		}
 			
@@ -666,7 +698,7 @@ gs_mgr_new(const char *secret, uint16_t port_orig, uint16_t *port_fake, enum gs_
 			setenv("_GSOCKET_WANT_AUTHCOOKIE", "1", 1);
 #endif
 			unsetenv("_GSOCKET_SEND_AUTHCOOKIE");
-			snprintf(buf, sizeof buf, "%s %s-s%u-%s -q -p0", env_args?env_args:"", is_tor?"-T ":"", port_orig, secret);
+			snprintf(buf, sizeof buf, "%s %s-s%u-%s %s-p0", env_args?env_args:"", is_tor?"-T ":"", port_orig, secret, quiet_str);
 			snprintf(prg, sizeof prg, "gs-netcat [C-%u]", port_orig);
 		}
 		setenv("GSOCKET_ARGS", buf, 1);
@@ -748,7 +780,8 @@ int connect(int socket, const struct sockaddr *addr, socklen_t addr_len) {return
 int close(int fd) {return thc_close(__func__, fd); }
 int bind(int socket, const struct sockaddr *addr, socklen_t addr_len) {return thc_bind(__func__, socket, addr, addr_len); }
 int listen(int socket, int backlog) {return thc_listen(__func__, socket, backlog); }
-int accept(int socket, struct sockaddr *addr, socklen_t *addr_len) {return thc_accept(__func__, socket, addr, addr_len); }
+int accept(int socket, struct sockaddr *addr, socklen_t *addr_len) {return thc_accept4(__func__, socket, addr, addr_len, 0); }
+int accept4(int socket, struct sockaddr *addr, socklen_t *addr_len, int flags) {return thc_accept4(__func__, socket, addr, addr_len, flags); }
 struct hostent *gethostbyname(const char *name) {return thc_gethostbyname(__func__, name); }
 int getaddrinfo(const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **res) {return thc_getaddrinfo(__func__, node, service, hints, res); }
 
@@ -759,7 +792,8 @@ static int fci_connect(int socket, const struct sockaddr *addr, socklen_t addr_l
 static int fci_close(int fd) {return thc_close("close", fd); }
 static int fci_bind(int fd, const struct sockaddr *addr, socklen_t addr_len) {return thc_bind("bind", fd, addr, addr_len); }
 static int fci_listen(int socket, int backlog) {return thc_listen("listen", socket, backlog); }
-static int fci_accept(int fd, const struct sockaddr *addr, socklen_t *addr_len) {return thc_accept("accept", fd, addr, addr_len); }
+static int fci_accept(int fd, const struct sockaddr *addr, socklen_t *addr_len) {return thc_accept4("accept", fd, addr, addr_len, 0); }
+static int fci_accept4(int fd, const struct sockaddr *addr, socklen_t *addr_len, int flags) {return thc_accept4("accept4", fd, addr, addr_len, flags); }
 static struct hostent *fci_gethostbyname(const char *name) {return thc_gethostbyname("gethostbyname", name); }
 static int fci_getaddrinfo(const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **res) {return thc_getaddrinfo("getaddrinfo", node, service, hints, res); }
 __attribute__((constructor))
@@ -771,6 +805,7 @@ fci_init(void)
 	cygwin_internal(CW_HOOK, "bind", fci_bind);
 	cygwin_internal(CW_HOOK, "listen", fci_listen);
 	cygwin_internal(CW_HOOK, "accept", fci_accept);
+	cygwin_internal(CW_HOOK, "accept4", fci_accept4);
 	cygwin_internal(CW_HOOK, "gethostbyname", fci_gethostbyname);
 	cygwin_internal(CW_HOOK, "getaddrinfo", fci_getaddrinfo);
 

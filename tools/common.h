@@ -73,6 +73,15 @@
 #include <gsocket/gs-select.h>
 #include "filetransfer.h"
 
+#ifdef __sun
+# ifdef HAVE_OPEN64
+#  define IS_SOL10      1   // Solaris 10
+# else
+#  define IS_SOL11      1   // Solaris 11
+# endif
+# define IS_SOLARIS     1
+#endif
+
 #ifndef O_NOCTTY
 # warning "O_NOCTTY not defined. Using 0."
 # define O_NOCTTY 0

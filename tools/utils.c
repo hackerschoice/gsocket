@@ -542,7 +542,7 @@ setup_cmd_child(int except_fd)
 {
 	/* Close all (but 1 end of socketpair) fd's */
 	int i;
-	for (i = 3; i < FD_SETSIZE; i++)
+	for (i = 3; i < MIN(getdtablesize(), FD_SETSIZE); i++)
 	{
 		if (i == except_fd)
 			continue;
@@ -784,7 +784,7 @@ fd_net_connect(GS_SELECT_CTX *ctx, int fd, uint32_t ip, uint16_t port)
 	addr.sin_addr.s_addr = ip;
 	addr.sin_port = port;
 	ret = connect(fd, (struct sockaddr *)&addr, sizeof addr);
-	DEBUGF("connect(%s:%d, fd = %d): %d (errno = %d)\n", int_ntoa(ip), ntohs(port), fd, ret, errno);
+	DEBUGF("connect(%s:%d, fd = %d): %d (errno = %d, %s)\n", int_ntoa(ip), ntohs(port), fd, ret, errno, strerror(errno));
 	if (ret != 0)
 	{
 		if ((errno == EINPROGRESS) || (errno == EAGAIN) || (errno == EINTR))

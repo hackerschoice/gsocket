@@ -256,7 +256,12 @@ authcookie_add(uint8_t *buf, size_t len)
 		uint8_t cookie[GS_AUTHCOOKIE_LEN];
 		authcookie_gen(cookie, gopt.sec_str, 0);
 		if (memcmp(cookie, ac_buf, sizeof cookie) != 0)
+		{
+			DEBUGF_R("AUTH-COOKIE MISMATCH\n");
+			HEXDUMP(ac_buf, sizeof ac_buf);
+			HEXDUMP(cookie, sizeof cookie);
 			return -1; // ERROR
+		}
 		DEBUGF_Y("auth-cookie matches\n");
 	}
 
@@ -268,10 +273,11 @@ authcookie_add(uint8_t *buf, size_t len)
 static int
 cb_read_stdin(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 {
-	DEBUGF_R("STDIN closed. HARD EXIT\n");
+	DEBUGF_R("STDIN closed. HARD EXIT fd=%d\n", fd);
 #ifdef DEBUG
 	int rv;
 	char c;
+	errno = 0;
 	rv = read(fd, &c, sizeof c);
 	DEBUGF_R("%d %s\n", rv, strerror(errno));
 #endif
@@ -363,7 +369,8 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 				p->wlen = dsz;
 			}
 		}
-		write_gs(ctx, p, NULL);
+		if (p->wlen > 0)
+			write_gs(ctx, p, NULL);
 	}
 
 	/*
