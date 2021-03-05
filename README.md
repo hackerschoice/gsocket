@@ -1,5 +1,5 @@
 # Global Socket
-**Connect as if there was no firewall. Securely.**
+**Connect like there is no firewall. Securely.**
 
 The Global Socket Tookit allows two users behind NAT/Firewall to establish a TCP connection with each other. Securely.
 
