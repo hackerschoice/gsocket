@@ -237,7 +237,7 @@ GS_select(GS_SELECT_CTX *ctx)
 					}
 				}
 
-				// DEBUGF_B("CTX-W: %c fd=%d\n", c, i);
+				// DEBUGF_B("call_item: %c fd=%d\n", c, i);
 				XASSERT(item->func != NULL, "%c fd = %d has no function to call\n", c, i);
 				call_item(ctx, item, i);
 				n--;

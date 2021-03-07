@@ -1,7 +1,7 @@
 # Global Socket
-**Moving data from here to there. Securely, Fast and trough NAT/Firewalls.**
+**Connect like there is no firewall. Securely.**
 
-Global Socket allows two users behind NAT/Firewall to establish a TCP connection with each other. Securely.
+The Global Socket Tookit allows two users behind NAT/Firewall to establish a TCP connection with each other. Securely.
 
 [![Watch the video](https://github.com/hackerschoice/hackerschoice.github.io/blob/master/eeelite-console-blank2.png)](https://www.youtube.com/watch?v=tmf9VGDPILE)
 
@@ -13,12 +13,13 @@ Global Socket allows two users behind NAT/Firewall to establish a TCP connection
 - Perfect Forward Secrecy
 - TOR support (optional)
 
-Abandon the thinking that an IP Address is needed to communicate with somebody. Instead start thinking that two users should be able to communicate with each other as long as they know the same secret (key/password). The Global Socket library handles the rest: It locally derives temporary session keys and IDs and connects with the other user trough the Global Socket Relay Network (GSRN). Once found the library then negotiates a secure TLS connection between both users (End-2-End). The password/secret never leaves your workstation. **The GSRN sees only the encrypted traffic**.
+Abandon the thought of IP Addresses and Port Numbers. Instead start thinking that two programs should be able to communicate with each other as long as they know the same secret (rather than each other\'s IP Address and Port Number). The Global Socket library facilitates this: It locally derives temporary session keys and IDs and connects two programs trough the Global Socket Relay Network (GSRN) regardless and independent of the local IP Address or geographical location. Once connected the library then negotiates a secure TLS connection(End-2-End). The secret never leaves your workstation. **The GSRN sees only the encrypted traffic**.
 
 The GSRN is a free cloud service and is free to use by anyone.
 
-Includes:
-* **gs-netcat** - Netcat on steroids. Turn gs-netcat into an AES-256 encrypted reverse backdoor via TOR (optional) with a true PTY/interactive command shell (```gs-netcat -s MySecret -i```), spawn a Socks4/4a/5 proxy or forward TCP connections or give somebody temporary shell access.
+The Global Socket Toolkit comes with a set of tools:
+* **gs** - Make an existing program accessible via the GSRN. It does so by analyzing the program and replacing the IP-Layer with its own Gsocket-Layer. Any connection to a hostname ending in *'\*.gsocket'* is redirected via the GSRN to the listening server.
+* **gs-netcat** - Netcat on steroids. Turn gs-netcat into an AES-256 encrypted reverse backdoor via TOR (optional) with a true PTY/interactive command shell (```gs-netcat -s MySecret -i```), integrated file-transfer, spawn a Socks4/4a/5 proxy or forward TCP connections or give somebody temporary shell access.
 * **gs-sftp** - sftp server & client between two firewalled workstations (```gs-sftp -s MySecret```)
 * **gs-mount** - Access and mount a remote file system (```gs-mount -s MySecret ~/mnt/warez```)
 * **blitz** - Copy data (single or recursivley) (```blitz -s MySecret /usr/share/*```)
@@ -29,7 +30,7 @@ Includes:
 Download|[gsocket-1.4.25.tar.gz](https://github.com/hackerschoice/gsocket/releases/download/v1.4.25/gsocket-1.4.25.tar.gz) (Linux, MacOS, FreeBSD, Solaris)
 Debian/Ubuntu| [gsocket_1.4.25_all.deb](https://github.com/hackerschoice/binary/raw/main/gsocket/latest/gsocket_1.4.25_all.deb)
 Windows| use docker (see below)
-Man Page| [gs-netcat(1)](https://hackerschoice.github.io/gs-netcat.1.html), [gs-mount(1)](https://hackerschoice.github.io/gs-mount.1.html), [gs-sftp(1)](https://hackerschoice.github.io/gs-sftp.1.html), [blitz(1)](https://hackerschoice.github.io/blitz.1.html)
+Man Page| [gs(1)](https://hackerschoice.github.io/gs.1.html), [gs-netcat(1)](https://hackerschoice.github.io/gs-netcat.1.html), [gs-mount(1)](https://hackerschoice.github.io/gs-mount.1.html), [gs-sftp(1)](https://hackerschoice.github.io/gs-sftp.1.html), [blitz(1)](https://hackerschoice.github.io/blitz.1.html)
 Docker|  docker run --rm -it hackerschoice/gsocket
 Docker| docker run --rm -it hackerschoice/gsocket-tor # gs via TOR
 
@@ -68,10 +69,24 @@ $ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/hackerschoice/gso
 ---
 **Usage:**
 
-1. Log in to *Workstation A* from *Workstation B* through any firewall/NAT
+1. SSH from *Workstation B* to *Workstation A* trough any firewall/NAT
 ```
-$ ./gs-netcat -l -i   # Workstation A
-$ ./gs-netcat -i      # Workstation B
+$ gs /usr/sbin/sshd     # Workstation A
+$ gs ssh root@gsocket   # Workstation B
+```
+See also: [gs(1)](https://hackerschoice.github.io/gs.1.html)
+
+2. OpenVPN between two firewalled workstations:
+```
+$ gs openvpn --dev tun1 --proto tcp-server --ifconfig 10.9.8.1 10.9.8.2                   # Workstation A
+$ gs openvpn --dev tun1 --proto tcp-client --ifconfig 10.9.8.2 10.9.8.1 --remote gsocket  # Workstation B
+```
+See also: [gs(1)](https://hackerschoice.github.io/gs.1.html)
+
+3. Log in to Workstation A from Workstation B through any firewall/NAT
+```
+$ gs-netcat -l -i   # Workstation A
+$ gs-netcat -i      # Workstation B
 ```
 See also: [gs-netcat(1)](https://hackerschoice.github.io/gs-netcat.1.html)
 

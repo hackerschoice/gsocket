@@ -73,6 +73,15 @@
 #include <gsocket/gs-select.h>
 #include "filetransfer.h"
 
+#ifdef __sun
+# ifdef HAVE_OPEN64
+#  define IS_SOL10      1   // Solaris 10
+# else
+#  define IS_SOL11      1   // Solaris 11
+# endif
+# define IS_SOLARIS     1
+#endif
+
 #ifndef O_NOCTTY
 # warning "O_NOCTTY not defined. Using 0."
 # define O_NOCTTY 0
@@ -129,6 +138,7 @@ struct _gopt
 	int is_socks_server;	/* -S flag */
 	int is_multi_peer;		/* -p / -S / -d [client & server] */
 	int is_daemon;
+	int is_watchdog;        // Never die but die if stdin closes
 	int is_logfile;
 	int is_quiet;
 	int is_win_resized;     // window size changed (signal)
@@ -139,6 +149,9 @@ struct _gopt
 	int is_pwdreply_pending; // Server: Answer to pwd-request
 	int is_want_chdir; 
 	int is_want_ids_on;     
+	int is_want_authcookie;
+	int is_send_authcookie;
+	int is_internal;        // -I flag
 	uint64_t ts_ping_sent;  // TimeStamp ping sent
 	fd_set rfd, r;
 	fd_set wfd, w;
@@ -247,7 +260,7 @@ extern struct _g_debug_ctx g_dbg_ctx; // declared in utils.c
 #define DEBUGF_T(xcolor, a...) do { \
 	gettimeofday(&g_dbg_ctx.tv_now, NULL); \
 	if (g_dbg_ctx.tv_last.tv_sec == 0) { memcpy(&g_dbg_ctx.tv_last, &g_dbg_ctx.tv_now, sizeof g_dbg_ctx.tv_last); } \
-	xfprintf(gopt.err_fp, "DEBUG %4llu %s:%d %s", GS_TV_TO_MSEC(&g_dbg_ctx.tv_now) - GS_TV_TO_MSEC(&g_dbg_ctx.tv_last), __func__, __LINE__, xcolor?xcolor:""); \
+	xfprintf(gopt.err_fp, "DEBUG %4"PRIu64" %s:%d %s", GS_TV_TO_MSEC(&g_dbg_ctx.tv_now) - GS_TV_TO_MSEC(&g_dbg_ctx.tv_last), __func__, __LINE__, xcolor?xcolor:""); \
 	memcpy(&g_dbg_ctx.tv_last, &g_dbg_ctx.tv_now, sizeof g_dbg_ctx.tv_last); \
 	xfprintf(gopt.err_fp, a); \
 	if (xcolor) { xfprintf(gopt.err_fp, "\033[0m"); } \

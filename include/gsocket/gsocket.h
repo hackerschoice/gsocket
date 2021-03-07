@@ -295,6 +295,12 @@ enum ssl_state_t {
 };
 #endif
 
+enum gs_rw_state_t {
+	GS_CAN_READ = 0x01,
+	GS_CAN_WRITE = 0x02,
+	GS_CAN_RW = 0x03
+};
+
 /*
  * A specific GS connection with a single GSOCKET-ID.
  * There can be multiple connection per GSOCKET-ID (eventually).

@@ -33,24 +33,47 @@ command -v netstat >/dev/null 2>&1 || { echo >&2 "netstat not installed. apt-get
 # Use traditional netcat that supports "netcat -nlp" for cross-platform comp.
 # on CentOS there is only nmap's netcat as 'nc' but we are expecting 'netcat()'.
 if [[ "$(nc --version 2>&1)" =~ Ncat ]]; then
-	export NC=nc
+	NC=nc
+	NC_EOF_ARG=" " #not empty
+	NC_LISTEN_ARG="-nlp"
 else
 	# Try traditional netcat first.
 	if command -v netcat >/dev/null 2>&1; then
-		export NC=netcat
+		NC=netcat
 	else 
 		if command -v nc >/dev/null 2>&1; then
-			export NC=nc #cygwin
+			NC=nc #cygwin
+			NC_EOF_ARG="-w 1"
+			NC_LISTEN_ARG="-nl"
 		else
 			echo >&2 "netcat not installed. apt-get install netcat."; exit 255;
 		fi
 	fi
 fi
-if [[ "$OSTYPE" == *"BSD"* ]] || [[ "$OSTYPE" == *"cygwin"* ]]; then
-	export NC_LISTEN="${NC} -nl"
-else
-	export NC_LISTEN="${NC} -nlp"
+
+# Different OSes use different netcats:
+if [[ -z "$NC_EOF_ARG" ]]; then
+	# HERE: Not Ncat
+	if [[ "$OSTYPE" == *"BSD"* ]]; then
+		NC_EOF_ARG="-N"
+	elif [[ "$OSTYPE" == *"darwin"* ]]; then
+		NC_EOF_ARG="-c"
+	else
+		NC_EOF_ARG="-q1"
+	fi
+
+	if [[ "$OSTYPE" == *"BSD"* ]] || [[ "$OSTYPE" == *"cygwin"* ]]; then
+		NC_LISTEN_ARG="-nl"
+	else
+		NC_LISTEN_ARG="-nlp"
+	fi
 fi
+
+export NC
+export NC_EOF_ARG
+export NC_LISTEN_ARG
+export NC_LISTEN="${NC} ${NC_LISTEN_ARG}"
+export NC_LISTEN_EOF="${NC} ${NC_LISTEN_ARG} ${NC_EOF_ARG}"
 
 sleep 0.1 &>/dev/null || { echo >&2 "sleep not accepting 0.1. PATH set correct?"; exit 255; }
 OK="....[\033[1;32mOK\033[0m]"
@@ -75,6 +98,9 @@ tests+="7.1 7.2 7.3 7.4 "
 tests+="8.1 8.2 8.3 "
 tests+="9.1 9.2 9.3 9.4 "
 tests+="10.1 10.2 10.3 10.4 "		# blitz, gs-sftp, gs-mount
+tests+="10.5 "		# gs nc
+tests+="10.6 "		# gs socat
+tests+="10.7 "		# gs ssh
 
 if [ x"$1" != x ]; then
 	tests="$@ "
@@ -227,7 +253,7 @@ test_start -n "Running: Hello World #1.1 ................................"
 GSPID="$(sh -c '../tools/gs-helloworld -k id_sec.txt -l 2>server_err.txt >server_out.dat & echo ${!}')"
 # sleep 0.5 required or otherwise kernel will send both strings in single
 # tcp and that would result in a single read() call on other side.
-sleep_ct && (echo "Hello World"; sleep 1; echo "That's the end") | ../tools/gs-helloworld -k id_sec.txt 2>client_err.txt >client_out.dat
+sleep_ct && (echo "Hello World"; sleep 1; echo "That's the end") | ../tools/gs-helloworld -w -k id_sec.txt 2>client_err.txt >client_out.dat
 waitk $GSPID
 if [ "$(MD5 client_out.dat)" != "628eca04c4cb6c8f539381be1c5cd325" ]; then fail 1; fi
 $ECHO "${OK}"
@@ -370,12 +396,16 @@ fi
 
 if [[ "$tests" =~ '6.2' ]]; then
 test_start -n "Running: netcat #6.2 (stdin, assymetric sizes)............"
-GSPID="$(sh -c '../tools/gs-netcat -k id_sec.txt -w <test1M.dat 2>client_err.txt >client_out.dat & echo ${!}')"
+# GSPID="$(sh -c '../tools/gs-netcat -k id_sec.txt -w <test1M.dat 2>client_err.txt >client_out.dat & echo ${!}')"
+GSPID="$(sh -c '../tools/gs-netcat -k id_sec.txt -w <test50k.dat 2>client_err.txt >client_out.dat & echo ${!}')"
 sleep_ct
-../tools/gs-netcat -k id_sec.txt -l <test50k.dat 2>server_err.txt >server_out.dat
+# ../tools/gs-netcat -k id_sec.txt -l <test50k.dat 2>server_err.txt >server_out.dat
+../tools/gs-netcat -k id_sec.txt -l <test1M.dat 2>server_err.txt >server_out.dat
 waitk $GSPID
-if [ "$MD1MB" != "$(MD5 server_out.dat)" ]; then fail 1; fi
-if [ "$(MD5 test50k.dat)" != "$(MD5 client_out.dat)" ]; then fail 2; fi
+if [ "$MD1MB" != "$(MD5 client_out.dat)" ]; then fail 1; fi
+if [ "$(MD5 test50k.dat)" != "$(MD5 server_out.dat)" ]; then fail 2; fi
+# if [ "$MD1MB" != "$(MD5 server_out.dat)" ]; then fail 1; fi
+# if [ "$(MD5 test50k.dat)" != "$(MD5 client_out.dat)" ]; then fail 2; fi
 $ECHO "${OK}"
 fi
 
@@ -444,6 +474,8 @@ test_start -n "Running: netcat #6.8 (stdin, assymetric sizes, TOR)......."
 NETSTATTCP 2>/dev/null | grep LISTEN | grep 9050 &>/dev/null
 if [ $? -ne 0 ]; then
 	skip "(no TOR)"
+elif [[ "$GSOCKET_IP" =~ 192\.168\. ]]; then
+	skip "$GSOCKET_IP"
 else
 	GSPID="$(sh -c '../tools/gs-netcat -k id_sec.txt -wT <test4k.dat 2>client_err.txt >client_out.dat & echo ${!}')"
 	sleep_ct
@@ -457,7 +489,7 @@ fi
 
 if [[ "$tests" =~ '7.1' ]]; then
 test_start -n "Running: netcat #7.1 (cmd, multi connect)................."
-GSPID1="$(sh -c '../tools/gs-netcat -k id_sec.txt -l -e "echo Hello World" 2>server_err.txt >server_out.dat & echo ${!}')"
+GSPID1="$(sh -c '../tools/gs-netcat -k id_sec.txt -l -e "echo Hello World && sleep 1" 2>server_err.txt >server_out.dat & echo ${!}')"
 GSPID2="$(sh -c '../tools/gs-netcat -k id_sec.txt -w </dev/null 2>client2_err.txt >client2_out.dat & echo ${!}')"
 GSPID3="$(sh -c '../tools/gs-netcat -k id_sec.txt -w </dev/null 2>client3_err.txt >client3_out.dat & echo ${!}')"
 ../tools//gs-netcat -k id_sec.txt -w </dev/null 2>client_err.txt >client_out.dat
@@ -529,8 +561,8 @@ if [[ "$tests" =~ '8.2' ]]; then
 # nc -> Port 12344 -> GS-NET -> Port 12345 -> nc -ln
 test_start -n "Running: netcat #8.2 (port forward both sides)............"
 GSPID1="$(sh -c '../tools/gs-netcat -k id_sec.txt -l -d 127.0.0.1 -p 12345 2>server_err.txt >server_out.dat & echo ${!}')"
-GSPID2="$(sh -c '(sleep 10) | $NC_LISTEN 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
-GSPID3="$(sh -c '../tools/gs-netcat -k id_sec.txt -w -p 12344 2>server_err.txt >server_out.dat & echo ${!}')"
+GSPID2="$(sh -c '(sleep 1) | $NC_LISTEN 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
+GSPID3="$(sh -c '../tools/gs-netcat -k id_sec.txt -w -p 12344 2>server2_err.txt >server2_out.dat & echo ${!}')"
 waittcp 12344
 waittcp 12345
 GSPID4="$(sh -c '(cat test50k.dat; sleep 15) | $NC -vn 127.0.0.1 12344 >nc2_out.dat 2>nc2_err.txt & echo ${!}')"
@@ -631,8 +663,8 @@ curl --help all 2>/dev/null | grep socks5-hostname &>/dev/null
 if [ $? -ne 0 ]; then
 	skip "(no curl)"
 else
-	GSPID1="$(sh -c '../tools/gs-netcat -k id_sec.txt -lS 2>server1_err.txt >server1_out.dat & echo ${!}')"
-	GSPID3="$(sh -c '../tools/gs-netcat -k id_sec.txt -p 1085 2>client_err.txt >client_out.dat & echo ${!}')"
+	GSPID1="$(sh -c '../tools/gs-netcat -k id_sec.txt -lS 2>server_err.txt >server_out.dat & echo ${!}')"
+	GSPID3="$(sh -c '../tools/gs-netcat -k id_sec.txt -w -p 1085 2>client_err.txt >client_out.dat & echo ${!}')"
 	waittcp 1085
 	touch testmp3.dat testmp3-2.dat
 	GSPID4="$(sh -c 'curl --socks5-hostname 127.0.0.1:1085 --output testmp3.dat https://raw.githubusercontent.com/hackerschoice/thc-art/master/deep-phreakin.mp3 >client1_out.dat 2>client1_err.txt & echo ${!}')"
@@ -730,6 +762,73 @@ else
 	rmdir test_mnt
 	$ECHO "${OK}"
 	fi
+fi
+
+if [[ "${tests}" =~ '10.5' ]]; then
+test_start -n "Running: nc #10.5 (stdin)................................."
+# Can not use nc here because nc does not terminate on EOF from stdin.
+# Socat can be configured to terminate 1 second after EOF has been received.
+# need sleep 3 on RPI (slow system)
+GSPID1="$(sh -c '(cat test4k.dat; sleep 3) | ../tools/gs -k id_sec.txt $NC $NC_EOF_ARG $NC_LISTEN_ARG 31337 2>server_err.txt >server_out.dat & echo ${!}')"
+GSPID2="$(sh -c '(cat test1k.dat; sleep 3) | GSOCKET_ARGS=-w ../tools/gs -k id_sec.txt $NC $NC_EOF_ARG -v gsocket 31337 2>client_err.txt >client_out.dat & echo ${!}')"
+waitk $GSPID2
+kill $GSPID1 &>/dev/null
+md5fail 1 test1k.dat server_out.dat
+md5fail 2 test4k.dat client_out.dat
+$ECHO "${OK}"
+fi
+
+if [[ "${tests}" =~ '10.6' ]]; then
+test_start -n "Running: gs socat #10.6 (stdin)..........................."
+if ! socat -h 2>/dev/null | grep socks4 &>/dev/null; then
+	skip "(no socat)"
+elif [[ "$OSTYPE" =~ solaris ]]; then
+	# On Solaris the socat binary is 32 bit (but our gs_so lib is 64).
+	# Loader wont work.
+	skip "(32-bit)"
+else
+	# Can not use nc here because nc does not terminate on EOF from stdin.
+	# Socat can be configured to terminate 1 second after EOF has been received.
+	GSPID1="$(sh -c '../tools/gs -k id_sec.txt socat -T1 -,ignoreeof TCP-LISTEN:31337 <test4k.dat 2>server_err.txt >server_out.dat & echo ${!}')"
+	GSPID2="$(sh -c 'GSOCKET_ARGS=-w ../tools/gs -k id_sec.txt socat -T1 -,ignoreeof TCP:gsocket:31337 <test1k.dat 2>client_err.txt >client_out.dat & echo ${!}')"
+	waitk $GSPID2
+	kill $GSPID1 &>/dev/null
+	md5fail 1 test1k.dat server_out.dat
+	md5fail 2 test4k.dat client_out.dat
+	$ECHO "${OK}"
+fi
+fi
+
+if [[ "${tests}" =~ '10.7' ]]; then
+test_start -n "Running: gs ssh #10.7 (stdin)............................."
+if [[ "$OSTYPE" =~ solaris ]]; then
+	# Solaris SSHD does not work unless it's run as root (some PAM shit)
+	# Also needs -4 flag to run as IPv4 only (still, PAM shit afterwards)
+	skip "(needs root)"
+elif [[ "$OSTYPE" =~ darwin ]]; then
+	# Can not reliably ld-intercept /usr/sbin/sshd on OSX.
+	# https://github.com/hackerschoice/gsocket/issues/26
+	skip "(OSX BUG)"
+else
+	[[ -f ssh_host_rsa_key ]] || ssh-keygen -q -N "" -t rsa -b 2048 -f ssh_host_rsa_key
+	[[ -d ~/.ssh ]] || mkdir ~/.ssh
+	[[ -f id_rsa ]] || ssh-keygen -q -N "" -t rsa -b 2048 -f id_rsa
+	[[ -f ~/.ssh/authorized_keys ]] && cp -a ~/.ssh/authorized_keys ~/.ssh/authorized_keys-backup
+	cat id_rsa.pub >>~/.ssh/authorized_keys
+	SSHD_BIN=$(which sshd 2>/dev/null)
+	[[ -z $SSHD_BIN ]] && SSHD_BIN="/usr/sbin/sshd"
+	[[ -z $SSHD_BIN ]] && SSHD_BIN="/usr/lib/ssh/sshd"
+	export SSHD_BIN
+	[[ -f "$SSHD_BIN" ]] || { echo >&2 "sshd not found"; exit 255; }
+	GSPID1="$(sh -c '../tools/gs -k id_sec.txt $SSHD_BIN -f /dev/null -o HostKey=${PWD}/ssh_host_rsa_key -p 31338 -D 2>server_err.txt >server_out.dat & echo ${!}')"
+	GSPID2="$(sh -c 'GSOCKET_ARGS=-w ../tools/gs -k id_sec.txt ssh -i id_rsa -o StrictHostKeyChecking=no -p 31338 ${LOGNAME}@gsocket echo Hello World 2>client_err.txt >client_out.dat & echo ${!}')"
+	waitk $GSPID2
+	kill $GSPID1 &>/dev/null
+	[[ -f ~/.ssh/authorized_keys-backup ]] && cp -a ~/.ssh/authorized_keys-backup ~/.ssh/authorized_keys
+	# rm ~/.ssh/authorized_keys-backup
+	if [ "${MDHELLOW}" != "$(MD5 client_out.dat)" ]; then fail 1; fi
+	$ECHO "${OK}"
+fi
 fi
 
 if [ x"$1" == x ]; then

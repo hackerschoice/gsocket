@@ -7,7 +7,6 @@
 .Nd transfer data, forward traffic and execute commands on a remote host. Securely.
 .Sh SYNOPSIS
 .Nm gs-netcat
-.Bk -words
 .Op Fl rlgqwCTSDi
 .Op Fl s Ar secret
 .Op Fl k Ar keyfile
@@ -15,7 +14,6 @@
 .Op Fl d Ar IP
 .Op Fl p Ar port
 .Op Fl e Ar cmd
-.Ek
 .Sh DESCRIPTION
 The
 .Nm
@@ -250,6 +248,7 @@ SRP has Perfect Forward Secrecy. This means that past sessions can not be decryp
 The latest version is available from https://github.com/hackerschoice/gsocket/.
 
 .Sh SEE ALSO
+.Xr gs(1) ,
 .Xr gs-sftp(1) ,
 .Xr gs-mount(1) ,
 .Xr blitz(1) ,

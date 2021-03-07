@@ -1,0 +1,141 @@
+#! /usr/bin/env bash
+
+
+
+# Try to use the gs-netcat that's in the same directory as this executable.
+BASEDIR="$(cd "$(dirname "${0}")" || exit; pwd)"
+# shellcheck disable=SC1090 # Can't follow non-constant source. Use a directive to specify location.
+source "${BASEDIR}/gs_funcs" || exit 3
+
+my_usage()
+{
+	echo "
+${BIN_NAME} [-k file] [-s password] <programm> <parameters>
+   -s <secret>  Secret (e.g. password).
+   -k <file>    Read Secret from file.
+   -p <ports>   Range of listening ports to redirect [default=all]
+   -T           Use TOR.
+
+Example:
+    $ ${1} -s MySecret /usr/bin/sshd -d         # Server
+    $ ${1} -s MySecret ssh root@gsocket         # Client
+
+See 'gs-netcat -h' for more options."
+	exit 0
+}
+
+my_getopt()
+{
+	OPTERR=0
+	# shellcheck disable=SC2034 # FL_NEED_PASSWORD appears unused. => used i env_arg_init
+	FL_NEED_PASSWORD=1
+	# Check if -s or -k is already supplied in environment and dont ask again.
+	[[ "$GSOCKET_ARGS" =~ ^'-s' ]] && unset FL_NEED_PASSWORD
+	[[ "$GSOCKET_ARGS" =~ ' -s' ]] && unset FL_NEED_PASSWORD
+	[[ "$GSOCKET_ARGS" =~ ^'-k' ]] && unset FL_NEED_PASSWORD
+	[[ "$GSOCKET_ARGS" =~ ' -k' ]] && unset FL_NEED_PASSWORD
+	# shellcheck disable=SC2220 # Invalid flags are not handled. Add a *) case.
+	while getopts ":qhgTp:s:k:L:" opt; do
+		case ${opt} in
+			s )
+				# GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-s"	# Add to end of array
+				# GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="$OPTARG"	# Add to end of array
+				GSOCKET_SECRET="$OPTARG"
+				unset FL_NEED_PASSWORD
+				;;
+			k )
+				# GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-k"	# Add to end of array
+				KFILE=$(cd "$(dirname "$OPTARG")" && pwd)/$(basename "$OPTARG")
+				[[ -f "${KFILE}" ]] || { echo >&2 "File not found: ${KFILE}"; exit 255; }
+				GSOCKET_SECRET=$(<"${KFILE}")
+				# GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="${KFILE}"	# Add to end of array
+				# KFILE=$(eval echo "$OPTARG")	# Add to end of array
+				# GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]=$(eval echo "$OPTARG")	# Add to end of array
+				unset FL_NEED_PASSWORD
+				;;
+			g )
+				"${GS_NETCAT_BIN}" -g
+				exit
+				;;
+			h )
+				my_usage "${BIN_NAME}"
+				;;
+			p )
+				GS_HIJACK_PORTS="${OPTARG}"
+				;;
+			T )
+				[[ -z "${GSOCKET_SOCKS_IP}" ]] && GSOCKET_SOCKS_IP="127.0.0.1"
+				;;
+
+			q )
+				# shellcheck disable=SC2034 # IS_QUIET appears unused. => Used in env_arg_init
+				IS_QUIET=1
+				ARGS_NEW[${#ARGS_NEW[@]}]="-q"
+				;;
+			\? )
+				# UNKNOWN option. Handle before '*' (e.g. -l)
+				ARGS_NEW[${#ARGS_NEW[@]}]="-${OPTARG}"	# Add to end of array			
+				;;
+			* )
+				# Other (known opts from opstring) w parameters (e.g. -L <file>)
+				ARGS_NEW[${#ARGS_NEW[@]}]="-${opt}"		# Add to end of array			
+				ARGS_NEW[${#ARGS_NEW[@]}]="${OPTARG}"	# Add to end of array			
+				;;
+		esac
+	done
+
+	[[ -n "${GSOCKET_SECRET}" ]] && unset FL_NEED_PASSWORD
+}
+
+# default values
+GS_HIJACK_PORTS="1-65535"
+gs_init
+my_getopt "$@"
+shift $((OPTIND -1))
+
+if [[ x"$OSTYPE" == "xdarwin"* ]]; then
+	# OSX does not allow LD_PRELOAD of binaries in /usr/. Copy to tmp...
+	ROOTDIR=$(mktemp -d -t thc-gs)
+	PROGBIN_FULLPATH=$(which "$1")
+
+	[[ -z "$PROGBIN_FULLPATH" ]] && { echo >&2 "${1}: command not found"; exit 1; }
+	# FIXME: temp file is only cleaned on reboot. Hmm...
+	cp "${PROGBIN_FULLPATH}" "${ROOTDIR}/" &>/dev/null
+	PROGBIN_NAME="$(basename "${1}")" # programm binary
+	PROGBIN="${ROOTDIR}/${PROGBIN_NAME}"
+else
+	ROOTDIR=""
+	PROGBIN="${1}"
+fi
+
+env_arg_init
+shift 1
+
+# /var/folders/3k/dpllxd1s0f122n778pdrb0fc0000gn/T/thc-gs.IpRcdaq4/sshd
+
+# echo  GS_NETCAT_BIN=${GS_NETCAT_BIN} GSOCKET_ARGS="${ENV_ARGS} ${ARGS_NEW[*]}" GSOCKET_SECRET="${GSOCKET_SECRET}" DYLD_INSERT_LIBRARIES=${GS_SO_BIN} DYLD_FORCE_FLAT_NAMESPACE=1 exec "${PBIN}" $@
+
+if [[ x"$OSTYPE" == "xdarwin"* ]]; then
+	# echo GS_NETCAT_BIN=${GS_NETCAT_BIN} GS_HIJACK_PORTS="${GS_HIJACK_PORTS}" GSOCKET_SOCKS_IP="${GSOCKET_SOCKS_IP}" GSOCKET_ARGS="${ENV_ARGS} ${ARGS_NEW[*]}" GSOCKET_SECRET="${GSOCKET_SECRET}" DYLD_INSERT_LIBRARIES=${GS_SO_BIN} DYLD_FORCE_FLAT_NAMESPACE=1 exec "${PROGBIN}" "$@"
+	#      export GS_NETCAT_BIN=${GS_NETCAT_BIN}
+	#      export GS_HIJACK_PORTS="${GS_HIJACK_PORTS}"
+	#      export GSOCKET_SOCKS_IP="${GSOCKET_SOCKS_IP}"
+	#      export GSOCKET_ARGS="${ENV_ARGS} ${ARGS_NEW[*]}"
+	#      export GSOCKET_SECRET="${GSOCKET_SECRET}"
+	#      export DYLD_INSERT_LIBRARIES="${PWD}/gs_so"
+	#      export DYLD_FORCE_FLAT_NAMESPACE=1 
+	#      export DYLD_PRINT_LIBRARIES=1
+	#      cp /usr/sbin/sshd ${PWD}/tmp
+	#      cp /usr/sbin/sshd ${PWD}/sshdb
+	#      cp /usr/sbin/sshd ${PWD}/i
+	#      cp ${GS_SO_BIN} ${PWD}/tmp
+	#      sleep 1
+	#      # cd ${PWD}/tmp
+	#      ls -al $DYLD_INSERT_LIBRARIES
+	#      ${PWD}/i -f /etc/ssh/sshd_config -o HostKey=${HOME}/research/gsocket/tools/ssh_host_rsa_key -p 31338 -D -ddd
+	     # GS_NETCAT_BIN=${GS_NETCAT_BIN} GS_HIJACK_PORTS="${GS_HIJACK_PORTS}" GSOCKET_SOCKS_IP="${GSOCKET_SOCKS_IP}" GSOCKET_ARGS="${ENV_ARGS} ${ARGS_NEW[*]}" GSOCKET_SECRET="${GSOCKET_SECRET}" DYLD_INSERT_LIBRARIES=${GS_SO_BIN} DYLD_FORCE_FLAT_NAMESPACE=1 exec ${PWD}/sshd -f /etc/ssh/sshd_config -o HostKey=${PWD}/ssh_host_rsa_key -p 31338 -D -ddd
+	GS_NETCAT_BIN=${GS_NETCAT_BIN} GS_HIJACK_PORTS="${GS_HIJACK_PORTS}" GSOCKET_SOCKS_IP="${GSOCKET_SOCKS_IP}" GSOCKET_ARGS="${ENV_ARGS} ${ARGS_NEW[*]}" GSOCKET_SECRET="${GSOCKET_SECRET}" DYLD_INSERT_LIBRARIES=${GS_SO_BIN} DYLD_FORCE_FLAT_NAMESPACE=1 exec "${PROGBIN}" "$@"
+else
+	GS_NETCAT_BIN=${GS_NETCAT_BIN} GS_HIJACK_PORTS="${GS_HIJACK_PORTS}" GSOCKET_SOCKS_IP="${GSOCKET_SOCKS_IP}" GSOCKET_ARGS="${ENV_ARGS} ${ARGS_NEW[*]}" GSOCKET_SECRET="${GSOCKET_SECRET}" LD_PRELOAD=${GS_SO_BIN} exec "${PROGBIN}" "$@"
+fi
+

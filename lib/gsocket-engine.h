@@ -4,7 +4,7 @@
 
 
 void gs_ssl_want_io_finished(GS *gs);
-int gs_ssl_continue(GS *gsocket);
+int gs_ssl_continue(GS *gsocket, enum gs_rw_state_t rw_state);
 int gs_ssl_want_io_rw(GS_SELECT_CTX *ctx, int fd, int err);
 int gs_ssl_shutdown(GS *gsocket);
 int gs_srp_init(GS *gsocket);

@@ -6,14 +6,12 @@
 .Nd Securely transfer files between two workstations through NAT/Firewall.
 .Sh SYNOPSIS
 .Nm blitz
-.Bk -words
 .Op Fl lT
 .Op Fl s Ar secret
 .Op Fl k Ar keyfile
 .Op Fl f Ar list
 .Op Fl o Ar RSOPT=
 .Op Ar files ...
-.Ek
 .Sh DESCRIPTION
 The
 .Nm
@@ -78,6 +76,7 @@ See
 for a list of supported environment variables.
 .Pp
 .Sh SEE ALSO
+.Xr gs(1) ,
 .Xr gs-netcat(1) ,
 .Xr gs-sftp(1) ,
 .Xr gs-mount(1) ,
