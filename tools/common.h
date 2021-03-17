@@ -152,6 +152,7 @@ struct _gopt
 	int is_want_authcookie;
 	int is_send_authcookie;
 	int is_internal;        // -I flag
+	int is_udp;             // Port forwarding only. GSRN is always TCP.
 	uint64_t ts_ping_sent;  // TimeStamp ping sent
 	fd_set rfd, r;
 	fd_set wfd, w;

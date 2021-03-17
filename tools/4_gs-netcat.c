@@ -839,11 +839,11 @@ peer_new(GS_SELECT_CTX *ctx, GS *gs)
 		p->fd_out = p->fd_in;
 		p->is_app_forward = 1;
 	} else if (gopt.port != 0) {
-		p->fd_in = fd_new_socket();	// Forward to ip:port
+		p->fd_in = fd_new_socket(gopt.is_udp?SOCK_DGRAM:SOCK_STREAM);	// Forward to ip:port
 		p->fd_out = p->fd_in;
 		p->is_network_forward = 1;
 	} else if (gopt.is_socks_server != 0) {
-		p->fd_in = fd_new_socket();	// SOCKS
+		p->fd_in = fd_new_socket(SOCK_STREAM);	// SOCKS
 		DEBUGF_W("[ID=%d] gs->fd = %d\n", p->id, gs->fd);
 		p->fd_out = p->fd_in;
 		p->is_network_forward = 1;		
@@ -1077,15 +1077,55 @@ gs_and_peer_connect(GS_SELECT_CTX *ctx, GS *gs, int fd_in, int fd_out)
 static int
 cb_accept(GS_SELECT_CTX *ctx, int listen_fd, void *arg, int val)
 {
-	int fd;
+	int fd = -1;
 	GS *gs;
 	struct _peer *p;
 
-	fd = fd_net_accept(listen_fd);
-	if (fd < 0)
-		return GS_SUCCESS;
+	if (gopt.is_udp)
+	{
+		// Accepting a UDP socket is done by calling connect().
+		// If successfull the re-create the listen_fd.
+		int rv;
+		fd = listen_fd;
 
-	DEBUGF_G("New TCP connection RECEIVED (fd = %d)\n", fd);
+		// Find out IP of UDP-peer
+		struct sockaddr_in addr;
+		memset(&addr, 0, sizeof addr);
+		addr.sin_family = PF_INET;
+		socklen_t len = sizeof addr;
+		rv = recvfrom(fd, NULL, 0, MSG_PEEK, (struct sockaddr *)&addr, &len);
+		if (rv != 0)
+			return GS_SUCCESS;
+
+		// Restrict socket to only receive from this UDP-peer (with connect())
+		DEBUGF_W("UDP from %s:%d\n", inet_ntoa(addr.sin_addr), ntohs(addr.sin_port));
+		rv = connect(fd, (struct sockaddr *)&addr, len);
+		if (rv != 0)
+			DEBUGF_R("rv=%d, %s\n", rv, strerror(errno));
+
+		DEBUGF_G("New UDP connection RECEIVED (fd = %d)\n", fd);
+		// Delete old 'cb_accept' callback because this now is a connected UDP socket.
+		GS_SELECT_del_cb(ctx, fd);
+		// Stop reading from UDP until GSRN is connected.
+		FD_CLR(fd, ctx->rfd);
+
+		// Create new UDP listening socket
+		gopt.listen_fd = fd_new_socket(SOCK_DGRAM);
+		if (gopt.listen_fd < 0)
+			return GS_SUCCESS;
+		rv = fd_net_listen(gopt.listen_fd, &gopt.port, SOCK_DGRAM);
+		if (rv < 0)
+			return GS_SUCCESS;
+
+		GS_SELECT_add_cb(ctx, cb_accept, cb_accept, gopt.listen_fd, NULL, 0);
+		XFD_SET(gopt.listen_fd, ctx->rfd);  // Listen for new UDP conns (again)
+	} else {
+		fd = fd_net_accept(listen_fd);
+		if (fd < 0)
+			return GS_SUCCESS;
+		DEBUGF_G("New TCP connection RECEIVED (fd = %d)\n", fd);
+	}
+
 
 	/* Create a new GS and call GS_connect() */
 	gs = gs_create(); /* Create a new GS */
@@ -1180,7 +1220,7 @@ my_getopt(int argc, char *argv[])
 
 	do_getopt(argc, argv);	/* from utils.c */
 	optind = 1;	/* Start from beginning */
-	while ((c = getopt(argc, argv, UTILS_GETOPT_STR "mW")) != -1)
+	while ((c = getopt(argc, argv, UTILS_GETOPT_STR "mWu")) != -1)
 	{
 		switch (c)
 		{
@@ -1205,6 +1245,9 @@ my_getopt(int argc, char *argv[])
 			case 'd':
 				gopt.dst_ip = inet_addr(optarg);
 				gopt.is_multi_peer = 1;
+				break;
+			case 'u':
+				gopt.is_udp = 1;
 				break;
 			case 'S':
 				gopt.is_socks_server = 1;
@@ -1259,9 +1302,9 @@ my_getopt(int argc, char *argv[])
 			if (gopt.is_internal == 0)
 				XASSERT(gopt.port != 0, "Client listening port is 0 but wants multple peers.\n");
 
-			gopt.listen_fd = fd_new_socket();
+			gopt.listen_fd = fd_new_socket(gopt.is_udp?SOCK_DGRAM:SOCK_STREAM);
 			int ret;
-			ret = fd_net_listen(gopt.listen_fd, &gopt.port);
+			ret = fd_net_listen(gopt.listen_fd, &gopt.port, gopt.is_udp?SOCK_DGRAM:SOCK_STREAM);
 			if (ret != 0)
 				ERREXIT("Listening on port %d failed: %s\n", ntohs(gopt.port), strerror(errno));
 			// gs and gs_so use STDIN/STDOUT as IPC communication. If -p0 is specified for
