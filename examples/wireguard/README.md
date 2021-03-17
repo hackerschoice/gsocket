@@ -53,7 +53,7 @@ This is a default wireguard configuration file for a server. The only change is:
 ```Nginx
 PreUp = gs-netcat -s AnyKindOfRandomString -CuDl -d 127.0.0.1 -p 51820
 ```
-This starts a gs-netcat process and redirects any traffic from Global Socket *AnyKindOfRandomString* to the default wireguard port (51820). *-u* specifies UDP protocol. *-D* starts gs-netcat as a background process.
+This starts a gs-netcat process and redirects any traffic from the Global Socket *AnyKindOfRandomString* to the default wireguard port (51820). *-u* specifies UDP protocol. *-D* starts gs-netcat as a background process.
 
 
 Let's take a look at wg-client.conf (BOB):
