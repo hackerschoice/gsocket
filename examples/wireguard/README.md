@@ -22,7 +22,7 @@ On workstation "BOB":
 BOB :~ $ wg-quick up ./wg0-client.conf
 ```
 
-Check that the wireguard VPN is working:
+Test the wireguard VPN:
 ```shell
 BOB :~ $ ping 10.37.0.1
 PING 10.37.0.1 (10.37.0.1) 56(84) bytes of data.
