@@ -40,7 +40,7 @@ Address = 10.37.0.1/24
 ListenPort = 51820
 PrivateKey = 4E48vR7v8OUJO5OEYkOUUZmF55UOYVqo9l9w2eRS50k=
 PostUp = sysctl -w net.ipv4.ip_forward=1
-PreUp = gs-netcat -s AnyKindOfRandomString -CuDl -d 127.0.0.1 -p 51820
+PreUp = gs-netcat -s AnyKindOfRandomString -Culq -d 127.0.0.1 -p 51820 &
 PostDOwn = killall -g gs-netcat
 
 [Peer]
@@ -51,9 +51,9 @@ AllowedIPs = 10.37.0.2/32
 
 This is a default wireguard configuration file for a server. The only change is:
 ```Nginx
-PreUp = gs-netcat -s AnyKindOfRandomString -CuDl -d 127.0.0.1 -p 51820
+PreUp = gs-netcat -s AnyKindOfRandomString -Culq -d 127.0.0.1 -p 51820 &
 ```
-This starts a gs-netcat process and redirects any traffic from the Global Socket *AnyKindOfRandomString* to the default wireguard port (51820). *-u* specifies UDP protocol. *-D* starts gs-netcat as a background process.
+This starts a gs-netcat process and redirects any traffic from the Global Socket *AnyKindOfRandomString* to the default wireguard port (51820). *-u* specifies UDP protocol and *-q* to be quiet.
 
 
 Let's take a look at wg-client.conf (BOB):
@@ -63,7 +63,7 @@ Let's take a look at wg-client.conf (BOB):
 Address = 10.37.0.2/32
 PrivateKey = SOnUcf+KuXIWXfhpZpHtTC097ihBNUXT2igp5IuJsWY=
 # Make gs-netcat listen on UDP 31337
-PreUp = gs-netcat -s AnyKindOfRandomString -CuD -p 31337
+PreUp = gs-netcat -s AnyKindOfRandomString -Cuq -p 31337 &
 PostDown = killall -g gs-netcat
 
 [Peer]
@@ -76,7 +76,7 @@ PersistentKeepalive = 25
 
 The only change is:
 ```Nginx
-PreUp = gs-netcat -s AnyKindOfRandomString -CuD -p 31337
+PreUp = gs-netcat -s AnyKindOfRandomString -Cuq -p 31337 &
 [...]
 EndPoint = 127.0.0.1:31337
 ```
