@@ -49,7 +49,7 @@ PublicKey = KRYz7Jsbu1pS6ALHLqCUqG4KsFh9GcK3II+3bFscYUU=
 AllowedIPs = 10.37.0.2/32
 ```
 
-This is a default wireguard configuration file for the server side. The only change is:
+This is a default wireguard configuration file for a server. The only change is:
 ```Nginx
 PreUp = gs-netcat -s AnyKindOfRandomString -CuDl -d 127.0.0.1 -p 51820
 ```
