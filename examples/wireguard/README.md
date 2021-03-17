@@ -82,7 +82,15 @@ EndPoint = 127.0.0.1:31337
 ```
 The PreUp-line starts gs-netat. This will redirect any UDP traffic from port 31337 to the Global Socket *AnyKindOfRandomString*. The new *Endpoint* instructs wireguard to send all wireguard traffic to UDP port where gs-netcat is listening.
 
-The gs-netcat secret *AnyKindOfRandomString* can be choosen at random but has to be identical on ALICE and BOB. This string is used by the Global Socket Relay Network to connect ALICE and BOB.
+**Notes**  
+The gs-netcat secret *AnyKindOfRandomString* is chosen at random but has to be identical on ALICE and BOB. This string is used by the Global Socket Relay Network to connect ALICE and BOB. Use *gs-netcat -g* to generate a new random string for your own use (do not use the example).
+
+Create your own private/public wireguard keys (do not use the example):
+```shell
+$ wg genkey | tee server-privatekey | wg pubkey > server-publickey
+$ wg genkey | tee client-privatekey | wg pubkey > client-publickey
+
+```
 
 See the manual page of gs-netcat for all the options. This is an example.
 
