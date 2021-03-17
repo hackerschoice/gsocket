@@ -80,7 +80,7 @@ PreUp = gs-netcat -s AnyKindOfRandomString -CuD -p 31337
 [...]
 EndPoint = 127.0.0.1:31337
 ```
-The PreUp-line starts gs-netat. This will redirect any UDP traffic from port 31337 to the Global Socket *AnyKindOfRandomString*. The new *Endpoint* instructs wireguard to send all wireguard traffic to UDP port where gs-netcat is listening.
+The PreUp-line redirects any UDP traffic from port 31337 to the Global Socket *AnyKindOfRandomString*. The new *Endpoint* instructs wireguard to send all wireguard traffic to the UDP port where gs-netcat is listening (31337). Any UDP traffic received by gs-netcat is forwarded (via the Global Socket Relay Network) to the other gs-netcat running on ALICE.
 
 **Notes**  
 The gs-netcat secret *AnyKindOfRandomString* is chosen at random but has to be identical on ALICE and BOB. This string is used by the Global Socket Relay Network to connect ALICE and BOB. Use *gs-netcat -g* to generate a new random string for your own use (do not use the example).
