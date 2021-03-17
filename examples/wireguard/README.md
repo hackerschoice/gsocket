@@ -92,7 +92,5 @@ $ wg genkey | tee client-privatekey | wg pubkey > client-publickey
 
 ```
 
-See the manual page of gs-netcat for all the options. This is an example.
-
-
+Many more gs-netcat options are available: For example *-T* to connect wireguard via TOR or *-L* for log-output. See the manual page for gs-netcat. 
 
