@@ -12,7 +12,7 @@ Start gs-netcat as a service (systemd) on ALICE.
 
 
 On workstation "ALICE" create */etc/system/systemd/gs-root-shell.service*:
-```Nginx
+```EditorConfig
 [Unit]
 Description=Global Socket Root Shell
 After=network.target
