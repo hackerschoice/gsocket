@@ -8,7 +8,7 @@ ALICE and BOB are on two different networks behind NAT/Firewall. Neither of them
 Create a wireguard Virtual Private Network between ALICE and BOB (without tampering with the firewall, NAT or router settings).
 
 **Solution**  
-Redirect the wireguard traffic via the the Global Socket Relay Network.
+Redirect the wireguard traffic via the Global Socket Relay Network.
 
 ALICE -> wireguard -> Global Socket Relay Network -> wireguard -> BOB
 
