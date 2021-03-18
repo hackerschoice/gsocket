@@ -1,16 +1,16 @@
-# Global Socket Wireguard Example
-**Connect two firewalled hosts with wireguard (Virtual Private Network)**
+# Global Socket WireGuard Example
+**Connect two firewalled hosts with wireGuard (Virtual Private Network)**
 
 **Problem**  
-ALICE and BOB are on two different networks behind NAT/Firewall. Neither of them can reach the other. A wireguard VPN can not be established (ALICE and BOB are both firewalled).
+ALICE and BOB are on two different networks behind NAT/Firewall. Neither of them can reach the other. A WireGuard VPN can not be established (ALICE and BOB are both firewalled).
 
 **Objective**  
-Create a wireguard Virtual Private Network between ALICE and BOB (without tampering with the firewall, NAT or router settings).
+Create a WireGuard Virtual Private Network between ALICE and BOB (without tampering with the firewall, NAT or router settings).
 
 **Solution**  
-Redirect the wireguard traffic via the Global Socket Relay Network.
+Redirect the WireGuard traffic via the Global Socket Relay Network.
 
-ALICE -> wireguard -> Global Socket Relay Network -> wireguard -> BOB
+ALICE -> WireGuard -> Global Socket Relay Network -> WireGuard -> BOB
 
 On workstation "ALICE":
 ```ShellSession
@@ -22,7 +22,7 @@ On workstation "BOB":
 b@BOB:~ $ wg-quick up ./wg0-client.conf
 ```
 
-Test the wireguard VPN:
+Test the WireGuard VPN:
 ```ShellSession
 b@BOB:~ $ ping 10.37.0.1
 PING 10.37.0.1 (10.37.0.1) 56(84) bytes of data.
@@ -49,11 +49,11 @@ PublicKey = KRYz7Jsbu1pS6ALHLqCUqG4KsFh9GcK3II+3bFscYUU=
 AllowedIPs = 10.37.0.2/32
 ```
 
-This is a default wireguard configuration file for a server. The only change is:
+This is a default WireGuard configuration file for a server. The only change is:
 ```Nginx
 PreUp = gs-netcat -s AnyKindOfRandomString -Culq -d 127.0.0.1 -p 51820 &
 ```
-This starts a gs-netcat process and redirects any traffic from the Global Socket *AnyKindOfRandomString* to the default wireguard port (51820). *-u* specifies UDP protocol and *-q* to be quiet.
+This starts a gs-netcat process and redirects any traffic from the Global Socket *AnyKindOfRandomString* to the default WireGuard port (51820). *-u* specifies UDP protocol and *-q* to be quiet.
 
 
 Let's take a look at wg-client.conf (BOB):
@@ -80,17 +80,17 @@ PreUp = gs-netcat -s AnyKindOfRandomString -Cuq -p 31337 &
 [...]
 EndPoint = 127.0.0.1:31337
 ```
-The PreUp-line redirects any UDP traffic from port 31337 to the Global Socket *AnyKindOfRandomString*. The new *Endpoint* instructs wireguard to send all wireguard traffic to the UDP port where gs-netcat is listening (31337). Any UDP traffic received by gs-netcat is forwarded (via the Global Socket Relay Network) to the other gs-netcat running on ALICE.
+The PreUp-line redirects any UDP traffic from port 31337 to the Global Socket *AnyKindOfRandomString*. The new *Endpoint* instructs WireGuard to send all WireGuard traffic to the UDP port where gs-netcat is listening (31337). Any UDP traffic received by gs-netcat is forwarded (via the Global Socket Relay Network) to the other gs-netcat running on ALICE.
 
 **Notes**  
 The gs-netcat secret *AnyKindOfRandomString* is chosen at random but has to be identical on ALICE and BOB. This string is used by the Global Socket Relay Network to connect ALICE and BOB. Use *gs-netcat -g* to generate a new random string for your own use (do not use the example).
 
-Create your own private/public wireguard keys (do not use the example):
+Create your own private/public WireGuard keys (do not use the example):
 ```ShellSession
 $ wg genkey | tee server-privatekey | wg pubkey > server-publickey
 $ wg genkey | tee client-privatekey | wg pubkey > client-publickey
 
 ```
 
-Many more gs-netcat options are available: For example *-T* to connect wireguard via TOR or *-L* for log-output. See the manual page for gs-netcat. 
+Many more gs-netcat options are available: For example *-T* to connect WireGuard via TOR or *-L* for log-output. See the manual page for gs-netcat. 
 
