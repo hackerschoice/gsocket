@@ -2,10 +2,10 @@
 **Connect to a firewalled host**
 
 **Problem**  
-ALICE and BOB are on two different networks behind NAT/Firewall. Neither of them can reach the other.
+ALICE and BOB are on two different networks and behind a NAT/Firewall. Neither of them can reach the other.
 
 **Objective**  
-Allow BOB to login to ALICE as root/superuser (without tampering with the firewall, NAT or router settings).
+Allow BOB to log-in to ALICE as root/superuser (without tampering with the firewall, NAT or router settings).
 
 **Solution**  
 Start gs-netcat as a service (systemd) on ALICE.
@@ -51,7 +51,7 @@ Check that gs-netcat is running:
 root@ALICE:~ # systemctl status gs-root-shell
 ```
 
-Now login from "BOB" to "ALICE":
+Now log-in from "BOB" to "ALICE":
 ```ShellSession
 b@BOB:~ $ gs-netcat -s ExampleKeyXXXXChangeMe -i
 =Secret         : "ExampleKeyXXXXChangeMe"
