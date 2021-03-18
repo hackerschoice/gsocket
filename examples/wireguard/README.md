@@ -13,18 +13,18 @@ Redirect the wireguard traffic via the Global Socket Relay Network.
 ALICE -> wireguard -> Global Socket Relay Network -> wireguard -> BOB
 
 On workstation "ALICE":
-```shell
-ALICE :~ $ wg-quick up ./wg0-server.conf
+```ShellSession
+a@ALICE:~ $ wg-quick up ./wg0-server.conf
 ```
 
 On workstation "BOB":
-```shell
-BOB :~ $ wg-quick up ./wg0-client.conf
+```ShellSession
+b@BOB:~ $ wg-quick up ./wg0-client.conf
 ```
 
 Test the wireguard VPN:
-```shell
-BOB :~ $ ping 10.37.0.1
+```ShellSession
+b@BOB:~ $ ping 10.37.0.1
 PING 10.37.0.1 (10.37.0.1) 56(84) bytes of data.
 64 bytes from 10.37.0.1: icmp_seq=1 ttl=64 time=46.96 ms
 [...]
@@ -86,7 +86,7 @@ The PreUp-line redirects any UDP traffic from port 31337 to the Global Socket *A
 The gs-netcat secret *AnyKindOfRandomString* is chosen at random but has to be identical on ALICE and BOB. This string is used by the Global Socket Relay Network to connect ALICE and BOB. Use *gs-netcat -g* to generate a new random string for your own use (do not use the example).
 
 Create your own private/public wireguard keys (do not use the example):
-```shell
+```ShellSession
 $ wg genkey | tee server-privatekey | wg pubkey > server-publickey
 $ wg genkey | tee client-privatekey | wg pubkey > client-publickey
 
