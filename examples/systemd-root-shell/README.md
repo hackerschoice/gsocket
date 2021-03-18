@@ -29,7 +29,7 @@ WantedBy=multi-user.target
 ```
 
 Create a random key file:
-```shell
+```Shell
 ALICE :~ $ gs-netcat -g >/etc/systemd/gs-root-shell-key.txt
 ALICE :~ $ chmod 600 /etc/systemd/gs-root-shell-key.txt
 ALICE :~ $ cat /etc/systemd/gs-root-shell-key.txt
@@ -37,26 +37,26 @@ ExampleKeyXXXXChangeMe
 ```
 
 Start the service:
-```shell
+```Shell
 ALICE :~ $ systemctl start gs-root-shell
 ```
 
 Enable the service to start automatically after reboot:
-```shell
+```Shell
 ALICE :~ $ systemctl enable gs-root-shell
 ```
 
 Check that gs-netcat is running:
-```shell
+```Shell
 ALICE :~ $ systemctl status gs-root-shell
 ```
 
 Now login from "BOB" to "ALICE":
-```shell
-BOB :~ $ gs-netcat -s ExampleKeyXXXXChangeMe -i
+```ShellSession
+b@BOB :~ $ gs-netcat -s ExampleKeyXXXXChangeMe -i
 =Secret         : "ExampleKeyXXXXChangeMe"
 =Encryption     : SRP-AES-256-CBC-SHA-End2End (Prime: 4096 bits)
-root@ALICE:/# id
+root@ALICE:~# id
 ```
 
 Et voila a root shell on ALICE.
