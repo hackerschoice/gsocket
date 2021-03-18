@@ -551,6 +551,13 @@ write_gs_atomic(GS_SELECT_CTX *ctx, struct _peer *p)
 
 	// p->wlen might be == 0 when SSL_shutdown() was called but yielded SSL_WANT_WRITE
 	len = GS_write(p->gs, p->wbuf, p->wlen);
+
+	if (len == -2)
+	{
+		// NOTHING to be done.
+		return 0;
+	}
+
 	// DEBUGF_R("GS_write(fd==%d), len=%d\n", p->gs->fd, len);
 	if (len == 0)
 	{

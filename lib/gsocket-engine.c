@@ -1852,7 +1852,7 @@ GS_read(GS *gsocket, void *buf, size_t count)
 		return GS_ERR_FATAL;
 #else
 		len = gs_ssl_continue(gsocket, GS_CAN_READ);
-		// DEBUGF("gs_ssl_continue()==%zd, state=%d\n", len, gsocket->ssl_state);
+		// DEBUGF("gs_ssl_continue()==%zd, ssl-state=%d\n", len, gsocket->ssl_state);
 		if (len <= 0)
 			return len;
 
@@ -1897,6 +1897,7 @@ GS_read(GS *gsocket, void *buf, size_t count)
 		errno = 0;
 		gsocket->ts_net_io = GS_TV_TO_USEC(gsocket->ctx->tv_now);
 		gsocket->bytes_read += len;
+		DEBUGF("write_pending=%d\n", gsocket->write_pending);
 		if (gsocket->write_pending == 0)
 			gs_ssl_want_io_finished(gsocket);
 		gsocket->read_pending = 0;
@@ -1905,7 +1906,10 @@ GS_read(GS *gsocket, void *buf, size_t count)
 		/* Mark if there is still data in the input buffer so another cb is done */
 #ifdef WITH_GSOCKET_SSL
 		if ((gsocket->ssl) && (SSL_pending(gsocket->ssl) > 0))
+		{
+			DEBUGF("rdata-pending\n");
 			gs_select_set_rdata_pending(gsocket->ctx->gselect_ctx, gsocket->fd, SSL_pending(gsocket->ssl));
+		}
 #endif
 	}
 
@@ -1964,6 +1968,7 @@ GS_SELECT_FD_SET_W(GS *gs)
 /*
  * Return 0 on WOULD_BLOCK
  * Return -1 on error
+ * Return -2 nothing to be done.
  * Return lengh on SUCCESS
  */
 ssize_t
@@ -2007,8 +2012,18 @@ GS_write(GS *gsocket, const void *buf, size_t count)
 		len = gs_ssl_continue(gsocket, GS_CAN_WRITE);
 		if (len <= 0)
 		{
+			// HERE: ssl-state continued. Return.
 			DEBUGF("gs_ssl_continue()==%zd\n", len);
 			return len;
+		}
+
+		// No state to continue
+		if (count == 0)
+		{
+			// This can happen if remote sends an app-ping and this
+			// sets wfd for reading. GS_write() is called before app-ping-send-pong() is called.
+			DEBUGF_C("GS_write() with no data. NO stuck state either.\n");
+			return -2;
 		}
 
 		len = SSL_write(gsocket->ssl, buf, count);
