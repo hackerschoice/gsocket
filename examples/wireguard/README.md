@@ -2,13 +2,13 @@
 **Connect two firewalled hosts with wireguard (Virtual Private Network)**
 
 **Problem**  
-ALICE and BOB are on two different networks behind NAT/Firewall. Neither of them can reach the other. A wireguard VPN can not be established (ALICE and BOB are both firerwalled).
+ALICE and BOB are on two different networks behind NAT/Firewall. Neither of them can reach the other. A wireguard VPN can not be established (ALICE and BOB are both firewalled).
 
 **Objective**  
 Create a wireguard Virtual Private Network between ALICE and BOB (without tampering with the firewall, NAT or router settings).
 
 **Solution**  
-Redirect the wireguard taffic via the the Global Socket Relay Network.
+Redirect the wireguard traffic via the the Global Socket Relay Network.
 
 ALICE -> wireguard -> Global Socket Relay Network -> wireguard -> BOB
 
