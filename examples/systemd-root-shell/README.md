@@ -57,6 +57,8 @@ b@BOB:~ $ gs-netcat -s ExampleKeyXXXXChangeMe -i
 =Secret         : "ExampleKeyXXXXChangeMe"
 =Encryption     : SRP-AES-256-CBC-SHA-End2End (Prime: 4096 bits)
 root@ALICE:~# id
+uid=0(root) gid=0(root) groups=0(root)
+root@ALICE:~#
 ```
 
 Et voila a root shell on ALICE.
