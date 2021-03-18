@@ -22,7 +22,7 @@ Type=simple
 Restart=always
 RestartSec=10
 WorkingDirectory=/root
-ExecStart=gs-netcat -k /etc/systemd/id_sec.txt -il
+ExecStart=gs-netcat -k /etc/systemd/gs-root-shell-key.txt -il
 
 [Install]
 WantedBy=multi-user.target
