@@ -8,7 +8,7 @@ MALLORY gained access to ALICE but does not have superuser priviledges (root). M
 Backdoor ALICE so that MALLORY can access ALICE remotely (without tampering with the firewall, NAT or router settings) and without superuser priviledges (root).
 
 **Solution**  
-Start gs-netcat from ALICE's *~/.profile* and to so secretly without ALICE noticing.
+Start gs-netcat from ALICE's *~/.profile* and do so secretly and silently (without ALICE noticing).
 
 
 On "ALICE" add the following line to the end of *~/.profile*. This will start the gs-netcat backdoor every time that ALICE logs in. The gs-netcat process is hidden as *-bash* and shows up as *-bash* in the process list.
