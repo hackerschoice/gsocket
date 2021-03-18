@@ -21,7 +21,11 @@ After=network.target
 Type=simple
 Restart=always
 RestartSec=10
-ExecStart=gs-netcat -k /etc/systemd/gs-root-shell-key.txt -il
+WorkingDirectory=/root
+ExecStart=gs-netcat -k /etc/systemd/id_sec.txt -il
+
+[Install]
+WantedBy=multi-user.target
 ```
 
 Create a random key file:
