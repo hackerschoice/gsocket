@@ -51,13 +51,14 @@ else
 	fi
 fi
 
+
 # Different OSes use different netcats:
 if [[ -z "$NC_EOF_ARG" ]]; then
 	# HERE: Not Ncat
-	if [[ "$OSTYPE" == *"BSD"* ]]; then
-		NC_EOF_ARG="-N"
-	elif [[ "$OSTYPE" == *"darwin"* ]]; then
+	if [[ $($NC --help 2>&1) =~ "close connection on EOF" ]]; then
 		NC_EOF_ARG="-c"
+	elif [[ $($NC --help 2>&1) =~ "w timeout" ]]; then
+		NC_EOF_ARG="-w1"
 	else
 		NC_EOF_ARG="-q1"
 	fi

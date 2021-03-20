@@ -51,7 +51,7 @@ int
 GS_BUF_add_length(GS_BUF *gsb, size_t len)
 {
 	// Bail. There is sz_max_add space available but looks like caller wrote
-	// more ata...
+	// more data...
 	XASSERT(len <= GS_BUF_UNUSED(gsb), "Not enough space in buffer\n");
 
 	gsb->sz_used += len;

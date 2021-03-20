@@ -16,7 +16,7 @@
 .Sh DESCRIPTION
 The
 .Nm
-tool can be used to enable a program to communicate trough a firewall in situations where it would not be possible to establish a direct connection to another host/workstation (NATed/firewalled). The typical scenario is two workstations that are on separate private networks and behind separate firewalls. The
+tool can be used to enable a program to communicate through a firewall in situations where it would not be possible to establish a direct connection to another host/workstation (NATed/firewalled). The typical scenario is two workstations that are on separate private networks and behind separate firewalls. The
 .Nm
 tool hijacks the network library functions (such as connect() and accept()) of the program and encrypts and redirects the traffic through the Global Socket Relay Network (GSRN). 
 .Pp
@@ -112,7 +112,7 @@ Client:
 .Dl $ gs -s MySecret socat - TCP:gsocket:31337
 .Pp
 .Sh SYSTEMCTL INSTALLATION
-It is possible to make any service/daemon accessible through any firewall. The service is then only acessible through the GSRN and only if the client knows the secret. No port or service is exposed to the public Internet and the existence of the service remains hidden. This example makes openssh-server (sshd) accessible through the GSRN. Nobody, not even the GSRN operators, have access to the port, daemon or service (they do not know the secret). The new service co-exists with the existing openssh-server and does not interfere with the existing openssh-server.
+It is possible to make any service/daemon accessible through any firewall. The service is then only acessible through the GSRN and only if the client knows the secret. No port or service is exposed to the public Internet and the existence of the service remains hidden. This example makes openssh-server (sshd) accessible through the GSRN. Nobody, not even the GSRN operators, have access to the port, daemon or service (they do not know the secret). The new service coexists with the existing openssh-server and does not interfere with the existing openssh-server.
 .Pp
 1. Copy /etc/systemd/system/sshd to /etc/systemd/system/gs-sshd
 .Pp

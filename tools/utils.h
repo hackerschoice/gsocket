@@ -28,6 +28,14 @@ void gs_watchdog(void);
 
 #define VLOG(a...)	do{if (gopt.log_fp != NULL){ fprintf(gopt.log_fp, a); fflush(gopt.log_fp); } }while(0)
 
+// Log with Timestamp + Peer-ID
+#define VLOG_TSP(_p, _a...)	do{ \
+	if (gopt.log_fp == NULL){ break; } \
+	fprintf(gopt.log_fp, "%s [ID=%d] ", GS_logtime(), _p->id); \
+	fprintf(gopt.log_fp, _a); \
+	fflush(gopt.log_fp); \
+}while(0)
+
 /* hack to set rows/columns */
 #define GS_STTY_INIT_HACK	"stty rows %d columns %d\r"
 

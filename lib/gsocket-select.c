@@ -173,7 +173,7 @@ GS_select(GS_SELECT_CTX *ctx)
 		gettimeofday(ctx->tv_now, NULL);
 		GS_USEC_TO_TV(&tv, wait);
 
-		// gs_fds_out_rwfd(ctx);		// BUG-2-MAX-FD
+		gs_fds_out_rwfd(ctx);		// BUG-2-MAX-FD
 		n = select(max_fd + 1, ctx->r, ctx->w, NULL, &tv);
 		// DEBUGF_B("max-fd = %d, *************** select = %d\n", max_fd, n);
 		if (n < 0)

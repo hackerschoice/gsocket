@@ -53,6 +53,15 @@ static struct _peer *peers[FD_SETSIZE];
 static int peer_forward_connect(struct _peer *p, uint32_t ip, uint16_t port);
 static void vlog_hostname(struct _peer *p, const char *desc, uint16_t port);
 
+
+#ifdef DEBUG
+#define GS_PEER_IDLE_TIMEOUT    GS_SEC_TO_USEC(20)
+#else
+#define GS_PEER_IDLE_TIMEOUT    GS_SEC_TO_USEC(60 + 5)
+#endif
+// Shut any connection after 2 seconds if an EOF was received (shutdown())
+#define GS_PEER_IDLE_TIMEOUT_EOF GS_SEC_TO_USEC(2)
+
 /*
  * Make statistics and return them in 'dst'
  */
@@ -81,10 +90,9 @@ peer_mk_stats(char *dst, size_t len, struct _peer *p)
 	GS_bytesstr(wbufps, sizeof wbufps, bps==0?0:bps);
 
 	snprintf(dst, len, 
-	"[ID=%d] Disconnected after %s\n"
-	"    Up: "D_MAG("%12s")" [%s/s], Down: "D_MAG("%12s")" [%s/s]\n", p->id, dbuf, wbuf, wbufps, rbuf, rbufps);
+	"Disconnected after %s\n"
+	"    Up: "D_MAG("%12s")" [%s/s], Down: "D_MAG("%12s")" [%s/s]\n", dbuf, wbuf, wbufps, rbuf, rbufps);
 }
-
 
 /*
  * Close gs-peer and free memory. Close peer->fd unless it's 
@@ -113,10 +121,14 @@ peer_free(GS_SELECT_CTX *ctx, struct _peer *p)
 	ids_gs_logout(p);  // Signal all other interactive _clients_ that we are leaving (IDS notification)
 	GS_EVENT_del(&gopt.event_ping);
 	GS_EVENT_del(&gopt.event_bps);
+	GS_EVENT_del(&p->event_peer_timeout);
 	GS_PKT_close(&p->pkt);
 
 	// Free Filetransfer subsystem (-i)
 	GS_FTM_free(p);
+
+	// Free UDP buffer (udp un-stack)
+	GS_BUF_free(&p->udp_buf);
 
 	// Free all pending log files and their data
 	GS_LIST_del_all(&p->logs, 1);
@@ -134,6 +146,8 @@ peer_free(GS_SELECT_CTX *ctx, struct _peer *p)
 		//exit(0);	// this will close all fd's :>
 	} else {
 		/*. Not stdin/stdout. */
+		GS_SELECT_FD_CLR_W(ctx, p->fd_in);
+		GS_SELECT_FD_CLR_R(ctx, p->fd_in);
 		XCLOSE(p->fd_in);
 	}
 
@@ -142,9 +156,9 @@ peer_free(GS_SELECT_CTX *ctx, struct _peer *p)
 	{
 		char buf[512];
 		peer_mk_stats(buf, sizeof buf, p);
-		VLOG("%s %s", GS_logtime(), buf);
+		VLOG_TSP(p, "%s", buf);
 		if ((p->is_network_forward) && (p->socks.dst_port != 0))
-	    	vlog_hostname(p, "", p->socks.dst_port);
+			vlog_hostname(p, "Remote: ", p->socks.dst_port);
 	}
 
 	GS_SELECT_del_cb(ctx, fd);
@@ -178,6 +192,40 @@ cb_atexit(void)
 	stty_reset();
 	if (gopt.is_interactive)
 		fprintf(stderr, "\n[Bye]\n"); // stdout must be clean for pipe & gs-netcat
+}
+
+// Timer event for UDP to close peer when no data is transmitted for long
+// time.
+// This is called every second and checks if the idle timer
+// is larger than GS_PEER_IDLE_TIMEOUT (5*60 sec).
+// FIXME-Performance: Could have 1 event in gopt. and loop through all connected peers
+// rather than a event for each peer (which is more expensive)
+int
+cbe_peer_timeout(void *ptr)
+{
+	// DEBUGF_C("Checking timeout\n");
+	GS_EVENT *event = (GS_EVENT *)ptr;
+	struct _peer *p = (struct _peer *)event->data;
+
+	if (p == NULL)
+	{
+		DEBUGF_R("WARN, peer==NULL\n");
+		return -1;
+	}
+
+	uint64_t expire = p->ts_peer_io + GS_PEER_IDLE_TIMEOUT;
+	if (p->is_received_gs_eof)
+		expire = p->ts_peer_io + GS_PEER_IDLE_TIMEOUT_EOF;
+
+	// DEBUGF_C("PEER TIMEOUT check %ld\n", GS_PEER_IDLE_TIMEOUT);
+	// Return if data was transmitted recently
+	if (expire >= GS_TV_TO_USEC(&gopt.tv_now))
+		return 0; // not yet expired.
+
+	VLOG_TSP(p, "Idle Timeout.\n");
+	peer_free(p->gs->ctx->gselect_ctx, p);
+
+	return -1; // Event manager to free this event.
 }
 
 /* *********************** FD READ / WRITE ******************************/
@@ -301,7 +349,21 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 		if ((key == 0) && (p->wlen == 0))
 			return GS_SUCCESS;	// EWOULDBLOCK
 	} else {
-		p->wlen = read(fd, p->wbuf, p->w_max);
+		if (gopt.is_udp)
+		{
+			// UDP packaging over TCP = [ 16 bit length | payload ]
+			p->wlen = read(fd, p->wbuf + 2, p->w_max - 2);
+			DEBUGF("read=%zd\n", p->wlen);
+			if (p->wlen > 0)
+			{
+				uint16_t len = htons(p->wlen);
+				memcpy(p->wbuf, &len, 2);
+				p->wlen += 2;
+			}
+		} else {
+			p->wlen = read(fd, p->wbuf, p->w_max);
+		}
+
 		if (p->wlen == 0)
 		{
 			DEBUGF_R("read(%d)==EOF\n", fd);
@@ -331,6 +393,8 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 
 	}
 
+	p->ts_peer_io = GS_TV_TO_USEC(&gopt.tv_now);
+
 	// Check if this was internal data for gs-netcat -I
 	if ((gopt.is_internal) && (gopt.is_want_authcookie != 0))
 	{
@@ -339,6 +403,7 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 		if (sz < 0)
 		{
 			DEBUGF_R("BAD AUTH COOKIE\n");
+			VLOG_TSP(p, "Bad Auth Cookie.\n");
 			peer_free(ctx, p);
 			return GS_SUCCESS;
 		}
@@ -382,15 +447,64 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	return GS_SUCCESS;
 }
 
+// Convert STREAM to DRGRAM. [ 16 bit lenght | payload ]
+// Return NULL if not enough data
+// Keep calling this function until NULL is returned.
+static uint8_t *
+udp_unstack(struct _peer *p, uint8_t *src, size_t slen, ssize_t *dlen)
+{
+	GS_BUF *u = &p->udp_buf;
+
+	// FIXME-PERFORMANCE: can work immediately on src if enough data
+	// has been received without adding to udp_buf.	
+	GS_BUF_add_data(u, src, slen);
+
+	if (GS_BUF_USED(u) < 2)
+		return NULL; // not enough data yet
+
+	uint16_t len;
+	memcpy(&len, GS_BUF_DATA(u), 2);
+	len = ntohs(len);
+	DEBUGF_C("UDP-length=%u\n", len);
+	if (GS_BUF_USED(u) < 2 + len)
+		return NULL; // not enough data yet.
+
+	*dlen = len;
+
+	return (uint8_t *)GS_BUF_RSRC(u) + 2;
+}
+
 static int
 write_fd(GS_SELECT_CTX *ctx, struct _peer *p)
 {
-	ssize_t len;
+	ssize_t len = 0;
 
 	if ((gopt.is_interactive) && (!(gopt.flags & GSC_FL_IS_SERVER)))
 		len = CONSOLE_write(p->fd_out, p->rbuf, p->rlen);
-	else
+	else if (gopt.is_udp) {
+		// UDP un-stacker: [ 16 bit len | payload ] => [ paypload ]
+		// Add content of rbuf to our stack.
+		ssize_t dlen;
+		uint8_t *ptr;
+		uint8_t *src = p->rbuf;
+		uint8_t *end = p->rbuf + p->rlen;
+		while (1)
+		{
+			ptr = udp_unstack(p, src, end - src, &dlen);
+			if (ptr == NULL)
+				break;
+			src = end; 
+			len = write(p->fd_out, ptr, dlen);
+			if (len != dlen)
+				break;
+			// write() was a success. Consume data from Buffer.
+			GS_BUF_del(&p->udp_buf, dlen + 2 /*length*/);
+		}
+		// Check if there is data still in our stack.
+
+	} else {
 		len = write(p->fd_out, p->rbuf, p->rlen);
+	}
 	// DEBUGF_G("write(fd = %d, len = %zd) == %zd, errno = %d (%s)\n", p->fd_out, p->rlen, len, errno, errno==0?"":strerror(errno));
 	
 	if (len < 0)
@@ -417,6 +531,8 @@ write_fd(GS_SELECT_CTX *ctx, struct _peer *p)
 	 * Otherwise mark for reading in saved state (and let WANT_WRITE finish)
 	 */
 	GS_SELECT_FD_SET_R(ctx, p->gs->fd);
+
+	p->ts_peer_io = GS_TV_TO_USEC(&gopt.tv_now);
 	p->rlen = 0;
 	return GS_SUCCESS;
 }
@@ -437,8 +553,9 @@ cb_read_gs_error(GS_SELECT_CTX *ctx, struct _peer *p, ssize_t len)
 	if (len == GS_ERR_EOF)
 	{
 		/* The same for STDOUT, tcp-fordward or cmd-forward [/bin/sh] */
-		DEBUGF_M("CMD shutdown(fd=%d)\n", p->fd_out);
+		DEBUGF_M("CMD shutdown(p->fd=%d)\n", p->fd_out);
 		shutdown(p->fd_out, SHUT_WR);	// BUG-2-MAX-FD
+		p->is_received_gs_eof = 1;
 		if (gopt.is_receive_only)
 		{
 			DEBUGF_M("is_receive_only is TRUE. Calling peer_free()\n");
@@ -546,17 +663,14 @@ write_gs_atomic(GS_SELECT_CTX *ctx, struct _peer *p)
 {
 	int len;
 
-	// if (p->wlen <= 0)
-		// return 0;
-
 	// p->wlen might be == 0 when SSL_shutdown() was called but yielded SSL_WANT_WRITE
 	len = GS_write(p->gs, p->wbuf, p->wlen);
 
 	if (len == -2)
-	{
-		// NOTHING to be done.
-		return 0;
-	}
+		return 0; // NOTHING to be done
+
+	if (len == -1)
+		return -2; // Error 
 
 	// DEBUGF_R("GS_write(fd==%d), len=%d\n", p->gs->fd, len);
 	if (len == 0)
@@ -566,10 +680,6 @@ write_gs_atomic(GS_SELECT_CTX *ctx, struct _peer *p)
 		FD_CLR(p->fd_in, ctx->rfd);		// Pause reading from input
 		GS_FT_pause_data(&p->ft);       // Pause FileTransfers
 		return -1; // BUSY
-
-		// STOP HERE: Oops. we then still read from stdin and then try to write - thats bad. 
-		// but why does XASSERT not catch this? 
-		// does gs-select go back into select() or does it process rfds after EBUSY return?
 	}
 
 	if (len > 0)
@@ -717,6 +827,8 @@ cb_complete_connect(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	if (ret == GS_ERR_FATAL)
 	{
 		DEBUGF("%s\n", __func__);
+			
+		VLOG_TSP(p, "%s\n", strerror(errno));
 		peer_free(ctx, p);
 		return GS_SUCCESS;
 	}
@@ -766,7 +878,7 @@ peer_new_init(GS *gs)
 	GS_PKT_init(&p->pkt);
 	p->w_max = sizeof p->wbuf;
 	p->r_max = sizeof p->rbuf;
-	if ((gopt.is_interactive))// && !(gopt.flags & GSC_FL_IS_SERVER))
+	if (gopt.is_interactive)
 	{
 		/* -i: Use of packet protocol needs decoding space */
 		p->w_max = sizeof p->wbuf / 2;	/* from fd, to GS */
@@ -784,6 +896,14 @@ peer_new_init(GS *gs)
 			ids_gs_login(p); // Let all others know what we have logged in:
 		}
 	}
+
+	p->ts_peer_io = GS_TV_TO_USEC(&gopt.tv_now);
+	if (gopt.is_udp)
+	{
+		GS_EVENT_add_by_ts(&gs->ctx->gselect_ctx->emgr, &p->event_peer_timeout, 0, GS_SEC_TO_USEC(1), cbe_peer_timeout, p, 0);
+		GS_BUF_init(&p->udp_buf, 0);
+	}
+
 	DEBUGF_M("[ID=%d] (fd=%d) Number of connected gs-peers: %d\n", p->id, fd, gopt.peer_count);
 
 	return p;
@@ -793,12 +913,14 @@ static void
 vlog_hostname(struct _peer *p, const char *desc, uint16_t port)
 {
 	uint16_t hp = ntohs(port);
+	const char *u = gopt.is_udp?"(UDP)":"(TCP)";
+
 	if (hp == 443)
-		VLOG("    [ID=%d] %s"D_BLU("%s")":"D_GRE("%d")"\n", p->id, desc, p->socks.dst_hostname, hp);
+		VLOG("    %s"D_BLU("%s")":"D_GRE("%d")" %s\n", desc, p->socks.dst_hostname, hp, u);
 	else if (hp == 80)
-		VLOG("    [ID=%d] %s"D_BLU("%s")":"D_YEL("%d")"\n", p->id, desc, p->socks.dst_hostname, hp);
+		VLOG("    %s"D_BLU("%s")":"D_YEL("%d")" %s\n", desc, p->socks.dst_hostname, hp, u);
 	else
-		VLOG("    [ID=%d] %s"D_BLU("%s")":"D_BRED("%d")"\n", p->id, desc, p->socks.dst_hostname, hp);
+		VLOG("    %s"D_BLU("%s")":"D_BRED("%d")" %s\n", desc, p->socks.dst_hostname, hp, u);
 }
 
 static int
@@ -812,8 +934,8 @@ peer_forward_connect(struct _peer *p, uint32_t ip, uint16_t port)
 	ret = fd_net_connect(ctx, p->fd_in, ip, port);
 	if (ret <= -2)
 	{
-		
 		DEBUGF("%s peer-free\n", __func__);
+		VLOG_TSP(p, "%s\n", strerror(errno));
 		peer_free(ctx, p);
 		return -1;
 	}
@@ -837,6 +959,7 @@ peer_new(GS_SELECT_CTX *ctx, GS *gs)
 
 	p = peer_new_init(gs);
 
+	VLOG_TSP(p, "New Connection\n");
 
 	/* Create a new fd to relay gs-traffic to/from */
 	if ((gopt.cmd != NULL) || (gopt.is_interactive))
@@ -944,8 +1067,6 @@ cb_listen(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	if (p == NULL)
 		return GS_SUCCESS;	/* free'ing peer was a success */
 
-	VLOG("%s [ID=%d] New Connection\n", GS_logtime(), p->id);
-
 	/* Start reading from Network (SRP is handled by GS_read()/GS_write()) */
 	GS_SELECT_add_cb(ctx, cb_read_gs, cb_write_gs, gs_new->fd, p, 0);
 
@@ -999,7 +1120,7 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd_notused, void *arg, int val)
 	DEBUGF_M("GS_connect(fd=%d) == %d\n", gs->fd, ret);
 	if (ret == GS_ERR_FATAL)
 	{
-		VLOG("%s [ID=%d] %s\n", GS_logtime(), p->id, GS_strerror(gs));
+		VLOG_TSP(p, "%s\n", GS_strerror(gs));
 		if (gopt.is_multi_peer == 0)
 			exit(255);	// No server listening
 		/* This can happen if server accepts 1 connection only but client
@@ -1017,7 +1138,6 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd_notused, void *arg, int val)
 	if (ret == GS_ERR_WAITING)
 		return GS_ECALLAGAIN;
 
-	DEBUGF_M("*** GS_connect() SUCCESS *****\n");
 	DEBUGF_M("*** GS_connect() SUCCESS ***** %d %d %d\n", gs->fd, p->fd_in, p->fd_out);
 	/* HERE: Connection successfully established */
 	/* Start reading from Network (SRP is handled by GS_read()/GS_write()) */
@@ -1143,7 +1263,7 @@ cb_accept(GS_SELECT_CTX *ctx, int listen_fd, void *arg, int val)
 	memset(&addr, 0, sizeof addr);
 	socklen_t len = sizeof addr;
 	getpeername(fd, (struct sockaddr *)&addr, &len);
-	VLOG("%s [ID=%d] New Connection from %s:%d\n", GS_logtime(), p->id, inet_ntoa(addr.sin_addr), ntohs(addr.sin_port));
+	VLOG_TSP(p, "New Connection from %s:%d\n", inet_ntoa(addr.sin_addr), ntohs(addr.sin_port));
 
 	return GS_SUCCESS;
 }
