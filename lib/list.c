@@ -18,12 +18,30 @@ GS_LIST_init(GS_LIST *gsl, int opt)
 	return 0;	
 }
 
+// FOR DEBUGGING ONLY
+void
+GS_LIST_stderr(GS_LIST *gsl, const char *msg)
+{
+	GS_LIST_ITEM *li = GS_LIST_next(gsl, NULL);
+
+	DEBUGF_C("Items=%d: %s", gsl->n_items, msg);
+	int i = 0;
+	for (; li != NULL; li = GS_LIST_next(gsl, li))
+	{
+		DEBUGF_Y("#%d id=%"PRIu64" %p (prev=%p, next=%p)\n", i++, li->id, li, li->prev, li->next);
+		XASSERT(i < 6, "list to long (debugging)\n"); // FIXME:
+	}
+	if (i != gsl->n_items)
+		ERREXIT("wrong number of items: %d\n", i);
+}
 
 GS_LIST_ITEM *
 GS_LIST_next(GS_LIST *gsl, GS_LIST_ITEM *li)
 {
 	if (li == NULL)
 		return gsl->head;
+
+	XASSERT(li != li->next, "list-item is looping (%p)\n", li);
 
 	return li->next;
 }
@@ -51,6 +69,8 @@ gs_list_link(GS_LIST_ITEM *src_li)
 {
 	GS_LIST *gsl = src_li->gsl;
 
+	gsl->n_items += 1;
+
 	// First element
 	if (gsl->head == NULL)
 	{
@@ -59,7 +79,7 @@ gs_list_link(GS_LIST_ITEM *src_li)
 		src_li->next = NULL;
 		src_li->prev = NULL;
 
-		return;
+		goto done;
 	}
 
 	// Start from tail to find insert location
@@ -84,7 +104,7 @@ gs_list_link(GS_LIST_ITEM *src_li)
 		gsl->head->prev = src_li;
 		gsl->head = src_li;
 
-		return;
+		goto done;
 	}
 
 	// Add below li
@@ -95,6 +115,8 @@ gs_list_link(GS_LIST_ITEM *src_li)
 	else
 		gsl->tail = src_li; // next tail
 	li->next = src_li;
+done:
+	XASSERT(src_li != src_li->next, "list-item already in list\n");
 }
 
 void
@@ -137,7 +159,6 @@ GS_LIST_add(GS_LIST *gsl, GS_LIST_ITEM *src_li, void *data, uint64_t id)
 	src_li->add_id = gsl->add_count;
 
 	gsl->add_count += 1;
-	gsl->n_items += 1;
 
 	gs_list_link(src_li);
 

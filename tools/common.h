@@ -152,6 +152,7 @@ struct _gopt
 	int is_want_authcookie;
 	int is_send_authcookie;
 	int is_internal;        // -I flag
+	int is_udp;             // Port forwarding only. GSRN is always TCP.
 	uint64_t ts_ping_sent;  // TimeStamp ping sent
 	fd_set rfd, r;
 	fd_set wfd, w;
@@ -209,6 +210,7 @@ struct _peer
 	int is_fd_connected;
 	int is_pty_first_read;		/* send stty hack */
 	int is_stty_set_raw;		/* Client only */
+	int is_received_gs_eof;     // EOF from GSRN
 	/* For Statistics */
 	int id;			/* Stats: assign an ID to each pere */
 	struct _socks socks;
@@ -218,6 +220,9 @@ struct _peer
 	int is_pending_logs; // Log files need to be send to peer.
 	GS_LIST_ITEM *ids_li;  // Peer is interested in global IDS logs
 	pid_t pid;
+	uint64_t ts_peer_io;   // TimeStamp of last peer I/O (e.g. UDP, stdin, ...)
+	GS_BUF udp_buf;         // UDP un-stacker (for -u)
+	GS_EVENT event_peer_timeout;
 };
 
 #define GSC_FL_IS_SERVER		(0x01)

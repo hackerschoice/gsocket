@@ -1,6 +1,6 @@
 dnl Process this File with autoconf to produce a configure script.
 AC_PREREQ(2.61)
-AC_INIT([gsocket], 1.4.26-gs3)
+AC_INIT([gsocket], 1.4.26-rc1)
 dnl AC_CONFIG_AUX_DIR(config-x86_64-apple-darwin19.6.0)
 AC_CONFIG_AUX_DIR(config)
 AC_CANONICAL_SYSTEM
@@ -125,7 +125,7 @@ AC_CHECK_LIB(procstat, procstat_close)
 AC_CHECK_LIB([crypto], [ENGINE_init], [], [AC_MSG_ERROR([libcrypto not found])])
 AC_CHECK_LIB([ssl], [SRP_VBASE_get1_by_user], [], [AC_MSG_ERROR([SRP not supported. Please upgrade OpenSSL lib])])
 
-AC_CHECK_FUNCS(gettimeofday memcpy strchr strlcat forkpty openpty getline stat64 open64 statvfs64)
+AC_CHECK_FUNCS(gettimeofday memcpy strchr strlcat forkpty openpty getline stat64 open64 statvfs64 accept4)
 
 AC_ARG_ENABLE([31337],
 	AS_HELP_STRING([--enable-31337], [Enable experimental features.]),
@@ -157,7 +157,7 @@ AS_IF([test x$selftests = xtrue], AC_SUBST(PROGRAMS_TEST_TOOLS, "packet-test${EX
 
 AC_SUBST(LDADD_STATIC, "${LDADD_STATIC}")
 AC_SUBST(CFLAGS_STATIC, "${CFLAGS_STATIC}")
-AC_OUTPUT([Makefile lib/Makefile tools/Makefile man/Makefile])
+AC_OUTPUT([Makefile lib/Makefile tools/Makefile man/Makefile examples/Makefile])
 
 
 echo "

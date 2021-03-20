@@ -7,7 +7,7 @@ NAME\n\
      remote host. Securely.\n\
 \n\
 SYNOPSIS\n\
-     gs-netcat [-rlgqwCTSDi] [-s secret] [-k keyfile] [-L logfile] [-d IP]\n\
+     gs-netcat [-rlgqwCTSDiu] [-s secret] [-k keyfile] [-L logfile] [-d IP]\n\
 	       [-p port] [-e cmd]\n\
 \n\
 DESCRIPTION\n\
@@ -33,44 +33,18 @@ DESCRIPTION\n\
 	   o   and much, much more.\n\
 \n\
 OPTIONS\n\
-     -s secret\n\
-	     A password chosen by the user. Both users need to use the same\n\
-	     password to connect.\n\
+     -C      Disable encryption and use clear-text instead. Use with caution.\n\
 \n\
-     -k file\n\
-	     A file containing the password.\n\
+     -d ip   Destination IPv4 address for port forwarding.\n\
+\n\
+     -D      Daemon & Watchdog mode. Start gs-netcat as a background process\n\
+	     and restart if killed.\n\
+\n\
+     -e cmd  Execute command and send output to the connected client. Needs\n\
+	     -l.\n\
 \n\
      -g      Generate a secure random password and output it to standard out-\n\
 	     put.\n\
-\n\
-     -l      Server mode. The default mode is client.\n\
-\n\
-     -q      Quiet mode. Do not output any warnings or errors.\n\
-\n\
-     -w      Client to wait for the listening server to become available.\n\
-\n\
-     -r      Receive-only. Do not send any data. Terminate when no more data\n\
-	     is available for reading.\n\
-\n\
-     -C      Disable encryption and use clear-text instead. Use with caution.\n\
-\n\
-     -T      Use TOR. The gs-netcat tool will connect via TOR to the GSRN.\n\
-	     This requires TOR to be installed and running. The IP and PORT of\n\
-	     the TOR server can be set using environment variables.\n\
-\n\
-     -S      Server. Act as a SOCKS4/4a/5 server. Needs -l. The server acts as\n\
-	     a SOCKS4/4a/5 proxy. It allows multiple gs-netcat clients to\n\
-	     (securely) relay traffic via the server.\n\
-\n\
-     -D      Server. Daemon & Watchdog mode.  gs-netcat will run as a back-\n\
-	     ground process and restart itself if killed.\n\
-\n\
-     -e cmd  Server. Execute command and send output to the connected client.\n\
-\n\
-     -d ip   IPv4 address for port forwarding.\n\
-\n\
-     -p port\n\
-	     TCP port to listen on or to forward traffic to.\n\
 \n\
      -i      Interactive login shell. The server spawns a true PTY login\n\
 	     shell. The client acts as a true PTY client (with Ctrl-C etc\n\
@@ -79,15 +53,47 @@ OPTIONS\n\
 	     clients at the same time.\n\
 \n\
 \n\
-     port can be a numerical value between 1-65535.\n\
+     -k file\n\
+	     A file containing the password.\n\
+\n\
+     -l      Server/Listening mode. The default mode is client.\n\
+\n\
+     -L file\n\
+	     Log file [defaut: standard out]\n\
+\n\
+     -p port\n\
+	     Port to listen on or to forward traffic to [1-65535].\n\
+\n\
+     -q      Quiet mode. Do not output any warnings or errors.\n\
+\n\
+     -r      Receive-only. Do not send any data. Terminate when no more data\n\
+	     is available for reading.\n\
+\n\
+     -s secret\n\
+	     A password chosen by the user. Both users need to use the same\n\
+	     password to connect.\n\
+\n\
+     -S      Act as a SOCKS4/4a/5 server. The server acts as a SOCKS4/4a/5\n\
+	     proxy. It allows multiple gs-netcat clients to (securely) relay\n\
+	     traffic via the server. Needs -l.\n\
+\n\
+     -T      Use TOR. The gs-netcat tool will connect via TOR to the GSRN.\n\
+	     This requires TOR to be installed and running. The IP and PORT of\n\
+	     the TOR server can be set using environment variables.\n\
+\n\
+     -u      Use UDP instead of TCP for port forwarding. Needs -p.\n\
+\n\
+     -w      Client to wait for the listening server to become available.\n\
+\n\
 \n\
 CONSOLE\n\
-     Pressing 'Ctrl-e c' (e for EEEElite) opens the command console. The com-\n\
-     mand console displays the following information:\n\
+     The interactive login shell ( -i ) has a command console. Pressing 'Ctrl-\n\
+     e c' (e for EEEElite) opens the command console. The command console dis-\n\
+     plays the following information:\n\
 \n\
 	   o   Latency (in milliseconds) to the remote host\n\
 	   o   Warning when a user logs into the system or becomes active\n\
-	   o   Data troughput\n\
+	   o   Data throughput\n\
 	   o   File transfer logs\n\
      Type 'help' for a list of available commands.\n\
 \n\

@@ -242,7 +242,7 @@ GS_select(GS_SELECT_CTX *ctx)
 				call_item(ctx, item, i);
 				n--;
 			} /* FD_ISSET(i, ctx->w) */
-		} /* select() */
+		} /* for () */
 
 		/* Time to return control to caller? */
 		if (ctx->emgr.is_return_to_caller)

@@ -33,6 +33,7 @@ GS_LIST_ITEM *GS_LIST_next(GS_LIST *gsl, GS_LIST_ITEM *li);
 GS_LIST_ITEM *GS_LIST_by_pos(GS_LIST *gsl, int pos);
 GS_LIST_ITEM *GS_LIST_by_id(GS_LIST *gsl, uint64_t id);
 void GS_LIST_relink(GS_LIST_ITEM *li, uint64_t id);
+void GS_LIST_stderr(GS_LIST *gsl, const char *msg);
 
 
 #endif /* !__GS_LIST_H__ */

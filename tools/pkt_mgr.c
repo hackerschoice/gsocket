@@ -42,7 +42,7 @@ pkt_app_cb_ping(uint8_t msg, const uint8_t *data, size_t len, void *ptr)
 {
 	struct _peer *p = (struct _peer *)ptr;
 
-	// DEBUGF_C("PING received\n");
+	DEBUGF_C("APP-PING received\n");
 	gopt.is_pong_pending = 1;
 	GS_SELECT_FD_SET_W(p->gs);
 }

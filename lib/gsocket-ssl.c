@@ -413,8 +413,14 @@ gs_ssl_continue(GS *gsocket, enum gs_rw_state_t rw_state)
 	{
 		// write wont block.
 		if (gsocket->is_want_shutdown == 0)
+		{
+			// Not a SSL_shutdown()
 			if ((state != GS_SSL_STATE_ACCEPT) && (state != GS_SSL_STATE_CONNECT) && (state != GS_SSL_STATE_SHUTDOWN))
-				return 1;
+			{
+				// DEBUGF("ssl_continue: nothing to continue\n");
+				return 1; // nothing to do
+			}
+		}
 	} else {
 		if ((state != GS_SSL_STATE_ACCEPT) && (state != GS_SSL_STATE_CONNECT) && (state != GS_SSL_STATE_SHUTDOWN))
 			return 1;

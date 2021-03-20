@@ -9,8 +9,8 @@ GS *gs_create(void);
 void do_getopt(int argc, char *argv[]);
 void usage(const char *params);
 int fd_cmd(const char *cmd, pid_t *pidptr);
-int fd_new_socket(void);
-int fd_net_listen(int fd, uint16_t *port);
+int fd_new_socket(int type);
+int fd_net_listen(int fd, uint16_t *port, int type);
 int fd_net_accept(int listen_fd);
 int fd_net_connect(GS_SELECT_CTX *ctx, int fd, uint32_t ip, uint16_t port);
 void stty_set_raw(void);
@@ -27,6 +27,14 @@ char *getcwdx(void);
 void gs_watchdog(void);
 
 #define VLOG(a...)	do{if (gopt.log_fp != NULL){ fprintf(gopt.log_fp, a); fflush(gopt.log_fp); } }while(0)
+
+// Log with Timestamp + Peer-ID
+#define VLOG_TSP(_p, _a...)	do{ \
+	if (gopt.log_fp == NULL){ break; } \
+	fprintf(gopt.log_fp, "%s [ID=%d] ", GS_logtime(), _p->id); \
+	fprintf(gopt.log_fp, _a); \
+	fflush(gopt.log_fp); \
+}while(0)
 
 /* hack to set rows/columns */
 #define GS_STTY_INIT_HACK	"stty rows %d columns %d\r"

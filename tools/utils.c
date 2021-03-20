@@ -827,7 +827,7 @@ fd_net_accept(int listen_fd)
  * Create a listening fd on port.
  */
 int
-fd_net_listen(int fd, uint16_t *port)
+fd_net_listen(int fd, uint16_t *port, int type)
 {
 	struct sockaddr_in addr;
 	int ret;
@@ -860,9 +860,13 @@ fd_net_listen(int fd, uint16_t *port)
 		*port = paddr.sin_port;
 	}
 
-	ret = listen(fd, 1);
-	if (ret != 0)
-		return -1;
+	if (type == SOCK_STREAM)
+	{
+		// HERE: TCP socket (needs listen()
+		ret = listen(fd, 1);
+		if (ret != 0)
+			return -1;
+	}
 
 	return 0;
 }
@@ -872,12 +876,12 @@ fd_net_listen(int fd, uint16_t *port)
  * Return < 0 on fata error.
  */
 int
-fd_new_socket(void)
+fd_new_socket(int type)
 {
 	int fd;
 	int ret;
 
-	fd = socket(PF_INET, SOCK_STREAM, 0);
+	fd = socket(PF_INET, type, 0);
 	if (fd < 0)
 		return -2;
 	DEBUGF_W("socket() == %d\n", fd);

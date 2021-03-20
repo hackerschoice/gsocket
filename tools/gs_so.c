@@ -73,10 +73,14 @@ typedef int (*real_listen_t)(int sox, int backlog);
 static int real_listen(int sox, int backlog) { errno=0; return ((real_listen_t)dlsym(RTLD_NEXT, "listen"))(sox, backlog); }
 typedef int (*real_connect_t)(int sox, const struct sockaddr *addr, socklen_t addr_len);
 static int real_connect(int sox, const struct sockaddr *addr, socklen_t addr_len) { errno=0; return ((real_connect_t)dlsym(RTLD_NEXT, "connect"))(sox, addr, addr_len); }
-// typedef int (*real_accept_t)(int sox, const struct sockaddr *addr, socklen_t *addr_len);
-// static int real_accept(int sox, const struct sockaddr *addr, socklen_t *addr_len) { errno=0; return ((real_accept_t)dlsym(RTLD_NEXT, "accept"))(sox, addr, addr_len); }
-typedef int (*real_accept4_t)(int sox, const struct sockaddr *addr, socklen_t *addr_len, int flags);
-static int real_accept4(int sox, const struct sockaddr *addr, socklen_t *addr_len, int flags) { errno=0; return ((real_accept4_t)dlsym(RTLD_NEXT, "accept4"))(sox, addr, addr_len, flags); }
+#if defined(HAVE_ACCEPT4)
+  typedef int (*real_accept4_t)(int sox, const struct sockaddr *addr, socklen_t *addr_len, int flags);
+  static int real_accept4(int sox, const struct sockaddr *addr, socklen_t *addr_len, int flags) { errno=0; return ((real_accept4_t)dlsym(RTLD_NEXT, "accept4"))(sox, addr, addr_len, flags); }
+#else
+  // Solaris10 & OSX do not have accept4()
+  typedef int (*real_accept_t)(int sox, const struct sockaddr *addr, socklen_t *addr_len);
+  static int real_accept4(int sox, const struct sockaddr *addr, socklen_t *addr_len, int flags) { errno=0; return ((real_accept_t)dlsym(RTLD_NEXT, "accept"))(sox, addr, addr_len); }
+#endif
 typedef struct hostent *(*real_gethostbyname_t)(const char *name);
 static struct hostent *real_gethostbyname(const char *name) { errno=0; return ((real_gethostbyname_t)dlsym(RTLD_NEXT, "gethostbyname"))(name); }
 typedef int (*real_getaddrinfo_t)(const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **res);
@@ -108,6 +112,7 @@ thc_init(const char *fname)
 
 	thc_init_cyg();
 
+#ifdef DEBUG
 	if (getenv("GS_DEBUG"))
 	{
 		is_debug = 1;
@@ -118,6 +123,7 @@ thc_init(const char *fname)
 			gopt.err_fp = stderr;
 	}
 	DEBUGF("%s called from %s()\n", __func__, fname);
+#endif
 
 	// struct sigaction sa;
 	// memset(&sa, 0, sizeof sa);
@@ -391,12 +397,15 @@ thc_accept4(const char *fname, int ls, const struct sockaddr *addr, socklen_t *a
 	errno = 0;
 	thc_init(fname);
 	DEBUGF_W("%s called (ls=%d)\n", fname, ls);
+	DEBUGF("MARK\n");
 
 	if (ls < 0)
 		return real_accept4(ls, addr, addr_len, flags);
 
 	// IPv4 or IPv6
+	DEBUGF("MARK\n");
 	sox = real_accept4(ls, addr, addr_len, flags);
+	DEBUGF("MARK\n");
 	DEBUGF("%s()=%d (new socket)\n", fname, sox);
 	if (sox < 0)
 		return sox;
@@ -592,8 +601,8 @@ close_all_fd(int fd)
 
 	for (i = 2; i < MIN(getdtablesize(), FD_SETSIZE); i++)
 	{
-#ifdef DEBUG
 		// Leave STDERR open when debugging
+#ifdef DEBUG
 		if (i == STDERR_FILENO)
 		{
 			DEBUGF_B("NOT closing %d\n", STDERR_FILENO);
@@ -780,11 +789,14 @@ int connect(int socket, const struct sockaddr *addr, socklen_t addr_len) {return
 int close(int fd) {return thc_close(__func__, fd); }
 int bind(int socket, const struct sockaddr *addr, socklen_t addr_len) {return thc_bind(__func__, socket, addr, addr_len); }
 int listen(int socket, int backlog) {return thc_listen(__func__, socket, backlog); }
-int accept(int socket, struct sockaddr *addr, socklen_t *addr_len) {return thc_accept4(__func__, socket, addr, addr_len, 0); }
+#if !defined(IS_SOL10)
+  int accept(int socket, struct sockaddr *addr, socklen_t *addr_len) {return thc_accept4(__func__, socket, addr, addr_len, 0); }
+#else
+  int accept(int socket, struct sockaddr *addr, Psocklen_t addr_len) {return thc_accept4(__func__, socket, addr, addr_len, 0); }
+#endif
 int accept4(int socket, struct sockaddr *addr, socklen_t *addr_len, int flags) {return thc_accept4(__func__, socket, addr, addr_len, flags); }
 struct hostent *gethostbyname(const char *name) {return thc_gethostbyname(__func__, name); }
 int getaddrinfo(const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **res) {return thc_getaddrinfo(__func__, node, service, hints, res); }
-
 #endif
 
 #ifdef __CYGWIN__

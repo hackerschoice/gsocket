@@ -7,7 +7,7 @@
 .Nd transfer data, forward traffic and execute commands on a remote host. Securely.
 .Sh SYNOPSIS
 .Nm gs-netcat
-.Op Fl rlgqwCTSDi
+.Op Fl rlgqwCTSDiu
 .Op Fl s Ar secret
 .Op Fl k Ar keyfile
 .Op Fl L Ar logfile
@@ -41,49 +41,53 @@ and much, much more.
 .Pp
 .Sh OPTIONS
 .Bl -tag -width Ds
-.It Fl s Ar secret
-A password chosen by the user. Both users need to use the same password to connect.
-.It Fl k Ar file
-A file containing the password.
-.It Fl g
-Generate a secure random password and output it to standard output.
-.It Fl l
-Server mode. The default mode is client.
-.It Fl q
-Quiet mode. Do not output any warnings or errors.
-.It Fl w
-Client to wait for the listening server to become available.
-.It Fl r
-Receive-only. Do not send any data. Terminate when no more data is available for reading.
 .It Fl C
 Disable encryption and use clear-text instead. Use with caution.
+.It Fl d Ar ip
+Destination IPv4 address for port forwarding.
+.It Fl D
+Daemon & Watchdog mode. Start
+.Nm
+as a background process and restart if killed.
+.It Fl e Ar cmd
+Execute command and send output to the connected client. Needs -l.
+.It Fl g
+Generate a secure random password and output it to standard output.
+.It Fl i
+Interactive login shell. The server spawns a true PTY login shell. The client acts as a true PTY client (with Ctrl-C etc working). The client can terminate the session by typing \'Ctrl-e q\' at any time or by typing \'exit\'. The server supports multiple clients at the same time.
+
+.It Fl k Ar file
+A file containing the password.
+.It Fl l
+Server/Listening mode. The default mode is client.
+.It Fl L Ar file
+Log file [defaut: standard out]
+.It Fl p Ar port
+Port to listen on or to forward traffic to [1-65535].
+.It Fl q
+Quiet mode. Do not output any warnings or errors.
+.It Fl r
+Receive-only. Do not send any data. Terminate when no more data is available for reading.
+.It Fl s Ar secret
+A password chosen by the user. Both users need to use the same password to connect.
+.It Fl S
+Act as a SOCKS4/4a/5 server. The server acts as a SOCKS4/4a/5 proxy. It allows multiple
+.Nm
+clients to (securely) relay traffic via the server. Needs -l.
 .It Fl T
 Use TOR. The
 .Nm
 tool will connect via TOR to the GSRN. This requires TOR to be installed and running. The IP and PORT of the TOR server can be set using environment variables.
-.It Fl S
-Server. Act as a SOCKS4/4a/5 server. Needs -l. The server acts as a SOCKS4/4a/5 proxy. It allows multiple
-.Nm
-clients to (securely) relay traffic via the server.
-.It Fl D
-Server. Daemon & Watchdog mode.
-.Nm
-will run as a background process and restart itself if killed.
-.It Fl e Ar cmd
-Server. Execute command and send output to the connected client.
-.It Fl d Ar ip
-IPv4 address for port forwarding.
-.It Fl p Ar port
-TCP port to listen on or to forward traffic to.
-.It Fl i
-Interactive login shell. The server spawns a true PTY login shell. The client acts as a true PTY client (with Ctrl-C etc working). The client can terminate the session by typing \'Ctrl-e q\' at any time or by typing \'exit\'. The server supports multiple clients at the same time.
+.It Fl u
+Use UDP instead of TCP for port forwarding. Needs -p. 
+.It Fl w
+Client to wait for the listening server to become available.
 .El
 
-.Pp
-.Ar port
-can be a numerical value between 1-65535.
 .Sh CONSOLE
-Pressing \'Ctrl-e c\' (e for EEEElite) opens the command console. The command console displays the following information:
+The interactive login shell (
+.Ar -i
+) has a command console. Pressing \'Ctrl-e c\' (e for EEEElite) opens the command console. The command console displays the following information:
 .Pp
 .Bl -bullet -offset indent -compact
 .It
@@ -91,7 +95,7 @@ Latency (in milliseconds) to the remote host
 .It
 Warning when a user logs into the system or becomes active
 .It
-Data troughput
+Data throughput
 .It
 File transfer logs
 .El
