@@ -52,6 +52,9 @@ b@BOB:~$ gs irssi -c gsocket
 Enter Secret (or press Enter to generate): ExampleSecretChangeMe
 =Secret         :"ExampleSecretChangeMe"
 =Encryption     : SRP-AES-256-CBC-SHA-End2End (Prime: 4096 bits)
+Irssi v1.2.0-2 - https://irssi.org
+06:22 -!- Irssi: Looking up gsocket
+06:22 -!- Irssi: Connecting to gsocket [127.31.33.7] port 6667
 [...]
 ```
 
