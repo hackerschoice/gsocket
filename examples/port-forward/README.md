@@ -13,7 +13,7 @@ Create a port forward to ALICE's IRCD and make this forward accessible via the G
 **Prerequisite**
 IRCD running on ALICE's workstation and an IRC client (irssi) on BOB's workstation.
 
-On workstation "ALICE" create */etc/system/systemd/gs-portforward.service*. Configure a port forward from the Global Socket *ExampleSecretChangeMe* to port 6667:
+On workstation "ALICE" create */etc/system/systemd/gs-portforward.service* to configure a port forward from the Global Socket *ExampleSecretChangeMe* to TCP port 6667 on your workstation (127.0.0.1):
 ```EditorConfig
 [Unit]
 Description=Global Socket IRCD Forward
@@ -36,25 +36,26 @@ root@ALICE:~# systemctl status gs-portforward
 root@ALICE:~# systemctl enable gs-portforward
 ```
 
-On BOB's workstation create a port forward from 6667 to the Global Socket *ExampleSecretChangeMe*:
+On BOB's workstation create a port forward from TCP port 6667 to the Global Socket *ExampleSecretChangeMe*:
 ```ShellSession
 b@BOB:~$ gs-netcat -s ExampleSecretChangeMe -p 6667
 ```
 
-TCP port 6667 on BOB's workstation is now forwarded to TCP port 6667 on ALICE's workstation. Bob connects to ALICE's IRCD as if it would be running on his workstation (127.0.0.1):
+TCP port 6667 on BOB's workstation is now forwarded to TCP port 6667 on ALICE's workstation. Bob connects to ALICE's IRCD as if the IRCD is running on his workstation (127.0.0.1):
 ```ShellSession
 b@BOB:~$ irssi -c 127.0.0.1
 ```
 
-Alternatively BOB can use the *gs* tool to start the irc client to automatically forward the connection via the GSRN:
+Alternatively of using two separate commands BOB can use the *gs* tool to start the irc client and automatically forward the connection via the GSRN:
 ```ShellSession
 b@BOB:~$ gs irssi -c gsocket
 Enter Secret (or press Enter to generate): ExampleSecretChangeMe
 =Secret         :"ExampleSecretChangeMe"
 =Encryption     : SRP-AES-256-CBC-SHA-End2End (Prime: 4096 bits)
+[...]
 ```
 
-This is a hypothetical example. Alice can configure the port forward to any other destination by changing 127.0.0.1.
+This is a hypothetical example. Alice can configure the port forward by changing 127.0.0.1 to the desired destination.
 
 Alice created a port forward and started the IRCD service. Instead Alice can combine this into a single command:
 
