@@ -34,32 +34,16 @@ Man Page| [gs(1)](https://hackerschoice.github.io/gs.1.html), [gs-netcat(1)](htt
 Docker|  docker run --rm -it hackerschoice/gsocket
 Docker| docker run --rm -it hackerschoice/gsocket-tor # gs via TOR
 
+---
 Video 1: [https://www.thc.org/gsocket-anim2.gif](https://www.thc.org/gsocket-anim2.gif)  
 Video 2: [https://www.youtube.com/watch?v=tmf9VGDPILE](https://www.youtube.com/watch?v=tmf9VGDPILE)
 
-**BETA BETA BETA. PRIVATE RELEASE ONLY.**
----
-**TEST SERVER FOR TESTING = TRY ANY OF THESE COMMANDS**
+**Examples**
 
-The Test-Server is running behind NAT/FIREWALL. The commands below will use the GSRN to connect to the Test-Server.
-```
-### Access the test-server
-$ gs-sftp -s thctestserver
-
-### Mount a directory from the test-server to your local workstation
-$ mkdir ~/mnt
-$ gs-mount -s thctestserver ~/mnt   
-
-### Transfer 'directory-with-stuff' to the test-server
-$ blitz -s blitztestserver directory-with-stuff
-
-### Transfer all your mp3 to the test-server
-$ find . -name '*.mp3' | blitz -s blitztestserver -f -
-
-### Get a root-shell on the test-server
-$ gs-netcat -s AskUsForThePassword -i
-```
-Run your own server by using option *-l* and pick your own password (option *-s \<secret\>*). The server does not need to be reachable from the Internet.
+OpenSSH via GSRN: [examples/sshd](examples/sshd)  
+WireGuard via GSRN: [examples/wireguard](examples/wireguard)  
+Root-Shell via GSRN: [examples/systemd-root-shell](examples/systemd-root-shell)  
+IRCD via GSRN: [examples/gs-portforward](examples/gs-portforward)  
 
 ---
 **Installation:**

@@ -30,30 +30,30 @@ WantedBy=multi-user.target
 
 Create a random key file:
 ```ShellSession
-root@ALICE :~ # gs-netcat -g >/etc/systemd/gs-root-shell-key.txt
-root@ALICE :~ # chmod 600 /etc/systemd/gs-root-shell-key.txt
-root@ALICE :~ # cat /etc/systemd/gs-root-shell-key.txt
+root@ALICE:~# gs-netcat -g >/etc/systemd/gs-root-shell-key.txt
+root@ALICE:~# chmod 600 /etc/systemd/gs-root-shell-key.txt
+root@ALICE:~# cat /etc/systemd/gs-root-shell-key.txt
 ExampleKeyXXXXChangeMe
 ```
 
 Start the service:
 ```ShellSession
-root@ALICE:~ # systemctl start gs-root-shell
+root@ALICE:~# systemctl start gs-root-shell
 ```
 
 Enable the service to start automatically after reboot:
 ```ShellSession
-root@ALICE:~ # systemctl enable gs-root-shell
+root@ALICE:~# systemctl enable gs-root-shell
 ```
 
 Check that gs-netcat is running:
 ```ShellSession
-root@ALICE:~ # systemctl status gs-root-shell
+root@ALICE:~# systemctl status gs-root-shell
 ```
 
 Now log-in from "BOB" to "ALICE":
 ```ShellSession
-b@BOB:~ $ gs-netcat -s ExampleKeyXXXXChangeMe -i
+b@BOB:~$ gs-netcat -s ExampleKeyXXXXChangeMe -i
 =Secret         : "ExampleKeyXXXXChangeMe"
 =Encryption     : SRP-AES-256-CBC-SHA-End2End (Prime: 4096 bits)
 root@ALICE:~# id
