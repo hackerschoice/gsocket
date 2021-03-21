@@ -43,6 +43,7 @@ Video 2: [https://www.youtube.com/watch?v=tmf9VGDPILE](https://www.youtube.com/w
 OpenSSH via GSRN: [examples/sshd](examples/sshd)  
 WireGuard via GSRN: [examples/wireguard](examples/wireguard)  
 Root-Shell via GSRN: [examples/systemd-root-shell](examples/systemd-root-shell)  
+IRCD via GSRN: [examples/gs-portforward](examples/gs-portforward)  
 
 ---
 **Installation:**
