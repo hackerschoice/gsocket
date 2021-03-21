@@ -69,6 +69,6 @@ $ gs -g
 M9BfcYhhG4LujcPTbUcaZN
 ```
 
-This example uses double encryption: The GSRN connection is encrypted with OpenSSL's SRP protocol and within that tunnel OpenSSH uses its own encryption. This also means that the SSHD on the GSRN is only accessible to those who know the secret (*ExampleSecretChangeMe*). E.g. the TCP port is hidden. The *-C* option can be used to disable GSRN encryption and rely on OpenSSH's encryption only.
+This example uses double encryption: The GSRN connection is encrypted with OpenSSL's SRP protocol and within that tunnel OpenSSH uses its own encryption. This also means that the SSHD on the GSRN is only accessible to those who know the secret (*ExampleSecretChangeMe*). E.g. the listening TCP port is hidden. The *-C* option can be used to disable GSRN encryption and rely on OpenSSH's encryption only.
 
 Many more gs options are available: For example *-T* to connect via TOR. See the manual page for gs. 

@@ -1,0 +1,12 @@
+Unit]
+Description=Global Socket IRCD Forward
+After=network.target
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=10
+ExecStart=gs-netcat -s ExampleSecretChangeMe -l -d 127.0.0.1 -p 6667
+
+[Install]
+WantedBy=multi-user.target
