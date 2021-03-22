@@ -35,8 +35,9 @@ Docker|  docker run --rm -it hackerschoice/gsocket
 Docker| docker run --rm -it hackerschoice/gsocket-tor # gs via TOR
 
 ---
-Video 1: [https://www.thc.org/gsocket-anim2.gif](https://www.thc.org/gsocket-anim2.gif)  
-Video 2: [https://www.youtube.com/watch?v=tmf9VGDPILE](https://www.youtube.com/watch?v=tmf9VGDPILE)
+Video 1: [gs-netcat reverse login shell and EEElite-console](https://www.youtube.com/watch?v=tmf9VGDPILE)
+Video 2: [Using gs to hijack OpenSSH](https://www.youtube.com/watch?v=Nn6BAeeVJIc
+Video 3: [Blitz files through firewalls](https://www.thc.org/gsocket-anim2.gif)  
 
 **Examples**
 
