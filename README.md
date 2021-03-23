@@ -22,17 +22,17 @@ Abandon the thought of IP Addresses and Port Numbers. Instead start thinking tha
 The GSRN is a free cloud service and is free to use by anyone.
 
 The Global Socket Toolkit comes with a set of tools:
-* **gsocket** - Make an existing program accessible via the GSRN. It does so by analyzing the program and replacing the IP-Layer with its own Gsocket-Layer. Any connection to a hostname ending in *'\*.gsocket'* is redirected via the GSRN to the listening server.
+* **gsocket** - Makes an existing program (behind firewall or NAT) accessible from anywhere in the world. It does so by analyzing the program and replacing the IP-Layer with its own Gsocket-Layer. A client connection to a hostname ending in *'\*.gsocket'* then gets automatically redirected (via the GSRN) to this program.
 * **gs-netcat** - Netcat on steroids. Turn gs-netcat into an AES-256 encrypted reverse backdoor via TOR (optional) with a true PTY/interactive command shell (```gs-netcat -s MySecret -i```), integrated file-transfer, spawn a Socks4/4a/5 proxy or forward TCP connections or give somebody temporary shell access.
 * **gs-sftp** - sftp server & client between two firewalled workstations (```gs-sftp -s MySecret```)
 * **gs-mount** - Access and mount a remote file system (```gs-mount -s MySecret ~/mnt/warez```)
-* **blitz** - Copy data (single or recursivley) (```blitz -s MySecret /usr/share/*```)
+* **blitz** - Copy data from workstation to workstation (```blitz -s MySecret /usr/share/*```)
 * ...many more examples and tools.
 
 <A></A>|<A></A>
 ----------|-------------
 Download|[gsocket-1.4.27.tar.gz](https://github.com/hackerschoice/gsocket/releases/download/v1.4.27/gsocket-1.4.27.tar.gz) (Linux, MacOS, FreeBSD, Solaris)
-Debian/Ubuntu| [gsocket_1.4.26_all.deb](https://github.com/hackerschoice/binary/raw/main/gsocket/latest/gsocket_1.4.26_all.deb)
+Debian/Ubuntu| [gsocket_1.4.27_all.deb](https://github.com/hackerschoice/binary/raw/main/gsocket/latest/gsocket_1.4.27_all.deb)
 Windows| use docker (see below)
 Man Page| [gsocket(1)](https://hackerschoice.github.io/gsocket.1.html), [gs-netcat(1)](https://hackerschoice.github.io/gs-netcat.1.html), [gs-mount(1)](https://hackerschoice.github.io/gs-mount.1.html), [gs-sftp(1)](https://hackerschoice.github.io/gs-sftp.1.html), [blitz(1)](https://hackerschoice.github.io/blitz.1.html)
 Docker|  docker run --rm -it hackerschoice/gsocket
