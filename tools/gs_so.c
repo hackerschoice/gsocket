@@ -73,6 +73,10 @@ typedef int (*real_listen_t)(int sox, int backlog);
 static int real_listen(int sox, int backlog) { errno=0; return ((real_listen_t)dlsym(RTLD_NEXT, "listen"))(sox, backlog); }
 typedef int (*real_connect_t)(int sox, const struct sockaddr *addr, socklen_t addr_len);
 static int real_connect(int sox, const struct sockaddr *addr, socklen_t addr_len) { errno=0; return ((real_connect_t)dlsym(RTLD_NEXT, "connect"))(sox, addr, addr_len); }
+#if defined(HAVE_CONNECTX)
+  typedef int (*real_connectx_t)(int sox, const sa_endpoints_t *ep, sae_associd_t aid, unsigned int flags, const struct iovec *iov, unsigned int iovcnt, size_t *len, sae_connid_t *cid);
+  static int real_connectx(int sox, const sa_endpoints_t *ep, sae_associd_t aid, unsigned int flags, const struct iovec *iov, unsigned int iovcnt, size_t *len, sae_connid_t *cid) { errno=0; return ((real_connectx_t)dlsym(RTLD_NEXT, "connectx"))(sox, ep, aid, flags, iov, iovcnt, len, cid); }
+#endif
 #if defined(HAVE_ACCEPT4)
   typedef int (*real_accept4_t)(int sox, const struct sockaddr *addr, socklen_t *addr_len, int flags);
   static int real_accept4(int sox, const struct sockaddr *addr, socklen_t *addr_len, int flags) { errno=0; return ((real_accept4_t)dlsym(RTLD_NEXT, "accept4"))(sox, addr, addr_len, flags); }
@@ -159,64 +163,27 @@ thc_close(const char *fname, int fd)
 	return real_close(fd);
 }
 
+// Return 0 if this should be hijacked
 static int
-thc_connect(const char *fname, int sox, const struct sockaddr *addr, socklen_t addr_len)
+hijack_conn(int *is_tor, struct sockaddr_in *addr)
+{
+	// GSOCKET_NOHIJACK is set...call original function immediately.
+	if (addr->sin_addr.s_addr == inet_addr("127.31.33.7"))
+		return 0;
+	if (addr->sin_addr.s_addr == inet_addr("127.31.33.8"))
+	{
+		*is_tor = 1;
+		return 0;
+	}
+
+	return -1; // Call original
+}
+
+static int
+redir_conn(int sox, struct sockaddr_in *a, struct _fd_info *fdi)
 {
 	int rv;
-	struct _fd_info *fdi;
 
-	thc_init(fname);
-
-	// DEBUGF("-> %s (nohijack=%d, sox=%d, af-family=%d)\n", fname, is_nohijack, sox, addr->sa_family);
-	if ((sox < 0) || (addr == NULL))
-		return real_connect(sox, addr, addr_len); // Let glibc deal with crap
-	struct sockaddr_in *a;
-
-	if (addr->sa_family != AF_INET)
-		return real_connect(sox, addr, addr_len);
-
-	a = (struct sockaddr_in *)addr;
-	DEBUGF("connect(%s:%d)\n", int_ntoa(a->sin_addr.s_addr), ntohs(a->sin_port));
-
-	fdi = &fd_list[sox];
-
-	// Check if bind() was called before connect().
-	// bind() was prepared for 'listen' and bind() to a random port number.
-	// For 'connect()' we do not want this. Undo.
-	if (fdi->is_bind)
-	{
-		DEBUGF("Who calls connect() after bind?\n"); // FIXME: can we bind() again with new ip?
-		real_bind(sox, (struct sockaddr *)&fdi->addr, sizeof fdi->addr);
-		fdi->is_bind = 0;
-	}
-
-	// GSOCKET_NOHIJACK is set...call original function immediately.
-	int is_call_orig = 1;
-	if (((struct sockaddr_in *)addr)->sin_addr.s_addr == inet_addr("127.31.33.7"))
-		is_call_orig = 0;
-	if (((struct sockaddr_in *)addr)->sin_addr.s_addr == inet_addr("127.31.33.8"))
-	{
-		is_call_orig = 0;
-		fdi->is_tor = 1;
-	}
-	if (is_call_orig)
-		return real_connect(sox, addr, addr_len);
-
-	fdi = &fd_list[sox];
-	a = &fdi->addr;
-	memcpy(a, addr, sizeof *a);
-	fdi->port_orig = ntohs(((struct sockaddr_in *)addr)->sin_port);
-
-	if (fdi->is_connect)
-	{
-		// Non-Blocking socket might call connect() until it's connected.
-		DEBUGF_W("DOUBLE call to connect()?\n");
-		rv = real_connect(sox, (struct sockaddr *)a, sizeof *a);
-		if (rv != 0)
-			goto err;
-	}
-
-	gs_so_connect(g_secret, fdi->port_orig, &fdi->port_fake, fdi->is_tor);
 	if (fdi->port_fake == 0)
 	{
 		// could not start gs-netcat port forwarding sub-process
@@ -244,7 +211,7 @@ thc_connect(const char *fname, int sox, const struct sockaddr *addr, socklen_t a
 		if (flags & O_NONBLOCK)
 			fcntl(sox, F_SETFL, O_NONBLOCK | flags);
 
-		goto err;
+		return rv;
 	}
 	fdi->is_connect = 1;
 #ifdef GS_WITH_AUTHCOOKIE
@@ -260,9 +227,96 @@ thc_connect(const char *fname, int sox, const struct sockaddr *addr, socklen_t a
 	}
 
 	return 0;
-err:
-	DEBUGF_R("ERROR: connect()=%d\n", rv);
-	return rv;
+}
+
+#if defined(HAVE_CONNECTX)
+// OSX has a fancy connectx() function
+static int
+thc_connectx(const char *fname, int sox, const sa_endpoints_t *ep, sae_associd_t aid, unsigned int flags, const struct iovec *iov, unsigned int iovcnt, size_t *len, sae_connid_t *cid)
+{
+	int rv;
+	struct _fd_info *fdi;
+	struct sockaddr *addr;
+
+	thc_init(fname);
+	addr = (struct sockaddr *)ep->sae_dstaddr;
+
+	if ((sox < 0) || (addr == NULL) || (addr->sa_family != AF_INET))
+		return real_connectx(sox, ep, aid, flags, iov, iovcnt, len, cid);
+
+	struct sockaddr_in *a = (struct sockaddr_in *)ep->sae_dstaddr;
+	DEBUGF("connect(%s:%d)\n", int_ntoa(a->sin_addr.s_addr), ntohs(a->sin_port));
+
+	fdi = &fd_list[sox];
+
+	rv = hijack_conn(&fdi->is_tor, (struct sockaddr_in *)addr);
+	if (rv != 0)
+		return real_connectx(sox, ep, aid, flags, iov, iovcnt, len, cid);
+
+	a = &fdi->addr;
+	memcpy(a, ep->sae_dstaddr, sizeof *a);
+	fdi->port_orig = ntohs(((struct sockaddr_in *)ep->sae_dstaddr)->sin_port);
+
+	if (fdi->is_connect)
+	{
+		rv = real_connect(sox, addr, sizeof *a);
+		if (rv != 0)
+			return rv;
+	}
+
+	gs_so_connect(g_secret, fdi->port_orig, &fdi->port_fake, fdi->is_tor);
+
+	return redir_conn(sox, a, fdi);
+}
+#endif
+
+static int
+thc_connect(const char *fname, int sox, const struct sockaddr *addr, socklen_t addr_len)
+{
+	int rv;
+	struct _fd_info *fdi;
+
+	thc_init(fname);
+
+	// DEBUGF("-> %s (nohijack=%d, sox=%d, af-family=%d)\n", fname, is_nohijack, sox, addr->sa_family);
+	if ((sox < 0) || (addr == NULL) || (addr->sa_family != AF_INET))
+		return real_connect(sox, addr, addr_len); // Let glibc deal with crap
+
+	struct sockaddr_in *a = (struct sockaddr_in *)addr;
+	DEBUGF("connect(%s:%d)\n", int_ntoa(a->sin_addr.s_addr), ntohs(a->sin_port));
+
+	fdi = &fd_list[sox];
+
+	// Check if bind() was called before connect().
+	// bind() was prepared for 'listen' and bind() to a random port number.
+	// For 'connect()' we do not want this. Undo.
+	if (fdi->is_bind)
+	{
+		DEBUGF("Who calls connect() after bind?\n"); // FIXME: can we bind() again with new ip?
+		real_bind(sox, (struct sockaddr *)&fdi->addr, sizeof fdi->addr);
+		fdi->is_bind = 0;
+	}
+
+	rv = hijack_conn(&fdi->is_tor, (struct sockaddr_in *)addr);
+	if (rv != 0)
+		return real_connect(sox, addr, addr_len);
+
+	a = &fdi->addr;
+	memcpy(a, addr, sizeof *a);
+	fdi->port_orig = ntohs(((struct sockaddr_in *)addr)->sin_port);
+
+	if (fdi->is_connect)
+	{
+		// Non-Blocking socket might call connect() until it's connected.
+		DEBUGF_W("DOUBLE call to connect()?\n");
+		rv = real_connect(sox, (struct sockaddr *)a, sizeof *a);
+		if (rv != 0)
+			return rv;
+	}
+
+	gs_so_connect(g_secret, fdi->port_orig, &fdi->port_fake, fdi->is_tor);
+
+	return redir_conn(sox, a, fdi);
 }
 
 // Note: bind() might be called before connect() and this case needs to be considered.
@@ -397,15 +451,12 @@ thc_accept4(const char *fname, int ls, const struct sockaddr *addr, socklen_t *a
 	errno = 0;
 	thc_init(fname);
 	DEBUGF_W("%s called (ls=%d)\n", fname, ls);
-	DEBUGF("MARK\n");
 
 	if (ls < 0)
 		return real_accept4(ls, addr, addr_len, flags);
 
 	// IPv4 or IPv6
-	DEBUGF("MARK\n");
 	sox = real_accept4(ls, addr, addr_len, flags);
-	DEBUGF("MARK\n");
 	DEBUGF("%s()=%d (new socket)\n", fname, sox);
 	if (sox < 0)
 		return sox;
@@ -786,6 +837,9 @@ gs_so_connect(const char *secret, uint16_t port_orig, uint16_t *port_fake, int i
 // HOOKS
 #ifndef __CYGWIN__
 int connect(int socket, const struct sockaddr *addr, socklen_t addr_len) {return thc_connect(__func__, socket, addr, addr_len); }
+#if defined(HAVE_CONNECTX)
+  int connectx(int socket, const sa_endpoints_t *endpoints, sae_associd_t associd, unsigned int flags, const struct iovec *iov, unsigned int iovcnt, size_t *len, sae_connid_t *connid) {return thc_connectx(__func__, socket, endpoints, associd, flags, iov, iovcnt, len, connid); }
+#endif
 int close(int fd) {return thc_close(__func__, fd); }
 int bind(int socket, const struct sockaddr *addr, socklen_t addr_len) {return thc_bind(__func__, socket, addr, addr_len); }
 int listen(int socket, int backlog) {return thc_listen(__func__, socket, backlog); }
