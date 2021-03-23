@@ -99,9 +99,9 @@ tests+="7.1 7.2 7.3 7.4 "
 tests+="8.1 8.2 8.3 "
 tests+="9.1 9.2 9.3 9.4 "
 tests+="10.1 10.2 10.3 10.4 "		# blitz, gs-sftp, gs-mount
-tests+="10.5 "		# gs nc
-tests+="10.6 "		# gs socat
-tests+="10.7 "		# gs ssh
+tests+="10.5 "		# gsocket nc
+tests+="10.6 "		# gsocket socat
+tests+="10.7 "		# gsocket ssh
 
 if [ x"$1" != x ]; then
 	tests="$@ "
@@ -770,8 +770,8 @@ test_start -n "Running: nc #10.5 (stdin)................................."
 # Can not use nc here because nc does not terminate on EOF from stdin.
 # Socat can be configured to terminate 1 second after EOF has been received.
 # need sleep 3 on RPI (slow system)
-GSPID1="$(sh -c '(cat test4k.dat; sleep 3) | ../tools/gs -k id_sec.txt $NC $NC_EOF_ARG $NC_LISTEN_ARG 31337 2>server_err.txt >server_out.dat & echo ${!}')"
-GSPID2="$(sh -c '(cat test1k.dat; sleep 3) | GSOCKET_ARGS=-w ../tools/gs -k id_sec.txt $NC $NC_EOF_ARG -v gsocket 31337 2>client_err.txt >client_out.dat & echo ${!}')"
+GSPID1="$(sh -c '(cat test4k.dat; sleep 3) | ../tools/gsocket -k id_sec.txt $NC $NC_EOF_ARG $NC_LISTEN_ARG 31337 2>server_err.txt >server_out.dat & echo ${!}')"
+GSPID2="$(sh -c '(cat test1k.dat; sleep 3) | GSOCKET_ARGS=-w ../tools/gsocket -k id_sec.txt $NC $NC_EOF_ARG -v gsocket 31337 2>client_err.txt >client_out.dat & echo ${!}')"
 waitk $GSPID2
 kill $GSPID1 &>/dev/null
 md5fail 1 test1k.dat server_out.dat
@@ -780,7 +780,7 @@ $ECHO "${OK}"
 fi
 
 if [[ "${tests}" =~ '10.6' ]]; then
-test_start -n "Running: gs socat #10.6 (stdin)..........................."
+test_start -n "Running: gsocket socat #10.6 (stdin)......................"
 if ! socat -h 2>/dev/null | grep socks4 &>/dev/null; then
 	skip "(no socat)"
 elif [[ "$OSTYPE" =~ solaris ]]; then
@@ -790,8 +790,8 @@ elif [[ "$OSTYPE" =~ solaris ]]; then
 else
 	# Can not use nc here because nc does not terminate on EOF from stdin.
 	# Socat can be configured to terminate 1 second after EOF has been received.
-	GSPID1="$(sh -c '../tools/gs -k id_sec.txt socat -T1 -,ignoreeof TCP-LISTEN:31337 <test4k.dat 2>server_err.txt >server_out.dat & echo ${!}')"
-	GSPID2="$(sh -c 'GSOCKET_ARGS=-w ../tools/gs -k id_sec.txt socat -T1 -,ignoreeof TCP:gsocket:31337 <test1k.dat 2>client_err.txt >client_out.dat & echo ${!}')"
+	GSPID1="$(sh -c '../tools/gsocket -k id_sec.txt socat -T1 -,ignoreeof TCP-LISTEN:31337 <test4k.dat 2>server_err.txt >server_out.dat & echo ${!}')"
+	GSPID2="$(sh -c 'GSOCKET_ARGS=-w ../tools/gsocket -k id_sec.txt socat -T1 -,ignoreeof TCP:gsocket:31337 <test1k.dat 2>client_err.txt >client_out.dat & echo ${!}')"
 	waitk $GSPID2
 	kill $GSPID1 &>/dev/null
 	md5fail 1 test1k.dat server_out.dat
@@ -801,7 +801,7 @@ fi
 fi
 
 if [[ "${tests}" =~ '10.7' ]]; then
-test_start -n "Running: gs ssh #10.7 (stdin)............................."
+test_start -n "Running: gsocket ssh #10.7 (stdin)........................"
 if [[ "$OSTYPE" =~ solaris ]]; then
 	# Solaris SSHD does not work unless it's run as root (some PAM shit)
 	# Also needs -4 flag to run as IPv4 only (still, PAM shit afterwards)
@@ -821,8 +821,8 @@ else
 	[[ -z $SSHD_BIN ]] && SSHD_BIN="/usr/lib/ssh/sshd"
 	export SSHD_BIN
 	[[ -f "$SSHD_BIN" ]] || { echo >&2 "sshd not found"; exit 255; }
-	GSPID1="$(sh -c '../tools/gs -k id_sec.txt $SSHD_BIN -f /dev/null -o HostKey=${PWD}/ssh_host_rsa_key -p 31338 -D 2>server_err.txt >server_out.dat & echo ${!}')"
-	GSPID2="$(sh -c 'GSOCKET_ARGS=-w ../tools/gs -k id_sec.txt ssh -i id_rsa -o StrictHostKeyChecking=no -p 31338 ${LOGNAME}@gsocket echo Hello World 2>client_err.txt >client_out.dat & echo ${!}')"
+	GSPID1="$(sh -c '../tools/gsocket -k id_sec.txt $SSHD_BIN -f /dev/null -o HostKey=${PWD}/ssh_host_rsa_key -p 31338 -D 2>server_err.txt >server_out.dat & echo ${!}')"
+	GSPID2="$(sh -c 'GSOCKET_ARGS=-w ../tools/gsocket -k id_sec.txt ssh -i id_rsa -o StrictHostKeyChecking=no -p 31338 ${LOGNAME}@gsocket echo Hello World 2>client_err.txt >client_out.dat & echo ${!}')"
 	waitk $GSPID2
 	kill $GSPID1 &>/dev/null
 	[[ -f ~/.ssh/authorized_keys-backup ]] && cp -a ~/.ssh/authorized_keys-backup ~/.ssh/authorized_keys

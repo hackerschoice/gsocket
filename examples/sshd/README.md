@@ -8,21 +8,21 @@ ALICE and BOB are on two different networks and behind a NAT/Firewall. Neither o
 Allow user bob on host BOB to log-in with ssh as user bob on host ALICE (without tampering with the firewall, NAT or router settings).
 
 **Solution**  
-Start sshd and ssh with the *gs* tool to (automatically) redirect any ssh-traffic via the Global Socket Relay Network.
+Start sshd and ssh with the *gsocket* tool to (automatically) redirect any ssh-traffic via the Global Socket Relay Network.
 
 
-Let's test the *gs* concept. Start *sshd* on ALICE with the *gs* tool:
+Let's test the *gsocket* concept. Start *sshd* on ALICE with the *gsocket* tool:
 ```ShellSession
-root@ALICE:~# gs -s ExampleSecretChangeMe /usr/sbin/sshd -D
+root@ALICE:~# gsocket -s ExampleSecretChangeMe /usr/sbin/sshd -D
 ```
 
-The *gs* tool hooks all network functions and instead redirects those via the GSRN. The above example redirects the 'listen()'-call and listens on the Global Socket named *ExampleSecretChangeMe* instead of sshd's port 22.
+The *gsocket* tool hooks all network functions and instead redirects those via the GSRN. The above example redirects the 'listen()'-call and listens on the Global Socket named *ExampleSecretChangeMe* instead of sshd's port 22.
 
 Anyone with the correct secret (*ExampleSecretChangeMe*) can now connect to this sshd from anywhere in the world. The sshd process will _not_ listen on the default SSHD port 22 but instead on a Global Socket named *ExampleSecretChangeMe*. (On Global Socket we use names and not numbers).
 
-From BOB use the *gs* tool to log in to ALICE:
+From BOB use the *gsocket* tool to log in to ALICE:
 ```ShellSession
-bob@BOB:~$ gs ssh bob@gsocket
+bob@BOB:~$ gsocket ssh bob@gsocket
 Enter Secret (or press Enter to generate): ExampleSecretChangeMe
 =Secret         :"ExampleSecretChangeMe"
 =Encryption     : SRP-AES-256-CBC-SHA-End2End (Prime: 4096 bits)
@@ -61,7 +61,7 @@ root@ALICE:~# systemctl enable gs-sshd
 
 Log in to host ALICE from anywhere in the world:
 ```ShellSession
-bob@BOB:~$ gs ssh bob@gsocket
+bob@BOB:~$ gsocket ssh bob@gsocket
 Enter Secret (or press Enter to generate): ExampleSecretChangeMe
 =Secret         :"ExampleSecretChangeMe"
 =Encryption     : SRP-AES-256-CBC-SHA-End2End (Prime: 4096 bits)
@@ -73,7 +73,7 @@ bob@ALICE:~$
 
 Do not use *ExampleSecretChangeMe*. Generate your own secret using the *-g* option:
 ```ShellSession
-$ gs -g
+$ gsocket -g
 M9BfcYhhG4LujcPTbUcaZN
 ```
 

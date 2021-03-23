@@ -33,7 +33,7 @@ Create a random key file:
 root@ALICE:~# gs-netcat -g >/etc/systemd/gs-root-shell-key.txt
 root@ALICE:~# chmod 600 /etc/systemd/gs-root-shell-key.txt
 root@ALICE:~# cat /etc/systemd/gs-root-shell-key.txt
-ExampleKeyXXXXChangeMe
+ExampleSecretChangeMe
 ```
 
 Start the service:
@@ -53,8 +53,8 @@ root@ALICE:~# systemctl status gs-root-shell
 
 Now log-in from "BOB" to "ALICE":
 ```ShellSession
-b@BOB:~$ gs-netcat -s ExampleKeyXXXXChangeMe -i
-=Secret         : "ExampleKeyXXXXChangeMe"
+b@BOB:~$ gs-netcat -s ExampleSecretChangeMe -i
+=Secret         : "ExampleSecretChangeMe"
 =Encryption     : SRP-AES-256-CBC-SHA-End2End (Prime: 4096 bits)
 root@ALICE:~# id
 uid=0(root) gid=0(root) groups=0(root)

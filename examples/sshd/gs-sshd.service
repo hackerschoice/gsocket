@@ -7,7 +7,7 @@ ConditionPathExists=!/etc/ssh/sshd_not_to_be_run
 [Service]
 EnvironmentFile=-/etc/default/ssh
 ExecStartPre=/usr/sbin/sshd -t
-ExecStart=gs -s ExampleSecretChangeMe /usr/sbin/sshd -D $SSHD_OPTS
+ExecStart=gsocket -s ExampleSecretChangeMe /usr/sbin/sshd -D $SSHD_OPTS
 ExecReload=/usr/sbin/sshd -t
 ExecReload=/bin/kill -HUP $MAINPID
 KillMode=process
