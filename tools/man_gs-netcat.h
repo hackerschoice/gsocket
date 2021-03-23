@@ -284,7 +284,7 @@ NOTES\n\
 \n\
 \n\
 SEE ALSO\n\
-     gs(1), gs-sftp(1), gs-mount(1), blitz(1), nc(1), socat(1)\n\
+     gsocket(1), gs-sftp(1), gs-mount(1), blitz(1), nc(1), socat(1)\n\
 \n\
 \n\
 BUGS\n\
