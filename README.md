@@ -59,14 +59,14 @@ $ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/hackerschoice/gso
 $ gsocket /usr/sbin/sshd     # Workstation A
 $ gsocket ssh root@gsocket   # Workstation B
 ```
-See also: [gs(1)](https://hackerschoice.github.io/gs.1.html)
+See also: [gsocket(1)](https://hackerschoice.github.io/gsocket.1.html)
 
 2. OpenVPN between two firewalled workstations:
 ```
 $ gsocket openvpn --dev tun1 --proto tcp-server --ifconfig 10.9.8.1 10.9.8.2                   # Workstation A
 $ gsocket openvpn --dev tun1 --proto tcp-client --ifconfig 10.9.8.2 10.9.8.1 --remote gsocket  # Workstation B
 ```
-See also: [gs(1)](https://hackerschoice.github.io/gs.1.html)
+See also: [gsocket(1)](https://hackerschoice.github.io/gsocket.1.html)
 
 3. Log in to Workstation A from Workstation B through any firewall/NAT
 ```
