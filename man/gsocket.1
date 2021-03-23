@@ -1,6 +1,6 @@
 \# .TH gs-netcat 1 "08 October 2020" "1.0" "gs-netcat man page"
 .Dd March 02, 2021
-.Dt gs 1
+.Dt gsocket 1
 .Os
 .Sh NAME
 .Nm gs
@@ -75,41 +75,41 @@ Connections to any hostname ending in \'*.thc\' or to the IP Address \'127.31.33
 - OpenSSH between two firewalled workstations:
 .Pp
 Server:
-.Dl $ gs -s MySecret /usr/sbin/sshd
+.Dl $ gsocket -s MySecret /usr/sbin/sshd
 Client:
-.Dl $ gs -s MySecret ssh xaitax@gsocket
+.Dl $ gsocket -s MySecret ssh xaitax@gsocket
 .Pp
 .Nm Example 2
 - netcat between two firewalled workstations:
 .Pp
 Server:
-.Dl $ gs -s MySecret nc -lp 31337
+.Dl $ gsocket -s MySecret nc -lp 31337
 Client:
-.Dl $ gs -s MySecret nc gsocket 31337
+.Dl $ gsocket -s MySecret nc gsocket 31337
 .Pp
 .Nm Example 3
 - OpenVPN between two firewalled workstations:
 .Pp
 Server:
-.Dl $ gs -s MySecret openvpn --dev tun1 --proto tcp-server --ifconfig 10.9.8.1 10.9.8.2
+.Dl $ gsocket -s MySecret openvpn --dev tun1 --proto tcp-server --ifconfig 10.9.8.1 10.9.8.2
 Client:
-.Dl $ gs -s MySecret openvpn --dev tun1 --proto tcp-client --ifconfig 10.9.8.2 10.9.8.1 --remote gsocket
+.Dl $ gsocket -s MySecret openvpn --dev tun1 --proto tcp-client --ifconfig 10.9.8.2 10.9.8.1 --remote gsocket
 .Pp
 .Nm Example 4
 - IRCD between two firewalled workstations:
 .Pp
 Server:
-.Dl $ gs -s MySecret inspircd --nolog --nofork
+.Dl $ gsocket -s MySecret inspircd --nolog --nofork
 Client:
-.Dl $ gs -s MySecret irssi -c gsocket
+.Dl $ gsocket -s MySecret irssi -c gsocket
 .Pp
 .Nm Example 5
 - Socat between two firewalled workstations:
 .Pp
 Server:
-.Dl $ gs -s MySecret socat - TCP_LISTEN:31337
+.Dl $ gsocket -s MySecret socat - TCP_LISTEN:31337
 Client:
-.Dl $ gs -s MySecret socat - TCP:gsocket:31337
+.Dl $ gsocket -s MySecret socat - TCP:gsocket:31337
 .Pp
 .Sh SYSTEMCTL INSTALLATION
 It is possible to make any service/daemon accessible through any firewall. The service is then only acessible through the GSRN and only if the client knows the secret. No port or service is exposed to the public Internet and the existence of the service remains hidden. This example makes openssh-server (sshd) accessible through the GSRN. Nobody, not even the GSRN operators, have access to the port, daemon or service (they do not know the secret). The new service coexists with the existing openssh-server and does not interfere with the existing openssh-server.
@@ -119,7 +119,7 @@ It is possible to make any service/daemon accessible through any firewall. The s
 2. Edit /etc/systemd/system/gs-sshd and change this line:
 .Dl ExecStart=/usr/sbin/sshd -D $SSHD_OPTS
 to
-.Dl ExecStart=gs -s MySecret /usr/sbin/sshd -D $SSHD_OPTS
+.Dl ExecStart=gsocket -s MySecret /usr/sbin/sshd -D $SSHD_OPTS
 .Pp
 3. Start the newly created service
 .Dl # systemctl start gs-sshd
@@ -128,7 +128,7 @@ to
 .Dl # systemctl status gs-sshd
 .Pp
 5. Connect from any other host to the newly created (hidden) openssh-server:
-.Dl $ gs -s MySecret ssh user@gsocket
+.Dl $ gsocket -s MySecret ssh user@gsocket
 .Pp
 .Sh ENVIRONMENT
 The following environment variables can be set to control the behavior of
@@ -145,7 +145,7 @@ The following environment variables can be set to control the behavior of
 .Sh SECURITY
 Passing the password as command line parameter is not secure. Consider using the -k option or GSOCKET_ARGS or enter the password when prompted:
 .Pp
-.Dl $ gs -k <file>
+.Dl $ gsocket -k <file>
 .Pp
 .Dl $ export GSOCKET_ARGS="-s MySecret"
 .Dl $ gs
