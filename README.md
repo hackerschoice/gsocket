@@ -6,7 +6,7 @@ The Global Socket Tookit allows two users behind NAT/Firewall to establish a TCP
 [![Watch the video](https://github.com/hackerschoice/hackerschoice.github.io/blob/master/eeelite-console-blank2.png)](https://www.youtube.com/watch?v=tmf9VGDPILE)
 
 Video 1: [gs-netcat reverse login shell and EEElite-console](https://www.youtube.com/watch?v=tmf9VGDPILE)  
-Video 2: [Using gs to hijack OpenSSH](https://www.youtube.com/watch?v=Nn6BAeeVJIc)  
+Video 2: [Using gsocket to hijack OpenSSH](https://www.youtube.com/watch?v=Nn6BAeeVJIc)  
 Video 3: [Blitz files through firewalls](https://www.thc.org/gsocket-anim2.gif)  
 
 **Features:**
@@ -22,7 +22,7 @@ Abandon the thought of IP Addresses and Port Numbers. Instead start thinking tha
 The GSRN is a free cloud service and is free to use by anyone.
 
 The Global Socket Toolkit comes with a set of tools:
-* **gs** - Make an existing program accessible via the GSRN. It does so by analyzing the program and replacing the IP-Layer with its own Gsocket-Layer. Any connection to a hostname ending in *'\*.gsocket'* is redirected via the GSRN to the listening server.
+* **gsocket** - Make an existing program accessible via the GSRN. It does so by analyzing the program and replacing the IP-Layer with its own Gsocket-Layer. Any connection to a hostname ending in *'\*.gsocket'* is redirected via the GSRN to the listening server.
 * **gs-netcat** - Netcat on steroids. Turn gs-netcat into an AES-256 encrypted reverse backdoor via TOR (optional) with a true PTY/interactive command shell (```gs-netcat -s MySecret -i```), integrated file-transfer, spawn a Socks4/4a/5 proxy or forward TCP connections or give somebody temporary shell access.
 * **gs-sftp** - sftp server & client between two firewalled workstations (```gs-sftp -s MySecret```)
 * **gs-mount** - Access and mount a remote file system (```gs-mount -s MySecret ~/mnt/warez```)
@@ -31,10 +31,10 @@ The Global Socket Toolkit comes with a set of tools:
 
 <A></A>|<A></A>
 ----------|-------------
-Download|[gsocket-1.4.26.tar.gz](https://github.com/hackerschoice/gsocket/releases/download/v.1.4.26/gsocket-1.4.26.tar.gz) (Linux, MacOS, FreeBSD, Solaris)
+Download|[gsocket-1.4.27.tar.gz](https://github.com/hackerschoice/gsocket/releases/download/v1.4.27/gsocket-1.4.27.tar.gz) (Linux, MacOS, FreeBSD, Solaris)
 Debian/Ubuntu| [gsocket_1.4.26_all.deb](https://github.com/hackerschoice/binary/raw/main/gsocket/latest/gsocket_1.4.26_all.deb)
 Windows| use docker (see below)
-Man Page| [gs(1)](https://hackerschoice.github.io/gs.1.html), [gs-netcat(1)](https://hackerschoice.github.io/gs-netcat.1.html), [gs-mount(1)](https://hackerschoice.github.io/gs-mount.1.html), [gs-sftp(1)](https://hackerschoice.github.io/gs-sftp.1.html), [blitz(1)](https://hackerschoice.github.io/blitz.1.html)
+Man Page| [gsocket(1)](https://hackerschoice.github.io/gsocket.1.html), [gs-netcat(1)](https://hackerschoice.github.io/gs-netcat.1.html), [gs-mount(1)](https://hackerschoice.github.io/gs-mount.1.html), [gs-sftp(1)](https://hackerschoice.github.io/gs-sftp.1.html), [blitz(1)](https://hackerschoice.github.io/blitz.1.html)
 Docker|  docker run --rm -it hackerschoice/gsocket
 Docker| docker run --rm -it hackerschoice/gsocket-tor # gs via TOR
 
@@ -56,15 +56,15 @@ $ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/hackerschoice/gso
 
 1. SSH from *Workstation B* to *Workstation A* through any firewall/NAT
 ```
-$ gs /usr/sbin/sshd     # Workstation A
-$ gs ssh root@gsocket   # Workstation B
+$ gsocket /usr/sbin/sshd     # Workstation A
+$ gsocket ssh root@gsocket   # Workstation B
 ```
 See also: [gs(1)](https://hackerschoice.github.io/gs.1.html)
 
 2. OpenVPN between two firewalled workstations:
 ```
-$ gs openvpn --dev tun1 --proto tcp-server --ifconfig 10.9.8.1 10.9.8.2                   # Workstation A
-$ gs openvpn --dev tun1 --proto tcp-client --ifconfig 10.9.8.2 10.9.8.1 --remote gsocket  # Workstation B
+$ gsocket openvpn --dev tun1 --proto tcp-server --ifconfig 10.9.8.1 10.9.8.2                   # Workstation A
+$ gsocket openvpn --dev tun1 --proto tcp-client --ifconfig 10.9.8.2 10.9.8.1 --remote gsocket  # Workstation B
 ```
 See also: [gs(1)](https://hackerschoice.github.io/gs.1.html)
 

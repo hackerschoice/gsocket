@@ -46,15 +46,15 @@ TCP port 6667 on BOB's workstation is now forwarded to TCP port 6667 on ALICE's 
 b@BOB:~$ irssi -c 127.0.0.1
 ```
 
-Alternatively of using two separate commands BOB can use the *gs* tool to start the irc client and automatically forward the connection via the GSRN:
+Alternatively of using two separate commands BOB can use the *gsocket* tool to start the irc client and automatically forward the connection via the GSRN:
 ```ShellSession
-b@BOB:~$ gs irssi -c gsocket
+b@BOB:~$ gsocket irssi -c blah.gsocket
 Enter Secret (or press Enter to generate): ExampleSecretChangeMe
 =Secret         :"ExampleSecretChangeMe"
 =Encryption     : SRP-AES-256-CBC-SHA-End2End (Prime: 4096 bits)
 Irssi v1.2.0-2 - https://irssi.org
-06:22 -!- Irssi: Looking up gsocket
-06:22 -!- Irssi: Connecting to gsocket [127.31.33.7] port 6667
+06:22 -!- Irssi: Looking up blahgsocket
+06:22 -!- Irssi: Connecting to blah.gsocket [127.31.33.7] port 6667
 [...]
 ```
 
@@ -63,7 +63,7 @@ This is a hypothetical example. Alice can configure the port forward by changing
 Alice created a port forward and started the IRCD service. Instead Alice can combine this into a single command:
 
 ```ShellSession
-alice@ALICE:~$ gs inspircd --nolog --nofork 
+alice@ALICE:~$ gsocket inspircd --nolog --nofork 
 Enter Secret (or press Enter to generate): ExampleSecretChangeMe
 =Secret         :"ExampleSecretChangeMe"
 =Encryption     : SRP-AES-256-CBC-SHA-End2End (Prime: 4096 bits)
