@@ -89,6 +89,8 @@ my_getopt()
 
 # default values
 GS_HIJACK_PORTS="1-65535"
+# shellcheck disable=SC2034 # GS_RFX appears unused. => Used in gs_funcs
+GS_PRFX="gsocket: "
 gs_init
 my_getopt "$@"
 shift $((OPTIND -1))

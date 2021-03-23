@@ -19,7 +19,7 @@ find_binary()
 
 read_password()
 {
-	echo -n >&2 "Enter Secret (or press Enter to generate): "
+	echo -n >&2 "${GS_PRFX}Enter Secret (or press Enter to generate): "
 	read -r password
 	if [[ -z "${password}" ]]; then
 		password=$(${GS_NETCAT_BIN} -g)
@@ -282,13 +282,13 @@ env_arg_init()
 		password=$(read_password)
 		# shellcheck disable=SC2034 # GSOCKET_SECRET appears unused => It's used in 'gs'
 		GSOCKET_SECRET="${password}"
-		echo "=Secret         :\"${password}\""
+		echo "${GS_PRFX}=Secret         :\"${password}\""
 		GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-s"		# Add to end of array			
 		GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="$password"	# Add to end of array			
 	fi
 	# Have to output it here because gs-netcat might be started from withing
 	# sshfs or sftpd where stderr is no longer available to gs-netcat
-	[[ -n "$IS_QUIET" ]] || echo >&2 "=Encryption     : SRP-AES-256-CBC-SHA-End2End (Prime: 4096 bits)"
+	[[ -n "$IS_QUIET" ]] || echo >&2 "${GS_PRFX}=Encryption     : SRP-AES-256-CBC-SHA-End2End (Prime: 4096 bits)"
 	ENV_ARGS="${GSOCKET_ARGS}${GSNC_ENV_ARGS[*]}"
 }
 
