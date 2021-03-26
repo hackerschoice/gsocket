@@ -3,7 +3,7 @@
 
 The Global Socket Tookit allows two users behind NAT/Firewall to establish a TCP connection with each other. Securely.
 
-[![Watch the video](https://github.com/hackerschoice/hackerschoice.github.io/blob/master/eeelite-console-blank2.png)](https://www.youtube.com/watch?v=tmf9VGDPILE)
+![Watch the Demo](https://www.gsocket.io/assets/images/gsocket-demo1.svg)
 
 Video 1: [gs-netcat reverse login shell and EEElite-console](https://www.youtube.com/watch?v=tmf9VGDPILE)  
 Video 2: [Using gsocket to hijack OpenSSH](https://www.youtube.com/watch?v=Nn6BAeeVJIc)  
