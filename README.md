@@ -59,11 +59,13 @@ Docker| docker run --rm -it hackerschoice/gsocket-tor # gs via TOR
 
 ---
 **Examples**
-
-OpenSSH via GSRN: [examples/sshd](examples/sshd)  
-WireGuard via GSRN: [examples/wireguard](examples/wireguard)  
-Root-Shell via GSRN: [examples/systemd-root-shell](examples/systemd-root-shell)  
-IRCD via GSRN: [examples/port-forward](examples/port-forward)  
+<A></A>|<A></A>
+----------|-------------
+All| [examples](examples)
+OpenSSH via GSRN| [examples/sshd](examples/sshd)  
+WireGuard via GSRN| [examples/wireguard](examples/wireguard)  
+Root-Shell via GSRN| [examples/systemd-root-shell](examples/systemd-root-shell)  
+IRCD via GSRN| [examples/port-forward](examples/port-forward)  
 
 ---
 **Installation:**
