@@ -22,8 +22,10 @@ if [ x"$GSOCKET_IP" == "x127.0.0.1" ]; then
 	SLEEP_CT=0.1
 fi
 
+# PATH=~/usr/bin:$PATH:/usr/local/bin
+PATH=~/usr/bin:/usr/local/bin:$PATH
 PATH=~/usr/bin:$PATH
-printf "#! /bin/bash\nexec nc\n" >gs_nc
+# printf "#! /bin/bash\nexec nc\n" >gs_nc
 SLEEP_WD=20	# Max seconds to wait for a process to finish receiving...
 command -v md5 >/dev/null 2>&1 		&& MD5(){ md5 -q "${1}";}
 command -v md5sum >/dev/null 2>&1 	&& MD5() { md5sum "${1}" | cut -f1 -d' ';}
@@ -43,14 +45,11 @@ else
 	else 
 		if command -v nc >/dev/null 2>&1; then
 			NC=nc #cygwin
-			NC_EOF_ARG="-w 1"
-			NC_LISTEN_ARG="-nl"
 		else
 			echo >&2 "netcat not installed. apt-get install netcat."; exit 255;
 		fi
 	fi
 fi
-
 
 # Different OSes use different netcats:
 if [[ -z "$NC_EOF_ARG" ]]; then
@@ -62,8 +61,12 @@ if [[ -z "$NC_EOF_ARG" ]]; then
 	else
 		NC_EOF_ARG="-q1"
 	fi
-
-	if [[ "$OSTYPE" == *"BSD"* ]] || [[ "$OSTYPE" == *"cygwin"* ]]; then
+fi
+if [[ -z "$NC_LISTEN_ARG" ]]; then
+	if [[ $($NC --help 2>&1) =~ "source_port" ]]; then
+		# apple default : usage: nc [-46AacCDdEFhklMnOortUuvz] [-K tc] [-b boundif] [-i interval] [-p source_port]
+		# fbsd default  : [-P proxy_username] [-p source_port] [-s source] [-T ToS]
+		# cygwin default: [-P proxy_username] [-p source_port] [-s source] [-T ToS]
 		NC_LISTEN_ARG="-nl"
 	else
 		NC_LISTEN_ARG="-nlp"
@@ -766,7 +769,7 @@ else
 fi
 
 if [[ "${tests}" =~ '10.5' ]]; then
-test_start -n "Running: nc #10.5 (stdin)................................."
+test_start -n "Running: gsocket nc #10.5 (stdin)........................."
 # Can not use nc here because nc does not terminate on EOF from stdin.
 # Socat can be configured to terminate 1 second after EOF has been received.
 # need sleep 3 on RPI (slow system)

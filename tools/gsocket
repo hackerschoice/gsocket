@@ -9,19 +9,18 @@ source "${BASEDIR}/gs_funcs" || exit 3
 
 my_usage()
 {
-	echo "
-${BIN_NAME} [-k file] [-s password] <programm> <parameters>
+	echo "${BIN_NAME} [-k file] [-s password] <programm> <parameters>
    -s <secret>  Secret (e.g. password).
    -k <file>    Read Secret from file.
    -p <ports>   Range of listening ports to redirect [default=all]
    -T           Use TOR.
 
 Example:
-    $ ${1} -s MySecret /usr/bin/sshd -d         # Server
-    $ ${1} -s MySecret ssh root@gsocket         # Client
+    $ ${BIN_NAME} -s MySecret /usr/bin/sshd -d         # Server
+    $ ${BIN_NAME} -s MySecret ssh root@gsocket         # Client
 
 See 'gs-netcat -h' for more options."
-	exit 0
+	exit $1
 }
 
 my_getopt()
@@ -58,7 +57,7 @@ my_getopt()
 				exit
 				;;
 			h )
-				my_usage "${BIN_NAME}"
+				my_usage 0
 				;;
 			p )
 				GS_HIJACK_PORTS="${OPTARG}"
@@ -89,16 +88,22 @@ my_getopt()
 
 # default values
 GS_HIJACK_PORTS="1-65535"
+# shellcheck disable=SC2034 # GS_RFX appears unused. => Used in gs_funcs
+GS_PRFX="gsocket: "
 gs_init
 my_getopt "$@"
 shift $((OPTIND -1))
+
+[[ ${#@} -le 0 ]] && { echo >&2 "ERROR: No program specified"; my_usage 255; }
+
+command -v "$1" >/dev/null 2>&1 || { echo >&2 "gsocket: command not found: ${1}"; exit 1; }
 
 if [[ x"$OSTYPE" == "xdarwin"* ]]; then
 	# OSX does not allow LD_PRELOAD of binaries in /usr/. Copy to tmp...
 	ROOTDIR=$(mktemp -d -t thc-gs)
 	PROGBIN_FULLPATH=$(which "$1")
 
-	[[ -z "$PROGBIN_FULLPATH" ]] && { echo >&2 "${1}: command not found"; exit 1; }
+	[[ -z "$PROGBIN_FULLPATH" ]] && { echo >&2 "gsocket: command not found: ${1}"; exit 1; }
 	# FIXME: temp file is only cleaned on reboot. Hmm...
 	cp "${PROGBIN_FULLPATH}" "${ROOTDIR}/" &>/dev/null
 	PROGBIN_NAME="$(basename "${1}")" # programm binary
@@ -111,29 +116,7 @@ fi
 env_arg_init
 shift 1
 
-# /var/folders/3k/dpllxd1s0f122n778pdrb0fc0000gn/T/thc-gs.IpRcdaq4/sshd
-
-# echo  GS_NETCAT_BIN=${GS_NETCAT_BIN} GSOCKET_ARGS="${ENV_ARGS} ${ARGS_NEW[*]}" GSOCKET_SECRET="${GSOCKET_SECRET}" DYLD_INSERT_LIBRARIES=${GS_SO_BIN} DYLD_FORCE_FLAT_NAMESPACE=1 exec "${PBIN}" $@
-
 if [[ x"$OSTYPE" == "xdarwin"* ]]; then
-	# echo GS_NETCAT_BIN=${GS_NETCAT_BIN} GS_HIJACK_PORTS="${GS_HIJACK_PORTS}" GSOCKET_SOCKS_IP="${GSOCKET_SOCKS_IP}" GSOCKET_ARGS="${ENV_ARGS} ${ARGS_NEW[*]}" GSOCKET_SECRET="${GSOCKET_SECRET}" DYLD_INSERT_LIBRARIES=${GS_SO_BIN} DYLD_FORCE_FLAT_NAMESPACE=1 exec "${PROGBIN}" "$@"
-	#      export GS_NETCAT_BIN=${GS_NETCAT_BIN}
-	#      export GS_HIJACK_PORTS="${GS_HIJACK_PORTS}"
-	#      export GSOCKET_SOCKS_IP="${GSOCKET_SOCKS_IP}"
-	#      export GSOCKET_ARGS="${ENV_ARGS} ${ARGS_NEW[*]}"
-	#      export GSOCKET_SECRET="${GSOCKET_SECRET}"
-	#      export DYLD_INSERT_LIBRARIES="${PWD}/gs_so"
-	#      export DYLD_FORCE_FLAT_NAMESPACE=1 
-	#      export DYLD_PRINT_LIBRARIES=1
-	#      cp /usr/sbin/sshd ${PWD}/tmp
-	#      cp /usr/sbin/sshd ${PWD}/sshdb
-	#      cp /usr/sbin/sshd ${PWD}/i
-	#      cp ${GS_SO_BIN} ${PWD}/tmp
-	#      sleep 1
-	#      # cd ${PWD}/tmp
-	#      ls -al $DYLD_INSERT_LIBRARIES
-	#      ${PWD}/i -f /etc/ssh/sshd_config -o HostKey=${HOME}/research/gsocket/tools/ssh_host_rsa_key -p 31338 -D -ddd
-	     # GS_NETCAT_BIN=${GS_NETCAT_BIN} GS_HIJACK_PORTS="${GS_HIJACK_PORTS}" GSOCKET_SOCKS_IP="${GSOCKET_SOCKS_IP}" GSOCKET_ARGS="${ENV_ARGS} ${ARGS_NEW[*]}" GSOCKET_SECRET="${GSOCKET_SECRET}" DYLD_INSERT_LIBRARIES=${GS_SO_BIN} DYLD_FORCE_FLAT_NAMESPACE=1 exec ${PWD}/sshd -f /etc/ssh/sshd_config -o HostKey=${PWD}/ssh_host_rsa_key -p 31338 -D -ddd
 	GS_NETCAT_BIN=${GS_NETCAT_BIN} GS_HIJACK_PORTS="${GS_HIJACK_PORTS}" GSOCKET_SOCKS_IP="${GSOCKET_SOCKS_IP}" GSOCKET_ARGS="${ENV_ARGS} ${ARGS_NEW[*]}" GSOCKET_SECRET="${GSOCKET_SECRET}" DYLD_INSERT_LIBRARIES=${GS_SO_BIN} DYLD_FORCE_FLAT_NAMESPACE=1 exec "${PROGBIN}" "$@"
 else
 	GS_NETCAT_BIN=${GS_NETCAT_BIN} GS_HIJACK_PORTS="${GS_HIJACK_PORTS}" GSOCKET_SOCKS_IP="${GSOCKET_SOCKS_IP}" GSOCKET_ARGS="${ENV_ARGS} ${ARGS_NEW[*]}" GSOCKET_SECRET="${GSOCKET_SECRET}" LD_PRELOAD=${GS_SO_BIN} exec "${PROGBIN}" "$@"

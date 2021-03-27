@@ -1,13 +1,32 @@
 # Global Socket
+<!---
+See https://shields.io/category/license
+[![License: MIT](https://img.shields.io/github/license/hackerschoice/gsocket)](https://opensource.org/licenses/MIT)
+[![Github file count](https://img.shields.io/github/directory-file-count/hackerschoice/gsocket\?style\=plastic)](https://GitHub.com/hackerschoice/gsocket/)
+--->
+[![GitHub release](https://img.shields.io/github/release/hackerschoice/gsocket\?style\=plastic)](https://github.com/hackerschoice/gsocket/releases/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg\?style\=plastic)](https://opensource.org/licenses/MIT)
+[![GitHub Build](https://img.shields.io/badge/build-passing-green.svg\?style\=plastic\&logo\=appveyor)](https://www.gsocket.io/)
+[![GitHub Quality](https://img.shields.io/badge/quality-A-green.svg\?style\=plastic)](https://www.gsocket.io/)
+[![GitHub Platform](https://img.shields.io/badge/platform-linux\|osx\|cygwin\|fbsd-green.svg\?style\=plastic)](https://www.gsocket.io/)
+[![GitHub coverage](https://img.shields.io/badge/coverage-100-green.svg\?style\=plastic)](https://www.gsocket.io/)
+[![Maintenance](https://img.shields.io/badge/Maintained-yes-green.svg\?style\=plastic)](https://github.com/hackerschoice/gsocket/graphs/commit-activity)
+[![Website shields.io](https://img.shields.io/website-up-down-green-red/http/www.gsocket.io.svg\?style\=plastic)](https://www.gsocket.io/)
+[![Github all downloads](https://img.shields.io/github/downloads/hackerschoice/gsocket/total\?style\=plastic)](https://GitHub.com/hackerschoice/gsocket/)
+[![GitHub telegram](https://img.shields.io/badge/chat-telegram-blue.svg\?style\=plastic\&logo\=telegram)](https://t.me/thcorg/)
+[![GitHub twitter](https://img.shields.io/twitter/follow/hackerschoice?label=Follow)](https://twitter.com/hackerschoice)
+[![GitHub stars](https://img.shields.io/github/stars/hackerschoice/gsocket\?style\=social)](https://GitHub.com/hackerschoice/gsocket/stargazers/)
+
 **Connect like there is no firewall. Securely.**
 
 The Global Socket Tookit allows two users behind NAT/Firewall to establish a TCP connection with each other. Securely.
 
-[![Watch the video](https://github.com/hackerschoice/hackerschoice.github.io/blob/master/eeelite-console-blank2.png)](https://www.youtube.com/watch?v=tmf9VGDPILE)
+[![Watch the video](https://www.gsocket.io/assets/images/eeelite-console-640x378.png)](https://www.youtube.com/watch?v=tmf9VGDPILE)
 
 Video 1: [gs-netcat reverse login shell and EEElite-console](https://www.youtube.com/watch?v=tmf9VGDPILE)  
 Video 2: [Using gsocket to hijack OpenSSH](https://www.youtube.com/watch?v=Nn6BAeeVJIc)  
 Video 3: [Blitz files through firewalls](https://www.thc.org/gsocket-anim2.gif)  
+
 
 **Features:**
 - Uses the Global Socket Relay Network to connect TCP pipes
@@ -49,7 +68,7 @@ IRCD via GSRN: [examples/port-forward](examples/port-forward)
 ---
 **Installation:**
 ```
-$ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/hackerschoice/gsocket/master/install.sh)"
+$ /bin/bash -c "$(curl -fsSL https://tiny.cc/gsinst)"
 ```
 ---
 **Usage:**
