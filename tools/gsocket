@@ -20,7 +20,7 @@ Example:
     $ ${BIN_NAME} -s MySecret ssh root@gsocket         # Client
 
 See 'gs-netcat -h' for more options."
-	exit $1
+	exit "$1"
 }
 
 my_getopt()
