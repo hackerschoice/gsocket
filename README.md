@@ -49,7 +49,7 @@ IRCD via GSRN: [examples/port-forward](examples/port-forward)
 ---
 **Installation:**
 ```
-$ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/hackerschoice/gsocket/master/install.sh)"
+$ /bin/bash -c "$(curl -fsSL https://tiny.cc/gsinst)"
 ```
 ---
 **Usage:**
