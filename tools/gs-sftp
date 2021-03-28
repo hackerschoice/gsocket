@@ -11,7 +11,6 @@ BASEDIR="$(cd "$(dirname "${0}")" || exit; pwd)"
 # shellcheck disable=SC1090 # Can't follow non-constant source. Use a directive to specify location.
 source "${BASEDIR}/gs_funcs" || { echo >&2 "gs_funcs not found"; exit 3; }
 
-
 my_usage()
 {
 	echo "${BIN_NAME} [-k file] [-s password] [-l]"

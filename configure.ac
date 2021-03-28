@@ -158,7 +158,7 @@ AS_IF([test x$selftests = xtrue], AC_SUBST(PROGRAMS_TEST_TOOLS, "packet-test${EX
 
 AC_SUBST(LDADD_STATIC, "${LDADD_STATIC}")
 AC_SUBST(CFLAGS_STATIC, "${CFLAGS_STATIC}")
-AC_OUTPUT([Makefile lib/Makefile tools/Makefile man/Makefile examples/Makefile])
+AC_OUTPUT([Makefile lib/Makefile tools/Makefile tools/gsocket.conf man/Makefile examples/Makefile])
 
 
 echo "
