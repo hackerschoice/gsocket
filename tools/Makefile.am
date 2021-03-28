@@ -51,7 +51,7 @@ gsocket_dso_so_LDFLAGS = -ldl
 install-exec-hook:
 	rm -f $(DESTDIR)$(bindir)/gs_funcs # Old gs installed this here. Remove it now.
 	$(install_sh) -d $(DESTDIR)$(libdir)
-	$(install_sh) -c -m 644 gsocket_dso.so gsocket_uchroot_dso.so $(DESTDIR)$(libdir) 
+	$(install_sh) -c -m @PERM_DSO@ gsocket_dso.so gsocket_uchroot_dso.so $(DESTDIR)$(libdir) 
 
 packet_test_SOURCES = packet-test.c utils.c gsocket_dso-lib.c
 packet_test_LDADD = ../lib/libgsocket.a

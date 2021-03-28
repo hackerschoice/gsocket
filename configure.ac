@@ -66,7 +66,12 @@ for xlibdir in $trydir_l ; do
 done
 LDFLAGS="${LIBDIR} $LDFLAGS"
 
+dnl default perm of .so is 644 but on cygwin must be 755.
+PERM_DSO="644"
 case "$host" in
+*-cygwin*)
+	PERM_DSO="755"
+	;;
 mips-sony-bsd|mips-sony-newsos4)
         AC_DEFINE([NEED_SETPGRP], [1], [Need setpgrp to acquire controlling tty])
 	;;
@@ -158,6 +163,7 @@ AS_IF([test x$selftests = xtrue], AC_SUBST(PROGRAMS_TEST_TOOLS, "packet-test${EX
 
 AC_SUBST(LDADD_STATIC, "${LDADD_STATIC}")
 AC_SUBST(CFLAGS_STATIC, "${CFLAGS_STATIC}")
+AC_SUBST(PERM_DSO, "${PERM_DSO}")
 AC_OUTPUT([Makefile lib/Makefile tools/Makefile tools/gsocket.conf man/Makefile examples/Makefile])
 
 
