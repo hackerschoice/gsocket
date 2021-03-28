@@ -3,9 +3,8 @@
 # Try to use the gs-netcat that's in the same directory as this executable.
 BASEDIR="$(cd "$(dirname "${0}")" || exit; pwd)"
 # shellcheck disable=SC1090 # Can't follow non-constant source. Use a directive to specify location.
-# source "${BASEDIR}/gs_funcs" || { echo >&2 "gs_funcs not found"; exit 3; }
-# FIXME: If ever gs_funcs is installed in ${PREFIX}/share/gsocket and gsocket.conf is used 
-source "${BASEDIR}/gs_funcs" 2>/dev/null || { { source /etc/gsocket.conf || source "${BASEDIR}/../etc/gsocket.conf"; } 2>/dev/null && { source "${GS_PREFIX}/share/gsocket/gs_funcs" 2>/dev/null || { echo >&2 "gs_funcs not found"; exit 3; } } }
+# shellcheck disable=SC1091 # Not following: /etc/gsocket.conf was not specified as input (see shellcheck -x)
+source "${BASEDIR}/gs_funcs" 2>/dev/null || { { source /etc/gsocket.conf 2>/dev/null || source "${BASEDIR}/../etc/gsocket.conf" 2>/dev/null || { echo >&2 "gsocket: gsocket.conf not found."; exit 3; } } && { source "${GS_PREFIX}/share/gsocket/gs_funcs" 2>/dev/null; } } || { echo >&2 "gsocket: gs_funcs not found"; exit 3; }
 
 my_usage()
 {
