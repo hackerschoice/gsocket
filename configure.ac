@@ -11,7 +11,8 @@ AM_CONFIG_HEADER(config.h)
 AM_PROG_AR
 dnl for --enable-maintainer-mode fun use:
 dnl AM_MAINTAINER_MODE 
-dnl LT_INIT()
+dnl AC_DISABLE_STATIC
+dnl LT_INIT([disable-static])
 
 dnl AC_CONFIG_MACRO_DIRS([m4])
 

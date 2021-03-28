@@ -1,11 +1,9 @@
 #! /usr/bin/env bash
 
-
-
 # Try to use the gs-netcat that's in the same directory as this executable.
 BASEDIR="$(cd "$(dirname "${0}")" || exit; pwd)"
 # shellcheck disable=SC1090 # Can't follow non-constant source. Use a directive to specify location.
-source "${BASEDIR}/gs_funcs" || exit 3
+source "${BASEDIR}/gs_funcs" || { echo >&2 "gs_funcs not found"; exit 3; }
 
 my_usage()
 {
@@ -20,7 +18,7 @@ Example:
     $ ${BIN_NAME} -s MySecret ssh root@gsocket         # Client
 
 See 'gs-netcat -h' for more options."
-	exit $1
+	exit "$1"
 }
 
 my_getopt()

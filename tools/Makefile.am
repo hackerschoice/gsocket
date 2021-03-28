@@ -1,6 +1,14 @@
 noinst_PROGRAMS = gs-helloworld gs-pipe gs-full-pipe @PROGRAMS_TEST_TOOLS@
 EXTRA_PROGRAMS = packet-test readline-test console_display-test filetransfer-test
-bin_PROGRAMS = gs-netcat gs_uchroot_so gs_so
+bin_PROGRAMS = gs-netcat
+
+noinst_PROGRAMS += gs.so gs_uchroot.so
+
+# lib_LIBRARIES = gs.so gs_uchroot.so # ERROR: This will generate static libs..
+# lib_LTLIBRARIES = gs.so gs_uchroot.so
+# LT_INIT([disable-static]) has no effect. It insists to generate shared
+# and static libs (which wont work because those are DSO's on OSX).
+# So we must use noinst_PROGRAMS and an install-hook
 
 gs_helloworld_SOURCES = 1_gs-helloworld.c utils.c gs_so-lib.c
 gs_helloworld_LDADD = ../lib/libgsocket.a @LDADD_STATIC@
@@ -27,6 +35,12 @@ gs_uchroot_so_LDFLAGS = -ldl
 gs_so_SOURCES = gs_so.c gs_so-lib.c
 gs_so_CFLAGS = -shared -fPIC
 gs_so_LDFLAGS = -ldl
+
+#	cp gs.so $(DSTDIR)$(libdir)
+
+install-exec-hook:
+	$(install_sh) -d $(DESTDIR)$(libdir)
+	$(install_sh) -c -m 644 gs.so gs_uchroot.so $(DESTDIR)$(libdir) 
 
 packet_test_SOURCES = packet-test.c utils.c gs_so-lib.c
 packet_test_LDADD = ../lib/libgsocket.a
