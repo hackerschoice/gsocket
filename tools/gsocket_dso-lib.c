@@ -1,5 +1,5 @@
 #include "common.h"
-#include "gs_so-lib.h"
+#include "gsocket_dso-lib.h"
 
 struct _gopt gopt; // defined in common.h
 #ifdef DEBUG

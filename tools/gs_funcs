@@ -182,9 +182,6 @@ gs_find_so()
 		res=$(gs_find_so_single "${dir}" "${2}")
 		[[ -z "$res" ]] || { echo "$res"; return; }
 	done
-
-	echo >&2 "gsocket: ${1} not found."
-	exit 5
 }
 
 gs_init()
@@ -205,9 +202,11 @@ gs_init()
 	# on OSX the dl-files are called .bundle (not .dylib) but it is generally
 	# accepted to call them .so. OSX keep those is /System/Library/gsocket
 	# but automake insists on ${PREFIX}/lib
-	UCHROOT_BIN=$(gs_find_so "$PREFIX" "gs_uchroot.so${EXE}")
+	UCHROOT_BIN=$(gs_find_so "$PREFIX" "gsocket_uchroot_dso.so${EXE}")
+	[[ -z "$UCHROOT_BIN" ]] && { echo >&2 "gsocket: gsocket_uchroot_dso.so${EXE} not found."; exit 5; }
 	# shellcheck disable=SC2034 # appears unused. Verify use (or export if used externally).
-	GS_SO_BIN=$(gs_find_so "$PREFIX" "gs.so${EXE}")
+	GS_SO_BIN=$(gs_find_so "$PREFIX" "gsocket_dso.so${EXE}")
+	[[ -z "$GS_SO_BIN" ]] && { echo >&2 "gsocket: gsocket_dso.so${EXE} not found."; exit 5; }
 
 	# shellcheck disable=SC2034 # appears unused. Verify use (or export if used externally).
 	BIN_NAME="$(basename "${0}")"
@@ -345,7 +344,7 @@ sftp_server_start()
 	# Whitelist of commands sftp-server should allow (most are not needed
 	# by sftp but for sshfs)
 	# *** WARNING ***: If you add a string here you also must make sure that
-	# gs_uchroot checks the command for uchroot-escape.
+	# gsocket_uchroot_dso checks the command for uchroot-escape.
 	SFTP_ARGS[${#SFTP_ARGS[@]}]="-p"
 	SFTP_ARGS[${#SFTP_ARGS[@]}]="open,opendir,mkdir,remove,rmdir,symlink,hardlink,stat,posix-rename,statvfs,setstat,fsetstat,fstat,lstat,readdir,realpath,write,read,close"
 

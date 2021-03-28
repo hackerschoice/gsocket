@@ -44,7 +44,7 @@
 #include "gs-netcat.h"
 #include "filetransfer_mgr.h"
 #include "man_gs-netcat.h"
-#include "gs_so-lib.h"
+#include "gsocket_dso-lib.h"
 
 /* All connected gs-peers indexed by gs->fd */
 static struct _peer *peers[FD_SETSIZE];
