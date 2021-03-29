@@ -50,7 +50,7 @@ for xincdir in $trydir_i ; do
 		INCLUDES="$INCLUDES -I${xincdir}";
 	fi
 done
-CPPFLAGS="-I../include ${INCLUDES} $CPPFLAGS"
+CPPFLAGS="-I${srcdir}/../include ${INCLUDES} $CPPFLAGS"
 
 dnl Try library paths...
 trydir_l="${trydir_l} /usr/local/opt/openssl/lib"
@@ -164,7 +164,7 @@ AS_IF([test x$selftests = xtrue], AC_SUBST(PROGRAMS_TEST_TOOLS, "packet-test${EX
 AC_SUBST(LDADD_STATIC, "${LDADD_STATIC}")
 AC_SUBST(CFLAGS_STATIC, "${CFLAGS_STATIC}")
 AC_SUBST(PERM_DSO, "${PERM_DSO}")
-AC_OUTPUT([Makefile lib/Makefile tools/Makefile tools/gsocket.conf man/Makefile examples/Makefile])
+AC_OUTPUT([Makefile lib/Makefile tools/Makefile include/Makefile include/gsocket/Makefile tools/gsocket.conf man/Makefile examples/Makefile])
 
 
 echo "

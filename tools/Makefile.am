@@ -53,6 +53,10 @@ install-exec-hook:
 	$(install_sh) -d $(DESTDIR)$(libdir)
 	$(install_sh) -c -m @PERM_DSO@ gsocket_dso.so gsocket_uchroot_dso.so $(DESTDIR)$(libdir) 
 
+uninstall-hook:
+	rm -f $(DESTDIR)$(libdir)/gsocket_dso.so
+	rm -f $(DESTDIR)$(libdir)/gsocket_uchroot_dso.so
+
 packet_test_SOURCES = packet-test.c utils.c gsocket_dso-lib.c
 packet_test_LDADD = ../lib/libgsocket.a
 
