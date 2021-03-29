@@ -49,7 +49,7 @@ gsocket_dso_so_CFLAGS = -shared -fPIC
 gsocket_dso_so_LDFLAGS = -ldl
 
 install-exec-hook:
-	rm -f $(DESTDIR)$(bindir)/gs_funcs # Old gs installed this here. Remove it now.
+	-rm -f $(DESTDIR)$(bindir)/gs_funcs # Old gs installed this here. Remove it now.
 	$(install_sh) -d $(DESTDIR)$(libdir)
 	$(install_sh) -c -m @PERM_DSO@ gsocket_dso.so gsocket_uchroot_dso.so $(DESTDIR)$(libdir) 
 
