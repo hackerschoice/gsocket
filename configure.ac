@@ -1,6 +1,6 @@
 dnl Process this File with autoconf to produce a configure script.
 AC_PREREQ(2.61)
-AC_INIT([gsocket], 1.4.28-dev)
+AC_INIT([gsocket], 1.4.28)
 dnl AC_CONFIG_AUX_DIR(config-x86_64-apple-darwin19.6.0)
 AC_CONFIG_AUX_DIR(config)
 AC_CANONICAL_SYSTEM
@@ -11,7 +11,8 @@ AM_CONFIG_HEADER(config.h)
 AM_PROG_AR
 dnl for --enable-maintainer-mode fun use:
 dnl AM_MAINTAINER_MODE 
-dnl LT_INIT()
+dnl AC_DISABLE_STATIC
+dnl LT_INIT([disable-static])
 
 dnl AC_CONFIG_MACRO_DIRS([m4])
 
@@ -49,7 +50,7 @@ for xincdir in $trydir_i ; do
 		INCLUDES="$INCLUDES -I${xincdir}";
 	fi
 done
-CPPFLAGS="-I../include ${INCLUDES} $CPPFLAGS"
+CPPFLAGS="-I${srcdir}/../include ${INCLUDES} $CPPFLAGS"
 
 dnl Try library paths...
 trydir_l="${trydir_l} /usr/local/opt/openssl/lib"
@@ -65,7 +66,12 @@ for xlibdir in $trydir_l ; do
 done
 LDFLAGS="${LIBDIR} $LDFLAGS"
 
+dnl default perm of .so is 644 but on cygwin must be 755.
+PERM_DSO="644"
 case "$host" in
+*-cygwin*)
+	PERM_DSO="755"
+	;;
 mips-sony-bsd|mips-sony-newsos4)
         AC_DEFINE([NEED_SETPGRP], [1], [Need setpgrp to acquire controlling tty])
 	;;
@@ -157,7 +163,8 @@ AS_IF([test x$selftests = xtrue], AC_SUBST(PROGRAMS_TEST_TOOLS, "packet-test${EX
 
 AC_SUBST(LDADD_STATIC, "${LDADD_STATIC}")
 AC_SUBST(CFLAGS_STATIC, "${CFLAGS_STATIC}")
-AC_OUTPUT([Makefile lib/Makefile tools/Makefile man/Makefile examples/Makefile])
+AC_SUBST(PERM_DSO, "${PERM_DSO}")
+AC_OUTPUT([Makefile lib/Makefile tools/Makefile include/Makefile include/gsocket/Makefile tools/gsocket.conf man/Makefile examples/Makefile])
 
 
 echo "

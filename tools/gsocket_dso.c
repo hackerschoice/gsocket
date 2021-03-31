@@ -15,7 +15,7 @@
 # include <sys/cygwin.h>
 # include <windows.h>
 #endif
-#include "gs_so-lib.h"
+#include "gsocket_dso-lib.h"
 
 #define GS_WITH_AUTHCOOKIE   1
 
