@@ -5,7 +5,7 @@ EXTRA_PROGRAMS = packet-test readline-test console_display-test filetransfer-tes
 bin_PROGRAMS = gs-netcat
 EXTRA_DIST = gsocket.conf.in
 
-noinst_PROGRAMS += gsocket_dso.so gsocket_uchroot_dso.so
+noinst_PROGRAMS += gsocket_dso.so.0 gsocket_uchroot_dso.so.0
 
 # https://www.gnu.org/software/automake/manual/automake.html says that
 # it should default to '${prefix}/etc' and not '/etc' and that the installer
@@ -40,22 +40,26 @@ gs_netcat_CFLAGS = @CFLAGS_STATIC@
 
 dist_bin_SCRIPTS = blitz gs-sftp gs-mount gsocket
 
-gsocket_uchroot_dso_so_SOURCES = gsocket_uchroot_dso.c
-gsocket_uchroot_dso_so_CFLAGS = -shared -fPIC
-gsocket_uchroot_dso_so_LDFLAGS = -ldl
+gsocket_uchroot_dso_so_0_SOURCES = gsocket_uchroot_dso.c
+gsocket_uchroot_dso_so_0_CFLAGS = -shared -fPIC
+gsocket_uchroot_dso_so_0_LDFLAGS = -ldl -Wl,-soname=gsocket_uchroot_dso.so.0
 
-gsocket_dso_so_SOURCES = gsocket_dso.c gsocket_dso-lib.c
-gsocket_dso_so_CFLAGS = -shared -fPIC
-gsocket_dso_so_LDFLAGS = -ldl
+gsocket_dso_so_0_SOURCES = gsocket_dso.c gsocket_dso-lib.c
+gsocket_dso_so_0_CFLAGS = -shared -fPIC
+gsocket_dso_so_0_LDFLAGS = -ldl -Wl,-soname=gsocket_dso.so.0
 
 install-exec-hook:
 	-rm -f $(DESTDIR)$(bindir)/gs_funcs # Old gs installed this here. Remove it now.
 	$(install_sh) -d $(DESTDIR)$(libdir)
-	$(install_sh) -c -m @PERM_DSO@ gsocket_dso.so gsocket_uchroot_dso.so $(DESTDIR)$(libdir) 
+	$(install_sh) -c -m @PERM_DSO@ gsocket_dso.so.0 gsocket_uchroot_dso.so.0 $(DESTDIR)$(libdir)
+	ln -sf gsocket_dso.so.0 $(DESTDIR)/$(libdir)/gsocket_dso.so
+	ln -sf gsocket_uchroot_dso.so.0 $(DESTDIR)/$(libdir)/gsocket_uchroot_dso.so 
 
 uninstall-hook:
-	rm -f $(DESTDIR)$(libdir)/gsocket_dso.so
-	rm -f $(DESTDIR)$(libdir)/gsocket_uchroot_dso.so
+	-rm -f $(DESTDIR)$(libdir)/gsocket_dso.so.0
+	-rm -f $(DESTDIR)$(libdir)/gsocket_dso.so
+	-rm -f $(DESTDIR)$(libdir)/gsocket_uchroot_dso.so.0
+	-rm -f $(DESTDIR)$(libdir)/gsocket_uchroot_dso.so
 
 packet_test_SOURCES = packet-test.c utils.c gsocket_dso-lib.c
 packet_test_LDADD = ../lib/libgsocket.a
