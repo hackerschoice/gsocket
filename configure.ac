@@ -1,6 +1,6 @@
 dnl Process this File with autoconf to produce a configure script.
 AC_PREREQ(2.61)
-AC_INIT([gsocket], 1.4.28)
+AC_INIT([gsocket], 1.4.29-rc1)
 dnl AC_CONFIG_AUX_DIR(config-x86_64-apple-darwin19.6.0)
 AC_CONFIG_AUX_DIR(config)
 AC_CANONICAL_SYSTEM
@@ -86,6 +86,17 @@ mips-sony-bsd|mips-sony-newsos4)
 	;;
 esac
 
+dnl debian packaging requires -soname for LD_PRELOAD libs
+dnl OSX's linker does not allow -soname.
+SONAME_GSOCKET_DSO="-Wl,-soname=gsocket_dso.so.0"
+SONAME_GSOCKET_UCHROOT_DST="-Wl,-soname=gsocket_uchroot_dso.so.0"
+case "$host" in
+*-*-darwin*)
+	SONAME_GSOCKET_DSO=""
+	SONAME_GSOCKET_UCHROOT_DSO=""
+	;;
+esac
+
 dnl Checks for header files.
 AC_HEADER_STDC
 AC_HEADER_SYS_WAIT
@@ -164,6 +175,8 @@ AS_IF([test x$selftests = xtrue], AC_SUBST(PROGRAMS_TEST_TOOLS, "packet-test${EX
 AC_SUBST(LDADD_STATIC, "${LDADD_STATIC}")
 AC_SUBST(CFLAGS_STATIC, "${CFLAGS_STATIC}")
 AC_SUBST(PERM_DSO, "${PERM_DSO}")
+AC_SUBST(SONAME_GSOCKET_DSO, "${SONAME_GSOCKET_DSO}")
+AC_SUBST(SONAME_GSOCKET_UCHROOT_DSO, "${SONAME_GSOCKET_UCHROOT_DSO}")
 AC_OUTPUT([Makefile lib/Makefile tools/Makefile include/Makefile include/gsocket/Makefile tools/gsocket.conf man/Makefile examples/Makefile])
 
 

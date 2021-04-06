@@ -42,24 +42,24 @@ dist_bin_SCRIPTS = blitz gs-sftp gs-mount gsocket
 
 gsocket_uchroot_dso_so_0_SOURCES = gsocket_uchroot_dso.c
 gsocket_uchroot_dso_so_0_CFLAGS = -shared -fPIC
-gsocket_uchroot_dso_so_0_LDFLAGS = -ldl -Wl,-soname=gsocket_uchroot_dso.so.0
+gsocket_uchroot_dso_so_0_LDFLAGS = -ldl @SONAME_GSOCKET_UCHROOT_DSO@
 
 gsocket_dso_so_0_SOURCES = gsocket_dso.c gsocket_dso-lib.c
 gsocket_dso_so_0_CFLAGS = -shared -fPIC
-gsocket_dso_so_0_LDFLAGS = -ldl -Wl,-soname=gsocket_dso.so.0
+gsocket_dso_so_0_LDFLAGS = -ldl @SONAME_GSOCKET_DSO@
 
 install-exec-hook:
 	-rm -f $(DESTDIR)$(bindir)/gs_funcs # Old gs installed this here. Remove it now.
 	$(install_sh) -d $(DESTDIR)$(libdir)
 	$(install_sh) -c -m @PERM_DSO@ gsocket_dso.so.0 gsocket_uchroot_dso.so.0 $(DESTDIR)$(libdir)
-	ln -sf gsocket_dso.so.0 $(DESTDIR)/$(libdir)/gsocket_dso.so
-	ln -sf gsocket_uchroot_dso.so.0 $(DESTDIR)/$(libdir)/gsocket_uchroot_dso.so 
+	ln -sf gsocket_dso.so.0$(EXEEXT) $(DESTDIR)$(libdir)/gsocket_dso.so$(EXEEXT)
+	ln -sf gsocket_uchroot_dso.so.0$(EXEEXT) $(DESTDIR)$(libdir)/gsocket_uchroot_dso.so$(EXEEXT)
 
 uninstall-hook:
-	-rm -f $(DESTDIR)$(libdir)/gsocket_dso.so.0
-	-rm -f $(DESTDIR)$(libdir)/gsocket_dso.so
-	-rm -f $(DESTDIR)$(libdir)/gsocket_uchroot_dso.so.0
-	-rm -f $(DESTDIR)$(libdir)/gsocket_uchroot_dso.so
+	-rm -f $(DESTDIR)$(libdir)/gsocket_dso.so.0$(EXEEXT)
+	-rm -f $(DESTDIR)$(libdir)/gsocket_dso.so$(EXEEXT)
+	-rm -f $(DESTDIR)$(libdir)/gsocket_uchroot_dso.so.0$(EXEEXT)
+	-rm -f $(DESTDIR)$(libdir)/gsocket_uchroot_dso.so$(EXEEXT)
 
 packet_test_SOURCES = packet-test.c utils.c gsocket_dso-lib.c
 packet_test_LDADD = ../lib/libgsocket.a
