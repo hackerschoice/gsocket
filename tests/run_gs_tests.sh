@@ -15,6 +15,12 @@
 # # delete all after use:
 # tc qdisc del dev ${DEV} root
 
+# depend on: md5sum, bc, rsync, netstat, netcat, dd, ssh, sshd
+
+# Debian packaging: Force CWD to ./tests/
+BASEDIR="$(cd "$(dirname "${0}")" || exit; pwd)"
+cd "$BASEDIR"
+
 # Sleep for connection time (CT). On localhost this can be 0.1
 SLEEP_CT=0.5
 
