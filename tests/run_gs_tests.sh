@@ -22,9 +22,14 @@ if [ x"$GSOCKET_IP" == "x127.0.0.1" ]; then
 	SLEEP_CT=0.1
 fi
 
-# PATH=~/usr/bin:$PATH:/usr/local/bin
-PATH=~/usr/bin:/usr/local/bin:$PATH
-PATH=~/usr/bin:$PATH
+if [[ -z $GS_PREFIX ]]; then
+	GS_PREFIX="${PWD}/../tools"
+	GS_BINDIR="${PWD}/../tools"
+else
+	GS_BINDIR="${GS_PREFIX}/bin/"
+fi
+PATH=${GS_BINDIR}:/usr/local/bin:$PATH
+
 # printf "#! /bin/bash\nexec nc\n" >gs_nc
 SLEEP_WD=20	# Max seconds to wait for a process to finish receiving...
 command -v md5 >/dev/null 2>&1 		&& MD5(){ md5 -q "${1}";}
