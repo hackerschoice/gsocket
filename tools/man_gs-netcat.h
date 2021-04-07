@@ -52,7 +52,6 @@ OPTIONS\n\
 	     q' at any time or by typing 'exit'. The server supports multiple\n\
 	     clients at the same time.\n\
 \n\
-\n\
      -k file\n\
 	     A file containing the password.\n\
 \n\
@@ -85,7 +84,6 @@ OPTIONS\n\
 \n\
      -w      Client to wait for the listening server to become available.\n\
 \n\
-\n\
 CONSOLE\n\
      The interactive login shell ( -i ) has a command console. Pressing 'Ctrl-\n\
      e c' (e for EEEElite) opens the command console. The command console dis-\n\
@@ -97,44 +95,31 @@ CONSOLE\n\
 	   o   File transfer logs\n\
      Type 'help' for a list of available commands.\n\
 \n\
-\n\
 FILETRANSFER\n\
-     File transfer is available from the command console. Files are transferred\n\
-     with the permission and modification timestamp unchanged. Partially\n\
-     transferred files are re-started where the transfer was left off.\n\
-\n\
+     File transfer is available from the command console. Files are trans-\n\
+     ferred with the permission and modification timestamp unchanged. Par-\n\
+     tially transferred files are re-started where the transfer was left off.\n\
      The 'put' command is used for uploading:\n\
-\n\
 	   put foobar.txt\n\
 	   put $HOME/foobar.txt\n\
 	   put /tmp/*.log\n\
 	   put $(find. -type f -name '*.c')\n\
-\n\
      (The above example shows Shell Variable substitution and word expansion)\n\
-\n\
      It is possible to limit the amount of path information that is sent as\n\
      implied directories for each path you specify. You can insert a dot and a\n\
      slash into the source path, like this:\n\
-\n\
 	   put /foo/./bar/baz.c\n\
-\n\
-     That would create /tmp/bar/baz.c on the remote machine.\n\
-\n\
-     The 'get' command is used for downloading:\n\
-\n\
+     That would create /tmp/bar/baz.c on the remote machine.  The 'get' com-\n\
+     mand is used for downloading:\n\
 	   get foobar.txt\n\
 	   get $(find /var/./ -name '*.log')\n\
-\n\
-     Transferring a directory automatically transfers all files and directories\n\
-     within that directory (recursively):\n\
-\n\
+     Transferring a directory automatically transfers all files and directo-\n\
+     ries within that directory (recursively):\n\
 	   get /var/log\n\
 	   get /\n\
      The first command transfers all directories and files in /var/log/*. The\n\
-     latter command transfers the entire filesystem.\n\
-\n\
-     Multiple get/put commands can be scheduled at the same time.\n\
-\n\
+     latter command transfers the entire filesystem.  Multiple get/put com-\n\
+     mands can be scheduled at the same time.\n\
 \n\
 EXAMPLES\n\
      Example 1 - Listen for a new connection using the password 'MySecret':\n\
@@ -199,7 +184,8 @@ EXAMPLES\n\
 	   SHELL=\"/bin/bash\" /bin/bash -c \"cd $HOME; exec -a rsyslogd\n\
 	   /usr/local/bin/gs-netcat\"\n\
 \n\
-     The following line in /etc/rc.local starts a port-forward to 127.0.0.1:22:\n\
+     The following line in /etc/rc.local starts a port-forward to\n\
+     127.0.0.1:22:\n\
 	   GSOCKET_ARGS=\"-k MySecret2 -lqD -d 127.1 -p22\" /bin/bash -c \"exec\n\
 	   -a rsyslogd /usr/local/bin/gs-netcat\"\n\
 \n\
@@ -214,8 +200,6 @@ EXAMPLES\n\
 \n\
      Client to connect to the backdoor:\n\
 	   $ gs-netcat -s MySecret -i\n\
-\n\
-\n\
 \n\
 ENVIRONMENT\n\
      The following environment variables can be set to control the behavior of\n\
@@ -233,7 +217,6 @@ ENVIRONMENT\n\
 	   A string containing additional command line parameters. First the\n\
 	   normal command line parameters are processed and then the command\n\
 	   line parameters from GSOCKET_ARGS.\n\
-\n\
 \n\
 SECURITY\n\
      Passing the password as command line parameter is not secure. Consider\n\
@@ -277,15 +260,12 @@ SECURITY\n\
      7. SRP has Perfect Forward Secrecy. This means that past sessions can not\n\
      be decrypted even if the password becomes known.\n\
 \n\
-\n\
 NOTES\n\
      The latest version is available from https://github.com/hacker-\n\
      schoice/gsocket/.\n\
 \n\
-\n\
 SEE ALSO\n\
      gsocket(1), gs-sftp(1), gs-mount(1), blitz(1), nc(1), socat(1)\n\
-\n\
 \n\
 BUGS\n\
      Efforts have been made to have gs-netcat \"do the right thing\" in all its\n\
