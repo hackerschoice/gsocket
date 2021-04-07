@@ -29,8 +29,8 @@ if [ x"$GSOCKET_IP" == "x127.0.0.1" ]; then
 fi
 
 if [[ -z $GS_PREFIX ]]; then
-	GS_PREFIX="${PWD}/../tools"
-	GS_BINDIR="${PWD}/../tools"
+	GS_PREFIX="$(cd ${BASEDIR}/../tools || exit; pwd)"
+	GS_BINDIR="$GS_PREFIX"
 else
 	GS_BINDIR="${GS_PREFIX}/bin/"
 fi
