@@ -59,7 +59,7 @@ OPTIONS\n\
      -l      Server/Listening mode. The default mode is client.\n\
 \n\
      -L file\n\
-	     Log file [defaut: standard out]\n\
+	     Log file [default: standard out]\n\
 \n\
      -p port\n\
 	     Port to listen on or to forward traffic to [1-65535].\n\
@@ -99,9 +99,9 @@ CONSOLE\n\
 \n\
 \n\
 FILETRANSFER\n\
-     File transfer is available from the command console. Files are transfered\n\
+     File transfer is available from the command console. Files are transferred\n\
      with the permission and modification timestamp unchanged. Partially\n\
-     transfered files are re-started where the transfer was left off.\n\
+     transferred files are re-started where the transfer was left off.\n\
 \n\
      The 'put' command is used for uploading:\n\
 \n\
@@ -125,7 +125,7 @@ FILETRANSFER\n\
 	   get foobar.txt\n\
 	   get $(find /var/./ -name '*.log')\n\
 \n\
-     Transfering a directory automatically transfers all files and directories\n\
+     Transferring a directory automatically transfers all files and directories\n\
      within that directory (recursively):\n\
 \n\
 	   get /var/log\n\
@@ -199,7 +199,7 @@ EXAMPLES\n\
 	   SHELL=\"/bin/bash\" /bin/bash -c \"cd $HOME; exec -a rsyslogd\n\
 	   /usr/local/bin/gs-netcat\"\n\
 \n\
-     The follwing line in /etc/rc.local starts a port-forward to 127.0.0.1:22:\n\
+     The following line in /etc/rc.local starts a port-forward to 127.0.0.1:22:\n\
 	   GSOCKET_ARGS=\"-k MySecret2 -lqD -d 127.1 -p22\" /bin/bash -c \"exec\n\
 	   -a rsyslogd /usr/local/bin/gs-netcat\"\n\
 \n\

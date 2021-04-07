@@ -361,7 +361,7 @@ done:
 
 		// Scenario: All requested files got skipped (already exist).
 		// - no get request (for file data) outstanding.
-		// Trigger that GS_FT_packet() is called to return GS_FT_TYPE_DONE (all files transfered)
+		// Trigger that GS_FT_packet() is called to return GS_FT_TYPE_DONE (all files transferred)
 		if ((ft->n_files_waiting == 0) && (ft->plistreq_waiting.n_items == 0))
 			ft->is_want_write = 1;
 	}
@@ -818,7 +818,7 @@ receiving_complete(GS_FT *ft, struct _gs_ft_file *f)
 		ft_done(ft);
 		ft_del(f->li);
 
-		// Trigger that GS_FT_packet() is called to return GS_FT_TYPE_DONE (all files transfered)
+		// Trigger that GS_FT_packet() is called to return GS_FT_TYPE_DONE (all files transferred)
 		if ((ft->n_files_waiting == 0) && (ft->plistreq_waiting.n_items == 0))
 			ft->is_want_write = 1;
 	} else {
@@ -1501,7 +1501,7 @@ GS_FT_status(GS_FT *ft, uint32_t id, uint8_t code, const char *err_str, size_t l
 		// CLIENT
 		// Trigger caller to call GS_FT_packet() so that caller gets the GS_FT_DONE return
 		// value to then output (and reset) the stats. This can happen when a zero-sized file
-		// is transfered.
+		// is transferred.
 		if ((ft->n_files_waiting == 0) && (ft->plistreq_waiting.n_items == 0))
 			ft->is_want_write = 1;
 	}
@@ -1576,7 +1576,7 @@ GS_FT_strerror(uint8_t code)
 		return "Completed";
 	}
 
-	return "UNKNONW";
+	return "UNKNOWN";
 }
 
 // CLIENT: Create error string and report to caller (via callback)

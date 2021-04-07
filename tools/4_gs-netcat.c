@@ -1428,7 +1428,7 @@ my_getopt(int argc, char *argv[])
 		if (gopt.is_multi_peer == 1)
 		{
 			if (gopt.is_internal == 0)
-				XASSERT(gopt.port != 0, "Client listening port is 0 but wants multple peers.\n");
+				XASSERT(gopt.port != 0, "Client listening port is 0 but wants multiple peers.\n");
 
 			gopt.listen_fd = fd_new_socket(gopt.is_udp?SOCK_DGRAM:SOCK_STREAM);
 			int ret;
