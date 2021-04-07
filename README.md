@@ -52,7 +52,7 @@ The Global Socket Toolkit comes with a set of tools:
 <A></A>|<A></A>
 ----------|-------------
 Download|[gsocket-1.4.29.tar.gz](https://github.com/hackerschoice/gsocket/releases/download/v1.4.29/gsocket-1.4.29.tar.gz) (Linux, MacOS, FreeBSD, Solaris)
-Debian/Ubuntu| [gsocket_1.4.28_all.deb](https://github.com/hackerschoice/binary/raw/main/gsocket/latest/gsocket_1.4.28_all.deb)
+Debian/Ubuntu| [gsocket_1.4.29_all.deb](https://github.com/hackerschoice/binary/raw/main/gsocket/latest/gsocket_1.4.29_all.deb)
 Windows| use docker or cygwin
 Man Page| [gsocket(1)](https://hackerschoice.github.io/gsocket.1.html), [gs-netcat(1)](https://hackerschoice.github.io/gs-netcat.1.html), [gs-mount(1)](https://hackerschoice.github.io/gs-mount.1.html), [gs-sftp(1)](https://hackerschoice.github.io/gs-sftp.1.html), [blitz(1)](https://hackerschoice.github.io/blitz.1.html)
 Docker|  docker run --rm -it hackerschoice/gsocket
