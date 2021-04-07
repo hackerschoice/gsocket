@@ -5,7 +5,7 @@ COPY gsocket gs-netcat gs-sftp gs-mount blitz /usr/local/bin/
 RUN mkdir -p /usr/local/share/gsocket
 COPY gsocket.conf /etc/
 COPY gs_funcs /usr/local/share/gsocket
-COPY gsocket_uchroot_dso.so gsocket_dso.so /usr/local/lib/
+COPY gsocket_uchroot_dso.so.0 gsocket_dso.so.0 /usr/local/lib/
 COPY gs-motd /etc/
 COPY bashrc /root/.bashrc
 

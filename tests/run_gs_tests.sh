@@ -15,6 +15,12 @@
 # # delete all after use:
 # tc qdisc del dev ${DEV} root
 
+# depend on: md5sum, bc, rsync, netstat, netcat, dd, ssh, sshd
+
+# Debian packaging: Force CWD to ./tests/
+BASEDIR="$(cd "$(dirname "${0}")" || exit; pwd)"
+cd "$BASEDIR"
+
 # Sleep for connection time (CT). On localhost this can be 0.1
 SLEEP_CT=0.5
 
@@ -22,9 +28,14 @@ if [ x"$GSOCKET_IP" == "x127.0.0.1" ]; then
 	SLEEP_CT=0.1
 fi
 
-# PATH=~/usr/bin:$PATH:/usr/local/bin
-PATH=~/usr/bin:/usr/local/bin:$PATH
-PATH=~/usr/bin:$PATH
+if [[ -z $GS_PREFIX ]]; then
+	GS_PREFIX="$(cd ${BASEDIR}/../tools || exit; pwd)"
+	GS_BINDIR="$GS_PREFIX"
+else
+	GS_BINDIR="${GS_PREFIX}/bin/"
+fi
+PATH=${GS_BINDIR}:/usr/local/bin:$PATH
+
 # printf "#! /bin/bash\nexec nc\n" >gs_nc
 SLEEP_WD=20	# Max seconds to wait for a process to finish receiving...
 command -v md5 >/dev/null 2>&1 		&& MD5(){ md5 -q "${1}";}
@@ -693,9 +704,9 @@ mkfifo test_client/fifo.io
 ln -s foo/bar/test4k.dat test_client/test4k.dat
 ln -s /etc/hosts test_client/etc-hosts
 ln -s /dev/zero test_client/zero
-GSPID1="$(sh -c '../tools/blitz -k id_sec.txt -w -o "RSOPT=--bwlimit=100 -v" test_client/./ 2>client1_err.txt >client1_out.dat & echo ${!}')"
+GSPID1="$(sh -c 'blitz -k id_sec.txt -w -o "RSOPT=--bwlimit=100 -v" test_client/./ 2>client1_err.txt >client1_out.dat & echo ${!}')"
 cd test_server
-GSPID2="$(sh -c '../../tools/blitz -k ../id_sec.txt -l 2>../server1_err.txt >../server1_out.dat & echo ${!}')"
+GSPID2="$(sh -c 'blitz -k ../id_sec.txt -l 2>../server1_err.txt >../server1_out.dat & echo ${!}')"
 cd ..
 waitk $GSPID1
 kill $GSPID2
@@ -714,9 +725,9 @@ if [[ "${tests}" =~ '10.2' ]]; then
 test_start -n "Running: blitz #10.2 (stdin).............................."
 rm -rf test_client
 mkdir -p test_client
-GSPID1="$(sh -c '(echo test1k.dat; echo test4k.dat) | ../tools/blitz -k id_sec.txt -w -o "RSOPT=--bwlimit=100 -v" -f - 2>client1_err.txt >client1_out.dat & echo ${!}')"
+GSPID1="$(sh -c '(echo test1k.dat; echo test4k.dat) | blitz -k id_sec.txt -w -o "RSOPT=--bwlimit=100 -v" -f - 2>client1_err.txt >client1_out.dat & echo ${!}')"
 cd test_client
-GSPID2="$(sh -c '../../tools/blitz -k ../id_sec.txt -l 2>../server1_err.txt >../server1_out.dat & echo ${!}')"
+GSPID2="$(sh -c 'blitz -k ../id_sec.txt -l 2>../server1_err.txt >../server1_out.dat & echo ${!}')"
 cd ..
 waitk $GSPID1
 kill $GSPID2
@@ -730,8 +741,8 @@ if [[ "${tests}" =~ '10.3' ]]; then
 test_start -n "Running: gs-sftp #10.3 ..................................."
 rm -rf test_client
 mkdir -p test_client
-GSPID1="$(bash -c '(echo -en "lcd test_client\nget test4k.dat\nlcd ..\ncd test_client\nput test1k.dat\nls\nquit\n") | ../tools/gs-sftp -k id_sec.txt -w 2>client1_err.txt >client1_out.dat & echo ${!}')"
-GSPID2="$(sh -c '../tools/gs-sftp -k id_sec.txt -l 2>server1_err.txt >server1_out.dat & echo ${!}')"
+GSPID1="$(bash -c '(echo -en "lcd test_client\nget test4k.dat\nlcd ..\ncd test_client\nput test1k.dat\nls\nquit\n") | gs-sftp -k id_sec.txt -w 2>client1_err.txt >client1_out.dat & echo ${!}')"
+GSPID2="$(sh -c 'gs-sftp -k id_sec.txt -l 2>server1_err.txt >server1_out.dat & echo ${!}')"
 waitk $GSPID1
 kill $GSPID2
 md5fail 1 test1k.dat test_client/test1k.dat
@@ -750,8 +761,8 @@ else
 	rmdir test_mnt &>/dev/null
 	mkdir -p test_client test_mnt &>/dev/null
 	cp test1k.dat test4k.dat test_client
-	GSPID1="$(sh -c '../tools/gs-mount -k id_sec.txt -w test_mnt 2>client1_err.txt >client1_out.dat & echo ${!}')"
-	GSPID2="$(sh -c 'cd test_client; ../../tools/gs-mount -k ../id_sec.txt -l 2>../server1_err.txt >../server1_out.dat & echo ${!}')"
+	GSPID1="$(sh -c 'gs-mount -k id_sec.txt -w test_mnt 2>client1_err.txt >client1_out.dat & echo ${!}')"
+	GSPID2="$(sh -c 'cd test_client; gs-mount -k ../id_sec.txt -l 2>../server1_err.txt >../server1_out.dat & echo ${!}')"
 	waitk $GSPID1
 	md5fail 1 test_mnt/test1k.dat test_client/test1k.dat
 	md5fail 2 test_mnt/test4k.dat test_client/test4k.dat
@@ -774,8 +785,8 @@ test_start -n "Running: gsocket nc #10.5 (stdin)........................."
 # Can not use nc here because nc does not terminate on EOF from stdin.
 # Socat can be configured to terminate 1 second after EOF has been received.
 # need sleep 3 on RPI (slow system)
-GSPID1="$(sh -c '(cat test4k.dat; sleep 3) | ../tools/gsocket -k id_sec.txt $NC $NC_EOF_ARG $NC_LISTEN_ARG 31337 2>server_err.txt >server_out.dat & echo ${!}')"
-GSPID2="$(sh -c '(cat test1k.dat; sleep 3) | GSOCKET_ARGS=-w ../tools/gsocket -k id_sec.txt $NC $NC_EOF_ARG -v gsocket 31337 2>client_err.txt >client_out.dat & echo ${!}')"
+GSPID1="$(sh -c '(cat test4k.dat; sleep 3) | gsocket -k id_sec.txt $NC $NC_EOF_ARG $NC_LISTEN_ARG 31337 2>server_err.txt >server_out.dat & echo ${!}')"
+GSPID2="$(sh -c '(cat test1k.dat; sleep 3) | GSOCKET_ARGS=-w gsocket -k id_sec.txt $NC $NC_EOF_ARG -v gsocket 31337 2>client_err.txt >client_out.dat & echo ${!}')"
 waitk $GSPID2
 kill $GSPID1 &>/dev/null
 md5fail 1 test1k.dat server_out.dat
@@ -794,8 +805,8 @@ elif [[ "$OSTYPE" =~ solaris ]]; then
 else
 	# Can not use nc here because nc does not terminate on EOF from stdin.
 	# Socat can be configured to terminate 1 second after EOF has been received.
-	GSPID1="$(sh -c '../tools/gsocket -k id_sec.txt socat -T1 -,ignoreeof TCP-LISTEN:31337 <test4k.dat 2>server_err.txt >server_out.dat & echo ${!}')"
-	GSPID2="$(sh -c 'GSOCKET_ARGS=-w ../tools/gsocket -k id_sec.txt socat -T1 -,ignoreeof TCP:gsocket:31337 <test1k.dat 2>client_err.txt >client_out.dat & echo ${!}')"
+	GSPID1="$(sh -c 'gsocket -k id_sec.txt socat -T1 -,ignoreeof TCP-LISTEN:31337 <test4k.dat 2>server_err.txt >server_out.dat & echo ${!}')"
+	GSPID2="$(sh -c 'GSOCKET_ARGS=-w gsocket -k id_sec.txt socat -T1 -,ignoreeof TCP:gsocket:31337 <test1k.dat 2>client_err.txt >client_out.dat & echo ${!}')"
 	waitk $GSPID2
 	kill $GSPID1 &>/dev/null
 	md5fail 1 test1k.dat server_out.dat
@@ -825,8 +836,8 @@ else
 	[[ -z $SSHD_BIN ]] && SSHD_BIN="/usr/lib/ssh/sshd"
 	export SSHD_BIN
 	[[ -f "$SSHD_BIN" ]] || { echo >&2 "sshd not found"; exit 255; }
-	GSPID1="$(sh -c '../tools/gsocket -k id_sec.txt $SSHD_BIN -f /dev/null -o HostKey=${PWD}/ssh_host_rsa_key -p 31338 -D 2>server_err.txt >server_out.dat & echo ${!}')"
-	GSPID2="$(sh -c 'GSOCKET_ARGS=-w ../tools/gsocket -k id_sec.txt ssh -i id_rsa -o StrictHostKeyChecking=no -p 31338 ${LOGNAME}@gsocket echo Hello World 2>client_err.txt >client_out.dat & echo ${!}')"
+	GSPID1="$(sh -c 'gsocket -k id_sec.txt $SSHD_BIN -f /dev/null -o HostKey=${PWD}/ssh_host_rsa_key -p 31338 -D 2>server_err.txt >server_out.dat & echo ${!}')"
+	GSPID2="$(sh -c 'GSOCKET_ARGS=-w gsocket -k id_sec.txt ssh -i id_rsa -o StrictHostKeyChecking=no -p 31338 ${LOGNAME}@gsocket echo Hello World 2>client_err.txt >client_out.dat & echo ${!}')"
 	waitk $GSPID2
 	kill $GSPID1 &>/dev/null
 	[[ -f ~/.ssh/authorized_keys-backup ]] && cp -a ~/.ssh/authorized_keys-backup ~/.ssh/authorized_keys

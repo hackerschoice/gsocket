@@ -249,7 +249,7 @@ pkt_app_send_ft(GS_SELECT_CTX *ctx, struct _peer *p)
 		if (sz == 0)
 			return GS_SUCCESS;   // No data available.
 		if (sz == -1)
-			return GS_SUCCESS;   // All files have been transfered.
+			return GS_SUCCESS;   // All files have been transferred.
 		if (sz < 0) // Catch All (-2 mostly/always)
 			return GS_ERR_FATAL; // Not enough space.
 

