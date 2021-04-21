@@ -1,6 +1,6 @@
 dnl Process this File with autoconf to produce a configure script.
 AC_PREREQ(2.61)
-AC_INIT([gsocket], 1.4.29)
+AC_INIT([gsocket], 1.4.30-rc1)
 dnl AC_CONFIG_AUX_DIR(config-x86_64-apple-darwin19.6.0)
 AC_CONFIG_AUX_DIR(config)
 AC_CANONICAL_SYSTEM
@@ -89,7 +89,7 @@ esac
 dnl debian packaging requires -soname for LD_PRELOAD libs
 dnl OSX's linker does not allow -soname.
 SONAME_GSOCKET_DSO="-Wl,-soname=gsocket_dso.so.0"
-SONAME_GSOCKET_UCHROOT_DST="-Wl,-soname=gsocket_uchroot_dso.so.0"
+SONAME_GSOCKET_UCHROOT_DSO="-Wl,-soname=gsocket_uchroot_dso.so.0"
 case "$host" in
 *-*-darwin*)
 	SONAME_GSOCKET_DSO=""
