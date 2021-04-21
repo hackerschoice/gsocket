@@ -179,9 +179,6 @@ init_vars(void)
 
 	/* Convert a secret string to an address */
 	GS_ADDR_str2addr(&gopt.gs_addr, gopt.sec_str);
-	gopt.gsocket = gs_create();
-
-	DEBUGF("PID = %d\n", getpid());
 
 	signal(SIGTERM, cb_sigterm);
 }
