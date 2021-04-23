@@ -55,7 +55,7 @@ user_secret_from_stdin(GS_CTX *ctx)
 
 	while (1)
 	{
-		xfprintf(gs_errfp, "Enter Secret (or press Enter to generate): ");
+		fprintf(stderr, "Enter Secret (or press Enter to generate): ");
 		len = getline(&ptr, &n, stdin);
 		XASSERT(len > 0, "getline()\n");
 		if (ptr[len - 1] == '\n')
@@ -64,7 +64,7 @@ user_secret_from_stdin(GS_CTX *ctx)
 			return NULL;
 		if (strlen(ptr) >= 8)
 			break;
-		xfprintf(gs_errfp, "Too short.\n");
+		fprintf(stderr, "Too short.\n");
 	}
 
 	return strdup(ptr);

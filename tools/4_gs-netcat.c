@@ -1348,7 +1348,7 @@ my_getopt(int argc, char *argv[])
 
 	do_getopt(argc, argv);	/* from utils.c */
 	optind = 1;	/* Start from beginning */
-	while ((c = getopt(argc, argv, UTILS_GETOPT_STR "mWu")) != -1)
+	while ((c = getopt(argc, argv, UTILS_GETOPT_STR "mWuP:")) != -1)
 	{
 		switch (c)
 		{
@@ -1382,6 +1382,13 @@ my_getopt(int argc, char *argv[])
 				gopt.is_multi_peer = 1;
 				gopt.flags |= GSC_FL_IS_SERVER;	// implicit
 				break;
+			// case 'P': // INTERNAL
+			// 	FILE *fp = fopen(optarg, "w");
+			// 	if (fp == NULL)
+			// 		break;
+			// 	fprintf(fp, "%u", getpid());
+			// 	fclose(fp);
+			// 	break;
 			default:
 				break;
 			case 'A':	// Disable -A for gs-netcat. Use gs-full-pipe instead
@@ -1405,6 +1412,12 @@ my_getopt(int argc, char *argv[])
 	{
 		if (gopt.is_logfile == 0)
 			gopt.is_quiet = 1;
+	}
+
+	if (gopt.is_quiet != 0)
+	{
+		gopt.log_fp = NULL;
+		gopt.err_fp = NULL;
 	}
 
 	if (gopt.flags & GSC_FL_IS_SERVER)
@@ -1450,12 +1463,6 @@ my_getopt(int argc, char *argv[])
 
 	// init all (and ask for password if -s/-k missing)
 	init_vars();			/* from utils.c */
-
-	if (gopt.is_quiet != 0)
-	{
-		gopt.log_fp = NULL;
-		gopt.err_fp = NULL;
-	}
 
 	/* Become a daemon & watchdog (auto-restart)
 	 * Do this before gs_create() so that any error in resolving
