@@ -69,6 +69,7 @@ Root-Shell via GSRN| [examples/systemd-root-shell](examples/systemd-root-shell)
 IRCD via GSRN| [examples/port-forward](examples/port-forward)  
 
 ---
+<a id="installation-anchor"></a>
 **Installation:**
 ```
 $ /bin/bash -c "$(curl -fsSL https://tiny.cc/gsinst)"
