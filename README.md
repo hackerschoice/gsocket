@@ -39,7 +39,7 @@ Video 3: [Blitz files through firewalls](https://www.thc.org/gsocket-anim2.gif)
 
 Abandon the thought of IP Addresses and Port Numbers. Instead start thinking that two programs should be able to communicate with each other as long as they know the same secret (rather than each other\'s IP Address and Port Number). The Global Socket library facilitates this: It locally derives temporary session keys and IDs and connects two programs through the Global Socket Relay Network (GSRN) regardless and independent of the local IP Address or geographical location. Once connected the library then negotiates a secure TLS connection(End-2-End). The secret never leaves your workstation. **The GSRN sees only the encrypted traffic**.
 
-The GSRN is a free cloud service and is free to use by anyone.
+The [GSRN](https://www.gsocket.io/gsrn) is a free cloud service and is free to use by anyone.
 
 The Global Socket Toolkit comes with a set of tools:
 * **gsocket** - Makes an existing program (behind firewall or NAT) accessible from anywhere in the world. It does so by analyzing the program and replacing the IP-Layer with its own Gsocket-Layer. A client connection to a hostname ending in *'\*.gsocket'* then gets automatically redirected (via the GSRN) to this program.
