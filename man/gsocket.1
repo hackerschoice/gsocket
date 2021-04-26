@@ -1,12 +1,12 @@
-\# .TH gs-netcat 1 "08 October 2020" "1.0" "gs-netcat man page"
+\# .TH gsocket 1 "08 October 2020" "1.0" "gssocket man page"
 .Dd March 02, 2021
 .Dt gsocket 1
 .Os
 .Sh NAME
-.Nm gs
+.Nm gsocket
 .Nd connect like there is no firewall. Securely.
 .Sh SYNOPSIS
-.Nm gs
+.Nm gsocket
 .Op Fl qT
 .Op Fl s Ar secret
 .Op Fl k Ar keyfile
@@ -39,11 +39,11 @@ and much, much more.
 .Pp
  ...while both workstations are behind NAT and firewalled.
 .Pp
-Abandon the thought of IP addresses and port numbers: Two programs should be able to communicate with each other as long as they know the same secret (rather than each other\'s IP address and port number). The
+Abandon the thought of IP addresses and port numbers: Two programs should be able to communicate with each other as long as they know the same secret (rather than each other's IP address and port number). The
 .Nm
 tools establishes such a connection regardless and independent of the local IP address or geographical location. It does so by analyzing the program and replacing the IP Layer with its own transport through GSRN. The connection is end-2-end encrypted. The GSRN sees only the encrypted traffic.
 .Pp
-The typical scenario is a client/server arrangement such as ssh and sshd: Connections by ssh to any hostname ending in \'.gsocket\' are redirected (through the GSRN) to the (firewalled) sshd server.  
+The typical scenario is a client/server arrangement such as ssh and sshd: Connections by ssh to any hostname ending in '.gsocket' are redirected (through the GSRN) to the (firewalled) sshd server.
 .Pp
 The redirection is done per program (and limited to that program only). The
 .Nm
@@ -67,9 +67,9 @@ tool will connect through TOR to the GSRN. This requires TOR to be installed and
 TCP port range of listening ports to redirect [default=all].
 .El
 .Pp
-Connections to any hostname ending in \'*.gsocket\' or to the IP Address \'127.31.33.7\' are redirected through the GSRN.
+Connections to any hostname ending in '*.gsocket' or to the IP Address '127.31.33.7' are redirected through the GSRN.
 .Pp
-Connections to any hostname ending in \'*.thc\' or to the IP Address \'127.31.33.8\' are first redirected through TOR and then through the GSRN.
+Connections to any hostname ending in '*.thc' or to the IP Address '127.31.33.8' are first redirected through TOR and then through the GSRN.
 .Sh EXAMPLES
 .Nm Example 1
 - OpenSSH between two firewalled workstations:
@@ -154,13 +154,13 @@ Passing the password as command line parameter is not secure. Consider using the
 The security is end-2-end. This means from user-2-user (and not just to the GSRN). The GSRN relays only (encrypted) data to and from the users.
 .Pp
 .Nm 2.
-The session is 256 bit and ephemeral. It is freshly generated for every session and generated randomly (and is not based on the password). It uses OpenSSL\'s SRP with AES-256 and a 4096 Prime.
+The session is 256 bit and ephemeral. It is freshly generated for every session and generated randomly (and is not based on the password). It uses OpenSSL's SRP with AES-256 and a 4096 Prime.
 .Pp
 .Nm 3.
-The password can be \'weak\' without weakening the security of the session. A brute force attack against a weak password requires a new TCP connection for every guess.
+The password can be 'weak' without weakening the security of the session. A brute force attack against a weak password requires a new TCP connection for every guess.
 .Pp
 .Nm 4.
-Do not use stupid passwords like \'password123\'. Malice might pick the same (stupid) password by chance and connect. If in doubt use gs-netcat -g to generate a strong one. Alice\'s and Bob\'s password should at least be strong enough so that Malice can not guess it by chance while Alice is waiting for Bob to connect.
+Do not use stupid passwords like 'password123'. Malice might pick the same (stupid) password by chance and connect. If in doubt use gs-netcat -g to generate a strong one. Alice's and Bob's password should at least be strong enough so that Malice can not guess it by chance while Alice is waiting for Bob to connect.
 .Pp
 .Nm 5.
 If Alice shares the same password with Bob and Charlie and either one of them connects then Alice can not tell if it is Bob or Charlie who connected.
@@ -170,10 +170,8 @@ Assume Alice shares the same password with Bob and Malice. When Alice stops list
 .Pp
 .Nm 7.
 SRP has Perfect Forward Secrecy. This means that past sessions can not be decrypted even if the password becomes known.
-
 .Sh NOTES
 The latest version is available from https://github.com/hackerschoice/gsocket/.
-
 .Sh SEE ALSO
 .Xr gs-netcat 1 ,
 .Xr gs-sftp 1 ,
@@ -181,7 +179,6 @@ The latest version is available from https://github.com/hackerschoice/gsocket/.
 .Xr blitz 1 ,
 .Xr nc 1 ,
 .Xr socat 1
-
 .Sh BUGS
 Efforts have been made to have
 .Nm

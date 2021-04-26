@@ -43,7 +43,7 @@ struct _gs_ft_stats_file
 	uint32_t id;
 	const char *fname;
 	uint64_t xfer_duration; // Actual transfer time (without suspension)
-	uint64_t xfer_amount;   // Actual data transfered
+	uint64_t xfer_amount;   // Actual data transferred
 	int is_zero;
 	char speed_str[GS_FT_SPEEDSTR_MAXSIZE];     // Speed (bps). Human readable string.
 };
@@ -54,7 +54,7 @@ typedef void (*gsft_cb_stats_t)(struct _gs_ft_stats_file *s, void *arg);
 typedef struct
 {
 	uint64_t xfer_duration;  // 
-	uint64_t xfer_amount;    // bytes actually transfered so far
+	uint64_t xfer_amount;    // bytes actually transferred so far
 	char speed_str[GS_FT_SPEEDSTR_MAXSIZE]; // Overall bps (updated after each file transfer)
 	int n_files_success; // transferred or skipped so far
 	int n_files_error;
@@ -83,7 +83,7 @@ typedef void (*gsft_cb_status_t)(void *ft_ptr, struct _gs_ft_status *s, void *ar
 typedef struct 
 {
 	// PUT (upload) - Client Side
-	GS_LIST fqueue;     // Client List of files to be transfered
+	GS_LIST fqueue;     // Client List of files to be transferred
 	GS_LIST fputs;      // Client list of files we requested transfer (put sent)
 	GS_LIST faccepted;  // Client List of file server has accepted (now can mk_switch() to any of those files)
 	GS_LIST fcompleted; // Completed. Waiting for 'ERR_COMPLETED'

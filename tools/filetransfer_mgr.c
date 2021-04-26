@@ -206,7 +206,7 @@ cb_errors(void *ft_ptr, struct _gs_ft_status *s, void *arg)
 
 // Return length of packet created.
 // Return 0 on if not packet available.
-// Return -1 if all files have been transfered (client only. Server never stops
+// Return -1 if all files have been transferred (client only. Server never stops
 // as server is always waiting for instructions by client to get/put more files).
 // Return -2 if not enough space.
 ssize_t

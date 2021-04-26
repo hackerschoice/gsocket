@@ -1,0 +1,8 @@
+
+
+# Global gsocket.conf file.
+# This file is first looked for in /etc/gsocket.conf
+# and then in @prefix@/etc/gsocket.conf
+
+GS_PREFIX=@prefix@
+

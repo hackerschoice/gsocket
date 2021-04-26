@@ -11,7 +11,7 @@ Allow BOB to log-in to ALICE as root/superuser (without tampering with the firew
 Start gs-netcat as a service (systemd) on ALICE.
 
 
-On workstation "ALICE" create */etc/system/systemd/gs-root-shell.service*:
+On workstation "ALICE" create */etc/systemd/system/gs-root-shell.service*:
 ```EditorConfig
 [Unit]
 Description=Global Socket Root Shell

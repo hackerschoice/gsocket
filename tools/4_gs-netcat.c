@@ -44,7 +44,7 @@
 #include "gs-netcat.h"
 #include "filetransfer_mgr.h"
 #include "man_gs-netcat.h"
-#include "gs_so-lib.h"
+#include "gsocket_dso-lib.h"
 
 /* All connected gs-peers indexed by gs->fd */
 static struct _peer *peers[FD_SETSIZE];
@@ -1435,7 +1435,7 @@ my_getopt(int argc, char *argv[])
 		if (gopt.is_multi_peer == 1)
 		{
 			if (gopt.is_internal == 0)
-				XASSERT(gopt.port != 0, "Client listening port is 0 but wants multple peers.\n");
+				XASSERT(gopt.port != 0, "Client listening port is 0 but wants multiple peers.\n");
 
 			gopt.listen_fd = fd_new_socket(gopt.is_udp?SOCK_DGRAM:SOCK_STREAM);
 			int ret;
