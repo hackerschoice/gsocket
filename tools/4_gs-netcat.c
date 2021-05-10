@@ -1320,7 +1320,7 @@ my_usage(void)
 "  -d <IP>      IPv4 address for port forwarding\n"
 "  -p <port>    Port to listen on or forward to\n"
 "  -u           Use UDP [requires -p]\n"
-"  -i           Interactive login shell (TTY) [~. to terminate]\n"
+"  -i           Interactive login shell (TTY) [Ctrl-e q to terminate]\n"
 "  -e <cmd>     Execute command [e.g. \"bash -il\" or \"id\"]\n"
 "  -m           Display man page\n"
 "   "
