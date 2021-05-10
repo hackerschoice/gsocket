@@ -1382,13 +1382,13 @@ my_getopt(int argc, char *argv[])
 				gopt.is_multi_peer = 1;
 				gopt.flags |= GSC_FL_IS_SERVER;	// implicit
 				break;
-			// case 'P': // INTERNAL
-			// 	FILE *fp = fopen(optarg, "w");
-			// 	if (fp == NULL)
-			// 		break;
-			// 	fprintf(fp, "%u", getpid());
-			// 	fclose(fp);
-			// 	break;
+			case 'P': // INTERNAL
+				FILE *fp = fopen(optarg, "w");
+				if (fp == NULL)
+					ERREXT("fopen(%s): %s\n", optarg, strerror(errno));
+				fprintf(fp, "%u", getpid());
+				fclose(fp);
+				break;
 			default:
 				break;
 			case 'A':	// Disable -A for gs-netcat. Use gs-full-pipe instead
