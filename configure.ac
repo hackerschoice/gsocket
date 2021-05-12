@@ -1,7 +1,6 @@
 dnl Process this File with autoconf to produce a configure script.
 AC_PREREQ(2.61)
 AC_INIT([gsocket], 1.4.30-rc1)
-dnl AC_CONFIG_AUX_DIR(config-x86_64-apple-darwin19.6.0)
 AC_CONFIG_AUX_DIR(config)
 AC_CANONICAL_SYSTEM
 
@@ -58,6 +57,9 @@ for xlibdir in $trydir_l ; do
 	if test ! -d "$xlibdir" ; then
 		continue;
 	fi
+	if test -f "${xlibdir}/libssl.a"; then
+		STATIC_LIBSSLDIR="${xlibdir}"
+	fi
 	if test x"${LIBDIR}" = x; then
 		LIBDIR="-L${xlibdir}";
 	else
@@ -102,7 +104,7 @@ AC_HEADER_STDC
 AC_HEADER_SYS_WAIT
 AC_CHECK_HEADERS(sys/time.h sys/endian.h unistd.h fnmatch.h string.h utmp.h utmpx.h pty.h openssl/srp.h util.h libutil.h netinet/in_systm.h sys/loadavg.h libproc.h)
 
-AC_CHECK_HEADER(openssl/srp.h, [], [AC_MSG_ERROR([openssl/srp.h not found. Update OpenSSL?])])
+AC_CHECK_HEADER(openssl/srp.h, [], [AC_MSG_ERROR([openssl/srp.h not found. Update OpenSSL or apt install libssl-dev?])])
 
 dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
@@ -123,24 +125,38 @@ AC_ARG_ENABLE(static,
 	[STATIC="yes"], [STATIC="no"]
 )
 
-if test x"$STATIC" = x"yes"; then
-	dnl static OpenSSL lib requires pthread
-	dnl AC_CHECK_LIB(pthread, pthread_once)
-	dnl LDADD_STATIC="" dnl -static"
-	CFLAGS_STATIC="-static "
+dnl OSX does not support static binaries.
+dnl At least staticly include OpenSSL libs
+if test x"${STATIC}" = xyes; then
+	case "$host" in
+	*-*-darwin*)
+		LDADD_STATIC="${STATIC_LIBSSLDIR}/libssl.a ${STATIC_LIBSSLDIR}/libcrypto.a"
+		AC_DEFINE(HAVE_LIBSSL, 1, [Define to 1 if you have the `ssl' library (-lssl)])
+		AC_DEFINE(HAVE_LIBCRYPTO, 1, [Define to 1 if you have the `crypto' library (-lcrypto)])
+		STATIC_SSL="yes"
+		;;
+	*)
+		CFLAGS_STATIC="-static "
+		;;
+	esac
 fi
 
 AC_CHECK_LIB(util, forkpty)
 AC_CHECK_LIB(socket, socket)
-AC_CHECK_LIB(nsl, gethostbyname)
+if test x"${STATIC}" = xno; then
+  AC_CHECK_LIB(nsl, gethostbyname)
+fi
 dnl AC_CHECK_LIB([net], [libnet_name_resolve], [AC_MSG_ERROR([libnet 1.0.x found. Requires libnet 1.1 or newer])])
 dnl AC_CHECK_LIB([net], [libnet_init], ,[AC_MSG_ERROR([libnet 1.1.x not found])])
 if test x"$STATIC" = xno; then
 	AC_CHECK_LIB(dl, dlopen)
 fi
 AC_CHECK_LIB(procstat, procstat_close)
-AC_CHECK_LIB([crypto], [ENGINE_init], [], [AC_MSG_ERROR([libcrypto not found])])
-AC_CHECK_LIB([ssl], [SRP_VBASE_get1_by_user], [], [AC_MSG_ERROR([SRP not supported. Please upgrade OpenSSL lib])])
+dnl 
+if test x"$STATIC_SSL" != xyes; then
+  AC_CHECK_LIB([crypto], [ENGINE_init], [], [AC_MSG_ERROR([libcrypto not found])])
+  AC_CHECK_LIB([ssl], [SRP_VBASE_get1_by_user], [], [AC_MSG_ERROR([SRP not supported. Please upgrade OpenSSL lib])])
+fi
 
 AC_CHECK_FUNCS(gettimeofday memcpy strchr strlcat forkpty openpty getline stat64 open64 statvfs64 accept4 connectx)
 
@@ -169,6 +185,11 @@ AC_ARG_ENABLE(dist,
 	[DIST="yes"], [DIST="no"]
 )
 
+AC_ARG_ENABLE(realprefix,
+[ --enable-realprefix      Set real prefix (for dpkg packaging)],
+	[REALPREFIX="${enableval}"], [REALPREFIX="${prefix}"]
+)
+
 AS_IF([test x$selftests = xtrue], AC_SUBST(PROGRAMS_TEST_LIB, "list-test${EXEEXT} event-test${EXEEXT}"))
 AS_IF([test x$selftests = xtrue], AC_SUBST(PROGRAMS_TEST_TOOLS, "packet-test${EXEEXT} readline-test${EXEEXT} console_display-test${EXEEXT} filetransfer-test${EXEEXT}"))
 
@@ -177,6 +198,7 @@ AC_SUBST(CFLAGS_STATIC, "${CFLAGS_STATIC}")
 AC_SUBST(PERM_DSO, "${PERM_DSO}")
 AC_SUBST(SONAME_GSOCKET_DSO, "${SONAME_GSOCKET_DSO}")
 AC_SUBST(SONAME_GSOCKET_UCHROOT_DSO, "${SONAME_GSOCKET_UCHROOT_DSO}")
+AC_SUBST(REALPREFIX, "${REALPREFIX}")
 AC_OUTPUT([Makefile lib/Makefile tools/Makefile include/Makefile include/gsocket/Makefile tools/gsocket.conf man/Makefile examples/Makefile])
 
 
@@ -189,7 +211,15 @@ echo "
 "
 
 if test x"${STATIC}" = xyes; then
-echo "
+	case "$host" in
+	*-*-darwin*)
+		echo "
+*** OSX does not support static binaries. Creating dynamic binaries ***
+*** instead and trying our best to included OpenSSL statically.     ***
+"
+		;;
+	*)
+		echo "
 ********************************** WARNING ***********************************
 * Your MUST compile OpenSSL like this:                                       *
 * openssl-src>                                                               *
@@ -201,6 +231,8 @@ echo "
 * gsocket-src> export PATH=\$HOME/usr/bin:\$PATH                               *
 ******************************************************************************
 "
+		;;
+	esac
 fi
 
 echo "

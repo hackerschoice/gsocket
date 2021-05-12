@@ -1319,8 +1319,8 @@ my_usage(void)
 "  -D           Daemon & Watchdog mode [background]\n"
 "  -d <IP>      IPv4 address for port forwarding\n"
 "  -p <port>    Port to listen on or forward to\n"
-"  -u           Use UDP [requires -p]"
-"  -i           Interactive login shell (TTY) [~. to terminate]\n"
+"  -u           Use UDP [requires -p]\n"
+"  -i           Interactive login shell (TTY) [Ctrl-e q to terminate]\n"
 "  -e <cmd>     Execute command [e.g. \"bash -il\" or \"id\"]\n"
 "  -m           Display man page\n"
 "   "
@@ -1345,10 +1345,11 @@ static void
 my_getopt(int argc, char *argv[])
 {
 	int c;
+	FILE *fp;
 
 	do_getopt(argc, argv);	/* from utils.c */
 	optind = 1;	/* Start from beginning */
-	while ((c = getopt(argc, argv, UTILS_GETOPT_STR "mWu")) != -1)
+	while ((c = getopt(argc, argv, UTILS_GETOPT_STR "mWuP:")) != -1)
 	{
 		switch (c)
 		{
@@ -1381,6 +1382,13 @@ my_getopt(int argc, char *argv[])
 				gopt.is_socks_server = 1;
 				gopt.is_multi_peer = 1;
 				gopt.flags |= GSC_FL_IS_SERVER;	// implicit
+				break;
+			case 'P': // INTERNAL
+				fp = fopen(optarg, "w");
+				if (fp == NULL)
+					ERREXIT("fopen(%s): %s\n", optarg, strerror(errno));
+				fprintf(fp, "%u", getpid());
+				fclose(fp);
 				break;
 			default:
 				break;
@@ -1454,8 +1462,11 @@ my_getopt(int argc, char *argv[])
 		gs_watchdog();
 	}
 
+	// init all (and ask for password if -s/-k missing)
+	init_vars();			/* from utils.c */
+
 	/* Become a daemon & watchdog (auto-restart)
-	 * Do this before init_vars() so that any error in resolving
+	 * Do this before gs_create() so that any error in resolving
 	 * is re-tried by watchdog.
 	 */
 	if (gopt.is_daemon)
@@ -1464,7 +1475,7 @@ my_getopt(int argc, char *argv[])
 		GS_daemonize(gopt.log_fp);
 	}
 
-	init_vars();			/* from utils.c */
+	gopt.gsocket = gs_create();
 	
 	if (getenv("GSOCKET_NO_GREETINGS") == NULL)
 		VLOG("=Encryption     : %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));

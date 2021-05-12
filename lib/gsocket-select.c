@@ -276,6 +276,7 @@ GS_SELECT_del_cb(GS_SELECT_CTX *ctx, int fd)
 	FD_CLR(fd, ctx->wfd);
 	FD_CLR(fd, ctx->r);
 	FD_CLR(fd, ctx->w);
+	ctx->blocking_func[fd] = 0;
 	/* Calcualte new max-fd */
 	int i;
 #ifdef DEBUG
@@ -327,6 +328,7 @@ GS_SELECT_add_cb_r(GS_SELECT_CTX *ctx, gselect_cb_t func, int fd, void *arg, int
 	ctx->mgr_r[fd].cb_arg = arg;
 	ctx->mgr_r[fd].cb_val = val;
 	ctx->max_fd = MAX(ctx->max_fd, fd);
+	ctx->blocking_func[fd] = 0;
 }
 
 void
@@ -337,6 +339,7 @@ GS_SELECT_add_cb_w(GS_SELECT_CTX *ctx, gselect_cb_t func, int fd, void *arg, int
 	ctx->mgr_w[fd].cb_arg = arg;
 	ctx->mgr_w[fd].cb_val = val;
 	ctx->max_fd = MAX(ctx->max_fd, fd);
+	ctx->blocking_func[fd] = 0;
 }
 
 void

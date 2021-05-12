@@ -179,9 +179,6 @@ init_vars(void)
 
 	/* Convert a secret string to an address */
 	GS_ADDR_str2addr(&gopt.gs_addr, gopt.sec_str);
-	gopt.gsocket = gs_create();
-
-	DEBUGF("PID = %d\n", getpid());
 
 	signal(SIGTERM, cb_sigterm);
 }
@@ -947,6 +944,24 @@ sanitize_fname_to_str(uint8_t *str, size_t len)
 	str[i] = 0x00; // always 0 terminate
 }
 
+/*
+ * Duplicate the process. Parent to check if child dies by monitoring stdin
+ * socketpair to child and parent also monitors its own stdin to
+ * check if calling process has died.
+ *
+ * If child dies then fork again.
+ * This function is different to GS_daemonize
+ * -> ppid is not 1 (not becoming a daemon).
+ * -> not using wait() to check for child's death
+ * -> This parent does not become a new session leader (no setsid()).
+ *
+ * This function is used when gsocket hijacks a process and needs to spawn
+ * a gs-netcat process. The gs-netcat process needs to monitor when the calling
+ * app exits (and this can only be done by monitoring when its own stdin becomes
+ * unavailable).
+ *
+ * This funciton loops forever and never returns.
+ */
 void
 gs_watchdog(void)
 {

