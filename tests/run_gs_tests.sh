@@ -210,13 +210,11 @@ waitkpf()
 {
 	local x
 	local rounds
-	local rounds_total
 	local fz
 	local fz_old
 	x=0
 	fsz_old=0
-	rounds_total=$(($SLEEP_WD * 10))
-	rounds=$rounds_total
+	rounds=$(($SLEEP_WD * 10))
 	while :; do
 		kill -0 $1 &>/dev/null
 		if [ $? -ne 0 ]; then
@@ -231,7 +229,7 @@ waitkpf()
 		fz="$(fsize "$2")"
 		if [[ $fz -ne $fz_old ]]; then
 			fz_old=$fz
-			rounds=$rounds_total
+			x=0
 		fi
 	done
 
