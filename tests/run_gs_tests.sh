@@ -84,6 +84,11 @@ if [[ -z "$NC_LISTEN_ARG" ]]; then
 	fi
 fi
 
+# Find out how to get file size
+fsize() { stat -c%s "$1" 2>/dev/null || echo 0;}
+stat -f%z /etc/hosts &>/dev/null && fsize() { stat -f%z "$1" 2>/dev/null || echo 0;}
+
+
 export NC
 export NC_EOF_ARG
 export NC_LISTEN_ARG
@@ -168,8 +173,11 @@ md5fail()
 # Wait until a process has termianted or kill it after SLEEP_WD seconds..
 waitkp()
 {
-	x=0;
-	rounds=`bc <<<"$SLEEP_WD / 0.1"`
+	local x
+	local rounds
+	x=0
+	# rounds=`bc <<<"$SLEEP_WD / 0.1"`
+	rounds=$((SLEEP_WD * 10))
 	while :; do
 		kill -0 $1 &>/dev/null
 		if [ $? -ne 0 ]; then
@@ -193,6 +201,43 @@ waitk()
 	for p in $@; do
 		waitkp $p
 	done
+}
+
+# waitkpf <pid> <file>
+# Kill if file doesnt change for SLEEP_WD seconds or when PID 
+# has finished.
+waitkpf()
+{
+	local x
+	local rounds
+	local rounds_total
+	local fz
+	local fz_old
+	x=0
+	fsz_old=0
+	rounds_total=$(($SLEEP_WD * 10))
+	rounds=$rounds_total
+	while :; do
+		kill -0 $1 &>/dev/null
+		if [ $? -ne 0 ]; then
+			# Break if process is not running.
+			return
+		fi
+		sleep 0.1
+		x=$(($x + 1))
+		if [ $x -gt $rounds ]; then
+			break;
+		fi
+		fz="$(fsize "$2")"
+		if [[ $fz -ne $fz_old ]]; then
+			fz_old=$fz
+			rounds=$rounds_total
+		fi
+	done
+
+	echo "Killing hanging process....($2 did not change size for to long ($fz)"
+	kill -9 $1 &>/dev/null
+	exit 255
 }
 
 # Wait for 2 files to become identical...
@@ -685,7 +730,9 @@ else
 	touch testmp3.dat testmp3-2.dat
 	GSPID4="$(sh -c 'curl --socks5-hostname 127.0.0.1:1085 --output testmp3.dat https://raw.githubusercontent.com/hackerschoice/thc-art/master/deep-phreakin.mp3 >client1_out.dat 2>client1_err.txt & echo ${!}')"
 	GSPID5="$(sh -c 'curl --socks5-hostname 127.0.0.1:1085 --output testmp3-2.dat https://raw.githubusercontent.com/hackerschoice/thc-art/master/deep-phreakin.mp3 >client2_out.dat 2>client2_err.txt & echo ${!}')"
-	waitk $GSPID4 $GSPID5
+	# waitk $GSPID4 $GSPID5
+	waitkpf $GSPID4 testmp3.dat
+	waitkpf $GSPID5 testmp3-2.dat
 	kill -9 $GSPID1 $GSPID3 &>/dev/null 
 	if [ "$(MD5 testmp3.dat)" != "171a9952951484d020ce1bef52b9eef5" ]; then fail 1; fi
 	if [ "$(MD5 testmp3-2.dat)" != "171a9952951484d020ce1bef52b9eef5" ]; then fail 2; fi
@@ -756,7 +803,9 @@ test_start -n "Running: gs-mount #10.4 .................................."
 command -v sshfs  >/dev/null 2>&1
 if [ $? -ne 0 ]; then
 	skip "(no sshfs)"
-else
+elif [[ "$OSTYPE" =~ darwin ]]; then
+	skip "fuse-broken"
+else	
 	rm -rf test_client &>/dev/null
 	rmdir test_mnt &>/dev/null
 	mkdir -p test_client test_mnt &>/dev/null

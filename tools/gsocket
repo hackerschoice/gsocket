@@ -115,7 +115,7 @@ if [[ x"$OSTYPE" == "xdarwin"* ]]; then
 	# A hack around this is to remove the signature completed (which will also disable
 	# any entitlements).
 	IS_REMOVE_SIGN=1
-	command -v csrutil >/dev/null && [[ "$(csrutil status)" =~ disabled ]] && { unset IS_REMOVE_SIGN; }
+	command -v csrutil >/dev/null && [[ ! "$(csrutil status)" =~ enabled ]] && { unset IS_REMOVE_SIGN; }
 	[[ -n $IS_REMOVE_SIGN ]] && command -v codesign >/dev/null && [[ -n "$(codesign -d --entitlements - "${PROGBIN}" 2>/dev/null)" ]] && {
 		codesign --remove-signature "${PROGBIN}";
 	}

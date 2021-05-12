@@ -1381,7 +1381,7 @@ path_resolve(const char *pattern, char *dst, size_t len)
 
 	dst[0] = '\0';
 	// On failure return 'pattern' as path 
-	snprintf(dst, len, "%s", pattern); 
+	snprintf(dst, len, "%.*s", MAX(0, (int)len -1) , pattern);
 
 	signal(SIGCHLD, SIG_DFL);
 	ret = wordexp(pattern, &p, WRDE_NOCMD);

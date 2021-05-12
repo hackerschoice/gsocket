@@ -1345,6 +1345,7 @@ static void
 my_getopt(int argc, char *argv[])
 {
 	int c;
+	FILE *fp;
 
 	do_getopt(argc, argv);	/* from utils.c */
 	optind = 1;	/* Start from beginning */
@@ -1383,9 +1384,9 @@ my_getopt(int argc, char *argv[])
 				gopt.flags |= GSC_FL_IS_SERVER;	// implicit
 				break;
 			case 'P': // INTERNAL
-				FILE *fp = fopen(optarg, "w");
+				fp = fopen(optarg, "w");
 				if (fp == NULL)
-					ERREXT("fopen(%s): %s\n", optarg, strerror(errno));
+					ERREXIT("fopen(%s): %s\n", optarg, strerror(errno));
 				fprintf(fp, "%u", getpid());
 				fclose(fp);
 				break;
