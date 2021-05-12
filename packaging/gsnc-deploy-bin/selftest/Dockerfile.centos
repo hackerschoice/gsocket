@@ -1,0 +1,6 @@
+FROM centos
+
+RUN yum -y update && \
+	yum -y install wget gzip tar && \
+	yum -y clean all && \
+	echo done
