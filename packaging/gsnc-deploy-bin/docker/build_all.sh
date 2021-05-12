@@ -9,7 +9,11 @@ VER="$(grep AC_INIT "$BASEDIR/configure.ac" | cut -f2 -d" " | cut -f1 -d')')"
 SRCDIR="${BASEDIR}/packaging/build/gsocket-${VER}"
 GSNCROOT="${BASEDIR}/packaging/gsnc-deploy-bin/docker"
 
-[[ -d "$SRCDIR" ]] || { echo >&2 "Source not found: $SRCDIR."; exit 255; }
+if [[ ! -d "$SRCDIR" ]]; then
+	tar_orig="${BASEDIR}/gsocket-${VER}.tar.gz"
+	[[ -f "$tar_orig" ]] && (cd "${BASEDIR}/packaging/build" && tar xfz "$tar_orig")
+fi
+[[ -d "$SRCDIR" ]] || { echo >&2 "Source not found: $SRCDIR or ${tar_orig}."; exit 255; }
 
 docker_pack()
 {

