@@ -189,14 +189,14 @@ gs_find_so()
 	local DL=("${BASEDIR}")
 	# Debian packaging requires libs in /usr/lib/x86_64-linux-gnu  :/
 	if command -v dpkg-architecture &>/dev/null; then
-		DL+=("/usr/lib/"$(dpkg-architecture -qDEB_HOST_MULTIARCH))
+		DL+=("/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)")
 	fi
 
 	DL+=("${1}/lib") # This is either GS_PREFIX/lib or BASEDIR/../lib
 	arrayContains "/usr/lib" "${DL[@]}" || DL+=("/usr/lib")
 	arrayContains "/usr/local/lib" "${DL[@]}" || DL+=("/usr/local/lib")
 
-	for dir in ${DL[@]}; do
+	for dir in "${DL[@]}"; do
 		res=$(gs_find_so_single "${dir}" "${2}")
 		[[ -z "$res" ]] || { echo "$res"; return; }
 	done
