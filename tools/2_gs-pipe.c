@@ -142,6 +142,7 @@ my_getopt(int argc, char *argv[])
 
 	gopt.is_blocking = 1;
 	init_vars();			/* from utils.c */
+	gopt.gsocket = gs_create();
 
 	VLOG("=Encryption: %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
 }
