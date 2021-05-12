@@ -170,6 +170,14 @@ gs_find_so_single()
 	[[ -e "${1}/${2}" ]] && { echo "$(cd "${1}" || exit; pwd)""/${2}"; }
 }
 
+arrayContains()
+{
+	local e match="$1"
+	shift
+	for e; do [[ "$e" == "$match" ]] && return 0; done
+	return 1
+}
+
 # Search for the dynamic shared object file.
 # 1. Try $basedir
 # 2. Try ${basedir}/../lib
@@ -178,7 +186,17 @@ gs_find_so_single()
 # Return absolute path to DSO. 
 gs_find_so()
 {
-	for dir in "${BASEDIR}" "${1}/lib" "/usr/lib" "/usr/local/lib"; do
+	local DL=("${BASEDIR}")
+	# Debian packaging requires libs in /usr/lib/x86_64-linux-gnu  :/
+	if command -v dpkg-architecture &>/dev/null; then
+		DL+=("/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)")
+	fi
+
+	DL+=("${1}/lib") # This is either GS_PREFIX/lib or BASEDIR/../lib
+	arrayContains "/usr/lib" "${DL[@]}" || DL+=("/usr/lib")
+	arrayContains "/usr/local/lib" "${DL[@]}" || DL+=("/usr/local/lib")
+
+	for dir in "${DL[@]}"; do
 		res=$(gs_find_so_single "${dir}" "${2}")
 		[[ -z "$res" ]] || { echo "$res"; return; }
 	done
@@ -197,7 +215,8 @@ gs_init()
 	fi
 
 	# To find sftp-server and DSO's in PREFIX/lib
-	PREFIX="$(cd "$(dirname "${0}")/../" || exit; pwd)"
+	PREFIX="$GS_PREFIX"
+	[[ -z "$PREFIX" ]] && PREFIX="$(cd "$(dirname "${0}")/../" || exit; pwd)"
 
 	# on OSX the dl-files are called .bundle (not .dylib) but it is generally
 	# accepted to call them .so. OSX keep those is /System/Library/gsocket
