@@ -1,0 +1,9 @@
+Package: gsocket
+Version: @@VER@@
+Homepage: https://github.com/hackerschoice/gsocket
+Architecture: all
+Essential: no
+Priority: optional
+Depends: sshfs
+Maintainer: Skyper/THC 
+Description: The Global Socket Tookit allows two users behind NAT/Firewall to establish a TCP connection with each other. Securely.
