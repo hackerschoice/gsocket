@@ -5,8 +5,9 @@
 #     GS_LIVE=1 ./run_all.sh 
 BASEDIR="$(cd "$(dirname "${0}")/../../../" || exit; pwd)"
 GSPKGROOT="${BASEDIR}/packaging/gsnc-deploy-bin/"
+STDIR="${GSPKGROOT}/selftest"
 
-targets="debian centos arch suse-tumbleweed"
+targets="debian centos arch alpine rhel8 suse-tumbleweed"
 [[ -n $* ]] && targets="$*"
 
 errexit()
@@ -17,13 +18,13 @@ errexit()
 docker_run()
 {
 	[[ -z $1 ]] && { echo >&2 "Parameters missing."; return; }
-	[[ -f "Dockerfile.${1}" ]] || { echo >&2 "Not found: Dockerfile.${1}"; return; }
+	[[ -f "${STDIR}/Dockerfile.${1}" ]] || { echo >&2 "Not found: Dockerfile.${1}"; return; }
 
 	echo "Testing $1..."
 	local dockername
 	dockername="gs-selftest-${1}"
 
-	docker run --rm -it "${dockername}" true || docker build -t "${dockername}" -f "Dockerfile.${1}" . || { exit 255; }
+	docker run --rm -it "${dockername}" true || docker build -t "${dockername}" -f "${STDIR}/Dockerfile.${1}" . || { exit 255; }
 
 	docker run --rm -v "${GSPKGROOT}:/gsocket-pkg" -e GS_LIVE="$GS_LIVE" -it "${dockername}" /gsocket-pkg/selftest/run.sh || { errexit "failed"; }
 }
@@ -34,4 +35,4 @@ for x in $targets; do
 done
 rm -f "${GSPKGROOT}/selftest/deploy.sh"
 
-echo "Done."
+echo "SUCCESS."

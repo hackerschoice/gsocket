@@ -323,6 +323,7 @@ typedef struct
 	int is_want_shutdown;	/* Call GS_shutdown() after SRP completion */
 	uint8_t token[GS_TOKEN_SIZE];
 	int eof_count;			/* How many EOF received (needed for ssl compat) */
+	int status_code;
 #ifdef WITH_GSOCKET_SSL
 	SSL_CTX *ssl_ctx;
 	SRP_VBASE *srpData;		/* Verifier is identical 4 all conns on same GS */

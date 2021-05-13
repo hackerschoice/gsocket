@@ -664,7 +664,11 @@ gs_pkt_dispatch(GS *gsocket, struct gs_sox *sox)
 				case GS_STATUS_CODE_IDLE_TIMEOUT:
 					err_str = "Idle-Timeout. Server did not receive any data";
 					break;
+				default:
+					err_str = "Unknown";
+					break;
 			}
+			gsocket->status_code = status->code;
 			gs_set_errorf(gsocket, "%s (%u)", err_str, status->code);
 			return GS_ERR_FATAL;
 		}

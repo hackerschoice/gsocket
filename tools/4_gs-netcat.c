@@ -1122,7 +1122,11 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd_notused, void *arg, int val)
 	{
 		VLOG_TSP(p, "%s\n", GS_strerror(gs));
 		if (gopt.is_multi_peer == 0)
+		{
+			if (gs->status_code == GS_STATUS_CODE_CONNREFUSED)
+				exit(61); // Used by deploy.sh to verify that server is responding.
 			exit(255);	// No server listening
+		}
 		/* This can happen if server accepts 1 connection only but client
 		 * wants to open multiple. All but the 1st connection will fail. We shall
 		 * not exit but keep the 1 connection alive.
