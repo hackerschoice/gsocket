@@ -38,8 +38,9 @@ docker_pack()
 	(cd "${dstdir}" && shasum "${filename}" && ls -al "${filename}")
 }
 
-docker_pack x86_64-centos 
+#docker_pack x86_64-centos 
 docker_pack x86_64-alpine 
-docker_pack i386-debian
+docker_pack i386-alpine 
+#docker_pack i386-debian
 docker_pack x86_64-debian
 # docker_pack x86_64-arch # NOT SUPPORTED. configure fails with "This script requires a shell more modern than all"
