@@ -1,12 +1,12 @@
 dnl Process this File with autoconf to produce a configure script.
-AC_PREREQ(2.61)
-AC_INIT([gsocket], 1.4.30)
+AC_PREREQ([2.71])
+AC_INIT([gsocket],[1.4.30-alp])
 AC_CONFIG_AUX_DIR(config)
-AC_CANONICAL_SYSTEM
+AC_CANONICAL_TARGET
 
 dnl we use automake
 AM_INIT_AUTOMAKE([foreign])
-AM_CONFIG_HEADER(config.h)
+AC_CONFIG_HEADERS(config.h)
 AM_PROG_AR
 dnl for --enable-maintainer-mode fun use:
 dnl AM_MAINTAINER_MODE 
@@ -23,7 +23,7 @@ AC_PROG_RANLIB
 dnl
 dnl Use these compiler flags if we have gcc.
 dnl
-if test $ac_cv_prog_gcc = yes; then
+if test $ac_cv_c_compiler_gnu = yes; then
   CCOPTS='-O2 -Wall'
   CFLAGS="$CCOPTS $CFLAGS"
 fi
@@ -38,7 +38,7 @@ if test "${prefix}" != "/usr/local" ; then
 fi
 
 dnl Try include paths (especially on OSX)
-trydir_i="${trydir_i} /usr/local/opt/openssl/include"
+trydir_i="${trydir_i} /usr/local/opt/openssl/include /opt/homebrew/opt/openssl/include"
 for xincdir in $trydir_i ; do
 	if test ! -d "$xincdir" ; then
 		continue;
@@ -52,7 +52,7 @@ done
 CPPFLAGS="-I${srcdir}/../include ${INCLUDES} $CPPFLAGS"
 
 dnl Try library paths...
-trydir_l="${trydir_l} /usr/local/opt/openssl/lib"
+trydir_l="${trydir_l} /usr/local/opt/openssl/lib /opt/homebrew/opt/openssl/lib"
 for xlibdir in $trydir_l ; do
 	if test ! -d "$xlibdir" ; then
 		continue;
@@ -100,7 +100,6 @@ case "$host" in
 esac
 
 dnl Checks for header files.
-AC_HEADER_STDC
 AC_HEADER_SYS_WAIT
 AC_CHECK_HEADERS(sys/time.h sys/endian.h unistd.h fnmatch.h string.h utmp.h utmpx.h pty.h openssl/srp.h util.h libutil.h netinet/in_systm.h sys/loadavg.h libproc.h)
 
@@ -109,12 +108,10 @@ AC_CHECK_HEADER(openssl/srp.h, [], [AC_MSG_ERROR([openssl/srp.h not found. Updat
 dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
 AC_TYPE_PID_T
-AC_HEADER_TIME
 
 dnl Checks for library functions.
 AC_FUNC_MEMCMP
 
-AC_TYPE_SIGNAL
 dnl If size_t is not defined, define size_t to be unsigned. 
 AC_TYPE_SIZE_T 
 dnl If uid_t is not defined, define uid_t to be int and gid_t to be int.
@@ -199,7 +196,8 @@ AC_SUBST(PERM_DSO, "${PERM_DSO}")
 AC_SUBST(SONAME_GSOCKET_DSO, "${SONAME_GSOCKET_DSO}")
 AC_SUBST(SONAME_GSOCKET_UCHROOT_DSO, "${SONAME_GSOCKET_UCHROOT_DSO}")
 AC_SUBST(REALPREFIX, "${REALPREFIX}")
-AC_OUTPUT([Makefile lib/Makefile tools/Makefile include/Makefile include/gsocket/Makefile tools/gsocket.conf man/Makefile examples/Makefile])
+AC_CONFIG_FILES([Makefile lib/Makefile tools/Makefile include/Makefile include/gsocket/Makefile tools/gsocket.conf man/Makefile examples/Makefile])
+AC_OUTPUT
 
 
 echo "

@@ -1,7 +1,7 @@
 #! /bin/bash
 
 BASEDIR="$(cd "$(dirname "${0}")/../.." || exit; pwd)"
-VER="$(grep AC_INIT "${BASEDIR}/configure.ac" | cut -f2 -d" " | cut -f1 -d')')"
+VER="$(grep AC_INIT "${BASEDIR}/configure.ac" | cut -f3 -d"[" | cut -f1 -d']')"
 
 PKGDIR="${BASEDIR}/packaging"
 SRCDIR="${BASEDIR}/packaging/build/gsocket-${VER}"

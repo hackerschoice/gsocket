@@ -69,10 +69,13 @@ if [[ -z "$NC_EOF_ARG" ]]; then
 		NC_EOF_ARG="-c"
 	elif [[ $($NC --help 2>&1) =~ "w timeout" ]]; then
 		NC_EOF_ARG="-w1"
+	elif [[ -f /bin/busybox ]]; then
+		NC_EOF_ARG="-w5"
 	else
 		NC_EOF_ARG="-q1"
 	fi
 fi
+
 if [[ -z "$NC_LISTEN_ARG" ]]; then
 	if [[ $($NC --help 2>&1) =~ "source_port" ]]; then
 		# apple default : usage: nc [-46AacCDdEFhklMnOortUuvz] [-K tc] [-b boundif] [-i interval] [-p source_port]

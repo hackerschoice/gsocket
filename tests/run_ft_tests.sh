@@ -15,6 +15,12 @@ elif [[ $(uname) =~ FreeBSD ]]; then
 	FMTIME(){ stat -f%m "$1";}
 	FSTAT(){ stat -f%p-%m-%z "$1";}
 	DSTAT(){ stat -L -f%p-%m "$1";}
+elif [[ -f /bin/busybox ]]; then
+	FSIZE(){ stat -c%s "$1";}
+	FACCESS(){ stat -c%a "$1";}
+	FMTIME(){ stat -c%Y "$1";}
+	FSTAT(){ stat -c%a-%Y-%s "$1";}
+	DSTAT(){ stat -L -c%a-%Y "$1";}
 else
 	FSIZE(){ stat --format=%s "$1";}
 	FACCESS(){ stat --format=%a "$1";}
