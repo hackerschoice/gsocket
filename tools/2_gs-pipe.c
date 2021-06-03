@@ -136,7 +136,7 @@ my_getopt(int argc, char *argv[])
 				break;
 			case '?':
 				usage("sklgqwACT");
-				exit(255);
+				exit(EX_UNKNWNCMD);
 		}
 	}
 
@@ -164,6 +164,6 @@ main(int argc, char *argv[])
 	if (ret == 0)
 		SSL_read(ssl, buf, sizeof buf);
 
-	exit(255);
+	exit(EX_NOTREACHED);
 	return -1;	/* NOT REACHED */
 }

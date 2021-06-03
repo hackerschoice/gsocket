@@ -111,7 +111,7 @@ gs_create(void)
 static void
 cb_sigterm(int sig)
 {
-	exit(255);	// will call cb_atexit()
+	exit(EX_SIGTERM);	// will call cb_atexit()
 }
 
 void
@@ -175,7 +175,7 @@ init_vars(void)
 		ERREXIT("%s\n", GS_CTX_strerror(&gopt.gs_ctx));
 
 	if (is_greetings)
-		VLOG("=Secret         : \"%s\"\n", gopt.sec_str);
+		VLOG("=Secret         : %s\n", gopt.sec_str);
 
 	/* Convert a secret string to an address */
 	GS_ADDR_str2addr(&gopt.gs_addr, gopt.sec_str);
@@ -248,7 +248,7 @@ getcwdx(void)
 {
 #if defined(__sun) && defined(HAVE_OPEN64)
 	// This is solaris 10
-	return getcwd(NULL, PATH_MAX + 1); // solaris10 segfaults if size is 0...
+	return getcwd(NULL, GS_PATH_MAX + 1); // solaris10 segfaults if size is 0...
 #else
 	return getcwd(NULL, 0);
 #endif
@@ -999,7 +999,7 @@ gs_watchdog(void)
 			{
 				if (errno == EINTR)
 					continue;
-				exit(255); // FATAL
+				exit(EX_BADSELECT); // FATAL
 			}
 
 			// If parent dies then die immediately (this closes fds[0] and all child will die)

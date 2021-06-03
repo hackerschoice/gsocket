@@ -65,6 +65,13 @@ typedef struct cap_rights       cap_rights_t;
 # define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
 #endif
 
+// debian-hurd does not define PATH_MAX (and has no limit on filename length)
+#ifndef PATH_MAX
+# define GS_PATH_MAX      4096
+#else
+# define GS_PATH_MAX      PATH_MAX
+#endif
+
 #define D_RED(a)	"\033[0;31m"a"\033[0m"
 #define D_GRE(a)	"\033[0;32m"a"\033[0m"
 #define D_YEL(a)	"\033[0;33m"a"\033[0m"

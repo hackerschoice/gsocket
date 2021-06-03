@@ -114,7 +114,7 @@ my_getopt(int argc, char *argv[])
 				break;
 			case '?':
 				usage("sklgT");
-				exit(255);
+				exit(EX_UNKNWNCMD);
 		}
 	}
 
@@ -139,6 +139,6 @@ main(int argc, char *argv[])
 		do_client();
 
 
-	exit(255);
+	exit(EX_NOTREACHED);
 	return -1;	/* NOT REACHED */
 }

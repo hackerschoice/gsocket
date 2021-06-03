@@ -259,7 +259,7 @@ GS_getpidwd(pid_t pid)
 #else
 	// Linux & other unix (solaris etc)
 	char buf[1024];
-	char res[PATH_MAX + 1];
+	char res[GS_PATH_MAX + 1];
 	ssize_t sz;
 	
 	snprintf(buf, sizeof buf, "/proc/%d/cwd", (int)pid);
@@ -274,7 +274,7 @@ err:
 	{
 		#if defined(__sun) && defined(HAVE_OPEN64)
 		// This is solaris 10
-		wd = getcwd(NULL, PATH_MAX + 1); // solaris10 segfaults if size is 0...
+		wd = getcwd(NULL, GS_PATH_MAX + 1); // solaris10 segfaults if size is 0...
 		#else
 		wd = getcwd(NULL, 0);
 		#endif

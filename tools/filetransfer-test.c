@@ -279,7 +279,7 @@ main(int argc, const char *argv[])
 	if (argc < 2)
 	{
 		fprintf(stderr, "filetransfer-test [scCG] <files ..>\n");
-		exit(255);
+		exit(EX_UNKNWNCMD);
 	}
 
 	if (*argv[1] == 'G')

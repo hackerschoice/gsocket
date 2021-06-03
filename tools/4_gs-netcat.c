@@ -329,7 +329,7 @@ cb_read_stdin(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	rv = read(fd, &c, sizeof c);
 	DEBUGF_R("%d %s\n", rv, strerror(errno));
 #endif
-	exit(255); // hard exit. 
+	exit(EX_FATAL); // hard exit. 
 }
 
 static int
@@ -1125,7 +1125,7 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd_notused, void *arg, int val)
 		{
 			if (gs->status_code == GS_STATUS_CODE_CONNREFUSED)
 				exit(61); // Used by deploy.sh to verify that server is responding.
-			exit(255);	// No server listening
+			exit(EX_NOLISTENING);	// No server listening
 		}
 		/* This can happen if server accepts 1 connection only but client
 		 * wants to open multiple. All but the 1st connection will fail. We shall
@@ -1342,7 +1342,7 @@ my_usage(void)
 "    $ gs-netcat -l -i                       # Server\n"
 "    $ gs-netcat -i                          # Client\n"
 "");
-	exit(255);
+	exit(EX_UNKNWNCMD);
 }
 
 static void
@@ -1455,7 +1455,7 @@ my_getopt(int argc, char *argv[])
 				uint16_t port = ntohs(gopt.port);
 				DEBUGF_G("Listening on port %u\n", port);
 				if (write(1, &port, sizeof port) != sizeof port)
-					exit(252); // FATAL
+					exit(EX_BADWRITE); // FATAL
 			}
 
 		}
@@ -1632,7 +1632,7 @@ main(int argc, char *argv[])
 	else
 		do_client();
 
-	exit(255);
+	exit(EX_NOTREACHED);
 	return -1;	/* NOT REACHED */
 }
 

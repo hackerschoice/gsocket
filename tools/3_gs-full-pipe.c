@@ -260,7 +260,7 @@ my_getopt(int argc, char *argv[])
 			case 'l':	/* -l not allowed for full pipe */
 			case '?':
 				usage("skrgqwACTi");
-				exit(255);
+				exit(EX_UNKNWNCMD);
 		}
 	}
 
@@ -278,6 +278,6 @@ main(int argc, char *argv[])
 
 	do_client_or_server();
 
-	exit(255);
+	exit(EX_NOTREACHED);
 	return -1;	/* NOT REACHED */
 }

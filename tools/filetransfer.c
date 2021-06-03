@@ -567,7 +567,7 @@ add_file_to_list(GS_FT *ft, GS_LIST *gsl, const char *fname, uint32_t globbing_i
 
 	// Get absolute and real path as CWD may change before
 	// upload starts.
-	char *realfname = malloc(PATH_MAX); // solaris10 does not support realpath(ptr, NULL);
+	char *realfname = malloc(GS_PATH_MAX); // solaris10 does not support realpath(ptr, NULL);
 	if (realpath(fname, realfname) == NULL)
 	{
 		XFREE(realfname);

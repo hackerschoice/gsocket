@@ -97,7 +97,7 @@ shift $((OPTIND -1))
 
 command -v "$1" >/dev/null 2>&1 || { echo >&2 "gsocket: command not found: ${1}"; exit 1; }
 
-if [[ x"$OSTYPE" == "xdarwin"* ]]; then
+if [[ "$OSTYPE" == "darwin"* ]]; then
 	# OSX does not allow LD_PRELOAD of binaries in /usr/. Copy to tmp...
 	ROOTDIR=$(mktemp -d -t thc-gs)
 	PROGBIN_FULLPATH=$(which "$1")
@@ -127,7 +127,7 @@ fi
 env_arg_init
 shift 1
 
-if [[ x"$OSTYPE" == "xdarwin"* ]]; then
+if [[ "$OSTYPE" == "darwin"* ]]; then
 	GS_NETCAT_BIN=${GS_NETCAT_BIN} GS_HIJACK_PORTS="${GS_HIJACK_PORTS}" GSOCKET_SOCKS_IP="${GSOCKET_SOCKS_IP}" GSOCKET_ARGS="${ENV_ARGS} ${ARGS_NEW[*]}" GSOCKET_SECRET="${GSOCKET_SECRET}" DYLD_INSERT_LIBRARIES=${GS_SO_BIN} DYLD_FORCE_FLAT_NAMESPACE=1 exec "${PROGBIN}" "$@"
 else
 	GS_NETCAT_BIN=${GS_NETCAT_BIN} GS_HIJACK_PORTS="${GS_HIJACK_PORTS}" GSOCKET_SOCKS_IP="${GSOCKET_SOCKS_IP}" GSOCKET_ARGS="${ENV_ARGS} ${ARGS_NEW[*]}" GSOCKET_SECRET="${GSOCKET_SECRET}" LD_PRELOAD=${GS_SO_BIN} exec "${PROGBIN}" "$@"
