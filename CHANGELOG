@@ -1,0 +1,11 @@
+
+gsocket-1.4.31-dev
+    * -v, -vv and -vvv for verbosity
+    * Auto-Reconnect for -l (server) when DNS fails and keep re-trying
+      until success.
+    * Downgraded automake requirements to 2.69
+    * deploy.sh support for Raspberry PI 4b+ (armv7l)
+    * Debian HURD support (https://www.debian.org/ports/hurd/)
+    * unique exit() codes (thanks acpizer!)
+    * =Secret without quotes for easy cut & paste on windows (thanks CuCai!)
+    * CHANGELOG (thanks xaitax!)
