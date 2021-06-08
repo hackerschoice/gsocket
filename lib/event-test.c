@@ -22,7 +22,7 @@ main(int argc, char *argv[])
 	GS_EVENT my_e;
 	GS_EVENT *my_e_ptr;
 
-	GS_library_init(stderr, stderr);
+	GS_library_init(stderr, stderr, NULL);
 	srand(time(NULL));
 
 	GS_EVENT_MGR_init(&mgr);

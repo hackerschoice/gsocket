@@ -156,7 +156,7 @@ peer_free(GS_SELECT_CTX *ctx, struct _peer *p)
 	{
 		char buf[512];
 		peer_mk_stats(buf, sizeof buf, p);
-		VLOG_TSP(p, "%s", buf);
+		GS_LOG_TSP(p, "%s", buf);
 		if ((p->is_network_forward) && (p->socks.dst_port != 0))
 			vlog_hostname(p, "Remote: ", p->socks.dst_port);
 	}
@@ -222,7 +222,7 @@ cbe_peer_timeout(void *ptr)
 	if (expire >= GS_TV_TO_USEC(&gopt.tv_now))
 		return 0; // not yet expired.
 
-	VLOG_TSP(p, "Idle Timeout.\n");
+	GS_LOG_TSP(p, "Idle Timeout.\n");
 	peer_free(p->gs->ctx->gselect_ctx, p);
 
 	return -1; // Event manager to free this event.
@@ -403,7 +403,7 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 		if (sz < 0)
 		{
 			DEBUGF_R("BAD AUTH COOKIE\n");
-			VLOG_TSP(p, "Bad Auth Cookie.\n");
+			GS_LOG_TSP(p, "Bad Auth Cookie.\n");
 			peer_free(ctx, p);
 			return GS_SUCCESS;
 		}
@@ -828,7 +828,7 @@ cb_complete_connect(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	{
 		DEBUGF("%s\n", __func__);
 			
-		VLOG_TSP(p, "%s\n", strerror(errno));
+		GS_LOG_TSP(p, "%s\n", strerror(errno));
 		peer_free(ctx, p);
 		return GS_SUCCESS;
 	}
@@ -916,11 +916,11 @@ vlog_hostname(struct _peer *p, const char *desc, uint16_t port)
 	const char *u = gopt.is_udp?"(UDP)":"(TCP)";
 
 	if (hp == 443)
-		VLOG("    %s"D_BLU("%s")":"D_GRE("%d")" %s\n", desc, p->socks.dst_hostname, hp, u);
+		GS_LOG("    %s"D_BLU("%s")":"D_GRE("%d")" %s\n", desc, p->socks.dst_hostname, hp, u);
 	else if (hp == 80)
-		VLOG("    %s"D_BLU("%s")":"D_YEL("%d")" %s\n", desc, p->socks.dst_hostname, hp, u);
+		GS_LOG("    %s"D_BLU("%s")":"D_YEL("%d")" %s\n", desc, p->socks.dst_hostname, hp, u);
 	else
-		VLOG("    %s"D_BLU("%s")":"D_BRED("%d")" %s\n", desc, p->socks.dst_hostname, hp, u);
+		GS_LOG("    %s"D_BLU("%s")":"D_BRED("%d")" %s\n", desc, p->socks.dst_hostname, hp, u);
 }
 
 static int
@@ -935,7 +935,7 @@ peer_forward_connect(struct _peer *p, uint32_t ip, uint16_t port)
 	if (ret <= -2)
 	{
 		DEBUGF("%s peer-free\n", __func__);
-		VLOG_TSP(p, "%s\n", strerror(errno));
+		GS_LOG_TSP(p, "%s\n", strerror(errno));
 		peer_free(ctx, p);
 		return -1;
 	}
@@ -959,7 +959,7 @@ peer_new(GS_SELECT_CTX *ctx, GS *gs)
 
 	p = peer_new_init(gs);
 
-	VLOG_TSP(p, "New Connection\n");
+	GS_LOG_TSP(p, "New Connection\n");
 
 	/* Create a new fd to relay gs-traffic to/from */
 	if ((gopt.cmd != NULL) || (gopt.is_interactive))
@@ -1120,12 +1120,12 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd_notused, void *arg, int val)
 	DEBUGF_M("GS_connect(fd=%d) == %d\n", gs->fd, ret);
 	if (ret == GS_ERR_FATAL)
 	{
-		VLOG_TSP(p, "%s\n", GS_strerror(gs));
+		GS_LOG_TSP(p, "%s\n", GS_strerror(gs));
 		if (gopt.is_multi_peer == 0)
 		{
 			if (gs->status_code == GS_STATUS_CODE_CONNREFUSED)
-				exit(61); // Used by deploy.sh to verify that server is responding.
-			exit(EX_NOLISTENING);	// No server listening
+				exit(EX_CONNREFUSED); // Used by deploy.sh to verify that server is responding.
+			exit(EX_FATAL);
 		}
 		/* This can happen if server accepts 1 connection only but client
 		 * wants to open multiple. All but the 1st connection will fail. We shall
@@ -1267,7 +1267,7 @@ cb_accept(GS_SELECT_CTX *ctx, int listen_fd, void *arg, int val)
 	memset(&addr, 0, sizeof addr);
 	socklen_t len = sizeof addr;
 	getpeername(fd, (struct sockaddr *)&addr, &len);
-	VLOG_TSP(p, "New Connection from %s:%d\n", inet_ntoa(addr.sin_addr), ntohs(addr.sin_port));
+	GS_LOG_TSP(p, "New Connection from %s:%d\n", inet_ntoa(addr.sin_addr), ntohs(addr.sin_port));
 
 	return GS_SUCCESS;
 }
@@ -1317,7 +1317,7 @@ my_usage(void)
 "gs-netcat [-lwiC] [-e cmd] [-p port] [-d ip]\n"
 "");
 
-	usage("skrlSgqwCTL");
+	usage("skrlSgvqwCTL");
 	fprintf(stderr, ""
 "  -S           Act as a SOCKS server [needs -l]\n"
 "  -D           Daemon & Watchdog mode [background]\n"
@@ -1482,7 +1482,7 @@ my_getopt(int argc, char *argv[])
 	gopt.gsocket = gs_create();
 	
 	if (getenv("GSOCKET_NO_GREETINGS") == NULL)
-		VLOG("=Encryption     : %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
+		GS_LOG("=Encryption     : %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
 
 	atexit(cb_atexit);
 }

@@ -31,7 +31,7 @@ main(int argc, char *argv[])
 {
 	GS_RL_CTX rl;
 
-	GS_library_init(stderr, stderr);
+	GS_library_init(stderr, stderr, NULL);
 	gopt.err_fp = stderr;
 	gopt.log_fp = stderr;
 

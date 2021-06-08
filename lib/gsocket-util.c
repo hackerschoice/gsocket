@@ -130,7 +130,7 @@ GS_gen_secret(void)
 {
 	int ret;
 
-	GS_library_init(stderr, stderr);
+	GS_library_init(stderr, stderr, NULL);
 
 	/* Generate a new secret */
 	uint8_t buf[GS_SECRET_MAX_LEN + 1];

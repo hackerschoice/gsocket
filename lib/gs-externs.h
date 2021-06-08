@@ -10,4 +10,6 @@ extern int gs_debug_level;
 #endif
 extern FILE *gs_errfp;
 
+void gs_log(int type, int level, char *fmt, ...);
+
 #endif /* !__LIBGSOCKET_GS_EXTERNS_H__ */

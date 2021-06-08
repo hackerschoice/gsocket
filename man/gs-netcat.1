@@ -7,7 +7,7 @@
 .Nd transfer data, forward traffic and execute commands on a remote host. Securely.
 .Sh SYNOPSIS
 .Nm gs-netcat
-.Op Fl rlgqwCTSDiu
+.Op Fl rlgvqwCTSDiu
 .Op Fl s Ar secret
 .Op Fl k Ar keyfile
 .Op Fl L Ar logfile
@@ -79,6 +79,8 @@ Use TOR. The
 tool will connect via TOR to the GSRN. This requires TOR to be installed and running. The IP and PORT of the TOR server can be set using environment variables.
 .It Fl u
 Use UDP instead of TCP for port forwarding. Needs -p. 
+.It Fl v
+Prints status messages. Use -vv to be more verbose and -vvv to be insanely verbose. 
 .It Fl w
 Client to wait for the listening server to become available.
 .El

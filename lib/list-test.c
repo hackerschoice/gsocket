@@ -47,7 +47,7 @@ main(int argc, char *argv[])
 {
 	GS_LIST list;
 
-	GS_library_init(stderr, stderr);
+	GS_library_init(stderr, stderr, NULL);
 	srand(time(NULL));
 
 	GS_LIST_init(&list, 0);

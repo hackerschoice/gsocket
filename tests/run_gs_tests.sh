@@ -67,7 +67,7 @@ if [[ -z "$NC_EOF_ARG" ]]; then
 	if [[ $($NC --help 2>&1) =~ "close connection on EOF" ]]; then
 		NC_EOF_ARG="-c"
 	elif [[ $($NC --help 2>&1) =~ "w timeout" ]]; then
-		NC_EOF_ARG="-w1"
+		NC_EOF_ARG="-w2" # cygwin needs at least -w2 (-w1 fails at times)
 	elif [[ -f /bin/busybox ]]; then
 		NC_EOF_ARG="-w5"
 	else

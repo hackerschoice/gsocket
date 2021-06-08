@@ -271,7 +271,7 @@ main(int argc, const char *argv[])
 	int n;
 
 
-	GS_library_init(stderr, stderr);
+	GS_library_init(stderr, stderr, NULL);
 	gopt.err_fp = stderr;
 	gopt.log_fp = stderr;
 	// gopt.err_fp = NULL; // un-comment to DISABLE DEBUG
