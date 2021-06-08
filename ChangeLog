@@ -1,5 +1,5 @@
 
-gsocket-1.4.31-dev
+1.4.31-dev - 2021-06-08
     * -v, -vv and -vvv for verbosity
     * Auto-Reconnect for -l (server) when DNS fails and keep re-trying
       until success.
