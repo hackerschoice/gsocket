@@ -101,8 +101,9 @@ static void gs_mgr_free(struct _gs_so_mgr *m);
 
 // STATIC variables
 static int is_init;
-static struct _fd_info fd_list[FD_SETSIZE];
-static struct _gs_so_mgr mgr_list[FD_SETSIZE];
+static struct _fd_info *fd_list;
+static int g_fd_max;
+static struct _gs_so_mgr mgr_list[MAX(1024, FD_SETSIZE)];
 static char *g_secret; // global secret
 static struct _gs_portrange_list hijack_ports;
 static int is_debug;
@@ -147,18 +148,41 @@ thc_init(const char *fname)
 	g_secret = getenv("GSOCKET_SECRET");
 }
 
+static struct _fd_info *
+fdi_get(int fd)
+{
+	if (is_init == 0)
+		return NULL; // OSX: See OSX-BUG-MALLOC1
+
+	if (fd_list == NULL)
+	{
+		g_fd_max = MAX(FD_SETSIZE, getdtablesize());
+		fd_list = calloc(g_fd_max, sizeof (struct _fd_info));
+		if (fd_list == NULL)
+			return NULL;
+	}
+
+	if (fd < 0)
+		return NULL;
+	if (fd >= g_fd_max)
+		return NULL;
+
+	return &fd_list[fd];
+}
+
 typedef int (*real_close_t)(int fd);
 static int real_close(int fd) { return ((real_close_t)dlsym(RTLD_NEXT, "close"))(fd); }
 static int
 thc_close(const char *fname, int fd)
 {
+	// OSX-BUG-MALLOC1
 	// thc_init(fname); // OSX: segfault. strdup() and unsetenv() seem to segfault.
-
+	// OSX seems to call close() before libc has fully initialized the malloc-subsystem
+	// and segfaults on malloc...which is used by thc_init in strdup() and unsetenv()...
 	DEBUGF_Y("close(%d)\n", fd);
-	if (fd >= 0)
-	{
-		memset(&fd_list[fd], 0, sizeof fd_list[fd]);
-	}
+	struct _fd_info *fdi = fdi_get(fd);
+	if (fdi != NULL)
+		memset(fdi, 0, sizeof *fdi);
 
 	return real_close(fd);
 }
@@ -247,7 +271,9 @@ thc_connectx(const char *fname, int sox, const sa_endpoints_t *ep, sae_associd_t
 	struct sockaddr_in *a = (struct sockaddr_in *)ep->sae_dstaddr;
 	DEBUGF("connect(%s:%d)\n", int_ntoa(a->sin_addr.s_addr), ntohs(a->sin_port));
 
-	fdi = &fd_list[sox];
+	fdi = fdi_get(sox);
+	if (fdi == NULL)
+		return real_connectx(sox, ep, aid, flags, iov, iovcnt, len, cid);
 
 	rv = hijack_conn(&fdi->is_tor, (struct sockaddr_in *)addr);
 	if (rv != 0)
@@ -285,7 +311,9 @@ thc_connect(const char *fname, int sox, const struct sockaddr *addr, socklen_t a
 	struct sockaddr_in *a = (struct sockaddr_in *)addr;
 	DEBUGF("connect(%s:%d)\n", int_ntoa(a->sin_addr.s_addr), ntohs(a->sin_port));
 
-	fdi = &fd_list[sox];
+	fdi = fdi_get(sox);
+	if (fdi == NULL)
+		return real_connect(sox, addr, addr_len);
 
 	// Check if bind() was called before connect().
 	// bind() was prepared for 'listen' and bind() to a random port number.
@@ -334,8 +362,8 @@ thc_bind(const char *fname, int sox, const struct sockaddr *addr, socklen_t addr
 	if ((sox < 0) || (addr == NULL))
 		return real_bind(sox, addr, addr_len);
 
-	fdi = &fd_list[sox];
-	if ((fdi->is_bind) || !( (addr->sa_family == AF_INET) || (addr->sa_family == AF_INET6)) )
+	fdi = fdi_get(sox);
+	if ((fdi == NULL) || (fdi->is_bind) || !( (addr->sa_family == AF_INET) || (addr->sa_family == AF_INET6)) )
 	{
 		DEBUGF("is_bind=%d, family=%d\n", fdi->is_bind, addr->sa_family);
 		return real_bind(sox, addr, addr_len);
@@ -417,9 +445,9 @@ thc_listen(const char *fname, int sox, int backlog)
 	if (sox < 0)
 		return real_listen(sox, backlog); // good luck! let glibc handle crap.
 
-	fdi = &fd_list[sox];
+	fdi = fdi_get(sox);
 
-	if ((fdi->is_listen) || (fdi->is_hijack == 0))
+	if ((fdi == NULL) || (fdi->is_listen) || (fdi->is_hijack == 0))
 		return real_listen(sox, backlog);
 
 #ifndef IS_SOLARIS
@@ -463,7 +491,9 @@ thc_accept4(const char *fname, int ls, const struct sockaddr *addr, socklen_t *a
 
 #ifdef GS_WITH_AUTHCOOKIE
 	struct _fd_info *fdi;
-	fdi = &fd_list[ls];
+	fdi = fdi_get(ls);
+	if (fdi == NULL)
+		return sox;
 	int rv;
 	uint8_t cookie[GS_AUTHCOOKIE_LEN];
 	uint8_t ac_buf[GS_AUTHCOOKIE_LEN];
@@ -774,7 +804,7 @@ gs_mgr_new(const char *secret, uint16_t port_orig, uint16_t *port_fake, enum gs_
 		DEBUGF("FAILED\n");
 
 		sleep(1); // Good to sleep to prevent rapit auto-restart
-		exit(255); // NOT REACHED
+		exit(EX_EXECFAILED); // NOT REACHED 
 	}
 	// PARENT
 	real_close(fds[0]);
@@ -840,7 +870,7 @@ int connect(int socket, const struct sockaddr *addr, socklen_t addr_len) {return
 #if defined(HAVE_CONNECTX)
   int connectx(int socket, const sa_endpoints_t *endpoints, sae_associd_t associd, unsigned int flags, const struct iovec *iov, unsigned int iovcnt, size_t *len, sae_connid_t *connid) {return thc_connectx(__func__, socket, endpoints, associd, flags, iov, iovcnt, len, connid); }
 #endif
-int close(int fd) {return thc_close(__func__, fd); }
+int close(int fd) { return thc_close(__func__, fd); }
 int bind(int socket, const struct sockaddr *addr, socklen_t addr_len) {return thc_bind(__func__, socket, addr, addr_len); }
 int listen(int socket, int backlog) {return thc_listen(__func__, socket, backlog); }
 #if !defined(IS_SOL10)

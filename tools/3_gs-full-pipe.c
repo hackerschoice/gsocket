@@ -260,14 +260,14 @@ my_getopt(int argc, char *argv[])
 			case 'l':	/* -l not allowed for full pipe */
 			case '?':
 				usage("skrgqwACTi");
-				exit(255);
+				exit(EX_UNKNWNCMD);
 		}
 	}
 
 	init_vars();			/* from utils.c */
 	gopt.gsocket = gs_create();
 
-	VLOG("=Encryption: %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
+	GS_LOG("=Encryption: %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
 }
 
 int
@@ -278,6 +278,6 @@ main(int argc, char *argv[])
 
 	do_client_or_server();
 
-	exit(255);
+	exit(EX_NOTREACHED);
 	return -1;	/* NOT REACHED */
 }

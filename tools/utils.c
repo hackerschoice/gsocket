@@ -111,7 +111,7 @@ gs_create(void)
 static void
 cb_sigterm(int sig)
 {
-	exit(255);	// will call cb_atexit()
+	exit(EX_SIGTERM);	// will call cb_atexit()
 }
 
 void
@@ -132,10 +132,44 @@ get_winsize(void)
 	}
 }
 
+// Callback for gs-library to pass log messages to us.
+static void
+cb_gs_log(struct _gs_log_info *l)
+{
+	if (l == NULL)
+		return;
+
+	if (gopt.is_quiet)
+		return;
+
+	// DEBUGF_Y("my level=%d, msg level=%d\n", gopt.verbosity, l->level);
+#ifndef DEBUG
+	// Return if this is _NOT_ a DEBUG-build but we get a TYPE_DEBUG
+	// (should not happen).
+	if (l->type == GS_LOG_TYPE_DEBUG)
+		return;
+#endif
+
+	FILE *fp = gopt.log_fp;
+	if (l->type == GS_LOG_TYPE_ERROR)
+	{
+		fp = gopt.err_fp;
+	}
+
+	if (fp == NULL)
+		return;
+
+	if (l->level > gopt.verbosity)
+		return; // Not interested. 
+
+	fprintf(fp, "%s", l->msg);
+	fflush(fp);
+}
+
 void
 init_vars(void)
 {
-	GS_library_init(gopt.err_fp, /* Debug Output */ gopt.err_fp);
+	GS_library_init(gopt.err_fp, /* Debug Output */ gopt.err_fp, cb_gs_log);
 	GS_LIST_init(&gopt.ids_peers, 0);
 	GS_CTX_init(&gopt.gs_ctx, &gopt.rfd, &gopt.wfd, &gopt.r, &gopt.w, &gopt.tv_now);
 
@@ -168,14 +202,14 @@ init_vars(void)
 
 	char *str = getenv("GSOCKET_ARGS");
 	if ((str != NULL) && (strlen(str) > 0) && (is_greetings))
-		VLOG("=Extra arguments: '%s'\n", str);
+		GS_LOG_V("=Extra arguments: '%s'\n", str);
 
 	gopt.sec_str = GS_user_secret(&gopt.gs_ctx, gopt.sec_file, gopt.sec_str);
 	if (gopt.sec_str == NULL)
 		ERREXIT("%s\n", GS_CTX_strerror(&gopt.gs_ctx));
 
 	if (is_greetings)
-		VLOG("=Secret         : \"%s\"\n", gopt.sec_str);
+		GS_LOG("=Secret         : %s\n", gopt.sec_str);
 
 	/* Convert a secret string to an address */
 	GS_ADDR_str2addr(&gopt.gs_addr, gopt.sec_str);
@@ -197,6 +231,9 @@ usage(const char *params)
 				break;
 			case 'q':
 				fprintf(stderr, "  -q           Quiet. No log output\n");
+				break;
+			case 'v':
+				fprintf(stderr, "  -v           Verbose. -vv more verbose. -vvv insanely verbose\n");
 				break;
 			case 'r':
 				fprintf(stderr, "  -r           Receive-only. Terminate when no more data.\n");
@@ -248,7 +285,7 @@ getcwdx(void)
 {
 #if defined(__sun) && defined(HAVE_OPEN64)
 	// This is solaris 10
-	return getcwd(NULL, PATH_MAX + 1); // solaris10 segfaults if size is 0...
+	return getcwd(NULL, GS_PATH_MAX + 1); // solaris10 segfaults if size is 0...
 #else
 	return getcwd(NULL, 0);
 #endif
@@ -264,6 +301,9 @@ do_getopt(int argc, char *argv[])
 	{
 		switch (c)
 		{
+			case 'v':
+				gopt.verbosity += 1;
+				break;
 			case 'L':
 				gopt.is_logfile = 1;
 				gopt.log_fp = fopen(optarg, "a");
@@ -297,7 +337,7 @@ do_getopt(int argc, char *argv[])
 				 * (at least for the listening server to submit the token securely to the server so that
 				 * the server rejects any listening attempt that uses a bad token)
 				 */
-				VLOG("*** WARNING *** -a not fully supported yet. Trying our best...\n");
+				GS_LOG("*** WARNING *** -a not fully supported yet. Trying our best...\n");
 				gopt.token_str = optarg;
 				break;
 			case 'l':
@@ -317,7 +357,7 @@ do_getopt(int argc, char *argv[])
 				exit(0);
 			case '3':
 				if (strcmp(optarg, "1337") == 0)
-					VLOG("!!Greets to 0xD1G, xaitax and the rest of https://t.me/thcorg!!\n");
+					GS_LOG("!!Greets to 0xD1G, xaitax and the rest of https://t.me/thcorg!!\n");
 		}
 	}
 }
@@ -999,7 +1039,7 @@ gs_watchdog(void)
 			{
 				if (errno == EINTR)
 					continue;
-				exit(255); // FATAL
+				exit(EX_BADSELECT); // FATAL
 			}
 
 			// If parent dies then die immediately (this closes fds[0] and all child will die)

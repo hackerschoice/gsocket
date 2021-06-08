@@ -4,7 +4,7 @@
  *
  * OSX
  * gcc -shared -fPIC -o uchroot.dylib uchroot.c
- * DYLD_INSERT_LIBRARIES=$PWD/uchroot.dylib DYLD_FORCE_FLAT_NAMESPACE=1 <executeable>
+ * DYLD_INSERT_LIBRARIES=$PWD/gsocket_uchroot_dso.so.0 DYLD_FORCE_FLAT_NAMESPACE=1 <executeable>
  *
  * export GSOCKET_DEBUG=1 # enable debug output to stderr
  *
@@ -83,10 +83,17 @@ that the client should not.
 # include <windows.h>
 #endif
 
+// debian-hurd does not define PATH_MAX (and has no limit on filename length)
+#ifndef PATH_MAX
+# define GS_PATH_MAX      4096
+#else
+# define GS_PATH_MAX      PATH_MAX
+#endif
+
 static size_t clen;
-static char rp_cwd[PATH_MAX + 1];
+static char rp_cwd[GS_PATH_MAX + 1];
 static int is_init;
-static char rp_buf[PATH_MAX + 1];
+static char rp_buf[GS_PATH_MAX + 1];
 static int is_debug = 1;
 static int is_no_hijack;
 
@@ -122,7 +129,7 @@ thc_init(void)
 	char *ptr;
 #if defined(__sun) && defined(HAVE_OPEN64)
 	// This is solaris 10
-	ptr = getcwd(NULL, PATH_MAX + 1); // solaris10 segfaults if size is 0...
+	ptr = getcwd(NULL, GS_PATH_MAX + 1); // solaris10 segfaults if size is 0...
 #else
 	ptr = getcwd(NULL, 0);
 #endif
@@ -186,7 +193,7 @@ thc_access(const char *name, const char *fname, int fullmatch)
 static char *
 thc_realpath(const char *fname, const char *path, char *rp)
 {
-	char abpath[PATH_MAX + 1];
+	char abpath[GS_PATH_MAX + 1];
 	const char *ptr;
 	char *res;
 
@@ -252,7 +259,7 @@ thc_realpath(const char *fname, const char *path, char *rp)
 static char *
 thc_realfile(const char *fname, const char *file, char *dst)
 {
-	char dirn[PATH_MAX + 1];
+	char dirn[GS_PATH_MAX + 1];
 	char *ptr;
 
 	DEBUGF("thc_realfile(func=%s, file=%s, dst)\n", fname, file);
@@ -275,7 +282,7 @@ thc_realfile(const char *fname, const char *file, char *dst)
 	return dst;
 }
 
-#ifdef linux
+#if defined(linux) || defined(__GNU__)
 typedef int (*real_funcintifv_t)(int ver, const char *path, void *buf);
 static int real_funcintifv(const char *fname, int ver, const char *path, void *buf) {return ((real_funcintifv_t)dlsym(RTLD_NEXT, fname))(ver, path, buf);}
 static int
@@ -493,7 +500,7 @@ thc_stat(const char *fname, const char *path, void *buf)
 	return thc_funcintfv(fname, path, buf, 1);
 }
 
-#if !defined(IS_SOL11) && !defined(__FreeBSD__) && !defined(stat64)
+#if !defined(IS_SOL11) && !defined(__FreeBSD__) && !defined(stat64) && !defined(__APPLE__)
 // Not Sol11, Not FBSD and stat64 is not a define itself (as it is on alpine Linux)
 int stat64(const char *path, struct stat64 *buf) {return thc_stat(__func__, path, buf); }
 #endif
@@ -512,7 +519,7 @@ thc_lstat(const char *fname, const char *path, void *buf)
 }
 
 #ifndef __CYGWIN__
-#if !defined(IS_SOL11) && !defined(__FreeBSD__) && !defined(stat64)
+#if !defined(IS_SOL11) && !defined(__FreeBSD__) && !defined(stat64) && !defined(__APPLE__)
 int lstat64(const char *path, struct stat64 *buf) {return thc_lstat(__func__, path, buf); }
 #endif
 

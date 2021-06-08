@@ -15,7 +15,7 @@
 # # delete all after use:
 # tc qdisc del dev ${DEV} root
 
-# depend on: md5sum, bc, rsync, netstat, netcat, dd, ssh, sshd
+# depend on: md5sum, rsync, netstat, netcat, dd, ssh, sshd
 
 # Debian packaging: Force CWD to ./tests/
 BASEDIR="$(cd "$(dirname "${0}")" || exit; pwd)"
@@ -40,9 +40,8 @@ PATH=${GS_BINDIR}:/usr/local/bin:$PATH
 SLEEP_WD=20	# Max seconds to wait for a process to finish receiving...
 command -v md5 >/dev/null 2>&1 		&& MD5(){ md5 -q "${1}";}
 command -v md5sum >/dev/null 2>&1 	&& MD5() { md5sum "${1}" | cut -f1 -d' ';}
-command -v bc >/dev/null 2>&1 || { echo >&2 "bc not installed. apt-get install bc."; exit 255; }
 command -v rsync >/dev/null 2>&1 || { echo >&2 "rsync not installed. apt-get install rsync."; exit 255; }
-command -v netstat >/dev/null 2>&1 || { echo >&2 "netstat not installed. apt-get install net-tools."; exit 255; }
+command -v netstat >/dev/null 2>&1 && { IS_HAVE_NETSTAT=1; }
 # Use traditional netcat that supports "netcat -nlp" for cross-platform comp.
 # on CentOS there is only nmap's netcat as 'nc' but we are expecting 'netcat()'.
 if [[ "$(nc --version 2>&1)" =~ Ncat ]]; then
@@ -68,7 +67,7 @@ if [[ -z "$NC_EOF_ARG" ]]; then
 	if [[ $($NC --help 2>&1) =~ "close connection on EOF" ]]; then
 		NC_EOF_ARG="-c"
 	elif [[ $($NC --help 2>&1) =~ "w timeout" ]]; then
-		NC_EOF_ARG="-w1"
+		NC_EOF_ARG="-w2" # cygwin needs at least -w2 (-w1 fails at times)
 	elif [[ -f /bin/busybox ]]; then
 		NC_EOF_ARG="-w5"
 	else
@@ -104,9 +103,13 @@ FAIL="[\033[1;31mFAILED\033[0m]"
 SKIP="[\033[1;33mskipping\033[0m]"
 ECHO="echo -e"
 
-NETSTATTCP(){ netstat -ant;}
-[[ x"$OSTYPE" == "xsolaris"* ]] && NETSTATTCP(){ netstat -an -f inet; }
-[[ x"$OSTYPE" == *BSD* ]] && NETSTATTCP(){ netstat -an -f inet; }
+if [[ -n "$IS_HAVE_NETSTAT" ]]; then
+	NETSTATTCP(){ netstat -ant;}
+	[[ x"$OSTYPE" == "xsolaris"* ]] && NETSTATTCP(){ netstat -an -f inet; }
+	[[ x"$OSTYPE" == *BSD* ]] && NETSTATTCP(){ netstat -an -f inet; }
+else
+	echo >&2 "***** WARNING: netstat not found. Attempting anyway... *****"
+fi
 
 tests="1.1 "
 tests+="2.1 2.2 "
@@ -179,7 +182,6 @@ waitkp()
 	local x
 	local rounds
 	x=0
-	# rounds=`bc <<<"$SLEEP_WD / 0.1"`
 	rounds=$((SLEEP_WD * 10))
 	while :; do
 		kill -0 $1 &>/dev/null
@@ -245,7 +247,7 @@ waitkpf()
 waitf()
 {
 	x=0;
-	rounds=`bc <<<"$SLEEP_WD / 0.1"`
+	rounds=$(($SLEEP_WD * 10))
 	while :; do
 		if [ "$(MD5 $1)" == "$(MD5 $2)" ]; then
 			return
@@ -263,7 +265,7 @@ waitf()
 waitfhash()
 {
 	x=0;
-	rounds=`bc <<<"$SLEEP_WD / 0.1"`
+	rounds=$(($SLEEP_WD * 10))
 	while :; do
 		if [ "$(MD5 $1)" == "$2" ]; then
 			return
@@ -279,8 +281,11 @@ waitfhash()
 
 waittcp()
 {
+	# If we do not have netstat then sleep in the hope that port opens and then
+	# return.
+	[[ -z "$IS_HAVE_NETSTAT" ]] && { sleep 1; return; }
 	x=0;
-	rounds=`bc <<<"$SLEEP_WD / 0.1"`
+	rounds=$(($SLEEP_WD * 10))
 	while :; do
 		NETSTATTCP 2>/dev/null | grep LISTEN | grep "$1" &>/dev/null
 		if [ $? -eq 0 ]; then
@@ -533,11 +538,12 @@ fi
 
 if [[ "$tests" =~ '6.8' ]]; then
 test_start -n "Running: netcat #6.8 (stdin, assymetric sizes, TOR)......."
-NETSTATTCP 2>/dev/null | grep LISTEN | grep 9050 &>/dev/null
-if [ $? -ne 0 ]; then
-	skip "(no TOR)"
-elif [[ "$GSOCKET_IP" =~ 192\.168\. ]]; then
+if [[ "$GSOCKET_IP" =~ 192\.168\. ]]; then
 	skip "$GSOCKET_IP"
+elif [[ -z "$IS_HAVE_NETSTAT" ]]; then
+	skip "(no netstat)"
+elif ! NETSTATTCP 2>/dev/null | grep LISTEN | grep 9050 &>/dev/null; then
+	skip "(no TOR)"
 else
 	GSPID="$(sh -c '../tools/gs-netcat -k id_sec.txt -wT <test4k.dat 2>client_err.txt >client_out.dat & echo ${!}')"
 	sleep_ct
@@ -724,6 +730,11 @@ test_start -n "Running: netcat #9.4 (curl/socks5, multi)................."
 curl --help all 2>/dev/null | grep socks5-hostname &>/dev/null
 if [ $? -ne 0 ]; then
 	skip "(no curl)"
+elif [[ "$(uname -a)" == *"GNU hurd"* ]]; then
+	# on GNU hurd curl & https to localhost sometimes thows a 'bad record mac' error.
+	# The cause is unknown. Works fine when gs-netcat runs on GNU hurd but curl
+	# from another host is used.
+	skip "(bad curl)"
 else
 	GSPID1="$(sh -c '../tools/gs-netcat -k id_sec.txt -lS 2>server_err.txt >server_out.dat & echo ${!}')"
 	GSPID3="$(sh -c '../tools/gs-netcat -k id_sec.txt -w -p 1085 2>client_err.txt >client_out.dat & echo ${!}')"
@@ -804,8 +815,10 @@ test_start -n "Running: gs-mount #10.4 .................................."
 command -v sshfs  >/dev/null 2>&1
 if [ $? -ne 0 ]; then
 	skip "(no sshfs)"
-elif [[ "$OSTYPE" =~ darwin ]]; then
-	skip "fuse-broken"
+elif [[ "$OSTYPE" == *"darwin"* ]]; then
+	# osxfuse and macosfuse are both broken now
+	# macosfuse hangs the host. force-unmount not working. Not recoverable. reboot needed.
+	skip "OSX fuse-broken"
 else	
 	rm -rf test_client &>/dev/null
 	rmdir test_mnt &>/dev/null
@@ -867,7 +880,7 @@ fi
 
 if [[ "${tests}" =~ '10.7' ]]; then
 test_start -n "Running: gsocket ssh #10.7 (stdin)........................"
-if [[ "$OSTYPE" =~ solaris ]]; then
+if [[ "$OSTYPE" == *"solaris"* ]]; then
 	# Solaris SSHD does not work unless it's run as root (some PAM shit)
 	# Also needs -4 flag to run as IPv4 only (still, PAM shit afterwards)
 	skip "(needs root)"

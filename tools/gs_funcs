@@ -58,11 +58,11 @@ uchroot_check_sym()
 	command -v nm >/dev/null 2>&1 || { echo >&2 "chroot failed (nm not found. apt-get install binutils?). Try -U to disable."; exit 255; }
 
 	# Extract symbols from .so and sftp-server binary
-	if [[ x"$OSTYPE" == "xdarwin"* ]]; then
+	if [[ "$OSTYPE" == "darwin"* ]]; then
 		# on OSX remove the starting "_" from symboles
 		sym_sftp="$(nm -pu "${SFTP_SERVER_BIN}" | sed 's/^_//g')"
 		sym_uchr="$(nm -p "${UCHROOT_BIN}" | grep " T " | sed 's/^_//g')"
-	elif [[ x"$OSTYPE" == "xsolaris"* ]]; then
+	elif [[ "$OSTYPE" == "solaris"* ]]; then
 		sym_sftp="$(nm -Du "${SFTP_SERVER_BIN}")"
 		sym_uchr="$(nm -p "${UCHROOT_BIN}" | grep " T ")"
 	else
@@ -76,7 +76,7 @@ uchroot_check_sym()
 	funclist+=$(first_symbol stat\$INODE64 __xstat64 __xstat stat64 stat)
 	funclist+=$(first_symbol opendir\$INODE64 opendir64 opendir)
 	funclist+=$(first_symbol open64 open)
-	if [[ ! x"$OSTYPE" == "xsolaris2.10"* ]]; then
+	if [[ ! "$OSTYPE" == "solaris2.10"* ]]; then
 		# On solaris 10 the stock OpenSSH install does not use statvfs64 (older version)
 		funclist+=$(first_symbol statvfs64 statvfs)
 	fi
@@ -158,7 +158,6 @@ rename exist-allowed.txt /0wned.txt
 ls dir1/../../denied
 ls ./../denied/exist-denied.txt"
 	[[ $(cd "${ROOTDIR}/ok"; echo "$FAIL_CMD" | sftp -D "${ROOTDIR}/sftp-server.sh" 2>&1 | grep -c "not found") -eq 2 ]] || { echo >&2 "Self test failed (3)"; exit 255; }
-
 	rm -rf "${ROOTDIR}/ok" &>/dev/null
 	rm -rf "${ROOTDIR}/denied" &>/dev/null
 	rm -rf "${ROOTDIR}/sftp-server.sh" &>/dev/null
@@ -210,7 +209,7 @@ gs_init()
 	# shellcheck disable=SC2034 # appears unused. Verify use (or export if used externally).
 	GS_SFTP_BIN="${BASEDIR}/gs-sftp"
 	EXE=""
-	if [[ x"$OSTYPE" == "xcygwin"* ]]; then
+	if [[ "$OSTYPE" == "cygwin"* ]]; then
 		EXE=".exe"
 	fi
 
@@ -314,7 +313,7 @@ do_getopt()
 	# Solaris 10 problems:
 	# - stock sftp-server does not allow -p <whitelist> -> Acceptable risk
 	# - LD_PRELOAD does not seem to work. Does anyone still use solaris10?
-	if [[ x"$OSTYPE" == "xsolaris2.10"* ]]; then
+	if [[ "$OSTYPE" == "solaris2.10"* ]]; then
 		echo -e >&2 "\033[1;31mWARNING\033[0m: uchroot not (yet) supported on solaris 10."
 		unset IS_UCHROOT
 	fi
@@ -328,7 +327,7 @@ env_arg_init()
 		password=$(read_password)
 		# shellcheck disable=SC2034 # GSOCKET_SECRET appears unused => It's used in 'gs'
 		GSOCKET_SECRET="${password}"
-		echo "${GS_PRFX}=Secret         :\"${password}\""
+		echo "${GS_PRFX}=Secret         : ${password}"
 		GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="-s"		# Add to end of array			
 		GSNC_ENV_ARGS[${#GSNC_ENV_ARGS[@]}]="$password"	# Add to end of array			
 	fi
@@ -341,7 +340,7 @@ env_arg_init()
 sftp_server_start()
 {
 	# SERVER
-	if [[ x"$OSTYPE" == "xdarwin"* ]]; then
+	if [[ "$OSTYPE" == "darwin"* ]]; then
 		# OSX does not allow LD_PRELOAD of binaries in /usr/. Copy to tmp...
 		ROOTDIR=$(mktemp -d -t thc-gs-sftp)
 		# FIXME: temp file only cleaned on reboot. Hmm...

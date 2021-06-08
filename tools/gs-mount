@@ -33,7 +33,7 @@ if [[ -z ${IS_SERVER} ]]; then
 	command -v sshfs >/dev/null 2>&1 || { echo >&2 "sshfs not found. Try 'apt-get install sshfs' or check PATH=?"; exit 1; }
 	# FUSE_OPT=",cache=yes,kernel_cache"
 	FUSE_OPT=""
-	if [[ x"$OSTYPE" == "xdarwin"* ]]; then
+	if [[ "$OSTYPE" == "darwin"* ]]; then
         # Setting 'noapplexattr' prevents 'finder' from copying.
         FUSE_OPT+=",async,local,iosize=65536,noappledouble,volname=THC-"$(basename "${1}")
 	fi

@@ -53,6 +53,22 @@
 #define GS_DFL_CIPHER                  "SRP-AES-256-CBC-SHA"
 #define GS_DFL_CIPHER_STRENGTH         "4096"
 
+#define GS_LOG_INFO_MSG_SIZE       (1024)
+#define GS_LOG_TYPE_NORMAL         (0) // A non-error is reported by the library
+#define GS_LOG_TYPE_ERROR          (1) // An error is reported by the library
+#define GS_LOG_TYPE_DEBUG          (5)
+
+#define GS_LOG_LEVEL_NONE          (0)
+#define GS_LOG_LEVEL_VERBOSE       (1) // -v
+#define GS_LOG_LEVEL_MOREVERB      (2) // -vv
+#define GS_LOG_LEVEL_INSANE        (3) // -vvv
+
+#define GS_LOG(a...)               do { GS_log(GS_LOG_TYPE_NORMAL, GS_LOG_LEVEL_NONE, a); } while(0)
+#define GS_LOG_V(a...)             do { GS_log(GS_LOG_TYPE_NORMAL, GS_LOG_LEVEL_VERBOSE, a); } while(0)
+#define GS_LOG_VV(a...)            do { GS_log(GS_LOG_TYPE_NORMAL, GS_LOG_LEVEL_MOREVERB, a); } while(0)
+#define GS_LOG_VVV(a...)           do { GS_log(GS_LOG_TYPE_NORMAL, GS_LOG_LEVEL_INSANE, a); } while(0)
+#define GS_LOG_ERR(a...)           do { GS_log(GS_LOG_TYPE_ERROR, GS_LOG_LEVEL_NONE, a); } while(0)
+
 #include <gsocket/list.h>
 #include <gsocket/event.h>
 #include <gsocket/gs-select.h>
@@ -248,7 +264,8 @@ enum sox_state_t {
 
 enum sox_flags_t {
 	GS_SOX_FL_AWAITING_PONG,	// Waiting for PONG
-	GS_SOX_FL_AWAITING_SOCKS	// Waiting for Socks5 (TOR) reply
+	GS_SOX_FL_AWAITING_SOCKS,	// Waiting for Socks5 (TOR) reply
+	GS_SOX_FL_WARN_SLOWCONNECT  // ==1 if warning about connect() being slow has been issued
 };
 
 /* TCP network address may depend on GS_ADDR (load balancing) */
@@ -334,13 +351,19 @@ typedef struct
 #endif
 } GS;
 
+struct _gs_log_info
+{
+	int level;  // verbosity level
+	int type;   // GS_LOG_TYPE_DEBUG or GS_LOG_TYPE_NORMAL
+	char *msg;  // log message
+};
+typedef void (*gs_cb_log_t)(struct _gs_log_info *l);
 
 /* #####################################
  * ### GSOCKET FUNCTION DECLARATIONS ###
  * #####################################
  */
-
-void GS_library_init(FILE *err_fp, FILE *dout_fp);
+void GS_library_init(FILE *err_fp, FILE *dout_fp, gs_cb_log_t func_log);
 int GS_CTX_init(GS_CTX *, fd_set *rfd, fd_set *wfd, fd_set *r, fd_set *w, struct timeval *tv_now);
 void GS_CTX_use_gselect(GS_CTX *ctx, GS_SELECT_CTX *gselect_ctx);
 int GS_CTX_free(GS_CTX *);
@@ -362,6 +385,7 @@ char *GS_usecstr(char *dst, size_t len, uint64_t usec);
 char *GS_bytesstr(char *dst, size_t len, int64_t bytes);
 char *GS_bytesstr_long(char *dst, size_t len, int64_t bytes);
 const char *GS_logtime(void);
+void GS_log(int type, int level, char *fmt, ...);
 
 int GS_CTX_setsockopt(GS_CTX *ctx, int level, const void *opt_value, size_t opt_len);
 

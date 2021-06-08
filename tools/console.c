@@ -1459,7 +1459,7 @@ cmd_lls_single(const char *exp)
 	wordexp_t p;
 	char **w;
 	DIR *d = NULL;
-	char buf[PATH_MAX];
+	char buf[GS_PATH_MAX];
 
 	int ret;
 	signal(SIGCHLD, SIG_DFL);
@@ -1535,7 +1535,7 @@ console_command(struct _peer *p, const char *cmd)
 {
 	int fd = p->fd_out;
 	char buf[GS_CONSOLE_BUF_SIZE];
-	char path[PATH_MAX + 1];
+	char path[GS_PATH_MAX + 1];
 	char *end = buf + sizeof (buf);
 	char *ptr;
 	const char *arg;

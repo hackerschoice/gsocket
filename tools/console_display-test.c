@@ -18,7 +18,7 @@ main(int argc, char *argv[])
 {
 	char buf[1024];
 
-	GS_library_init(stderr, stderr);
+	GS_library_init(stderr, stderr, NULL);
 	gopt.err_fp = stderr;
 	gopt.log_fp = stderr;
 	srand(time(NULL));

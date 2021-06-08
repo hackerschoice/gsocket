@@ -53,7 +53,7 @@ main(int argc, char *argv[])
 	GS_PKT pkt;
 	int is_encode = 0;
 
-	GS_library_init(stderr, stderr);  // Library debug output
+	GS_library_init(stderr, stderr, NULL);  // Library debug output
 	gopt.err_fp = stderr;
 	gopt.log_fp = stderr;
 

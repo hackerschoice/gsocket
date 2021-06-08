@@ -30,8 +30,11 @@ fd_set *gs_debug_rfd;
 fd_set *gs_debug_wfd;
 fd_set *gs_debug_r;
 fd_set *gs_debug_w;
-#endif
+#endif // DEBUG
 FILE *gs_errfp;
+gs_cb_log_t gs_func_log;
+static struct _gs_log_info gs_log_info;
+
 
 #define GS_NET_DEFAULT_HOST			"gs.thc.org"
 #define GS_NET_DEFAULT_PORT			7350
@@ -44,6 +47,7 @@ FILE *gs_errfp;
 #else
 # define GS_DEFAULT_PING_INTERVAL	(2*60)	// Every 2 minutes
 # define GS_RECONNECT_DELAY			(15)	// connect() not more than every 15s
+# define GS_WARN_SLOWCONNECT        (4)     // Warn about slow connect() after 4 seconds...
 #endif
 
 // #define STRESSTEST	1
@@ -166,7 +170,7 @@ gs_fds_out_rwfd(GS_SELECT_CTX *ctx)
 }
 
 void
-GS_library_init(FILE *err_fp, FILE *dout_fp)
+GS_library_init(FILE *err_fp, FILE *dout_fp, gs_cb_log_t func_log)
 {
 	if (gs_lib_init_called != 0)
 		return;
@@ -179,7 +183,14 @@ GS_library_init(FILE *err_fp, FILE *dout_fp)
 
 	XASSERT(RAND_status() == 1, "RAND_status()");
 
+	if (func_log != NULL)
+	{
+		gs_log_info.msg = calloc(1, GS_LOG_INFO_MSG_SIZE);
+		XASSERT(gs_log_info.msg != NULL, "calloc: %s\n", strerror(errno));
+	}
+
 	gs_errfp = err_fp;
+	gs_func_log = func_log;
 #ifdef DEBUG
 	gs_dout = dout_fp;
 #endif
@@ -188,7 +199,7 @@ GS_library_init(FILE *err_fp, FILE *dout_fp)
 int
 GS_CTX_init(GS_CTX *ctx, fd_set *rfd, fd_set *wfd, fd_set *r, fd_set *w, struct timeval *tv_now)
 {
-	GS_library_init(stderr, stderr);
+	GS_library_init(stderr, stderr, NULL);
 
 	memset(ctx, 0, sizeof *ctx);
 
@@ -291,12 +302,33 @@ gs_set_ip_by_hostname(GS *gs, const char *hostname)
 	uint32_t gs_ip;
 	gs_ip = GS_hton(hostname);
 	if (gs_ip == 0xFFFFFFFF)
+	{
+		GS_LOG_ERR("Cannot resolve '%s'. Re-trying in %d seconds...\n", hostname, GS_RECONNECT_DELAY);
 		return GS_ERROR;
+	}
 
 	gs->net.tv_gs_hton = GS_TV_TO_USEC(gs->ctx->tv_now);
 	gs->net.addr = gs_ip;
 
 	return GS_SUCCESS;
+}
+
+// Call callback to pass log message from library to calling programm
+void
+GS_log(int type, int level, char *fmt, ...)
+{
+	if (gs_func_log == NULL)
+		return;
+
+	va_list ap;
+	va_start(ap, fmt);
+	vsnprintf(gs_log_info.msg, GS_LOG_INFO_MSG_SIZE, fmt, ap);
+	va_end(ap);
+
+	gs_log_info.level = level;
+	gs_log_info.type = type;
+
+	(*gs_func_log)(&gs_log_info);
 }
 
 GS *
@@ -347,14 +379,7 @@ GS_new(GS_CTX *ctx, GS_ADDR *addr)
 
 		gsocket->net.hostname = strdup(hostname);
 
-		int ret;
-		ret = gs_set_ip_by_hostname(gsocket, gsocket->net.hostname);
-		if (ret != GS_SUCCESS)
-		{
-			free(gsocket);
-			gs_set_error(ctx, "Failed to resolve '%s'", hostname);
-			return NULL;
-		}
+		gs_set_ip_by_hostname(gsocket, gsocket->net.hostname);
 	}
 
 	if (ctx->socks_ip != 0)
@@ -386,6 +411,17 @@ GS_new(GS_CTX *ctx, GS_ADDR *addr)
 static void
 gs_net_connect_complete(GS *gs, struct gs_sox *sox)
 {
+	int vlevel = GS_LOG_LEVEL_VERBOSE;
+
+	// If we warned about a slow connection then also say when we succeeded...
+	if (sox->flags & GS_SOX_FL_WARN_SLOWCONNECT)
+		vlevel = GS_LOG_LEVEL_NONE;
+
+	if (gs->ctx->socks_ip != 0)
+		GS_log(GS_LOG_TYPE_NORMAL, vlevel, "GSRN connection established [via TOR to %s:%d].\n", gs->net.hostname, ntohs(gs->ctx->gs_port));
+	else
+		GS_log(GS_LOG_TYPE_NORMAL, vlevel, "GSRN connection established [%s:%d].\n", int_ntoa(gs->net.addr), ntohs(gs->ctx->gs_port));
+
 	if (gs->flags & GS_FL_IS_CLIENT)
 		gs_pkt_connect_write(gs, sox);
 	else
@@ -393,6 +429,8 @@ gs_net_connect_complete(GS *gs, struct gs_sox *sox)
 
 	if (gs->net.conn_count >= gs->net.n_sox)
 		gs->flags |= GS_FL_TCP_CONNECTED;	// All TCP (APP) are now connected
+
+	sox->flags &= ~GS_SOX_FL_WARN_SLOWCONNECT;
 }
 
 /*
@@ -413,8 +451,7 @@ gs_net_connect_by_sox(GS *gsocket, struct gs_sox *sox)
 	addr.sin_port = gsocket->net.port;
 	errno = 0;
 	ret = connect(sox->fd, (struct sockaddr *)&addr, sizeof addr);
-	DEBUGF("connect(%s:%d, fd = %d): %d (errno = %d, %s)\n", int_ntoa(gsocket->net.addr), ntohs(addr.sin_port), sox->fd, ret, errno, strerror(errno));
-	gsocket->net.tv_connect = GS_TV_TO_USEC(gsocket->ctx->tv_now);
+	// DEBUGF("connect(%s:%d, fd = %d): %d (errno = %d, %s)\n", int_ntoa(gsocket->net.addr), ntohs(addr.sin_port), sox->fd, ret, errno, strerror(errno));
 	if (ret != 0)
 	{
 		if ((errno == EINPROGRESS) || (errno == EAGAIN) || (errno == EINTR))
@@ -428,9 +465,13 @@ gs_net_connect_by_sox(GS *gsocket, struct gs_sox *sox)
 		{
 			/* HERE: NOT connected */
 			if (gsocket->ctx->socks_ip == 0)
+			{
+				// GS_LOG_ERR("connect(%s:%d): %s.\n", int_ntoa(gsocket->net.addr), ntohs(gsocket->net.port), strerror(errno));
 				gs_set_error(gsocket->ctx, "connect(%s:%d)", int_ntoa(gsocket->net.addr), ntohs(gsocket->net.port));
-			else
+			} else {
+				// GS_LOG_ERR("connect(%s:%d): %s. Tor not running?\n", int_ntoa(gsocket->net.addr), ntohs(gsocket->net.port), strerror(errno));
 				gs_set_error(gsocket->ctx, "connect(%s:%d). Tor not running?", int_ntoa(gsocket->net.addr), ntohs(gsocket->net.port));
+			}
 			return GS_ERR_FATAL;
 		}
 	}
@@ -445,6 +486,7 @@ gs_net_connect_by_sox(GS *gsocket, struct gs_sox *sox)
 
 	if (gsocket->ctx->socks_ip != 0)
 	{
+		GS_LOG_VV("Connection to TOR established [%s:%d].\n", int_ntoa(gsocket->ctx->socks_ip), ntohs(gsocket->ctx->socks_port));
 		gs_pkt_connect_socks(gsocket, sox);
 	} else {
 		gs_net_connect_complete(gsocket, sox);
@@ -923,20 +965,32 @@ GS_heartbeat(GS *gsocket)
 
 		XASSERT(sox->state != GS_STATE_APP_CONNECTED, "fd = %d but APP already CONNECTED state\n", gsocket->fd);
 
-		/* if connect() fails then fd is -1 */
-		/* Skip if 'want-write' is already set. We are already trying to write data. */
+		// Skip if busy with connect() systemcall.
+		if (sox->state == GS_STATE_SYS_CONNECT)
+		{
+			if (GS_TV_TO_USEC(gsocket->ctx->tv_now) < gsocket->net.tv_connect + GS_SEC_TO_USEC(GS_WARN_SLOWCONNECT))
+				continue;
+
+			if (sox->flags & GS_SOX_FL_WARN_SLOWCONNECT)
+				continue;
+
+			// Warning if connection takes longer than expected...
+			sox->flags |= GS_SOX_FL_WARN_SLOWCONNECT;
+			GS_LOG("Connecting to GSRN [%s:%d] takes longer than expected. Still trying...\n", int_ntoa(gsocket->net.addr), ntohs(gsocket->net.port));
+
+			continue;
+		}
+
+		// Skip if 'want-write' is already set. We are already trying to write data.
+		// fd is -1 if connect() failed
 		if ((sox->fd >= 0) && (FD_ISSET(sox->fd, gsocket->ctx->wfd)))
 			continue;
 
-		/* Skip if oustanding PONG..*/
+		/* Skip if outstanding PONG..*/
 		if (sox->flags & GS_SOX_FL_AWAITING_PONG)
 			continue;
 
 		XASSERT(sox->state != GS_STATE_PKT_ACCEPT, "APP_CONNECTED == false _and_ state == ACCEPT\n");
-
-		/* Skip if we are busy with any other system-call (e.g. needing to call 'connect()' again */
-		if (sox->state == GS_STATE_SYS_CONNECT)
-			continue;
 
 		if (sox->state == GS_STATE_SYS_RECONNECT)
 		{
@@ -982,7 +1036,7 @@ gs_net_try_reconnect_by_sox(GS *gs, struct gs_sox *sox)
 
 	if (GS_TV_TO_USEC(gs->ctx->tv_now) <= gs->net.tv_connect + GS_SEC_TO_USEC(GS_RECONNECT_DELAY))
 	{
-		DEBUGF_M("To many connect() attempts... Heartbeat will wake us later...\n");
+		DEBUGF_M("To many connect() attempts. Heartbeat will wake us later...\n");
 		return;
 	}
 	/* Ignore return value. If this fails then ignorning return value means
@@ -1045,11 +1099,7 @@ gs_process(GS *gsocket)
 
 				/* HERE: Auto-Reconnect. Failed in connect() or write(). */
 				DEBUGF_M("GS-NET error. Re-connecting...\n");
-				if (!gsocket->net.is_connect_error_warned)
-				{
-					gsocket->net.is_connect_error_warned = 1;
-					xfprintf(gs_errfp, "%s GS-NET: %s. Re-connecting...\n", GS_logtime(), strerror(errno));
-				}
+				GS_LOG_ERR("%s GSRN %s. Re-connecting to %s:%d...\n", GS_logtime(), strerror(errno), int_ntoa(gsocket->net.addr), ntohs(gsocket->net.port));
 				close(sox->fd);
 				gs_net_init_by_sox(gsocket->ctx, sox);
 				gs_net_try_reconnect_by_sox(gsocket, sox);
@@ -1062,8 +1112,6 @@ gs_process(GS *gsocket)
 			}
 
 			// HERE: connect() succeeded 
-			gsocket->net.is_connect_error_warned = 0;
-
 			memcpy(&sox->tv_last_data, gsocket->ctx->tv_now, sizeof sox->tv_last_data);
 			/* Immediatly let app know that a new gs-connection has been accepted */
 			if (gsocket->net.fd_accepted >= 0)
@@ -1144,9 +1192,6 @@ gs_net_connect_new_socket(GS *gs, struct gs_sox *sox)
 {
 	int ret;
 
-	if (sox->fd >= 0)
-		return GS_SUCCESS;	// Skip existing (valid) TCP sockets
-
 	/*
 	 * If we use the GS_select() subsystem:
 	 * After GS_accept() a new TCP connection is established to
@@ -1159,20 +1204,40 @@ gs_net_connect_new_socket(GS *gs, struct gs_sox *sox)
 	int cb_val;
 	func = gs->ctx->func_listen;
 	cb_val = gs->ctx->cb_val_listen;
-	DEBUGF("gs_net_connect called (GS_select() cb_func = %p\n", func);
 	GS_SELECT_CTX *gselect_ctx = gs->ctx->gselect_ctx;
 	/* GS_select_HACK-1-END */
 
-	/* HERE: socket() does not exist yet. Create it. */
-	ret = gs_net_new_socket(gs, sox);
-	if (ret != GS_SUCCESS)
-		return GS_ERROR;
+	DEBUGF("gs_net_connect called (GS_select() cb_func = %p\n", func);
 
-	/* Connect TCP */
-	ret = gs_net_connect_by_sox(gs, sox);
-	DEBUGF("gs_net_connect_by_sox(fd = %d): %d, %s\n", sox->fd, ret, strerror(errno));
-	if (ret == GS_ERR_FATAL)
-		ERREXIT("%s\n", GS_CTX_strerror(gs->ctx));
+	if (sox->fd < 0)
+	{
+		// HERE: socket() does not exist yet. Create it.
+		ret = gs_net_new_socket(gs, sox);
+		if (ret != GS_SUCCESS)
+			return GS_ERROR;
+	}
+
+	gs->net.tv_connect = GS_TV_TO_USEC(gs->ctx->tv_now);
+
+	// The calling process expects a socket to be created here regardless
+	// if IP is known. Thus we create a socket but only call 'connect()' once
+	// IP is known (e.g. domain name resolves).
+	if (gs->net.addr == 0)
+	{
+		// IP address failed to resolve.
+		// Go into reconnect state. Heartbeat complete the connect()...
+		if (sox->state == GS_STATE_SYS_RECONNECT)
+			return GS_SUCCESS; // return immediately if this is already a reconnect
+		sox->state = GS_STATE_SYS_RECONNECT;
+	} else {
+		GS_LOG_VV("Connecting to %s:%d...\n", int_ntoa(gs->net.addr), ntohs(gs->net.port));
+
+		/* Connect TCP */
+		ret = gs_net_connect_by_sox(gs, sox);
+		DEBUGF("gs_net_connect_by_sox(fd = %d): %d, %s\n", sox->fd, ret, strerror(errno));
+		if (ret == GS_ERR_FATAL)
+			ERREXIT("%s\n", GS_CTX_strerror(gs->ctx));
+	}
 
 	/* GS_select-HACK-1-START */
 	if (gs->ctx->gselect_ctx != NULL)
@@ -1227,8 +1292,6 @@ gs_net_init_by_sox(GS_CTX *ctx, struct gs_sox *sox)
 {
 	XFD_CLR(sox->fd, ctx->wfd);
 	XFD_CLR(sox->fd, ctx->rfd);
-	// FD_CLR(sox->fd, ctx->w);
-	// FD_CLR(sox->fd, ctx->r);
 	memset(sox, 0, sizeof *sox);
 	sox->fd = -1;
 }

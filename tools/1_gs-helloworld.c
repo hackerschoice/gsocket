@@ -114,7 +114,7 @@ my_getopt(int argc, char *argv[])
 				break;
 			case '?':
 				usage("sklgT");
-				exit(255);
+				exit(EX_UNKNWNCMD);
 		}
 	}
 
@@ -124,7 +124,7 @@ my_getopt(int argc, char *argv[])
 	init_vars();			/* from utils.c */
 	gopt.gsocket = gs_create();
 
-	VLOG("=Encryption: %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
+	GS_LOG("=Encryption: %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
 }
 
 int
@@ -139,6 +139,6 @@ main(int argc, char *argv[])
 		do_client();
 
 
-	exit(255);
+	exit(EX_NOTREACHED);
 	return -1;	/* NOT REACHED */
 }

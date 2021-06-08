@@ -92,6 +92,13 @@
 # define UT_NAMESIZE	32
 #endif
 
+// debian-hurd does not define PATH_MAX (and has no limit on filename length)
+#ifndef PATH_MAX
+# define GS_PATH_MAX      4096
+#else
+# define GS_PATH_MAX      PATH_MAX
+#endif
+
 #if defined(__sun)
 # if !defined(be64toh) // Solaris11
 #  define be64toh(x) ntohll(x)
@@ -122,6 +129,7 @@ struct _gopt
 
 	FILE *log_fp;
 	FILE *err_fp;
+	int verbosity;        // verbosity level (-v => 1, -vv => 2 etc)
 	int flags;
 	int verboselevel;
 	const char *sec_str;
@@ -174,6 +182,16 @@ struct _gopt
 	int ids_idle;
 	int n_users;             // Number of unique logged in users (from utmp)
 };
+
+#define EX_EXECFAILED  248
+#define EX_NOTREACHED  249
+#define EX_BADWRITE    250  // write() failed
+#define EX_UNKNWNCMD   251  // Unknown command line parameter
+
+#define EX_BADSELECT   253
+#define EX_SIGTERM     254
+#define EX_FATAL       255
+#define EX_CONNREFUSED  61  // Used by deploy.sh to verify that server is responding
 
 struct _socks
 {
