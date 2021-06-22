@@ -63,7 +63,7 @@ pkt_app_cb_pong(uint8_t msg, const uint8_t *data, size_t len, void *ptr)
 
 	uint8_t buf[sizeof (pong.user) + 1];
 	memcpy(buf, pong.user, sizeof pong.user);
-	sanitize_fname_to_str(buf, sizeof buf);
+	GS_sanitize_fname_str((char *)buf, sizeof buf);
 
 	CONSOLE_update_pinginfo(p, ms, ntohs(pong.load), (char *)buf, ntohs(pong.idle), pong.n_users);
 
@@ -77,7 +77,7 @@ pkt_app_cb_log(uint8_t msg, const uint8_t *data, size_t len, void *ptr)
 	// struct _peer *p = (struct _peer *)ptr;
 	struct _pkt_app_log *log = (struct _pkt_app_log *)data;
 
-	sanitize_fname_to_str(log->msg, sizeof log->msg);
+	GS_sanitize_fname_str((char *)log->msg, sizeof log->msg);
 	GS_condis_log(&gs_condis, log->type, (const char *)log->msg);
 	CONSOLE_draw(gs_condis.fd);
 

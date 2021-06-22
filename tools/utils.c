@@ -194,6 +194,10 @@ init_vars(void)
 	if (gopt.is_multi_peer == 0)
 		GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_SINGLESHOT, NULL, 0);
 
+	if (gopt.is_interactive != 0)
+		GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_LOW_LATENCY, NULL, 0);
+
+
 	// Prevent startup messages if gs-netcat is started as sub-system from
 	// gs-sftp or gs-mount
 	int is_greetings = 1;
@@ -688,10 +692,6 @@ pty_cmd(const char *cmd, pid_t *pidptr)
 		#ifdef HAVE_FORKPTY
 		fd = open("/dev/tty", O_NOCTTY | O_RDWR);
 		#endif
-		// if (fd >= 0)
-		// {
-		// 	close(fd);
-		// }
 
 		/* HERE: Child */
 		setup_cmd_child(fd);
@@ -948,40 +948,6 @@ cmd_pwd(struct _peer *p)
 
 	gopt.is_want_pwd = 1;
 	GS_SELECT_FD_SET_W(p->gs);
-}
-
-const char fname_valid_char[] = ""
-"................"
-"................"
-" !.#$%&.()*+,-.."	/* Dont allow " or / or ' */
-"0123456789:;.=.."	/* Dont allow < or > or ? */
-"@ABCDEFGHIJKLMNO"
-"PQRSTUVWXYZ[.]^_"	/* Dont allow \ */
-".abcdefghijklmno"	/* Dont allow ` */
-"pqrstuvwxyz{.}.." 	/* Dont allow | or ~ */
-"";
-
-void
-sanitize_fname_to_str(uint8_t *str, size_t len)
-{
-	int i;
-	uint8_t c;
-
-	for (i = 0; i + 1 < len; i++)
-	{
-		c = str[i];
-		if (c < sizeof fname_valid_char)
-		{
-			if (c == fname_valid_char[c])
-				continue;
-		}
-		if (c == 0)
-			break;
-		DEBUGF("san 0x%02x\n", c);
-		str[i] = '#'; // Change to # if invalid character
-	}
-
-	str[i] = 0x00; // always 0 terminate
 }
 
 /*

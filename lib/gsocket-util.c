@@ -348,3 +348,87 @@ GS_daemonize(FILE *logfp)
 	exit(255);	// NOT REACHED
 }
 
+// Sanitize a string
+const char *
+GS_sanitize(char *dst, size_t dsz, char *src, size_t sz, const char *set, size_t setsz, short option)
+{
+	char *dst_orig = dst;
+	if (dsz <= 0)
+		return NULL;
+
+	char *dst_end = dst + dsz;
+	char *src_end = src + sz;
+
+	uint8_t c;
+	uint8_t n;
+
+	while ((dst < dst_end) && (src < src_end))
+	{
+		c = *src;
+		if (c == '\0')
+			break;
+
+		if (c < setsz)
+		{
+			n = set[c];
+		} else {
+			n = '#';
+		}
+
+		*dst = n;
+		dst++;
+		src++;
+	}
+
+	*dst = '\0';
+
+	return dst_orig;
+}
+
+static const char fname_valid_char[] = ""
+"................"
+"................"
+" !.#$%&.()#+,-.."	/* Dont allow " or / or ' or * */
+"0123456789:;.=.."	/* Dont allow < or > or ? */
+"@ABCDEFGHIJKLMNO"
+"PQRSTUVWXYZ[.]^_"	/* Dont allow \ */
+".abcdefghijklmno"	/* Dont allow ` */
+"pqrstuvwxyz{.}.." 	/* Dont allow | or ~ */
+"";
+
+// Sanitize a filename
+const char *
+GS_sanitize_fname_str(char *str, size_t len)
+{
+	return GS_sanitize(str, len, str, len, fname_valid_char, sizeof fname_valid_char, 0);
+}
+
+const char *
+GS_sanitize_fname(char *dst, size_t dlen, char *src, size_t slen)
+{
+	return GS_sanitize(dst, dlen, src, slen, fname_valid_char, sizeof fname_valid_char, 0);
+}
+
+static const char logmsg_valid_char[] = ""
+"................"
+"................"
+" !\"#$%#'()#+,-./" // dont allow &, *
+"0123456789:#<=>?"  // dont allow ;
+"@ABCDEFGHIJKLMNO"
+"PQRSTUVWXYZ[\\]^_"
+"#abcdefghijklmno"  // dont allow `
+"pqrstuvwxyz{#}~."  // dont allow |
+"";
+
+// Sanitize a log message
+const char *
+GS_sanitize_logmsg_str(char *str, size_t len)
+{
+	return GS_sanitize(str, len, str, len, logmsg_valid_char, sizeof logmsg_valid_char, 0);
+}
+
+const char *
+GS_sanitize_logmsg(char *dst, size_t dlen, char *src, size_t slen)
+{
+	return GS_sanitize(dst, dlen, src, slen, logmsg_valid_char, sizeof logmsg_valid_char, 0);
+}

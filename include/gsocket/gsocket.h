@@ -76,6 +76,11 @@
 #include <gsocket/gs-readline.h>
 #include <gsocket/buf.h>
 
+#define GSRN_DEFAULT_PORT           7350
+#define GSRN_DEFAULT_PORT_SSL       443
+#define GSRN_DEFAULT_PORT_CON       7351
+#define GSRN_DEFAULT_PING_INTERVAL  (60 * 2)
+
 /* ###########################
  * ### PROTOCOL DEFINITION ###
  * ###########################
@@ -118,12 +123,16 @@ struct _gs_connect
 #define GS_PKT_PROTO_VERSION_MAJOR		(0x01)
 #define GS_PKT_PROTO_VERSION_MINOR		(0x02)
 
-#define GS_FL_PROTO_WAIT				(0x01)	/* Wait for LC to connect */
-
-/* Client allowed to become a Server if Server does not exist.
- * Or Server allowed to become a Client if Server already exists.
- */
+// Wait for server to become available (-w option)
+#define GS_FL_PROTO_WAIT				(0x01)
+// Allow client to become a server if server does not exist (-A option).
 #define GS_FL_PROTO_CLIENT_OR_SERVER	(0x02)
+// Perform a fast-connect. Do not wait for GSRN to send '_gs_start'.
+// Data sent aftet '_gs_connect' is app-data (SSL SRP in most cases).
+// FAST_CONNECT is incompatible with 0x01 and 0x02.
+#define GS_FL_PROTO_FAST_CONNECT        (0x04)
+// Inform GSRN that client prefers low-latency (interactive shell)
+#define GS_FL_PROTO_LOW_LATENCY         (0x08)
 
 /*
  * all2GN
@@ -136,6 +145,7 @@ struct _gs_ping
 	uint8_t payload[28];
 };
 
+// #define GS_PKT_PING_PAYLOAD_SIZE      (28)
 /*
  * GN2all
  */
@@ -180,6 +190,8 @@ struct _gs_status
 #define GS_STATUS_CODE_BAD_AUTH		(0x01)	// Auth Token mismatch
 #define GS_STATUS_CODE_CONNREFUSED	(0x02)	// No server listening
 #define GS_STATUS_CODE_IDLE_TIMEOUT (0x03)	// Timeout
+#define GS_STATUS_CODE_CONNDENIED   (0x04)  // Connection denied
+#define GS_STATUS_CODE_PROTOERROR   (0x05)  // Protocol error
 
 /*
  * all2GN: Accepting incoming connection.
@@ -395,6 +407,7 @@ int GS_CTX_setsockopt(GS_CTX *ctx, int level, const void *opt_value, size_t opt_
 #define GS_OPT_CLIENT_OR_SERVER		(0x10)	/* Whoever connects first acts as a Server */
 #define GS_OPT_USE_SOCKS			(0x20)	// Use TOR (Socks5)
 #define GS_OPT_SINGLESHOT			(0x40)
+#define GS_OPT_LOW_LATENCY          (0x80)
 
 ssize_t GS_write(GS *gsocket, const void *buf, size_t num);
 ssize_t GS_read(GS *gsocket, void *buf, size_t num);
@@ -418,6 +431,13 @@ void GS_srp_setpassword(GS *gsocket, const char *pwd);
 const char *GS_get_cipher(GS *gs);
 int GS_get_cipher_strength(GS *gs);
 int GS_is_server(GS *gs);
+
+const char *GS_sanitize(char *dst, size_t dsz, char *src, size_t sz, const char *set, size_t setsz, short option);
+const char *GS_sanitize_fname(char *dst, size_t dlen, char *src, size_t slen);
+const char *GS_sanitize_logmsg(char *dst, size_t dlen, char *src, size_t slen);
+const char *GS_sanitize_fname_str(char *str, size_t len);
+const char *GS_sanitize_logmsg_str(char *str, size_t len);
+
 #endif /* !WITH_GSOCKET_SSL */
 
 #endif /* !__LIBGSOCKET_H__ */

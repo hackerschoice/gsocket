@@ -38,8 +38,8 @@ PATH=${GS_BINDIR}:/usr/local/bin:$PATH
 
 # printf "#! /bin/bash\nexec nc\n" >gs_nc
 SLEEP_WD=20	# Max seconds to wait for a process to finish receiving...
-command -v md5 >/dev/null 2>&1 		&& MD5(){ md5 -q "${1}";}
-command -v md5sum >/dev/null 2>&1 	&& MD5() { md5sum "${1}" | cut -f1 -d' ';}
+command -v md5 >/dev/null 2>&1 		&& MD5(){ md5 -q "${1}" 2>/dev/null;}
+command -v md5sum >/dev/null 2>&1 	&& MD5() { md5sum "${1}" 2>/dev/null | cut -f1 -d' ';}
 command -v rsync >/dev/null 2>&1 || { echo >&2 "rsync not installed. apt-get install rsync."; exit 255; }
 command -v netstat >/dev/null 2>&1 && { IS_HAVE_NETSTAT=1; }
 # Use traditional netcat that supports "netcat -nlp" for cross-platform comp.
@@ -98,7 +98,7 @@ export NC_LISTEN="${NC} ${NC_LISTEN_ARG}"
 export NC_LISTEN_EOF="${NC} ${NC_LISTEN_ARG} ${NC_EOF_ARG}"
 
 sleep 0.1 &>/dev/null || { echo >&2 "sleep not accepting 0.1. PATH set correct?"; exit 255; }
-OK="....[\033[1;32mOK\033[0m]"
+OK="......[\033[1;32mOK\033[0m]"
 FAIL="[\033[1;31mFAILED\033[0m]"
 SKIP="[\033[1;33mskipping\033[0m]"
 ECHO="echo -e"
@@ -116,9 +116,9 @@ tests+="2.1 2.2 "
 tests+="3.1 "
 tests+="4.1 4.2 "
 tests+="5.1 5.2 5.3 5.4 "
-#tests+="5.5 "		# cleartext
+tests+="5.5 "		# cleartext
 tests+="6.1 6.2 6.3 6.4 6.5 6.6 "	# gs-netcat
-#tests+="6.7 "		# cleartext
+tests+="6.7 "		# cleartext
 tests+="6.8 "		# TOR
 tests+="7.1 7.2 7.3 7.4 "
 tests+="8.1 8.2 8.3 "
@@ -170,10 +170,11 @@ skip()
 	$ECHO "${SKIP}" $*
 }
 
-# code file1 file2
+# code file1 file2 pid-to-kill
 md5fail()
 {
-	[[ "$(MD5 ${2})" != "$(MD5 ${3})" ]] && fail $1;
+	[[ -n $4 ]] && [[ "$(MD5 ${2})" != "$(MD5 ${3})" ]] && { kill -9 $4 &>/dev/null; fail $1; }
+	[[ "$(MD5 ${2})" != "$(MD5 ${3})" ]] && fail $1
 }
 
 # Wait until a process has termianted or kill it after SLEEP_WD seconds..
@@ -756,28 +757,31 @@ if [[ "${tests}" =~ '10.1' ]]; then
 test_start -n "Running: blitz #10.1 ....................................."
 rm -rf test_server test_client
 mkdir -p test_server test_client/foo/bar test_client/empty
-cp test4k.dat test_client/foo/bar/test4k.dat
-cp test1k.dat test_client/foo/bar/test1k.dat
-cp test1k.dat test_client/test1k.dat
-mkfifo test_client/fifo.io
-ln -s foo/bar/test4k.dat test_client/test4k.dat
-ln -s /etc/hosts test_client/etc-hosts
-ln -s /dev/zero test_client/zero
-GSPID1="$(sh -c 'blitz -k id_sec.txt -w -o "RSOPT=--bwlimit=100 -v" test_client/./ 2>client1_err.txt >client1_out.dat & echo ${!}')"
-cd test_server
-GSPID2="$(sh -c 'blitz -k ../id_sec.txt -l 2>../server1_err.txt >../server1_out.dat & echo ${!}')"
-cd ..
-waitk $GSPID1
-kill $GSPID2
-(cd test_client; find . -type f | while read x; do md5fail 1 ../test_server/${x} ${x}; done)
-md5fail 2 test_server/test4k.dat test4k.dat
-[[ -e test_server/fifo.io ]] && fail 3
-[[ -e test_server/zero ]] && fail 4
-[[ -e test_server/etc-hosts ]] && fail 5
-[[ -L test_server/test4k.dat ]] || fail 6
-[[ -d test_server/empty ]] || fail 7
-rm -rf test_server test_client
-$ECHO "${OK}"
+if ! mkfifo test_client/fifo.io &>/dev/null; then
+	skip "(mkfifo)" # likely on a VMBOX shared drive
+else
+	cp test4k.dat test_client/foo/bar/test4k.dat
+	cp test1k.dat test_client/foo/bar/test1k.dat
+	cp test1k.dat test_client/test1k.dat
+	ln -s foo/bar/test4k.dat test_client/test4k.dat
+	ln -s /etc/hosts test_client/etc-hosts
+	ln -s /dev/zero test_client/zero
+	GSPID1="$(sh -c 'blitz -k id_sec.txt -w -o "RSOPT=--bwlimit=100 -v" test_client/./ 2>client1_err.txt >client1_out.dat & echo ${!}')"
+	cd test_server
+	GSPID2="$(sh -c 'blitz -k ../id_sec.txt -l 2>../server1_err.txt >../server1_out.dat & echo ${!}')"
+	cd ..
+	waitk $GSPID1
+	kill $GSPID2
+	(cd test_client; find . -type f | while read x; do md5fail 1 ../test_server/${x} ${x}; done)
+	md5fail 2 test_server/test4k.dat test4k.dat
+	[[ -e test_server/fifo.io ]] && fail 3
+	[[ -e test_server/zero ]] && fail 4
+	[[ -e test_server/etc-hosts ]] && fail 5
+	[[ -L test_server/test4k.dat ]] || fail 6
+	[[ -d test_server/empty ]] || fail 7
+	rm -rf test_server test_client
+	$ECHO "${OK}"
+	fi
 fi
 
 if [[ "${tests}" =~ '10.2' ]]; then
@@ -827,19 +831,23 @@ else
 	GSPID1="$(sh -c 'gs-mount -k id_sec.txt -w test_mnt 2>client1_err.txt >client1_out.dat & echo ${!}')"
 	GSPID2="$(sh -c 'cd test_client; gs-mount -k ../id_sec.txt -l 2>../server1_err.txt >../server1_out.dat & echo ${!}')"
 	waitk $GSPID1
-	md5fail 1 test_mnt/test1k.dat test_client/test1k.dat
-	md5fail 2 test_mnt/test4k.dat test_client/test4k.dat
-	if command -v fusermount >/dev/null 2>&1; then
-		fusermount -zu test_mnt
+	if grep forbidden client1_err.txt &>/dev/null; then
+		skip "(forbidden)" # VMBox drive?
 	else
-		# archLinux -f flag needs superuser (bug in umount)
-		umount test_mnt &>/dev/null
-		umount -f test_mnt &>/dev/null
+		md5fail 1 test_mnt/test1k.dat test_client/test1k.dat $GSPID2
+		md5fail 2 test_mnt/test4k.dat test_client/test4k.dat $GSPID2
+		if command -v fusermount >/dev/null 2>&1; then
+			fusermount -zu test_mnt
+		else
+			# archLinux -f flag needs superuser (bug in umount)
+			umount test_mnt &>/dev/null
+			umount -f test_mnt &>/dev/null
+		fi
+		$ECHO "${OK}"
 	fi
 	kill $GSPID2
 	rm -rf test_client
 	rmdir test_mnt
-	$ECHO "${OK}"
 	fi
 fi
 

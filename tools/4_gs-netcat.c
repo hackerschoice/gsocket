@@ -1618,14 +1618,31 @@ done:
 // 	exit(0);
 // }
 
+// static void
+// my_test(void)
+// {
+// 	char buf[56];
+// 	ssize_t n;
+// 	char res[2];
+
+// 	while (1)
+// 	{
+// 		n = read(0, buf, sizeof buf);
+// 		DEBUGF("read %zd\n", n);
+// 		if (n <= 0)
+// 			exit(0);
+// 		GS_sanitize_logmsg(buf, sizeof buf);
+// 		printf("%s\n", buf);
+// 	}
+// }
 
 int
 main(int argc, char *argv[])
 {
+	// my_test();
 	init_defaults(&argc, &argv);
 	my_getopt(argc, argv);
 
-	// my_test();
 
 	if (gopt.flags & GSC_FL_IS_SERVER)
 		do_server();

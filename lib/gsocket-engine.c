@@ -37,22 +37,21 @@ static struct _gs_log_info gs_log_info;
 
 
 #define GS_NET_DEFAULT_HOST			"gs.thc.org"
-#define GS_NET_DEFAULT_PORT			7350
 #define GS_SOCKS_DFL_IP				"127.0.0.1"
 #define GS_SOCKS_DFL_PORT			9050
 #define GS_GS_HTON_DELAY			(12 * 60 * 60)	// every 12h 
 #ifdef DEBUG_SELECT
-# define GS_DEFAULT_PING_INTERVAL	(30)
+//# define GS_DEFAULT_PING_INTERVAL	(30)
 # define GS_RECONNECT_DELAY			(3)
 #else
-# define GS_DEFAULT_PING_INTERVAL	(2*60)	// Every 2 minutes
+//# define GS_DEFAULT_PING_INTERVAL	(2*60)	// Every 2 minutes
 # define GS_RECONNECT_DELAY			(15)	// connect() not more than every 15s
 # define GS_WARN_SLOWCONNECT        (4)     // Warn about slow connect() after 4 seconds...
 #endif
 
 // #define STRESSTEST	1
 #ifdef STRESSTEST
-# define GS_DEFAULT_PING_INTERVAL	(1)
+//# define GS_DEFAULT_PING_INTERVAL	(1)
 #endif
 
 static const char unit[] = "BKMGT";    /* Up to Exa-bytes. */
@@ -235,6 +234,7 @@ GS_CTX_init(GS_CTX *ctx, fd_set *rfd, fd_set *wfd, fd_set *r, fd_set *w, struct 
 
 	ctx->gs_flags |= GSC_FL_USE_SRP;		// Encryption by default
 	ctx->gs_flags |= GSC_FL_NONBLOCKING;	// Non-blocking by default
+	ctx->flags_proto |= GS_FL_PROTO_FAST_CONNECT;
 
 	return 0;
 }
@@ -349,7 +349,7 @@ GS_new(GS_CTX *ctx, GS_ADDR *addr)
 	if (ptr != NULL)
 		gs_port = htons(atoi(ptr));
 	else
-		gs_port = htons(GS_NET_DEFAULT_PORT);
+		gs_port = htons(GSRN_DEFAULT_PORT);
 
 	ctx->gs_port = gs_port;	// Socks5 needs to know
 	gsocket->net.port = gs_port;
@@ -688,6 +688,7 @@ gs_pkt_dispatch(GS *gsocket, struct gs_sox *sox)
 		return GS_SUCCESS;
 	}
 
+	char msg[128];
 	if (sox->rbuf[0] == GS_PKT_TYPE_STATUS)
 	{
 		struct _gs_status *status = (struct _gs_status *)sox->rbuf;
@@ -707,7 +708,10 @@ gs_pkt_dispatch(GS *gsocket, struct gs_sox *sox)
 					err_str = "Idle-Timeout. Server did not receive any data";
 					break;
 				default:
-					err_str = "Unknown";
+					err_str = "UNKNOWN";
+					GS_sanitize_logmsg(msg, sizeof msg, (char *)status->msg, sizeof status->msg);
+					if (msg[0] != '\0')
+						err_str = msg;
 					break;
 			}
 			gsocket->status_code = status->code;
@@ -1002,7 +1006,7 @@ GS_heartbeat(GS *gsocket)
 		{
 			uint64_t tv_diff = GS_TV_DIFF(&sox->tv_last_data, gsocket->ctx->tv_now);
 			// DEBUGF("diff = %llu\n", tv_diff);
-			if (tv_diff > GS_SEC_TO_USEC(GS_DEFAULT_PING_INTERVAL))
+			if (tv_diff > GS_SEC_TO_USEC(GSRN_DEFAULT_PING_INTERVAL))
 			{
 				gs_pkt_ping_write(gsocket, sox);
 				memcpy(&sox->tv_last_data, gsocket->ctx->tv_now, sizeof sox->tv_last_data);
@@ -1855,9 +1859,16 @@ GS_CTX_setsockopt(GS_CTX *ctx, int level, const void *opt_value, size_t opt_len)
 
 	/* PROTOCOL FLAGS -> copied into pkt's flags 1:1 */
 	if (level == GS_OPT_SOCKWAIT)
+	{
 		ctx->flags_proto |= GS_FL_PROTO_WAIT;
-	else if (level == GS_OPT_CLIENT_OR_SERVER)
+		ctx->flags_proto &= ~GS_FL_PROTO_FAST_CONNECT; // Disable fast-connect
+	} else if (level == GS_OPT_CLIENT_OR_SERVER) {
 		ctx->flags_proto |= GS_FL_PROTO_CLIENT_OR_SERVER;
+		ctx->flags_proto &= ~GS_FL_PROTO_FAST_CONNECT; // Disable fast-connect
+	}
+	else if (level == GS_OPT_LOW_LATENCY)
+		ctx->flags_proto |= GS_FL_PROTO_LOW_LATENCY;
+
 	/* FLAGS */
 	else if (level == GS_OPT_BLOCK)
 		ctx->gs_flags &= ~GSC_FL_NONBLOCKING;
