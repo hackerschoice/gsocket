@@ -7,7 +7,7 @@ NAME\n\
      remote host. Securely.\n\
 \n\
 SYNOPSIS\n\
-     gs-netcat [-rlgqwCTSDiu] [-s secret] [-k keyfile] [-L logfile] [-d IP]\n\
+     gs-netcat [-rlgvqwCTSDiu] [-s secret] [-k keyfile] [-L logfile] [-d IP]\n\
 	       [-p port] [-e cmd]\n\
 \n\
 DESCRIPTION\n\
@@ -81,6 +81,9 @@ OPTIONS\n\
 	     the TOR server can be set using environment variables.\n\
 \n\
      -u      Use UDP instead of TCP for port forwarding. Needs -p.\n\
+\n\
+     -v      Prints status messages. Use -vv to be more verbose and -vvv to be\n\
+	     insanely verbose.\n\
 \n\
      -w      Client to wait for the listening server to become available.\n\
 \n\

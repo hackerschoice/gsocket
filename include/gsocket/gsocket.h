@@ -35,8 +35,6 @@
 #endif
 
 #define GS_ADDR_SIZE				(16)	/* 128 bit */
-#define GS_ADDR_B58_LEN 			(GS_ADDR_SIZE) * 138 / 100 + 1
-#define GS_ADDR_PROTO_SIZE			(32)	/* 256 bit */
 #define GS_MAX_SOX_BACKLOG			(5)		/* Relevant for GS_listen() only */
 #define GS_TOKEN_SIZE 				(16)	/* 128 bit */
 
@@ -85,22 +83,41 @@
  * ### PROTOCOL DEFINITION ###
  * ###########################
  */
-/* First message from Listening Client (LC) to GS-Network (GN) [server]
- * LC2GN: Register a GS-Address for listening.
- */
-struct _gs_listen		/* 128 bytes */
+
+// _gs_hdr_con is identical for _gs_listen and _gs_connect
+struct _gs_hdr_lc
 {
 	uint8_t type;
 	uint8_t version_major;
 	uint8_t version_minor;
 	uint8_t flags;
-	uint8_t reserved1[4];
+	uint8_t reserved2[28];
 
-	uint8_t reserved2[8];
+	uint8_t addr[GS_ADDR_SIZE];	// 16 bytes
+};
 
-	uint8_t token[GS_TOKEN_SIZE];
-	uint8_t addr[GS_ADDR_PROTO_SIZE];		/* 32 bytes */
-	uint8_t reserved3[64];
+/* First message from Listening Client (LC) to GS-Network (GN) [server]
+ * LC2GN: Register a GS-Address for listening.
+ */
+struct _gs_listen		/* 128 bytes */
+{
+	union {
+		struct _gs_hdr_lc hdr;		
+		struct
+		{
+			uint8_t type;
+			uint8_t version_major;
+			uint8_t version_minor;
+			uint8_t flags;
+			uint8_t reserved1[4];
+			uint8_t reserved2[8];
+
+			uint8_t token[GS_TOKEN_SIZE];         // 16 bytes
+			uint8_t addr[GS_ADDR_SIZE];
+		};
+	};
+	uint8_t reserved3[16];
+	uint8_t reserved4[64];
 };
 
 /*
@@ -110,18 +127,26 @@ struct _gs_listen		/* 128 bytes */
  */
 struct _gs_connect
 {
-	uint8_t type;
-	uint8_t version_major;
-	uint8_t version_minor;
-	uint8_t flags;
+	union {
+		struct _gs_hdr_lc hdr;
+		struct
+		{
+			uint8_t type;
+			uint8_t version_major;
+			uint8_t version_minor;
+			uint8_t flags;
+			uint8_t reserved1[4];
+			uint8_t reserved2[8];
 
-	uint8_t reserved2[28];
-
-	uint8_t addr[GS_ADDR_PROTO_SIZE];		/* 32 bytes */
-	uint8_t reserved3[64];
+			uint8_t token_NOTUSED[GS_TOKEN_SIZE];    // 16 bytes
+			uint8_t addr[GS_ADDR_SIZE];		         // 16 bytes
+		};
+	};
+	uint8_t reserved3[16];
+	uint8_t reserved4[64];
 };
-#define GS_PKT_PROTO_VERSION_MAJOR		(0x01)
-#define GS_PKT_PROTO_VERSION_MINOR		(0x02)
+#define GS_PKT_PROTO_VERSION_MAJOR		(1)
+#define GS_PKT_PROTO_VERSION_MINOR		(3)
 
 // Wait for server to become available (-w option)
 #define GS_FL_PROTO_WAIT				(0x01)
@@ -192,6 +217,7 @@ struct _gs_status
 #define GS_STATUS_CODE_IDLE_TIMEOUT (0x03)	// Timeout
 #define GS_STATUS_CODE_CONNDENIED   (0x04)  // Connection denied
 #define GS_STATUS_CODE_PROTOERROR   (0x05)  // Protocol error
+#define GS_STATUS_CODE_NEEDUPDATE   (0x2A)  // oct=42; Needs updating of client.
 
 /*
  * all2GN: Accepting incoming connection.
@@ -308,11 +334,12 @@ struct gs_net
 };
 
 
+#define GS_SRP_PASSWORD_LENGTH       (32)
+
 typedef struct
 {
 	uint8_t addr[GS_ADDR_SIZE];
-	char b58str[GS_ADDR_B58_LEN + 1];		/* Base58 string representation of gs-address + \0-terminated. */
-	size_t b58sz;							/* Base58 size */
+	char srp_password[GS_SRP_PASSWORD_LENGTH + 1];
 } GS_ADDR;
 
 #ifdef WITH_GSOCKET_SSL
@@ -398,6 +425,11 @@ char *GS_bytesstr(char *dst, size_t len, int64_t bytes);
 char *GS_bytesstr_long(char *dst, size_t len, int64_t bytes);
 const char *GS_logtime(void);
 void GS_log(int type, int level, char *fmt, ...);
+char *GS_bin2hex(char *dst, size_t dsz, const void *src, size_t sz);
+char *GS_bin2HEX(char *dst, size_t dsz, const void *src, size_t sz);
+char *GS_bin2b58(char *b58, size_t *b58sz, uint8_t *src, size_t binsz);
+char *GS_addr2hex(char *dst, const void *src);
+char *GS_token2hex(char *dst, const void *src);
 
 int GS_CTX_setsockopt(GS_CTX *ctx, int level, const void *opt_value, size_t opt_len);
 
@@ -411,15 +443,17 @@ int GS_CTX_setsockopt(GS_CTX *ctx, int level, const void *opt_value, size_t opt_
 
 ssize_t GS_write(GS *gsocket, const void *buf, size_t num);
 ssize_t GS_read(GS *gsocket, void *buf, size_t num);
-GS_ADDR *GS_ADDR_bin2addr(GS_ADDR *addr, const void *data, size_t len);
-GS_ADDR *GS_ADDR_str2addr(GS_ADDR *addr, const char *str);
-GS_ADDR *GS_ADDR_ipport2addr(GS_ADDR *addr, uint32_t ip, uint16_t port);
+GS_ADDR *GS_ADDR_sec2addr(GS_ADDR *addr, const char *gs_secret);
 uint32_t GS_hton(const char *hostname);
+uint8_t GS_ADDR_get_hostname_id(uint8_t *addr);
 void GS_SELECT_FD_SET_W(GS *gs);
 
 void GS_daemonize(FILE *logfp);
 uint64_t GS_usec(void);
 void GS_format_bps(char *dst, size_t size, int64_t bytes, const char *suffix);
+#define GS_BPS_MAXSIZE       (8)  // _without_ length of suffix!
+char *GS_format_since(char *dst, size_t sz, int32_t sec);
+#define GS_SINCE_MAXSIZE     (7)
 char *GS_getpidwd(pid_t pid);
 
 const char *GS_gen_secret(void);

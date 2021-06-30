@@ -116,9 +116,9 @@ tests+="2.1 2.2 "
 tests+="3.1 "
 tests+="4.1 4.2 "
 tests+="5.1 5.2 5.3 5.4 "
-tests+="5.5 "		# cleartext
+# tests+="5.5 "		# cleartext
 tests+="6.1 6.2 6.3 6.4 6.5 6.6 "	# gs-netcat
-tests+="6.7 "		# cleartext
+# tests+="6.7 "		# cleartext
 tests+="6.8 "		# TOR
 tests+="7.1 7.2 7.3 7.4 "
 tests+="8.1 8.2 8.3 "
@@ -135,6 +135,7 @@ fi
 
 mk_dummy()
 {
+        # [ -f "$1" ] || dd bs=1024 count=$2 if=/dev/zero | tr '\000' '\101' >"$1" 2>/dev/null
         [ -f "$1" ] || dd bs=1024 count=$2 if=/dev/urandom of="$1" 2>/dev/null
 }
 mk_dummy test1k.dat 1
@@ -156,7 +157,9 @@ test_start()
 {
 	rm -f client_out.dat server_out.dat server_err.txt client_err.txt server[123]_out.dat client[12]_out.dat server[123]_err.txt client[12]_err.txt nc[123]_out.dat nc[123]_err.txt
 	[[ x"$1" != x ]] && $ECHO $*
-	[[ -s id_sec.txt ]] || new_id
+	# [[ -s id_sec.txt ]] || new_id
+	# Each test needs a new gsocket-secret or GSRN reports BAD-TOKEN.
+	new_id
 }
 
 fail()
@@ -444,10 +447,10 @@ if [[ "$tests" =~ '5.5' ]]; then
 test_start -n "Running: full-pipe #5.5 (assymetric sizes, clear)........."
 GSPID="$(sh -c '../tools/gs-full-pipe -k id_sec.txt -AC <test1M.dat 2>server_err.txt >server_out.dat & echo ${!}')"
 sleep_ct
-../tools/gs-full-pipe -k id_sec.txt -AC <test50k.dat 2>client_err.txt >client_out.dat
+../tools/gs-full-pipe -k id_sec.txt -AC <test4k.dat 2>client_err.txt >client_out.dat
 waitk $GSPID
 if [ "$MD1MB" != "$(MD5 client_out.dat)" ]; then fail 1; fi
-if [ "$(MD5 test50k.dat)" != "$(MD5 server_out.dat)" ]; then fail 2; fi
+if [ "$(MD5 test4k.dat)" != "$(MD5 server_out.dat)" ]; then fail 2; fi
 $ECHO "${OK}"
 fi
 

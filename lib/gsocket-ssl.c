@@ -513,7 +513,8 @@ gs_srp_init(GS *gsocket)
 void
 GS_srp_setpassword(GS *gsocket, const char *pwd)
 {
-	snprintf(gsocket->srp_sec, sizeof gsocket->srp_sec, "%s.%s", "KD/1/2/THC/KeyForSRPSec/Path", pwd);
+	snprintf(gsocket->srp_sec, sizeof gsocket->srp_sec, "%s.%s.%s", "Blah", pwd, "blubb-SRPSEC");
+	DEBUGF("'%s'\n", gsocket->srp_sec);
 }
 
 const char *
@@ -533,7 +534,6 @@ GS_get_cipher_strength(GS *gs)
 
 	return 0;
 }
-
 
 #endif /* HAVE_LIBCRYPTO */
 

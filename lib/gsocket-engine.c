@@ -15,7 +15,6 @@
 #include <openssl/sha.h>
 #include <gsocket/gsocket.h>
 #include "gsocket-engine.h"
-#include "gsocket-sha256.h"	// Use internal SHA256 if no OpenSSL available
 #include "gs-externs.h"
 
 #ifdef DEBUG
@@ -64,7 +63,6 @@ static void gs_listen_add_gs_select_by_sox(GS_SELECT_CTX *ctx, gselect_cb_t func
 static void gs_net_try_reconnect_by_sox(GS *gs, struct gs_sox *sox);
 static void gs_net_init_by_sox(GS_CTX *ctx, struct gs_sox *sox);
 static int gs_net_connect_new_socket(GS *gs, struct gs_sox *sox);
-
 
 #ifndef int_ntoa
 const char *
@@ -306,6 +304,7 @@ gs_set_ip_by_hostname(GS *gs, const char *hostname)
 		GS_LOG_ERR("Cannot resolve '%s'. Re-trying in %d seconds...\n", hostname, GS_RECONNECT_DELAY);
 		return GS_ERROR;
 	}
+	DEBUGF_B("Setting hostname=%s\n", hostname);
 
 	gs->net.tv_gs_hton = GS_TV_TO_USEC(gs->ctx->tv_now);
 	gs->net.addr = gs_ip;
@@ -367,16 +366,17 @@ GS_new(GS_CTX *ctx, GS_ADDR *addr)
 		hostname = getenv("GSOCKET_HOST");
 		if (hostname == NULL)
 		{
-			/* Connect to [a-z].gsocket.org depending on GS-address */
-			int num = 0;
-			int i;
-			for (i = 0; i < sizeof addr->addr; i++)
-				num += addr->addr[i];
-			num = num % 26;
-			snprintf(buf, sizeof buf, "%c.%s", 'a' + num, GS_NET_DEFAULT_HOST);
+			uint8_t hostname_id;
+			hostname_id = GS_ADDR_get_hostname_id(addr->addr);
+			// Connect to [a-z].gsocket.io depending on GS-address
+			const char *domain;
+			domain = getenv("GSOCKET_DOMAIN");
+			if (domain == NULL)
+				domain = GS_NET_DEFAULT_HOST;
+
+			snprintf(buf, sizeof buf, "%c.%s", 'a' + hostname_id, domain);
 			hostname = buf;
 		}
-
 		gsocket->net.hostname = strdup(hostname);
 
 		gs_set_ip_by_hostname(gsocket, gsocket->net.hostname);
@@ -384,7 +384,7 @@ GS_new(GS_CTX *ctx, GS_ADDR *addr)
 
 	if (ctx->socks_ip != 0)
 	{
-		/* HERE: Socks5 is used */
+		// HERE: Socks5 is used
 		gsocket->net.addr = ctx->socks_ip;
 		gsocket->net.port = ctx->socks_port;
 		XASSERT(gsocket->net.hostname != NULL, "Socks5 but hostname not set\n");
@@ -401,7 +401,7 @@ GS_new(GS_CTX *ctx, GS_ADDR *addr)
 
 	memcpy(&gsocket->gs_addr, addr, sizeof gsocket->gs_addr);
 
-	GS_srp_setpassword(gsocket, gsocket->gs_addr.b58str);
+	GS_srp_setpassword(gsocket, gsocket->gs_addr.srp_password);
 
 	GS_set_token(gsocket, NULL, 0);
 
@@ -606,6 +606,7 @@ gs_pkt_listen_write(GS *gsocket, struct gs_sox *sox)
 
 	memcpy(glisten.token, gsocket->token, sizeof glisten.token);
 	memcpy(glisten.addr, gsocket->gs_addr.addr, MIN(sizeof glisten.addr, GS_ADDR_SIZE));
+	HEXDUMP(glisten.addr, sizeof glisten.addr);
 
 	ret = sox_write(sox, &glisten, sizeof glisten);
 	if (ret == 0)
@@ -2025,7 +2026,6 @@ GS_read(GS *gsocket, void *buf, size_t count)
 	return ret;
 }
 
-
 void
 GS_SELECT_FD_SET_W(GS *gs)
 {
@@ -2113,12 +2113,14 @@ GS_write(GS *gsocket, const void *buf, size_t count)
 		}
 #endif
 	} else {
+		if (count == 0)
+			return -2; // Nothing to be done.
 		len = write(gsocket->fd, buf, count);
 		// DEBUGF("write(%zu) = %zd (%s)\n", count, len, errno==0?"ok":strerror(errno));
 
 		if (len <= 0)
 		{
-			if ((errno != EAGAIN) & (errno != EINTR))
+			if ((errno != EAGAIN) && (errno != EINTR))
 				return -1;
 			err = SSL_ERROR_WANT_WRITE;
 		}
@@ -2154,17 +2156,7 @@ GS_write(GS *gsocket, const void *buf, size_t count)
  * GS UTILS                                                                   *
  ******************************************************************************/
 
-static const char       b58digits_ordered[] = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-static const int8_t b58digits_map[] = {
-	-1,-1,-1,-1,-1,-1,-1,-1, -1,-1,-1,-1,-1,-1,-1,-1,
-	-1,-1,-1,-1,-1,-1,-1,-1, -1,-1,-1,-1,-1,-1,-1,-1,
-	-1,-1,-1,-1,-1,-1,-1,-1, -1,-1,-1,-1,-1,-1,-1,-1,
-	-1, 0, 1, 2, 3, 4, 5, 6,  7, 8,-1,-1,-1,-1,-1,-1,
-	-1, 9,10,11,12,13,14,15, 16,-1,17,18,19,20,21,-1,
-	22,23,24,25,26,27,28,29, 30,31,32,-1,-1,-1,-1,-1,
-	-1,33,34,35,36,37,38,39, 40,41,42,43,-1,44,45,46,
-	47,48,49,50,51,52,53,54, 55,56,57,-1,-1,-1,-1,-1,
-};
+
 
 
 /*
@@ -2275,213 +2267,13 @@ GS_logtime(void)
 	return tbuf;
 }
 
-bool
-b58tobin(void *bin, size_t *binszp, const char *b58, size_t b58sz)
-{
-
-	size_t binsz = *binszp;
-	const unsigned char *b58u = (void*)b58;
-	unsigned char *binu = bin;
-	size_t outisz = (binsz + 3) / 4;
-	uint32_t outi[outisz];
-	uint64_t t;
-	uint32_t c;
-	size_t i, j;
-	uint8_t bytesleft = binsz % 4;
-	uint32_t zeromask = bytesleft ? (0xffffffff << (bytesleft * 8)) : 0;
-	unsigned zerocount = 0;
-	
-	if (!b58sz)
-		b58sz = strlen(b58);
-	
-	memset(outi, 0, outisz * sizeof(*outi));
-	
-	// Leading zeros, just count
-	for (i = 0; i < b58sz && b58u[i] == '1'; ++i)
-		++zerocount;
-	
-	for ( ; i < b58sz; ++i)
-	{
-		if (b58u[i] & 0x80)
-			// High-bit set on invalid digit
-			return false;
-		if (b58digits_map[b58u[i]] == -1)
-			// Invalid base58 digit
-			return false;
-		c = (unsigned)b58digits_map[b58u[i]];
-		for (j = outisz; j--; )
-		{
-			t = ((uint64_t)outi[j]) * 58 + c;
-			c = (t & 0x3f00000000) >> 32;
-			outi[j] = t & 0xffffffff;
-		}
-		if (c)
-			// Output number too big (carry to the next int32)
-			return false;
-		if (outi[0] & zeromask)
-			// Output number too big (last int32 filled too far)
-			return false;
-	}
-	
-	j = 0;
-	switch (bytesleft) {
-		case 3:
-			*(binu++) = (outi[0] &   0xff0000) >> 16;
-		case 2:
-			*(binu++) = (outi[0] &     0xff00) >>  8;
-		case 1:
-			*(binu++) = (outi[0] &       0xff);
-			++j;
-		default:
-			break;
-	}
-	
-	for (; j < outisz; ++j)
-	{
-		*(binu++) = (outi[j] >> 0x18) & 0xff;
-		*(binu++) = (outi[j] >> 0x10) & 0xff;
-		*(binu++) = (outi[j] >>    8) & 0xff;
-		*(binu++) = (outi[j] >>    0) & 0xff;
-	}
-	
-	// Count canonical base58 byte count
-	binu = bin;
-	for (i = 0; i < binsz; ++i)
-	{
-		if (binu[i])
-			break;
-		--*binszp;
-	}
-	*binszp += zerocount;
-	
-	return true;	
-}
-
-#if 0
-/* Convert Base58 address to binary. Check CRC.
- */
-static int
-b58dec(void *dst, char *str)
-{
-	return 0;
-}
-#endif
-
-/* Convert 128 bit binary into base58 + CRC
- */
-static int
-b58enc(char *b58, size_t *b58sz, uint8_t *src, size_t binsz)
-{
-    const uint8_t *bin = src;
-    int carry;
-    size_t i, j, high, zcount = 0;
-    size_t size;
-
-    /* Find out the length. Count leading 0's. */
-    while (zcount < binsz && !bin[zcount])
-            ++zcount;
-
-    size = (binsz - zcount) * 138 / 100 + 1;
-    uint8_t buf[size];
-    memset(buf, 0, size);
-
-    for (i = zcount, high = size - 1; i < binsz; ++i, high = j)
-    {
-            for (carry = bin[i], j = size - 1; (j > high) || carry; --j)
-            {
-                    carry += 256 * buf[j];
-                    buf[j] = carry % 58;
-                    carry /= 58;
-                    if (!j)
-                    {
-                            break;
-                    }
-            }
-    }
-
-    for (j = 0; j < size && !buf[j]; ++j);
-
-    if (*b58sz <= zcount + size - j)
-    {
-            ERREXIT("Wrong size...%zu\n", zcount + size - j + 1);
-            *b58sz = zcount + size - j + 1;
-            return -1;
-    }
-    if (zcount)
-    	memset(b58, '1', zcount);
-
-    for (i = zcount; j < size; ++i, ++j)
-    {
-            b58[i] = b58digits_ordered[buf[j]];
-    }
-    b58[i] = '\0';
-    *b58sz = i + 1;
-
-	return 0;
-}
-
-
-/*
- * Convert a binary to a GS address.
- */
-GS_ADDR *
-GS_ADDR_bin2addr(GS_ADDR *addr, const void *data, size_t len)
-{
-	unsigned char md[SHA256_DIGEST_LENGTH];
-	char b58[GS_ADDR_B58_LEN + 1];
-	size_t b58sz = sizeof b58;
-
-	memset(addr, 0, sizeof *addr);
-	GS_SHA256(data, len, md);
-	memcpy(addr->addr, md, sizeof addr->addr);
-
-	HEXDUMP(addr->addr, sizeof addr->addr);
-
-	b58enc(b58, &b58sz, md, GS_ADDR_SIZE);
-	DEBUGF("b58 (%lu): %s\n", b58sz, b58);
-	addr->b58sz = b58sz;
-	snprintf(addr->b58str, sizeof addr->b58str, "%s", b58);
-
-	return addr;
-}
-
-/*
- * Convert a human readable string (password) to GS address. 
- */
-GS_ADDR *
-GS_ADDR_str2addr(GS_ADDR *addr, const char *str)
-{
-	addr = GS_ADDR_bin2addr(addr, str, strlen(str));
-
-	return addr;
-}
-
-/*
- * Derive a GS-Address from IPv4 + Port tuple.
- * Use at your own risk. GS-Address can easily be guessed.
- */
-GS_ADDR *
-GS_ADDR_ipport2addr(GS_ADDR *addr, uint32_t ip, uint16_t port)
-{
-	struct in_addr in;
-	char buf[128];
-
-	in.s_addr = ip;
-
-	snprintf(buf, sizeof buf, "%s:%d", inet_ntoa(in), ntohs(port));
-	//DEBUGF("%s\n", buf);
-	GS_ADDR_str2addr(addr, buf);
-	
-	return addr;
-}
-
 /*
  * Set the 'listen' token. This will stop a client (who knows the secret) to
  * impersonate a server (while the server is connected).
  *
  * A User might decide to use the same 'token' as a kind of master password
  * for all its servers. We like not to be able to track the User. Thus the
- * token is a has over TOKEN-STRING + GS-ADDRESS. This makes every token unique
+ * token is a hash over TOKEN-STRING + GS-ADDRESS. This makes every token unique
  * per GS-ADDRESS.
  *
  * FIXME: extend this later to use as an auth-token:
@@ -2502,7 +2294,7 @@ GS_set_token(GS *gs, const void *data, size_t len)
 		input = malloc(len + sizeof gs->gs_addr.addr);
 		memcpy(input, data, len);
 		memcpy(input + len, gs->gs_addr.addr, sizeof gs->gs_addr.addr);
-		GS_SHA256(input, len + sizeof gs->gs_addr.addr, md);
+		SHA256(input, len + sizeof gs->gs_addr.addr, md);
 		memcpy(gs->token, md, sizeof gs->token);
 		free(input);
 	}

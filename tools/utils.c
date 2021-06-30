@@ -216,7 +216,9 @@ init_vars(void)
 		GS_LOG("=Secret         : %s\n", gopt.sec_str);
 
 	/* Convert a secret string to an address */
-	GS_ADDR_str2addr(&gopt.gs_addr, gopt.sec_str);
+	GS_ADDR_sec2addr(&gopt.gs_addr, gopt.sec_str);
+
+	GS_LOG_V("=GS Address     : %s\n", GS_addr2hex(NULL, gopt.gs_addr.addr));
 
 	signal(SIGTERM, cb_sigterm);
 }

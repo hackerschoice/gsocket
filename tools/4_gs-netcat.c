@@ -60,7 +60,8 @@ static void vlog_hostname(struct _peer *p, const char *desc, uint16_t port);
 #define GS_PEER_IDLE_TIMEOUT    GS_SEC_TO_USEC(60 + 5)
 #endif
 // Shut any connection after 2 seconds if an EOF was received (shutdown())
-#define GS_PEER_IDLE_TIMEOUT_EOF GS_SEC_TO_USEC(2)
+#define GS_PEER_IDLE_TIMEOUT_EOF_UDP GS_SEC_TO_USEC(2)
+#define GS_PEER_IDLE_TIMEOUT_EOF_TCP GS_SEC_TO_USEC(2)
 
 /*
  * Make statistics and return them in 'dst'
@@ -214,8 +215,15 @@ cbe_peer_timeout(void *ptr)
 	}
 
 	uint64_t expire = p->ts_peer_io + GS_PEER_IDLE_TIMEOUT;
-	if (p->is_received_gs_eof)
-		expire = p->ts_peer_io + GS_PEER_IDLE_TIMEOUT_EOF;
+	if (gopt.is_udp)
+	{
+		if (p->is_received_gs_eof)
+			expire = p->ts_peer_io + GS_PEER_IDLE_TIMEOUT_EOF_UDP;
+	} else {
+		if (!p->is_received_gs_eof)
+			return 0; // TCP and no EOF received yet.
+		expire = p->ts_peer_io + GS_PEER_IDLE_TIMEOUT_EOF_TCP;
+	}
 
 	// DEBUGF_C("PEER TIMEOUT check %ld\n", GS_PEER_IDLE_TIMEOUT);
 	// Return if data was transmitted recently
@@ -554,13 +562,15 @@ cb_read_gs_error(GS_SELECT_CTX *ctx, struct _peer *p, ssize_t len)
 	{
 		/* The same for STDOUT, tcp-fordward or cmd-forward [/bin/sh] */
 		DEBUGF_M("CMD shutdown(p->fd=%d)\n", p->fd_out);
-		shutdown(p->fd_out, SHUT_WR);	// BUG-2-MAX-FD
 		p->is_received_gs_eof = 1;
 		if (gopt.is_receive_only)
-		{
-			DEBUGF_M("is_receive_only is TRUE. Calling peer_free()\n");
 			peer_free(ctx, p);
-		}
+
+		// clients immediately exist if EOF from remote (-iC shell typing 'exit').
+		if ((gopt.is_interactive) && (!GS_is_server(p->gs)))
+			peer_free(ctx, p);
+
+		shutdown(p->fd_out, SHUT_WR);
 	} else if (len < 0) { /* any ERROR (but EOF) */
 		DEBUGF_R("Fatal error=%zd in GS_read() (stdin-forward == %d)\n", len, p->is_stdin_forward);
 		GS_shutdown(p->gs);
@@ -898,9 +908,9 @@ peer_new_init(GS *gs)
 	}
 
 	p->ts_peer_io = GS_TV_TO_USEC(&gopt.tv_now);
+	GS_EVENT_add_by_ts(&gs->ctx->gselect_ctx->emgr, &p->event_peer_timeout, 0, GS_SEC_TO_USEC(1), cbe_peer_timeout, p, 0);
 	if (gopt.is_udp)
 	{
-		GS_EVENT_add_by_ts(&gs->ctx->gselect_ctx->emgr, &p->event_peer_timeout, 0, GS_SEC_TO_USEC(1), cbe_peer_timeout, p, 0);
 		GS_BUF_init(&p->udp_buf, 0);
 	}
 
@@ -1044,7 +1054,7 @@ cb_listen(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	if (gs_new == NULL)
 	{
 		if (err <= -2)
-			ERREXIT("ERROR: %s.\n", GS_CTX_strerror(gs->ctx)); //Another Server is already listening or Network error.\n");
+			ERREXIT("%s\n", GS_CTX_strerror(gs->ctx)); //Another Server is already listening or Network error.\n");
 		/* HERE: GS_accept() is not ready yet to accept() a new
 		 * gsocket. (May have processed GS-pkt data) or may have 
 		 * closed the socket and established a new one (to wait for

@@ -4,6 +4,18 @@
 #include "gsocket-engine.h"
 #include "gs-externs.h"
 
+static const char       b58digits_ordered[] = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+// static const int8_t b58digits_map[] = {
+// 	-1,-1,-1,-1,-1,-1,-1,-1, -1,-1,-1,-1,-1,-1,-1,-1,
+// 	-1,-1,-1,-1,-1,-1,-1,-1, -1,-1,-1,-1,-1,-1,-1,-1,
+// 	-1,-1,-1,-1,-1,-1,-1,-1, -1,-1,-1,-1,-1,-1,-1,-1,
+// 	-1, 0, 1, 2, 3, 4, 5, 6,  7, 8,-1,-1,-1,-1,-1,-1,
+// 	-1, 9,10,11,12,13,14,15, 16,-1,17,18,19,20,21,-1,
+// 	22,23,24,25,26,27,28,29, 30,31,32,-1,-1,-1,-1,-1,
+// 	-1,33,34,35,36,37,38,39, 40,41,42,43,-1,44,45,46,
+// 	47,48,49,50,51,52,53,54, 55,56,57,-1,-1,-1,-1,-1,
+// };
+
 #ifndef HAVE_GETLINE
 static int
 getline(char **lineptr, size_t *n, FILE *stream)
@@ -132,15 +144,17 @@ GS_gen_secret(void)
 
 	GS_library_init(stderr, stderr, NULL);
 
-	/* Generate a new secret */
-	uint8_t buf[GS_SECRET_MAX_LEN + 1];
-	ret = RAND_bytes(buf, GS_SECRET_MAX_LEN);
+	// Generate random numbers
+	uint8_t buf[GS_SECRET_MAX_LEN];
+	ret = RAND_bytes(buf, sizeof buf);
 	XASSERT(ret == 1, "RAND_bytes() failed.\n");
 
-	GS_ADDR addr;
-	GS_ADDR_bin2addr(&addr, buf, GS_SECRET_MAX_LEN);
+	char b58[sizeof buf * 2];
+	size_t b58sz = sizeof (b58);
+	GS_bin2b58(b58, &b58sz, buf, sizeof buf);
+	b58[22] = '\0'; // shorten secret to 21 characters
 
-	return strdup(addr.b58str);
+	return strdup(b58);
 }
 
 const char *
@@ -170,6 +184,168 @@ GS_user_secret(GS_CTX *ctx, const char *sec_file, const char *sec_str)
 	ptr = GS_gen_secret();
 
 	return ptr;
+}
+
+
+/* Convert 128 bit binary into base58 + CRC
+ */
+static int
+b58enc(char *b58, size_t *b58sz, uint8_t *src, size_t binsz)
+{
+    const uint8_t *bin = src;
+    int carry;
+    size_t i, j, high, zcount = 0;
+    size_t size;
+
+    /* Find out the length. Count leading 0's. */
+    while (zcount < binsz && !bin[zcount])
+            ++zcount;
+
+    size = (binsz - zcount) * 138 / 100 + 1;
+    uint8_t buf[size];
+    memset(buf, 0, size);
+
+    for (i = zcount, high = size - 1; i < binsz; ++i, high = j)
+    {
+            for (carry = bin[i], j = size - 1; (j > high) || carry; --j)
+            {
+                    carry += 256 * buf[j];
+                    buf[j] = carry % 58;
+                    carry /= 58;
+                    if (!j)
+                    {
+                            break;
+                    }
+            }
+    }
+
+    for (j = 0; j < size && !buf[j]; ++j);
+
+    if (*b58sz <= zcount + size - j)
+    {
+            ERREXIT("Wrong size...%zu\n", zcount + size - j + 1);
+            *b58sz = zcount + size - j + 1;
+            return -1;
+    }
+    if (zcount)
+    	memset(b58, '1', zcount);
+
+    for (i = zcount; j < size; ++i, ++j)
+    {
+            b58[i] = b58digits_ordered[buf[j]];
+    }
+    b58[i] = '\0';
+    *b58sz = i + 1;
+
+	return 0;
+}
+
+char *
+GS_bin2b58(char *b58, size_t *b58sz, uint8_t *src, size_t binsz)
+{
+	b58enc(b58, b58sz, src, binsz);
+
+	return b58;
+}
+
+static char *
+bin2hex(char *dst, size_t dsz, const void *src, size_t sz, char *hexset)
+{
+	char *end = dst + dsz;
+	char *dst_orig = dst;
+	uint8_t *s = (uint8_t *)src;
+	uint8_t *e = s + sz;
+
+	while ((dst < end) && (s < e))
+	{
+		*dst = hexset[*s >> 4];
+		dst += 1;
+		if (dst >= end)
+			break;
+		*dst = hexset[*s & 0x0f];
+		dst += 1;
+		s++;
+	}
+	*end = '\0';
+
+	return dst_orig;
+}
+
+char *
+GS_bin2hex(char *dst, size_t dsz, const void *src, size_t sz)
+{
+	return bin2hex(dst, dsz, src, sz, "0123456789abcdef");
+}
+
+char *
+GS_bin2HEX(char *dst, size_t dsz, const void *src, size_t sz)
+{
+	return bin2hex(dst, dsz, src, sz, "0123456789ABCDEF");
+}
+
+char *
+GS_addr2hex(char *dst, const void *src)
+{
+	if (dst == NULL)
+	{
+		static char dst_local[GS_ADDR_SIZE * 2 + 1];
+		dst = dst_local;
+	}
+
+	return GS_bin2hex(dst, GS_ADDR_SIZE * 2 + 1, src, GS_ADDR_SIZE);
+}
+
+char *
+GS_token2hex(char *dst, const void *src)
+{
+	if (dst == NULL)
+	{
+		static char dst_local[GS_TOKEN_SIZE * 2 + 1];
+		dst = dst_local;
+	}
+
+	return GS_bin2hex(dst, GS_TOKEN_SIZE * 2 + 1, src, GS_TOKEN_SIZE);
+}
+
+#define GS_SRP_KD1   "/kd/srp/1"
+#define GS_ADDR_KD2  "/kd/addr/2"
+
+// Convert a secret to a SRP secret and address.
+GS_ADDR *
+GS_ADDR_sec2addr(GS_ADDR *addr, const char *gs_secret)
+{
+	unsigned char md[SHA256_DIGEST_LENGTH];
+	SHA256_CTX sha;
+
+	// Derive a SRP Secret (from gs_secret)
+	SHA256_Init(&sha);
+	SHA256_Update(&sha, GS_SRP_KD1, strlen(GS_SRP_KD1));
+	SHA256_Update(&sha, gs_secret, strlen(gs_secret));
+	SHA256_Final(md, &sha);
+	// Convert to hex string
+	GS_bin2hex(addr->srp_password, sizeof addr->srp_password, md, sizeof md);
+
+	// Derive the GS address
+	SHA256_Init(&sha);
+	SHA256_Update(&sha, GS_ADDR_KD2, strlen(GS_ADDR_KD2));
+	SHA256_Update(&sha, gs_secret, strlen(gs_secret));
+	SHA256_Final(md, &sha);
+
+	memcpy(addr->addr, md, sizeof addr->addr);
+
+	return addr;
+}
+
+// Return 0..25 to connect to [a-z].gsocket.org
+uint8_t
+GS_ADDR_get_hostname_id(uint8_t *addr)
+{
+	int i;
+	int num = 0;
+	for (i = 0; i < GS_ADDR_SIZE; i++)
+		num += addr[i];
+
+	return num % 26;
 }
 
 uint64_t
@@ -205,6 +381,33 @@ GS_format_bps(char *dst, size_t size, int64_t bytes, const char *suffix)
             (long long) (bytes + 5) / 10 % 10,
             unit[i],
             i ? "B" : " ", suffix);
+}
+
+// Convert 'sec' to human readable string
+// 99s
+// 1m40   100
+// 99m59  5999
+// 1h40   6000
+// 99h59  359940
+// 4d04   360000
+// 99d23  8636400
+// 100d   8640000
+// MAX LENGTH IS 7 chars including 0-termination.
+char *
+GS_format_since(char *dst, size_t dst_sz, int32_t sec)
+{
+	if (sec >= 100 * 24 * 60 * 60) // 100 days or more 
+		snprintf(dst, dst_sz, "%ud", sec / (24 * 60 * 60));
+	else if (sec >= 100 * 60 * 60) // 100 hours or more => 4d00
+		snprintf(dst, dst_sz, "%ud%02uh", sec / (24 * 60 * 60) /*days*/, (sec / (60 * 60)) % 24);
+	else if (sec >= 100 * 60) // 100 minutes or more => 1h40
+		snprintf(dst, dst_sz, "%uh%02um", sec / (60 * 60), (sec / 60) % 60);
+	else if (sec >= 100) // 100 seconts or more => 1m40
+		snprintf(dst, dst_sz, "%um%02us", sec / 60, sec % 60);
+	else
+		snprintf(dst, dst_sz, "%us", MAX(0, sec));
+
+	return dst;
 }
 
 // Get Working Directory of process with id pid or if this fails then current cwd
