@@ -58,6 +58,8 @@ Man Page| [gsocket(1)](https://hackerschoice.github.io/gsocket.1.html), [gs-netc
 Docker|  docker run --rm -it hackerschoice/gsocket
 Docker| docker run --rm -it hackerschoice/gsocket-tor # gs via TOR
 
+# ***Version 1.4.32 and later break backward compatibility to older (obsolete) gs-netcats. It will not connect to older gs-netcats or vice versa. Update both ends to 1.4.32 or later.***
+
 ---
 **Examples**
 <A></A>|<A></A>
