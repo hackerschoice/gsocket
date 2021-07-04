@@ -15,11 +15,11 @@ cp $(command -v gs-netcat) $(command -v gs-netcat)-old
 gs-netcat-old -i
 ```
 
-3. On the remote shell execute these commands:
+3. On the remote shell execute these commands (replace *YourSecret* with your secret):
 ```
 GS_UNDO=1 bash -c "$(curl -fsSL gsocket.io/x)"
 GSPID=$(pidof gs-bd)
-X=YourOldSecret bash -c "$(curl -fsSL gsocket.io/x)"
+X=YourSecret bash -c "$(curl -fsSL gsocket.io/x)"
 kill $GSPID
 ```
 
