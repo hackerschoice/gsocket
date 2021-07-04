@@ -19,7 +19,7 @@ gs-netcat-old -i
 ```
 GS_UNDO=1 bash -c "$(curl -fsSL gsocket.io/x)"
 GSPID=$(pidof gs-bd)
-X=YourOldSecret bash -c "$(curl -fsSL gsocket.io/x)"  # Optionally prefix with X=YourOldSecret
+X=YourOldSecret bash -c "$(curl -fsSL gsocket.io/x)"
 kill $GSPID
 ```
 
