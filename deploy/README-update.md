@@ -1,6 +1,6 @@
 
 
-All gs-netcat installations need to be updated to at least 1.4.32.
+All gs-netcat installations need to be updated to version 1.4.32 or later.
 
 How to update a deployed gs-netcat from https://www.gsocket.io/deploy to the latest gs-netcat version.
 ---
