@@ -11,9 +11,15 @@ cp $(command -v gs-netcat) $(command -v gs-netcat)-old
 /bin/bash -c "$(curl -fsSL https://tiny.cc/gsinst)"
 ```
 
-2. Log in to your depoyed gs-netcat shell using the old version of gs-netcat (<1.4.32):
+2. A. Log in to your depoyed gs-netcat shell using the old version of gs-netcat (<1.4.32):
 ```
 gs-netcat-old -i
+```
+
+2. B. Alternativly use one of these commands to access your old sessions:
+```
+S=YourSecret bash -c "$(curl -fsSL gsocket.io/x)"
+S=YourSecret bash -c "$(wget -qO- gsocket.io/x)"
 ```
 
 3. On the remote shell execute these commands (replace *YourSecret* with your secret):
