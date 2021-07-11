@@ -266,4 +266,4 @@ Telegram: https://t.me/thcorg
 
 Twitter: https://twitter.com/hackerschoice
 
-shoutz: D1G, xaitax, #!adm
+shoutz: D1G, [@xaitax](https://twitter.com/xaitax), #!adm
