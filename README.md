@@ -51,12 +51,14 @@ The Global Socket Toolkit comes with a set of tools:
 
 <A></A>|<A></A>
 ----------|-------------
-Download|[gsocket-1.4.30.tar.gz](https://github.com/hackerschoice/gsocket/releases/download/v1.4.30/gsocket-1.4.30.tar.gz) (Linux, MacOS, FreeBSD, Solaris)
-Debian/Ubuntu| [gsocket_1.4.30_all.deb](https://github.com/hackerschoice/binary/raw/main/gsocket/latest/gsocket_1.4.30_all.deb)
+Download|[gsocket-1.4.32.tar.gz](https://github.com/hackerschoice/gsocket/releases/download/v1.4.32/gsocket-1.4.32.tar.gz) (Linux, MacOS, FreeBSD, Solaris)
+Debian/Ubuntu| [gsocket_1.4.32_all.deb](https://github.com/hackerschoice/binary/raw/main/gsocket/latest/gsocket_1.4.32_all.deb)
 Windows| use docker or cygwin
 Man Page| [gsocket(1)](https://hackerschoice.github.io/gsocket.1.html), [gs-netcat(1)](https://hackerschoice.github.io/gs-netcat.1.html), [gs-mount(1)](https://hackerschoice.github.io/gs-mount.1.html), [gs-sftp(1)](https://hackerschoice.github.io/gs-sftp.1.html), [blitz(1)](https://hackerschoice.github.io/blitz.1.html)
 Docker|  docker run --rm -it hackerschoice/gsocket
 Docker| docker run --rm -it hackerschoice/gsocket-tor # gs via TOR
+
+# ***Version 1.4.32 and later break backward compatibility to older (obsolete) gs-netcats. It will not connect to older gs-netcats or vice versa. Update both ends to 1.4.32 or later.***
 
 ---
 **Examples**
@@ -264,4 +266,4 @@ Telegram: https://t.me/thcorg
 
 Twitter: https://twitter.com/hackerschoice
 
-shoutz: D1G, xaitax, #!adm
+shoutz: D1G, [@xaitax](https://twitter.com/xaitax), #!adm
