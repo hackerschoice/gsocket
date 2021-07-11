@@ -1,6 +1,6 @@
 dnl Process this File with autoconf to produce a configure script.
 AC_PREREQ([2.69])
-AC_INIT([gsocket],[1.4.32])
+AC_INIT([gsocket],[1.4.33])
 AC_CONFIG_AUX_DIR(config)
 AC_CANONICAL_TARGET
 
@@ -29,16 +29,19 @@ if test $ac_cv_c_compiler_gnu = yes; then
 fi
 test "x$prefix" != "xNONE" || prefix="/usr/local"
 test "x$exec_prefix" != "xNONE" || exec_prefix="${prefix}"
-trydir_i="${prefix}/include /usr/include"
-trydir_l="${prefix}/lib /usr/lib"
+dnl trydir_i="${prefix}/include /usr/include"
+dnl trydir_l="${prefix}/lib /usr/lib"
 
-if test "${prefix}" != "/usr/local" ; then
-	trydir_i="${trydir_i} /usr/local/include"
-	trydir_l="${trydir_l} /usr/local/lib"
-fi
+dnl trydir_i="${includedir}"
+dnl trydir_l="${libdir}"
+
+dnl if test "${prefix}" != "/usr/local" ; then
+dnl 	trydir_i="${trydir_i} /usr/local/include"
+dnl 	trydir_l="${trydir_l} /usr/local/lib"
+dnl fi
 
 dnl Try include paths (especially on OSX)
-trydir_i="${trydir_i} /usr/local/opt/openssl/include /opt/homebrew/opt/openssl/include"
+trydir_i="${includedir} /usr/local/include /usr/local/opt/openssl/include /opt/homebrew/opt/openssl/include"
 for xincdir in $trydir_i ; do
 	if test ! -d "$xincdir" ; then
 		continue;
@@ -52,7 +55,7 @@ done
 CPPFLAGS="-I${srcdir}/../include ${INCLUDES} $CPPFLAGS"
 
 dnl Try library paths...
-trydir_l="${trydir_l} /usr/local/opt/openssl/lib /opt/homebrew/opt/openssl/lib"
+trydir_l="${libdir} /usr/local/lib /usr/local/opt/openssl/lib /opt/homebrew/opt/openssl/lib"
 for xlibdir in $trydir_l ; do
 	if test ! -d "$xlibdir" ; then
 		continue;
