@@ -3,14 +3,14 @@
 # Install and start a permanent gs-netcat remote login shell
 #
 # This script is typically invoked like this as root or non-root user:
-#   $ bash -c"$(curl -fsSL gsocket.io/x)"
+#   $ bash -c "$(curl -fsSL gsocket.io/x)"
 #
 # Pre-set a secret:
 #   $ X=MySecret bash -c "$(curl -fsSL gsocket.io/x)"
 # Uninstall
-#   $ GS_UNDO=1 bash -c" $(curl -fsSL gsocket.io/x)"
+#   $ GS_UNDO=1 bash -c "$(curl -fsSL gsocket.io/x)"
 # Access
-#   $ S=MySecret bash -c "$(curl -fsSL goscket.io/x)""
+#   $ S=MySecret bash -c "$(curl -fsSL gsocket.io/x)"
 #
 #
 # This can be used when:
