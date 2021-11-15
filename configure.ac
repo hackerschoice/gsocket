@@ -19,6 +19,8 @@ dnl Checks for programs.
 AC_PROG_CC
 AC_PROG_INSTALL
 AC_PROG_RANLIB
+AC_CHECK_PROG([MAKE_CHECK], [make], [yes], [no])
+AS_IF([test x$MAKE_CHECK = xno], [AC_MSG_ERROR([make not found])])
 
 dnl
 dnl Use these compiler flags if we have gcc.
