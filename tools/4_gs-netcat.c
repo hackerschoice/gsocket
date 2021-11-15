@@ -167,6 +167,25 @@ peer_free(GS_SELECT_CTX *ctx, struct _peer *p)
 	DEBUGF_Y("free'ing peer on fd = %d\n", fd);
 	memset(p, 0, sizeof *p);
 	XFREE(peers[fd]);
+	// FIXME: Eventually GS_shutdown() needs to return ECALLAGAIN and then do 2 things:
+	// 1. Monitor socket for reading. Timeout after 10 seconds (peer died).
+	// 2. Poll on TIOCOUTQ and once empty call close().
+	// https://blog.netherlabs.nl/articles/2009/01/18/the-ultimate-so_linger-page-or-why-is-my-tcp-not-reliable
+#ifdef TIOCOUTQ
+	if (is_stdin_forward)
+	{
+		int value = 0;
+		int i;
+		for (i = 0; i < 10; i++)
+		{
+			if (ioctl(gs->fd, TIOCOUTQ, &value) != 0)
+				break;
+			if (value == 0)
+				break;
+			usleep(10 * 1000);
+		}
+	}
+#endif
 	GS_close(gs);	// sets gs->fd to -1
 	gopt.peer_count = MAX(gopt.peer_count - 1, 0);
 	DEBUGF_M("Freed gs-peer. Still connected: %d\n", gopt.peer_count);
@@ -183,7 +202,10 @@ peer_free(GS_SELECT_CTX *ctx, struct _peer *p)
 
 	/* STDIN/STDOUT reading supports one gs connection only */
 	if (is_stdin_forward)
+	{
+		DEBUGF("exiting...\n");
 		exit(0);
+	}
 }
 
 static void
@@ -361,7 +383,6 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 		{
 			// UDP packaging over TCP = [ 16 bit length | payload ]
 			p->wlen = read(fd, p->wbuf + 2, p->w_max - 2);
-			DEBUGF("read=%zd\n", p->wlen);
 			if (p->wlen > 0)
 			{
 				uint16_t len = htons(p->wlen);
@@ -370,6 +391,7 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 			}
 		} else {
 			p->wlen = read(fd, p->wbuf, p->w_max);
+			DEBUGF("read=%zd\n", p->wlen);
 		}
 
 		if (p->wlen == 0)

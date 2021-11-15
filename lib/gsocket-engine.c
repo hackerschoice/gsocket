@@ -1703,6 +1703,9 @@ gs_close(GS *gsocket)
 		FD_CLR(gsocket->fd, gsocket->ctx->r);
 		FD_CLR(gsocket->fd, gsocket->ctx->w);
 		/* HERE: This was not listening socket */
+		// shutdown(gsocket->fd, SHUT_WR);
+		// sleep(1);
+		// gsocket->fd = -1;
 		XCLOSE(gsocket->fd);
 		return;
 	}
@@ -1792,7 +1795,7 @@ GS_shutdown(GS *gsocket)
 			ret = shutdown(gsocket->fd, SHUT_RDWR);
 		else
 			ret = shutdown(gsocket->fd, SHUT_WR);
-		DEBUGF_B("tcp shutdown() = %d\n", ret);
+		DEBUGF_B("tcp shutdown() = %d, eof_count=%d\n", ret, gsocket->eof_count);
 		if (gsocket->eof_count == 0)
 			return GS_SUCCESS;
 		return GS_ERR_FATAL;
@@ -1938,7 +1941,7 @@ GS_read(GS *gsocket, void *buf, size_t count)
 		if (len <= 0)
 		{
 			err = SSL_get_error(gsocket->ssl, len);
-			DEBUGF_Y("fd=%d, SSL Error: ret = %zd, err = %d (%s)\n", gsocket->fd, len, err, GS_SSL_strerror(err));
+			DEBUGF_Y("fd=%d, SSL Error: ret = %zd, err = %d (%s) %s\n", gsocket->fd, len, err, GS_SSL_strerror(err), strerror(errno));
 			ERR_print_errors_fp(stderr);
 		}
 #endif

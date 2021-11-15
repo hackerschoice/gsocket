@@ -18,6 +18,8 @@ fi
 docker_pack()
 {
 	[[ -z $1 ]] && { echo >&2 "Parameters missing."; return; }
+	echo "" >"${SRCDIR}/configure-parameters.txt"
+	[[ -z $2 ]] || { echo "$2" >"${SRCDIR}/configure-parameters.txt"; }
 	local dsttar
 	local filename
 	local dockername
@@ -38,6 +40,8 @@ docker_pack()
 	(cd "${dstdir}" && shasum "${filename}" && ls -al "${filename}")
 }
 
+docker_pack mips32-alpine "--host mips32"
+docker_pack mips64-alpine "--host mips64"
 #docker_pack x86_64-centos 
 docker_pack x86_64-alpine 
 docker_pack i386-alpine 

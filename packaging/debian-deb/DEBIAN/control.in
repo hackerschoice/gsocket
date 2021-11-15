@@ -1,6 +1,6 @@
 Package: gsocket
 Version: @@VER@@
-Homepage: https://github.com/hackerschoice/gsocket
+Homepage: https://gsocket.io
 Architecture: all
 Essential: no
 Priority: optional

@@ -27,6 +27,9 @@ static ssize_t stdin_len;
 static char stdin_buf[1024];//2*16*1024];
 
 static int write_gs(GS_SELECT_CTX *ctx, GS *gs);
+static void do_exit(GS_SELECT_CTX *ctx, GS *gs);
+static void flush_kernel_buffer(int fd);
+
 
 static int
 shutdown_net(GS *gs)
@@ -57,14 +60,19 @@ cb_read_stdin(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	if (stdin_len <= 0)
 	{
 		DEBUGF_R("STDIN EOF (%zd)\n", stdin_len);
+
 		FD_CLR(0, ctx->rfd);	// Stop reading from STDIN
+		// flush_kernel_buffer(gs->fd);
+		// // FIXME: Test 5.5 fails if we do not call usleep() here but before fixing kernel-flush in gsrnd...
+		// if (GS_is_server(gs))
+		// 	usleep(50 * 1000);
 		ret = shutdown_net(gs);
 		DEBUGF("shutdown_net() == %d\n", ret);
 		if (ret == GS_ECALLAGAIN)
 			return GS_ECALLAGAIN;
 
 		if (ret == -2)
-			ERREXIT("All Done\n");			
+			do_exit(ctx, gs);
 
 		return GS_SUCCESS;
 	}
@@ -101,6 +109,16 @@ write_gs(GS_SELECT_CTX *ctx, GS *gs)
 		return GS_SUCCESS;
 	}
 
+	if (ret > 0)
+	{
+		memmove(stdin_buf, stdin_buf + ret, stdin_len - ret);
+		stdin_len -= ret;
+		DEBUGF("LEFT %zu\n", stdin_len);
+		FD_CLR(0, ctx->rfd);
+		FD_SET(gs->fd, ctx->wfd);
+		return GS_ECALLAGAIN;
+	}
+
 
 	if (ret > 0)
 		ERREXIT("Partial write(%zd) == %d. Should not happen (%s)\n", stdin_len, ret, strerror(errno));
@@ -108,6 +126,24 @@ write_gs(GS_SELECT_CTX *ctx, GS *gs)
 	ERREXIT("Fatal write error. FIXME: reconnect?(%s)\n", strerror(errno));
 
 	return GS_ERROR;	/* NOT REACHED */
+}
+
+static void
+flush_kernel_buffer(int fd)
+{
+#ifdef TIOCOUTQ	
+	int i;
+	int value = 0;
+	for (i = 0; i < 50; i++)
+	{
+		if (ioctl(fd, TIOCOUTQ, &value) != 0)
+			break;
+		DEBUGF("Left in kernel buffer(fd=%d)=%d\n", fd, value);
+		if (value == 0)
+			break;
+		usleep(10 * 1000);
+	}
+#endif
 }
 
 static void

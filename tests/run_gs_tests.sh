@@ -34,7 +34,7 @@ if [[ -z $GS_PREFIX ]]; then
 else
 	GS_BINDIR="${GS_PREFIX}/bin/"
 fi
-PATH=${GS_BINDIR}:/usr/local/bin:$PATH
+export PATH=${GS_BINDIR}:/usr/local/bin:$PATH
 
 # printf "#! /bin/bash\nexec nc\n" >gs_nc
 SLEEP_WD=20	# Max seconds to wait for a process to finish receiving...
@@ -68,6 +68,8 @@ if [[ -z "$NC_EOF_ARG" ]]; then
 		NC_EOF_ARG="-c"
 	elif [[ $($NC --help 2>&1) =~ "w timeout" ]]; then
 		NC_EOF_ARG="-w2" # cygwin needs at least -w2 (-w1 fails at times)
+	elif [[ $($NC -h 2>&1) =~ "quit after EOF on" ]]; then
+		NC_EOF_ARG="-q1"
 	elif [[ -f /bin/busybox ]]; then
 		NC_EOF_ARG="-w5"
 	else
@@ -467,10 +469,8 @@ fi
 
 if [[ "$tests" =~ '6.2' ]]; then
 test_start -n "Running: netcat #6.2 (stdin, assymetric sizes)............"
-# GSPID="$(sh -c '../tools/gs-netcat -k id_sec.txt -w <test1M.dat 2>client_err.txt >client_out.dat & echo ${!}')"
 GSPID="$(sh -c '../tools/gs-netcat -k id_sec.txt -w <test50k.dat 2>client_err.txt >client_out.dat & echo ${!}')"
 sleep_ct
-# ../tools/gs-netcat -k id_sec.txt -l <test50k.dat 2>server_err.txt >server_out.dat
 ../tools/gs-netcat -k id_sec.txt -l <test1M.dat 2>server_err.txt >server_out.dat
 waitk $GSPID
 if [ "$MD1MB" != "$(MD5 client_out.dat)" ]; then fail 1; fi
@@ -693,7 +693,7 @@ if [ $? -ne 0 ]; then
 else
 	GSPID1="$(sh -c '../tools/gs-netcat -k id_sec.txt -lS 2>server1_err.txt >server1_out.dat & echo ${!}')"
 	GSPID2="$(sh -c '(cat test4k.dat; sleep 15) | $NC_LISTEN 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
-	GSPID3="$(sh -c '../tools/gs-netcat -k id_sec.txt -p 1085 2>client_err.txt >client_out.dat & echo ${!}')"
+	GSPID3="$(sh -c '../tools/gs-netcat -k id_sec.txt -p 1085 -w 2>client_err.txt >client_out.dat & echo ${!}')"
 	waittcp 1085
 	waittcp 12345
 	GSPID4="$(sh -c '(cat test50k.dat; sleep 15) | socat -  "SOCKS4:127.0.0.1:127.0.0.1:12345,socksport=1085" >nc2_out.dat 2>nc2_err.txt & echo ${!}')"
@@ -859,8 +859,11 @@ test_start -n "Running: gsocket nc #10.5 (stdin)........................."
 # Can not use nc here because nc does not terminate on EOF from stdin.
 # Socat can be configured to terminate 1 second after EOF has been received.
 # need sleep 3 on RPI (slow system)
-GSPID1="$(sh -c '(cat test4k.dat; sleep 3) | gsocket -k id_sec.txt $NC $NC_EOF_ARG $NC_LISTEN_ARG 31337 2>server_err.txt >server_out.dat & echo ${!}')"
-GSPID2="$(sh -c '(cat test1k.dat; sleep 3) | GSOCKET_ARGS=-w gsocket -k id_sec.txt $NC $NC_EOF_ARG -v gsocket 31337 2>client_err.txt >client_out.dat & echo ${!}')"
+STDOUT_SLEEP=1
+[[ -f /proc/cpuinfo ]] && grep Raspberry /proc/cpuinfo &>/dev/null && STDOUT_SLEEP=3
+export STDOUT_SLEEP
+GSPID1="$(sh -c '(cat test4k.dat; sleep $STDOUT_SLEEP) | GS_DEBUG=1 GSOCKET_ARGS="-Lserver_gs.log" gsocket -k id_sec.txt $NC $NC_EOF_ARG $NC_LISTEN_ARG 31337 2>server_err.txt >server_out.dat & echo ${!}')"
+GSPID2="$(sh -c '(cat test1k.dat; sleep $STDOUT_SLEEP) | GS_DEBUG=1 GSOCKET_ARGS="-w -Lclient_gs.log" gsocket -k id_sec.txt $NC $NC_EOF_ARG -v gsocket 31337 2>client_err.txt >client_out.dat & echo ${!}')"
 waitk $GSPID2
 kill $GSPID1 &>/dev/null
 md5fail 1 test1k.dat server_out.dat

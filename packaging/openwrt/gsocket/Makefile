@@ -1,31 +1,16 @@
-# https://gsocket.io
-
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=gsocket
-PKG_VERSION:=1.4.33
+PKG_VERSION:=2.1.9
 PKG_RELEASE:=1
 
-#PKG_LICENSE:=BSD-2-Clause
-#PKG_LICENSE_FILES:=LICENSE
-
-PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION)
-
-# PKG_SOURCE_PROTO:=git
-# PKG_SOURCE_URL:=https://github.com/hackerschoice/gsocket.git
-# PKG_SOURCE_VERSION:=98a85e270c8ee5757134f00636a5358432cd3d83
-
-# Direct file download
-PKG_SOURCE_URL:=https://github.com/hackerschoice/gsocket/releases/download/v$(PKG_VERSION)/
-PKG_HASH:=5bbc850a274b933a4e8b0ac7d5bc8b0527c3eddbaee7f8a9389c284f27a6fe14
-
-# For testing copy to openwrt/dl
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
+PKG_SOURCE_URL:=https://github.com/hackerschoice/gsocket/releases/download/v$(PKG_VERSION)/
+PKG_HASH:=296421aaf534fd5a30750b42d7aeb9af9d31b4f7bcfcee574817ea1808cef6e3
 
-# dont need 'make install'
-#PKG_INSTALL:=1
-
-PKG_MAINTAINER:=skyper <skyper@thc.org>
+PKG_MAINTAINER:=Ralf Kaiser <skyper@thc.org>
+PKG_LICENSE:=BSD-2-Clause
+PKG_LICENSE_FILES:=LICENSE
 
 include $(INCLUDE_DIR)/package.mk
 
@@ -38,13 +23,30 @@ define Package/gsocket
 endef
 
 define Package/gsocket/description
-  Connect like there is no firewall
+  Global Socket allows two workstations on different private networks to
+  communicate with each other. Through firewalls and through NAT - like
+  there is no firewall.
+
+  The TCP connection is secured with AES-256 and using OpenSSL's SRP
+  protocol (RFC 5054). It does not require a PKI and has forward
+  secrecy and (optional) TOR support.
+
+  The gsocket tools derive temporary session keys and IDs and connect
+  two TCP pipes through the Global Socket Relay Network (GSRN). This is 
+  done regardless and independent of the local IP Address or geographical
+  location.
+
+  The session keys (secrets) never leave the workstation. The GSRN sees only
+  the encrypted traffic.
+
+  The workhorse is 'gs-netcat' which opens a ssh-like interactive PTY
+  command shell to a remote workstation (which resides on a private and
+  remote network and/or behind a firewall).
 endef
 
 define Build/Configure
  $(call Build/Configure/Default,--with-linux-headers=$(LINUX_DIR) --libdir=$(STAGING_DIR)/usr/lib --includedir=$(STAGING_DIR)/usr/include)
 endef
-#  $(call Build/Configure/Default,--with-linux-headers=$(LINUX_DIR))
 
 define Build/Compile
 	$(MAKE) -C $(PKG_BUILD_DIR) \
@@ -57,15 +59,15 @@ define Package/gsocket/install
 	$(INSTALL_DIR)	$(1)/share/gsocket
 	$(INSTALL_DIR)	$(1)/lib
 	$(INSTALL_DIR)	$(1)/etc
-	$(INSTALL_BIN)	$(PKG_BUILD_DIR)/tools/gs-sftp			$(1)/bin/
-	$(INSTALL_BIN)	$(PKG_BUILD_DIR)/tools/gs-mount			$(1)/bin/
-	$(INSTALL_BIN)	$(PKG_BUILD_DIR)/tools/blitz				$(1)/bin/
-	$(INSTALL_BIN)	$(PKG_BUILD_DIR)/tools/gsocket			$(1)/bin/
-	$(INSTALL_BIN)	$(PKG_BUILD_DIR)/tools/gs-netcat		$(1)/bin/
-	$(INSTALL_BIN)	$(PKG_BUILD_DIR)/tools/gs_funcs			$(1)/share/gsocket/
-	$(INSTALL_BIN)	$(PKG_BUILD_DIR)/tools/gsocket_uchroot_dso.so.0		$(1)/lib/
-	$(INSTALL_BIN)	$(PKG_BUILD_DIR)/tools/gsocket_dso.so.0						$(1)/lib/
-	$(INSTALL_CONF) $(PKG_BUILD_DIR)/tools/gsocket.conf								$(1)/etc/
+	$(INSTALL_BIN)	$(PKG_BUILD_DIR)/tools/gs-sftp                    $(1)/bin/
+	$(INSTALL_BIN)	$(PKG_BUILD_DIR)/tools/gs-mount                   $(1)/bin/
+	$(INSTALL_BIN)	$(PKG_BUILD_DIR)/tools/blitz                      $(1)/bin/
+	$(INSTALL_BIN)	$(PKG_BUILD_DIR)/tools/gsocket                    $(1)/bin/
+	$(INSTALL_BIN)	$(PKG_BUILD_DIR)/tools/gs-netcat                  $(1)/bin/
+	$(INSTALL_BIN)	$(PKG_BUILD_DIR)/tools/gs_funcs                   $(1)/share/gsocket/
+	$(INSTALL_BIN)	$(PKG_BUILD_DIR)/tools/gsocket_uchroot_dso.so.0   $(1)/lib/
+	$(INSTALL_BIN)	$(PKG_BUILD_DIR)/tools/gsocket_dso.so.0           $(1)/lib/
+	$(INSTALL_CONF) $(PKG_BUILD_DIR)/tools/gsocket.conf               $(1)/etc/
 endef
 
 $(eval $(call BuildPackage,gsocket))
