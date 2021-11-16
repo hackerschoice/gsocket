@@ -8,6 +8,7 @@ GSOCKET works on Linux, FreeBSD, MacOS, Cygwin and many others. If the particula
 ```
 
 **Generic - Compile from Source**
+
 Download the [latest source](https://github.com/hackerschoice/gsocket/releases/tag/v1.4.33).
 ```
 tar xfz gsocket-*.tar.gz
@@ -32,6 +33,20 @@ dpkg -i gsocket_latest.deb
 pkg update
 pkg install gsocket
 ```
+
+**Docker**
+
+Try gsocket right now with docker.
+```
+docker run --rm -it hackerschoice/gsocket
+```
+```
+docker run --rm -it hackerschoice/gsocket-tor
+```
+
+
+
+
 
 
 
