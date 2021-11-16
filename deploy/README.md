@@ -1,6 +1,6 @@
 
 
-GSOCKET works on Linux, FreeBSD, MacOS, Cygwin and many others. If the particular OS is not listed here then try the *Install Script* or *compile from source*.
+GSOCKET works on Linux, FreeBSD, macOS, Cygwin and many others. If the particular OS is not listed here then try the *Install Script* or *compile from source*.
 
 ---
 **Generic - Install Script**
@@ -23,7 +23,7 @@ apt update
 apt install gsocket
 ```
 ---
-**Ubuntu**
+**Ubuntu/Kali/Debian**
 ```
 curl -fsSL https://github.com/hackerschoice/binary/raw/main/gsocket/latest/gsocket_1.4.32_all.deb --output gsocket_latest.deb
 dpkg -i gsocket_latest.deb
@@ -37,7 +37,7 @@ pkg install gsocket
 ---
 **Docker**
 
-Try gsocket right now with docker.
+Try gsocket with Docker.
 ```
 docker run --rm -it hackerschoice/gsocket
 ```
