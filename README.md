@@ -20,7 +20,7 @@ See https://shields.io/category/license
 **Connect like there is no firewall. Securely.**
 
 The Global Socket Tookit allows two users behind NAT/Firewall to establish a TCP connection with each other. Securely.  
-More on [https://www.gsocket.io](https://www.gsocket.io).
+More on [https://www.gsocket.io](https://www.gsocket.io) and most people use [https://www.gsocket.io/deploy](http://www.gsocket.io/deploy).
 
 [![Watch the video](https://www.gsocket.io/assets/images/eeelite-console-640x378.png)](https://www.youtube.com/watch?v=tmf9VGDPILE)
 
