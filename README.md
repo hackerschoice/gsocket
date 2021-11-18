@@ -195,30 +195,27 @@ $ export GSOCKET_SOCKS_IP=127.0.0.1
 $ export GSOCKET_SOCKS_PORT=9050
 ```
 
-2. A reverse backdoor
+2. A reverse shell
 
-The backdoor supports multiple concurrent connections and spawns a real PTY/interactive-shell with ctrl-c and colors working (like OpenSSH does).
+Gs-netcat supports multiple concurrent connections and spawns a real PTY/interactive-shell with ctrl-c and colors working (like OpenSSH does).
 ```
-$ gs-netcat -k keyfile.txt -l -i    # Host
-$ gs-netcat -k keyfile.txt -T -i    # Workstation (via Tor & Global Socket Relay)
+$ gs-netcat -l -i    # Host
+$ gs-netcat -T -i    # Workstation (via Tor & Global Socket Relay)
 ```
 
-Add -D on the host side to run gs-netcat as a daemon and in watchdog-mode: The backdoor will automatically restart if it is ever killed.
+Add -D on the host side to start gs-netcat as a daemon and in watchdog-mode: Gs-netcat will restart automatically if killed.
 
 3. Use -k
 
-Using -s is not secure. Add your *secret* to a file and use -k &lt;filen&gt; or use GSOCKET_ARGS or enter the password when prompted.
+Using -s is not secure. Add your *secret* to a file and use -k &lt;filen&gt; or use GSOCKET_ARGS="-s &lt;MySecret&gt;".
 
 ```
-$ gs-netcat -k MyFile.txt
-
-$ export GSOCKET_ARGS="-s MySecret"
-$ gs-netcat -l
+GSOCKET_ARGS="-s MySecret" gs-netcat -l
 ```
 
 Use this command to generate a new secure password at random:
 ```
-$ gs-netcat -g
+gs-netcat -g
 ```
 
 4. Hide your arguments (argv)
