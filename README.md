@@ -123,7 +123,7 @@ $ gs-netcat -l -r >warez.tar.gz    # Workstation A
 $ gs-netcat <warez.tar.gz          # Workstation B
 ```
 
-6. Port forward. Access 192.168.6.7:22 on Workstation's B private LAN from Workstation A:
+6. Port forward. Access 192.168.6.7:22 on Workstation's A private LAN from Workstation B:
 ```
 # On Workstation A execute:
 gs-netcat -l -d 192.168.6.7 -p 22
