@@ -123,19 +123,18 @@ $ gs-netcat -l -r >warez.tar.gz    # Workstation A
 $ gs-netcat <warez.tar.gz          # Workstation B
 ```
 
-6. Port forward. *Workstation B's* Port 2222 is forwarded to 192.168.6.7 on *Workstation A's* private LAN
-
-On Workstation A execute:
+6. Port forward. Access 192.168.6.7:22 on Workstation's B private LAN from Workstation A:
 ```
+# On Workstation A execute:
 gs-netcat -l -d 192.168.6.7 -p 22
 ```
-On Workstation B execute:
 ```
+# On Workstation B execute:
 gs-netcat -p 2222
 ```
-In a new terminal on Workstation B execute:
 ```
-ssh -p 2222 root@127.0.0.1        # Will ssh to 192.168.6.7:22 on Host's private LAN
+# In a new terminal on Workstation B execute:
+ssh -p 2222 root@127.0.0.1        # Will ssh to 192.168.6.7:22 on Workstation's A private LAN
 ```
 
 7. Execute any command (nc -e style) on *Workstation A*
