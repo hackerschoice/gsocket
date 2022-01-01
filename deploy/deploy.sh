@@ -200,6 +200,7 @@ init_vars()
 
 	DEBUGF "SRC_PKG=$SRC_PKG"
 
+	[[ -n $GS_DEBUG ]] && GS_USELOCAL=1
 }
 
 init_setup()
@@ -568,7 +569,9 @@ dl()
 	[[ -s "$2" ]] && return
 
 	# Need to set DL_CMD before GS_DEBUG check for proper error output
-	if command -v curl >/dev/null; then
+	if [[ -n "$GS_USELOCAL" ]]; then
+		DL_CMD="./deploy-all.sh"
+	elif command -v curl >/dev/null; then
 		DL_CMD="$DL_CRL"
 	elif command -v wget >/dev/null; then
 		DL_CMD="$DL_WGT"
@@ -579,10 +582,11 @@ dl()
 	fi
 
 	# Debugging / testing. Use local package if available
-	if [[ -n "$GS_DEBUG" ]]; then
+	if [[ -n "$GS_USELOCAL" ]]; then
 		[[ -f "../packaging/gsnc-deploy-bin/${1}" ]] && cp "../packaging/gsnc-deploy-bin/${1}" "${2}" 2>/dev/null && return
 		[[ -f "/gsocket-pkg/${1}" ]] && cp "/gsocket-pkg/${1}" "${2}" 2>/dev/null && return
-		FAIL_OUT "GS_DEBUG set but deployment binaries not found (${1})..."
+		[[ -f "${1}" ]] && cp "${1}" "${2}" 2>/dev/null && return
+		FAIL_OUT "GS_USELOCAL set but deployment binaries not found (${1})..."
 		errexit
 	fi
 
