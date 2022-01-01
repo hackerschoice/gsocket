@@ -10,11 +10,11 @@ targets="x86_64-alpine i386-alpine x86_64-debian aarch64-linux armv6l-linux x86_
 PKG_DIR="gs-pkg"
 FILE_DEPLOY_SH="../../deploy/deploy.sh"
 
-CY="\033[1;33m" # yellow
-CG="\033[1;32m" # green
+# CY="\033[1;33m" # yellow
+# CG="\033[1;32m" # green
 CR="\033[1;31m" # red
-CC="\033[1;36m" # cyan
-CM="\033[1;35m" # magenta
+# CC="\033[1;36m" # cyan
+# CM="\033[1;35m" # magenta
 CN="\033[0m"    # none
 
 errexit()
@@ -38,7 +38,7 @@ mkdir "$PKG_DIR" 2>/dev/null
 for osarch in $targets; do
 	fn="gs-netcat_${osarch}.tar.gz"
 	f="../gsnc-deploy-bin/${fn}"
-	check_file $f
+	check_file "$f"
 	ln -s "../${f}" "${PKG_DIR}/${fn}"
 done
 ln -s ../"${FILE_DEPLOY_SH}" "${PKG_DIR}/deploy.sh"

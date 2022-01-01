@@ -19,8 +19,8 @@ check_file()
 check_file "$0"
 
 lc=0
-while read l; do
-	lc=$(($lc + 1))
+while read -r l; do
+	lc=$((lc + 1))
 	[[ "$l" = "# ---END---" ]] && break
 done <"$0"
 
