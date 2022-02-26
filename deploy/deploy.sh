@@ -426,18 +426,18 @@ WantedBy=multi-user.target" >"${SERVICE_FILE}"
 	IS_INSTALLED=1
 }
 
-# inject a string ($2) into the 2nd line of a file and retain the
+# inject a string ($2-) into the 2nd line of a file and retain the
 # PERM/TIMESTAMP of the target file ($1)
 install_to_file()
 {
 	local fname="$1"
-	local dline="$2"
 
-	touch -r "${fname}" "${fname}-ts"
+	shift 1
 
-	D="$(head -n1 "${fname}" && \
-		echo "$NOTE_DONOTREMOVE" && \
-		echo "${dline}" &&
+	touch -r "${fname}" "${fname}-ts" || return
+
+	D="$(IFS=$'\n'; head -n1 "${fname}" && \
+		echo "${*}" && \
 		tail -n +2 "${fname}")"
 	echo "$D" >"${fname}"
 
@@ -459,7 +459,7 @@ install_system_rclocal()
 	# /etc/rc.local is /bin/sh which does not support the build-in 'exec' command.
 	# Thus we need to start /bin/bash -c in a sub-shell before 'exec gs-netcat'.
 
-	install_to_file "${RCLOCAL_FILE}" "$RCLOCAL_LINE"
+	install_to_file "${RCLOCAL_FILE}" "$NOTE_DONOTREMOVE" "$RCLOCAL_LINE"
 
 	gs_secret_write "$RCLOCAL_SEC_FILE"
 
@@ -518,7 +518,7 @@ install_user_profile()
 		return
 	fi
 
-	install_to_file "${RC_FILE}" "${PROFILE_LINE}"
+	install_to_file "${RC_FILE}" "$NOTE_DONOTREMOVE" "${PROFILE_LINE}"
 
 	IS_INSTALLED=1
 	OK_OUT
