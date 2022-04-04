@@ -37,9 +37,12 @@
 #       - Force architecutre to a specific package (for testing purpose only)
 # GS_PREFIX=path
 #		- Use 'path' instead of '/' (needed for packaging/testing)
+# GS_URL_BASE=https://github.com/hackerschoice/binary/raw/main/gsocket/bin/
+#		- Specify URL of static binaries
 
 # Global Defines
 URL_BASE="https://github.com/hackerschoice/binary/raw/main/gsocket/bin/"
+[[ -n "$GS_URL_BASE" ]] && URL_BASE="$GS_URL_BASE" # Use user supplied URL_BASE
 URL_DEPLOY="gsocket.io/x"
 GS_VERSION=1.4.34
 DL_CRL="bash -c \"\$(curl -fsSL $URL_DEPLOY)\""
