@@ -146,7 +146,7 @@ $ gs-netcat                                      # Workstation B
 Another example: Spawn a new docker environment deep inside a private network
 ```
 # Start this on a host deep inside a private network
-gs-netcat -il -d "docker run --rm -it kalilinux/kali-rolling"
+gs-netcat -il -e "docker run --rm -it kalilinux/kali-rolling"
 ```
 
 Access the docker environment deep inside the private network from anywhere in the world:
