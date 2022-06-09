@@ -71,7 +71,7 @@ bob@ALICE:~$
 
 **Advanced Tips**
 
-Under the hood ```gsocket``` forks a gs-netcat process with *&lt;PORT>-&lt;SECRET>*. Continuing from the example, and instead of using ```gsocket /usr/sbin/sshd -D``` it is possible to use a port forward to the original *sshd* on port 22:
+Under the hood ```gsocket``` forks a gs-netcat process with a new SECRET of *&lt;PORTNUMBER>-&lt;SECRET>*. Continuing from the example, and instead of using ```gsocket /usr/sbin/sshd -D``` it is possible to use a port forward to the original *sshd* on port 22 instead:
 
 ```ShellSession
 root@ALICE:~# gs-netcat -s 22-ExampleSecretChangeMe -l -d 127.1 -p 22
@@ -80,6 +80,12 @@ and then use *ssh* the same way as previously:
 ```ShellSession
 bob@BOB:~$ gsocket ssh bob@gsocket
 ```
+or, and instead of using ```gsocket ssh bob@gsocket``` it is possible to use gs-netcat to test the connection to the *sshd*:
+```ShellSession
+bob@BOB:~$ gs-netcat -s 22-ExampleSecretChangeMe
+SSH-2.0-OpenSSH_8.6
+```
+
 
 **Notes**
 
