@@ -69,6 +69,18 @@ Welcome to Ubuntu 20.04.1 LTS (GNU/Linux 5.4.0-65-generic x86_64)
 bob@ALICE:~$ 
 ```
 
+**Advanced Tips**
+
+Under the hood ```gsocket``` forks a gs-netcat process with *&lt;PORT>-&lt;SECRET>*. Continuing from the example, and instead of using ```gsocket /usr/sbin/sshd -D``` it is possible to use a port forward to the original *sshd* on port 22:
+
+```ShellSession
+root@ALICE:~# gs-netcat -s 22-ExampleSecretChangeMe -l -d 127.1 -p 22
+```
+and then use *ssh* the same way as previously:
+```ShellSession
+bob@BOB:~$ gsocket ssh bob@gsocket
+```
+
 **Notes**
 
 Do not use *ExampleSecretChangeMe*. Generate your own secret using the *-g* option:
