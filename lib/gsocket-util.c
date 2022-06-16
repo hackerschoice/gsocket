@@ -248,6 +248,7 @@ GS_bin2b58(char *b58, size_t *b58sz, uint8_t *src, size_t binsz)
 	return b58;
 }
 
+// 0-Terminate 'dst'.
 static char *
 bin2hex(char *dst, size_t dsz, const void *src, size_t sz, char *hexset)
 {
@@ -256,17 +257,17 @@ bin2hex(char *dst, size_t dsz, const void *src, size_t sz, char *hexset)
 	uint8_t *s = (uint8_t *)src;
 	uint8_t *e = s + sz;
 
-	while ((dst < end) && (s < e))
+	while ((dst + 1 < end) && (s < e))
 	{
 		*dst = hexset[*s >> 4];
 		dst += 1;
-		if (dst >= end)
+		if (dst + 1 >= end)
 			break;
 		*dst = hexset[*s & 0x0f];
 		dst += 1;
 		s++;
 	}
-	*end = '\0';
+	*dst = '\0';
 
 	return dst_orig;
 }
