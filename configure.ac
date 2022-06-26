@@ -42,7 +42,7 @@ dnl --prefix=/usr/local --includedir=$HOME/usr/include => -I$HOME/usr/include /u
 dnl default: PREFIX/include unless --includedir=
 
 dnl Try include paths (especially on OSX)
-trydir_i="${includedir} /usr/local/include /usr/local/opt/openssl/include /opt/homebrew/opt/openssl/include"
+trydir_i="${includedir} ${prefix}/include /usr/local/include /usr/local/opt/openssl/include /opt/homebrew/opt/openssl/include"
 for xincdir in $trydir_i ; do
 	if test ! -d "$xincdir" ; then
 		continue;
@@ -56,7 +56,7 @@ done
 CPPFLAGS="-I${srcdir}/../include ${INCLUDES} $CPPFLAGS"
 
 dnl Try library paths...
-trydir_l="${libdir} /usr/local/lib /usr/local/opt/openssl/lib /opt/homebrew/opt/openssl/lib"
+trydir_l="${libdir} ${prefix}/lib /usr/local/lib /usr/local/opt/openssl/lib /opt/homebrew/opt/openssl/lib"
 for xlibdir in $trydir_l ; do
 	if test ! -d "$xlibdir" ; then
 		continue;

@@ -334,7 +334,15 @@ struct gs_net
 };
 
 
-#define GS_SRP_PASSWORD_LENGTH       (32)
+// Originally the password was the first 128bit from a SHA256(gs_secret)
+// and then converted to a 32bytes hex string + '\0' to terminate.
+// 
+// A bug in any version <= 1.4.33 caused 1 extra hex to be added to the string
+// of size 32, making it 33 hex long and overwriting peer->gs_flags with '\0'.
+// Any version > 1.4.33 needs to be backward compatible. Thus we increase
+// the PASSWORD_LENGTH to 33 and from now onwards the SRP-PASSWORD
+// is 33 hex + '\0' long (132bit). Sucks to be us.
+#define GS_SRP_PASSWORD_LENGTH       (33)
 
 typedef struct
 {
