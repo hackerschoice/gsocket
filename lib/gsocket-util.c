@@ -493,9 +493,11 @@ err:
  * and re-spwans child if it dies.
  * Disconnect from process group and do all the things to become
  * a daemon.
+ * Terminate the daemon if code_force_exit matches the error code of
+ * the child. Set to -1 to ignore.
  */
 void
-GS_daemonize(FILE *logfp)
+GS_daemonize(FILE *logfp, int code_force_exit)
 {
 	pid_t pid;
 	struct timeval last;
@@ -535,15 +537,20 @@ GS_daemonize(FILE *logfp)
 			return;
 		}
 		/* HERE: Parent. We are the watchdog. */
-		int status;
-		wait(&status);	// Wait for child to termiante and then restart child
+		int wstatus;
+		wait(&wstatus);	// Wait for child to termiante and then restart child
+		if (WIFEXITED(wstatus))
+		{
+			if (WEXITSTATUS(wstatus) == code_force_exit)
+				exit(0);
+		}
 		/* No not spawn to often. */
 		gettimeofday(&now, NULL);
 		int diff = now.tv_sec - last.tv_sec;
 		int n = 60;
 		if (diff > 60)
 			n = 1;	// Immediately restart if this is first restart or child ran for >60sec
-		xfprintf(gs_errfp, "%s ***DIED*** (status=%d). Restarting in %d second%s.\n", GS_logtime(), status, n, n>1?"s":"");
+		xfprintf(gs_errfp, "%s ***DIED*** (wstatus=%d/). Restarting in %d second%s.\n", GS_logtime(), wstatus, n, n>1?"s":"");
 		sleep(n);
 
 		gettimeofday(&last, NULL);	// When last restarted.

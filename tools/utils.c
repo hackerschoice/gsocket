@@ -197,6 +197,8 @@ init_vars(void)
 	if (gopt.is_interactive != 0)
 		GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_LOW_LATENCY, NULL, 0);
 
+	if (gopt.gs_server_check_sec > 0)
+		GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_SERVER_CHECK, NULL, 0);
 
 	// Prevent startup messages if gs-netcat is started as sub-system from
 	// gs-sftp or gs-mount
