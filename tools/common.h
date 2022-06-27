@@ -161,6 +161,7 @@ struct _gopt
 	int is_send_authcookie;
 	int is_internal;        // -I flag
 	int is_udp;             // Port forwarding only. GSRN is always TCP.
+	int gs_server_check_sec;
 	uint64_t ts_ping_sent;  // TimeStamp ping sent
 	fd_set rfd, r;
 	fd_set wfd, w;
@@ -183,6 +184,10 @@ struct _gopt
 	int n_users;             // Number of unique logged in users (from utmp)
 };
 
+#define EX_CONNREFUSED  61  // Used by deploy.sh to verify that server is responding
+#define EX_MUSTEXIT    201  // Used to terminate watchdog/daemon
+#define EX_ALARM       202
+#define EX_NETERROR    203  // likely TCP ECONNREFUSED
 #define EX_EXECFAILED  248
 #define EX_NOTREACHED  249
 #define EX_BADWRITE    250  // write() failed
@@ -191,7 +196,6 @@ struct _gopt
 #define EX_BADSELECT   253
 #define EX_SIGTERM     254
 #define EX_FATAL       255
-#define EX_CONNREFUSED  61  // Used by deploy.sh to verify that server is responding
 
 struct _socks
 {
@@ -326,6 +330,12 @@ extern struct _g_debug_ctx g_dbg_ctx; // declared in utils.c
 } while (0)
 
 #define XFREE(ptr)  do{if(ptr) free(ptr); ptr = NULL;}while(0)
+
+#define ERREXITC(code, a...)   do { \
+		xfprintf(gopt.err_fp, "ERROR(%d): ", code); \
+        xfprintf(gopt.err_fp, a); \
+        exit(code); \
+} while (0)
 
 #ifdef DEBUG
 # define ERREXIT(a...)   do { \

@@ -1053,8 +1053,14 @@ cb_listen(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	gs_new = GS_accept(gs, &err);
 	if (gs_new == NULL)
 	{
+
 		if (err <= -2)
-			ERREXIT("%s\n", GS_CTX_strerror(gs->ctx)); //Another Server is already listening or Network error.\n");
+		{
+			int code = 255;
+			if (gs->status_code == GS_STATUS_CODE_BAD_AUTH)
+				code = EX_MUSTEXIT;
+			ERREXITC(code, "%s\n", GS_CTX_strerror(gs->ctx)); //Another Server is already listening or Network error.\n");
+		}
 		/* HERE: GS_accept() is not ready yet to accept() a new
 		 * gsocket. (May have processed GS-pkt data) or may have 
 		 * closed the socket and established a new one (to wait for
@@ -1135,6 +1141,12 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd_notused, void *arg, int val)
 		{
 			if (gs->status_code == GS_STATUS_CODE_CONNREFUSED)
 				exit(EX_CONNREFUSED); // Used by deploy.sh to verify that server is responding.
+			// Used in deploy.sh to check if server is listening with
+			// _GSOCKET_SERVER_CHECK_SEC=10 gs-netcat -s foobar
+			if ((gopt.gs_server_check_sec > 0) && (gs->status_code == GS_STATUS_CODE_SERVER_OK))
+				exit(0);
+			if (gs->status_code == GS_STATUS_CODE_NETERROR)
+				exit(EX_NETERROR);
 			exit(EX_FATAL);
 		}
 		/* This can happen if server accepts 1 connection only but client
@@ -1153,6 +1165,7 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd_notused, void *arg, int val)
 		return GS_ECALLAGAIN;
 
 	DEBUGF_M("*** GS_connect() SUCCESS ***** %d %d %d\n", gs->fd, p->fd_in, p->fd_out);
+
 	/* HERE: Connection successfully established */
 	/* Start reading from Network (SRP is handled by GS_read()/GS_write()) */
 	GS_SELECT_add_cb(ctx, cb_read_gs, cb_write_gs, gs->fd, p, 0);
@@ -1356,10 +1369,17 @@ my_usage(void)
 }
 
 static void
+cb_sigalarm(int sig)
+{
+	exit(EX_ALARM);
+}
+
+static void
 my_getopt(int argc, char *argv[])
 {
 	int c;
 	FILE *fp;
+	char *ptr;
 
 	do_getopt(argc, argv);	/* from utils.c */
 	optind = 1;	/* Start from beginning */
@@ -1423,6 +1443,15 @@ my_getopt(int argc, char *argv[])
 		gopt.is_internal = 1;
 	}
 
+	ptr = getenv("_GSOCKET_SERVER_CHECK_SEC");
+	if (ptr != NULL)
+	{
+		DEBUGF_G("SERVER_CHECK_SEC=%s (%d)\n", ptr, atoi(ptr));
+		gopt.gs_server_check_sec = atoi(ptr);
+		alarm(gopt.gs_server_check_sec);
+		signal(SIGALRM, cb_sigalarm);
+	}
+
 	if (gopt.is_daemon)
 	{
 		if (gopt.is_logfile == 0)
@@ -1480,13 +1509,25 @@ my_getopt(int argc, char *argv[])
 	init_vars();			/* from utils.c */
 
 	/* Become a daemon & watchdog (auto-restart)
-	 * Do this before gs_create() so that any error in resolving
+	 * Do this before gs_create() so that any error in DNS resolving
 	 * is re-tried by watchdog.
 	 */
 	if (gopt.is_daemon)
 	{
+		if (gopt.token_str == NULL)
+		{
+			// Stop multiple daemons from starting (by crontab/.profile):
+			// Set the token-str uniq to this daemon. Then any other daemon
+			// that starts will have a different toek_str and GSRN will return
+			// a BAD-AUTH message.
+			// The child will then exit with  EX_MUSTEXIT which also triggers the daemon
+			// to exit (because another daemon is already connected).
+			char buf[1024];
+			snprintf(buf, sizeof buf, "%u-BAD-AUTH-CHECK-%s", getpid(), gopt.sec_str);
+			gopt.token_str = strdup(buf);
+		}
 		gopt.err_fp = gopt.log_fp;	// Errors to logfile or NULL
-		GS_daemonize(gopt.log_fp);
+		GS_daemonize(gopt.log_fp, EX_MUSTEXIT);
 	}
 
 	gopt.gsocket = gs_create();

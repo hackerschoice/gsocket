@@ -158,6 +158,8 @@ struct _gs_connect
 #define GS_FL_PROTO_FAST_CONNECT        (0x04)
 // Inform GSRN that client prefers low-latency (interactive shell)
 #define GS_FL_PROTO_LOW_LATENCY         (0x08)
+// Check if GS-ADDRESS is listening/waiting
+#define GS_FL_PROTO_SERVER_CHECK        (0x10)
 
 /*
  * all2GN
@@ -217,6 +219,8 @@ struct _gs_status
 #define GS_STATUS_CODE_IDLE_TIMEOUT (0x03)	// Timeout
 #define GS_STATUS_CODE_CONNDENIED   (0x04)  // Connection denied
 #define GS_STATUS_CODE_PROTOERROR   (0x05)  // Protocol error
+#define GS_STATUS_CODE_SERVER_OK    (0x06)  // Server exists
+#define GS_STATUS_CODE_NETERROR     (0x07)  // TCP error (likely ECONNREFUSED)
 #define GS_STATUS_CODE_NEEDUPDATE   (0x2A)  // oct=42; Needs updating of client.
 
 /*
@@ -448,6 +452,7 @@ int GS_CTX_setsockopt(GS_CTX *ctx, int level, const void *opt_value, size_t opt_
 #define GS_OPT_USE_SOCKS			(0x20)	// Use TOR (Socks5)
 #define GS_OPT_SINGLESHOT			(0x40)
 #define GS_OPT_LOW_LATENCY          (0x80)
+#define GS_OPT_SERVER_CHECK         (0x100)
 
 ssize_t GS_write(GS *gsocket, const void *buf, size_t num);
 ssize_t GS_read(GS *gsocket, void *buf, size_t num);
@@ -456,7 +461,7 @@ uint32_t GS_hton(const char *hostname);
 uint8_t GS_ADDR_get_hostname_id(uint8_t *addr);
 void GS_SELECT_FD_SET_W(GS *gs);
 
-void GS_daemonize(FILE *logfp);
+void GS_daemonize(FILE *logfp, int code_force_exit);
 uint64_t GS_usec(void);
 void GS_format_bps(char *dst, size_t size, int64_t bytes, const char *suffix);
 #define GS_BPS_MAXSIZE       (8)  // _without_ length of suffix!

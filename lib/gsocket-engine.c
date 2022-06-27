@@ -708,6 +708,9 @@ gs_pkt_dispatch(GS *gsocket, struct gs_sox *sox)
 				case GS_STATUS_CODE_IDLE_TIMEOUT:
 					err_str = "Idle-Timeout. Server did not receive any data";
 					break;
+				case GS_STATUS_CODE_SERVER_OK:
+					err_str = "Server is listening.";
+					break;
 				default:
 					err_str = "UNKNOWN";
 					GS_sanitize_logmsg(msg, sizeof msg, (char *)status->msg, sizeof status->msg);
@@ -906,6 +909,7 @@ gs_process_by_sox(GS *gsocket, struct gs_sox *sox)
 			if (ret != GS_SUCCESS)
 			{
 				DEBUGF_R("will ret = %d, errno %s\n", ret, strerror(errno));
+				gsocket->status_code = GS_STATUS_CODE_NETERROR;
 				return GS_ERROR;	/* ECONNREFUSED or other */
 			}
 
@@ -1858,7 +1862,7 @@ int
 GS_CTX_setsockopt(GS_CTX *ctx, int level, const void *opt_value, size_t opt_len)
 {
 
-	/* PROTOCOL FLAGS -> copied into pkt's flags 1:1 */
+	// PROTO-FLAGS
 	if (level == GS_OPT_SOCKWAIT)
 	{
 		ctx->flags_proto |= GS_FL_PROTO_WAIT;
@@ -1866,25 +1870,28 @@ GS_CTX_setsockopt(GS_CTX *ctx, int level, const void *opt_value, size_t opt_len)
 	} else if (level == GS_OPT_CLIENT_OR_SERVER) {
 		ctx->flags_proto |= GS_FL_PROTO_CLIENT_OR_SERVER;
 		ctx->flags_proto &= ~GS_FL_PROTO_FAST_CONNECT; // Disable fast-connect
-	}
-	else if (level == GS_OPT_LOW_LATENCY)
+	} else if (level == GS_OPT_LOW_LATENCY) {
 		ctx->flags_proto |= GS_FL_PROTO_LOW_LATENCY;
+	} else if (level == GS_OPT_SERVER_CHECK) {
+		ctx->flags_proto |= GS_FL_PROTO_SERVER_CHECK;
+	} 
 
-	/* FLAGS */
+	// GS-FLAGS 
 	else if (level == GS_OPT_BLOCK)
 		ctx->gs_flags &= ~GSC_FL_NONBLOCKING;
 	else if (level == GS_OPT_NO_ENCRYPTION)
 		ctx->gs_flags &= ~GSC_FL_USE_SRP;
 	else if (level == GS_OPT_SINGLESHOT)
 		ctx->gs_flags |= GS_FL_SINGLE_SHOT;
-	/* OPTIONS */
+
+	// OPTIONS
 	else if (level == GS_OPT_USE_SOCKS)
 	{
 		/* Set if not already set from GS_CTX_init() */
 		if (ctx->socks_ip == 0)
 			ctx->socks_ip = inet_addr(GS_SOCKS_DFL_IP);
 	} else
-		return -1;
+		return -1; // UNKNOWN option
 
 	return 0;	// Success
 }
