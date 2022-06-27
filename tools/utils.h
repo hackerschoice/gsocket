@@ -13,6 +13,7 @@ int fd_new_socket(int type);
 int fd_net_listen(int fd, uint16_t *port, int type);
 int fd_net_accept(int listen_fd);
 int fd_net_connect(GS_SELECT_CTX *ctx, int fd, uint32_t ip, uint16_t port);
+void fd_kernel_flush(int fd);
 void stty_set_raw(void);
 void stty_reset(void);
 void stty_check_esc(GS *gs, char c);
@@ -25,6 +26,7 @@ void sanitize_fname_to_str(uint8_t *str, size_t len);
 void format_bps(char *buf, size_t size, int64_t bytes);
 char *getcwdx(void);
 void gs_watchdog(void);
+
 
 // #define VLOG(a...)	do{if (gopt.log_fp != NULL){ fprintf(gopt.log_fp, a); fflush(gopt.log_fp); } }while(0)
 

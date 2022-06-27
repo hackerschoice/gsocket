@@ -933,6 +933,31 @@ fd_new_socket(int type)
 }
 
 void
+fd_kernel_flush(int fd)
+{
+#ifdef TIOCOUTQ
+	int value = 0;
+	int i;
+	int ret;
+
+	for (i = 0; i < 10; i++)
+	{
+		if (ioctl(fd, TIOCOUTQ, &value) != 0)
+			break;
+		if (value == 0)
+			break;
+
+		socklen_t len = sizeof (value);
+		ret = getsockopt(fd, SOL_SOCKET, SO_ERROR, &value, &len);
+		if ((ret != 0) || (value == EPIPE))
+			break;
+
+		usleep(10 * 1000);
+	}
+#endif
+}
+
+void
 cmd_ping(struct _peer *p)
 {
 	if (gopt.is_want_ping != 0)

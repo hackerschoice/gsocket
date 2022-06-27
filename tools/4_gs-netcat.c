@@ -171,21 +171,10 @@ peer_free(GS_SELECT_CTX *ctx, struct _peer *p)
 	// 1. Monitor socket for reading. Timeout after 10 seconds (peer died).
 	// 2. Poll on TIOCOUTQ and once empty call close().
 	// https://blog.netherlabs.nl/articles/2009/01/18/the-ultimate-so_linger-page-or-why-is-my-tcp-not-reliable
-#ifdef TIOCOUTQ
 	if (is_stdin_forward)
 	{
-		int value = 0;
-		int i;
-		for (i = 0; i < 10; i++)
-		{
-			if (ioctl(gs->fd, TIOCOUTQ, &value) != 0)
-				break;
-			if (value == 0)
-				break;
-			usleep(10 * 1000);
-		}
+		fd_kernel_flush(gs->fd);
 	}
-#endif
 	GS_close(gs);	// sets gs->fd to -1
 	gopt.peer_count = MAX(gopt.peer_count - 1, 0);
 	DEBUGF_M("Freed gs-peer. Still connected: %d\n", gopt.peer_count);
