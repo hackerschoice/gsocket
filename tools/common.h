@@ -185,7 +185,7 @@ struct _gopt
 };
 
 #define EX_CONNREFUSED  61  // Used by deploy.sh to verify that server is responding
-#define EX_MUSTEXIT    201  // Used to terminate watchdog/daemon
+#define EX_BAD_AUTH    201  // Used to terminate watchdog/daemon
 #define EX_ALARM       202
 #define EX_NETERROR    203  // likely TCP ECONNREFUSED
 #define EX_EXECFAILED  248
@@ -205,11 +205,11 @@ struct _socks
 	int state;
 };
 
-#define GSNC_STATE_AWAITING_MSG_AUTH		(0x01)
-#define GSNC_STATE_AWAITING_MSG_CONNECT		(0x02)
-#define GSNC_STATE_RESOLVING_DN				(0x03)
-#define GSNC_STATE_CONNECTING				(0x04)
-#define GSNC_STATE_CONNECTED				(0x05)
+#define GSNC_STATE_AWAITING_MSG_AUTH        (0x01)
+#define GSNC_STATE_AWAITING_MSG_CONNECT     (0x02)
+#define GSNC_STATE_RESOLVING_DN	            (0x03)
+#define GSNC_STATE_CONNECTING               (0x04)
+#define GSNC_STATE_CONNECTED                (0x05)
 
 
 /* gs-netcat peers */

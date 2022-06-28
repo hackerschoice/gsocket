@@ -493,8 +493,9 @@ err:
  * and re-spwans child if it dies.
  * Disconnect from process group and do all the things to become
  * a daemon.
- * Terminate the daemon if code_force_exit matches the error code of
- * the child. Set to -1 to ignore.
+ * Terminate the daemon if code_force_exit matches _TWICE_ the error code of
+ * the child. This is used to detect BAD-AUTH from the GSRN.
+ * Set to -1 to ignore.
  */
 void
 GS_daemonize(FILE *logfp, int code_force_exit)
@@ -502,6 +503,7 @@ GS_daemonize(FILE *logfp, int code_force_exit)
 	pid_t pid;
 	struct timeval last;
 	struct timeval now;
+	int n_force_exit = 0;
 
 	memset(&last, 0, sizeof last);
 	memset(&now, 0, sizeof now);
@@ -539,17 +541,35 @@ GS_daemonize(FILE *logfp, int code_force_exit)
 		/* HERE: Parent. We are the watchdog. */
 		int wstatus;
 		wait(&wstatus);	// Wait for child to termiante and then restart child
-		if (WIFEXITED(wstatus))
+		if (WIFEXITED(wstatus) && (WEXITSTATUS(wstatus) == code_force_exit))
 		{
-			if (WEXITSTATUS(wstatus) == code_force_exit)
+			// Admin behavior is to test gs-netcat without -D and then
+			// with -D immediatly after. The 2nd gs-netcat will use a different
+			// AUTH-TOKEN and thus will receive a BAD-AUTH immediately.
+			// => Wait 10 seconds before re-conncting to give the GSRN time
+			// to expire the AUTH-TOKEN. If we get a 2nd BAD-AUTH thereafter
+			// then it is clear that another server using the same SECRET
+			// is already listening and we should exit the daemon/watchdog.
+			n_force_exit += 1;
+
+			// Kill the daemon / watchdog.
+			if (n_force_exit >= 2)
 				exit(0);
+		} else {
+			n_force_exit = 0;
 		}
 		/* No not spawn to often. */
 		gettimeofday(&now, NULL);
 		int diff = now.tv_sec - last.tv_sec;
 		int n = 60;
 		if (diff > 60)
+		{
+			n_force_exit = 0;
 			n = 1;	// Immediately restart if this is first restart or child ran for >60sec
+		}
+		if (n_force_exit == 1)
+			n = GSRN_TOKEN_LINGER_SEC + 3; // If BAD-AUTH then only wait long enough for GSRN to drop auth token (7 seconds)
+
 		xfprintf(gs_errfp, "%s ***DIED*** (wstatus=%d/). Restarting in %d second%s.\n", GS_logtime(), wstatus, n, n>1?"s":"");
 		sleep(n);
 

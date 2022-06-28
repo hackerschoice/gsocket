@@ -2,28 +2,6 @@
 #ifndef __LIBGSOCKET_H__
 #define __LIBGSOCKET_H__ 1
 
-
-#if 0
-#if defined __has_include
-#   if __has_include (<openssl/srp.h>)
-#       define HAS_OPENSSL_SRP  1
-#   endif
-#	if __has_include ("gsocket-ssl.h")
-#		define HAS_GSOCKET_SSL	1
-#	endif
-#	if __has_include (<gsocket/gsocket-ssl.h>)
-#		define HAS_GSOCKET_SSL	1
-#	endif
-#endif
-
-/* The user can delete gsocket-ssl.h to build his project without OpenSSL */
-#ifdef HAS_OPENSSL_SRP
-#	ifdef HAS_GSOCKET_SSL
-#		define WITH_GSOCKET_SSL		1
-#	endif
-#endif
-#endif
-
 #define WITH_GSOCKET_SSL 1
 
 #ifndef GS_MAX
@@ -78,6 +56,8 @@
 #define GSRN_DEFAULT_PORT_SSL       443
 #define GSRN_DEFAULT_PORT_CON       7351
 #define GSRN_DEFAULT_PING_INTERVAL  (60 * 2)
+// Wait before allowing same listening address with different auth-token
+#define GSRN_TOKEN_LINGER_SEC       (7)
 
 /* ###########################
  * ### PROTOCOL DEFINITION ###

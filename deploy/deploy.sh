@@ -123,7 +123,11 @@ try_dstdir()
 
 	# /bin/true might be a symlink to /usr/bin/true
 	if [[ -f "${trybin}" ]]; then
-		"${trybin}" &>/dev/null || { return 103; } # FAILURE
+		# Between 28th of April and end of May we accidentially
+		# overwrote /bin/true with gs-bd binary. Thus we use -g
+		# which is a valid argument for gs-bd, true and id
+		# and returns 0 (true)
+		"${trybin}" -g &>/dev/null || { return 103; } # FAILURE
 	else 
 		cp "$ebin" "$trybin" &>/dev/null || return 0
 		"${trybin}" &>/dev/null || { rm -f "${trybin}"; return 103; } # FAILURE

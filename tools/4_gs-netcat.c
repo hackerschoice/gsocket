@@ -1069,7 +1069,7 @@ cb_listen(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 		{
 			int code = 255;
 			if (gs->status_code == GS_STATUS_CODE_BAD_AUTH)
-				code = EX_MUSTEXIT;
+				code = EX_BAD_AUTH;
 			ERREXITC(code, "%s\n", GS_CTX_strerror(gs->ctx)); //Another Server is already listening or Network error.\n");
 		}
 		/* HERE: GS_accept() is not ready yet to accept() a new
@@ -1531,14 +1531,14 @@ my_getopt(int argc, char *argv[])
 			// Set the token-str uniq to this daemon. Then any other daemon
 			// that starts will have a different toek_str and GSRN will return
 			// a BAD-AUTH message.
-			// The child will then exit with  EX_MUSTEXIT which also triggers the daemon
+			// The child will then exit with  EX_BAD_AUTH which also triggers the daemon
 			// to exit (because another daemon is already connected).
 			char buf[1024];
 			snprintf(buf, sizeof buf, "%u-BAD-AUTH-CHECK-%s", getpid(), gopt.sec_str);
 			gopt.token_str = strdup(buf);
 		}
 		gopt.err_fp = gopt.log_fp;	// Errors to logfile or NULL
-		GS_daemonize(gopt.log_fp, EX_MUSTEXIT);
+		GS_daemonize(gopt.log_fp, EX_BAD_AUTH);
 	}
 
 	gopt.gsocket = gs_create();
