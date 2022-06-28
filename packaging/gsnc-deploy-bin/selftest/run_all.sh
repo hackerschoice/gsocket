@@ -7,7 +7,7 @@ BASEDIR="$(cd "$(dirname "${0}")/../../../" || exit; pwd)"
 GSPKGROOT="${BASEDIR}/packaging/gsnc-deploy-bin/"
 STDIR="${GSPKGROOT}/selftest"
 
-targets="debian centos arch alpine rhel8 suse-tumbleweed"
+targets="ubi8 debian centos arch alpine rhel8 suse-tumbleweed"
 [[ -n $* ]] && targets="$*"
 
 errexit()
