@@ -52,8 +52,7 @@
 #include <gsocket/gs-readline.h>
 #include <gsocket/buf.h>
 
-#define GSRN_DEFAULT_PORT           7350
-#define GSRN_DEFAULT_PORT_SSL       443
+#define GSRN_DEFAULT_PORT           443
 #define GSRN_DEFAULT_PORT_CON       7351
 #define GSRN_DEFAULT_PING_INTERVAL  (60 * 2)
 // Wait before allowing same listening address with different auth-token
@@ -268,7 +267,7 @@ typedef struct
 
 	uint32_t socks_ip;			// NBO. Use Socks5
 	uint16_t socks_port;		// Socks5
-	uint16_t gs_port;			// 7350 or GSOCKET_PORT
+	uint16_t gs_port;			// GSOCKET_PORT
 } GS_CTX;
 
 

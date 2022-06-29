@@ -5,6 +5,7 @@
 
 BASEDIR="$(cd "$(dirname "${0}")/../../../" || exit; pwd)"
 VER="$(grep AC_INIT "${BASEDIR}/configure.ac" | cut -f3 -d"[" | cut -f1 -d']')"
+source "${BASEDIR}/packaging/build_funcs"
 
 SRCDIR="${BASEDIR}/packaging/build/gsocket-${VER}"
 GSNCROOT="${BASEDIR}/packaging/gsnc-deploy-bin/docker"
@@ -36,14 +37,14 @@ docker_pack()
 	
 	[[ -f "${SRCDIR}/tools/gs-netcat" ]] && rm -f "${SRCDIR}/tools/gs-netcat"
 	docker run --rm  -v "${SRCDIR}:/gsocket-src" -v "${GSNCROOT}:/gsocket-build" -it "${dockername}" /gsocket-build/build.sh || { exit 255; }
-	(cd "${SRCDIR}/tools" && tar cfz "${dsttar}" --uid 0 --gid 0 gs-netcat)
+	(cd "${SRCDIR}/tools" && ${GTAR_BIN} cfz "${dsttar}" --owner=0 --group=0 gs-netcat)
 	(cd "${dstdir}" && shasum "${filename}" && ls -al "${filename}")
 }
 
+docker_pack x86_64-alpine 
 docker_pack mips32-alpine "--host mips32"
 docker_pack mips64-alpine "--host mips64"
 #docker_pack x86_64-centos 
-docker_pack x86_64-alpine 
 docker_pack i386-alpine 
 #docker_pack i386-debian
 docker_pack x86_64-debian
