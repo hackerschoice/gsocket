@@ -14,7 +14,7 @@ cp "${BASEDIR}/gsocket/Makefile" "${OWRT_FEEDDIR}"
 echo "Press enter to push release $VER"
 read
 (cd "$OWRT_FEEDDIR" && \
-	git commit --amend --no-edit --signoff -m "gsocket: upstream update to $VER" && \
+	git commit --amend --author="Ralf Kaiser <root@thc.org>" --no-edit --signoff -m "gsocket: upstream update to $VER" && \
 	git push --force-with-lease origin master)
 
 
