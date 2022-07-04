@@ -12,8 +12,8 @@ OPENWRT_vars_init()
 	MKFILE="${TOPDIR}/packaging/openwrt/gsocket/Makefile"
 	OWRT_PKG_VERSION="$(grep ^PKG_VERSION: "${MKFILE}" | cut -f2 -d=)"
 	OWRT_PKG_HASH="$(grep ^PKG_HASH: "${MKFILE}" | cut -f2 -d=)"
-	OWRT_FEEDDIR="$(cd "${TOPDIR}/../openwrt/packages/net/gsocket" || exit; pwd)"
-
+	# mdir ~/resarch/openwrt && cd ~/research/openwrt && git clone --depth 1 git@github.com:SkyperTHC/packages.git
+	OWRT_FEEDDIR="$(cd "${TOPDIR}/../openwrt/packages" || exit; pwd)"
 }
 
 OPENWRT_update_makefile()

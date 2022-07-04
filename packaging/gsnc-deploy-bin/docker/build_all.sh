@@ -33,19 +33,22 @@ docker_pack()
 	[[ -f "${dsttar}" ]] && { echo >&2 "${filename} exists. Skipping."; return; }
 	rm -f "${dsttar}"
 	# Create local docker container if it does not yet exist
-	docker run --rm -it "${dockername}" true || docker build -t "${dockername}" "${1}" || { exit 255; }
+	docker run --rm -it "${dockername}" true 2>/dev/null || ( cd docker && docker build -t "${dockername}" "${1}" ) || { exit 255; }
 	
 	[[ -f "${SRCDIR}/tools/gs-netcat" ]] && rm -f "${SRCDIR}/tools/gs-netcat"
 	docker run --rm  -v "${SRCDIR}:/gsocket-src" -v "${GSNCROOT}:/gsocket-build" -it "${dockername}" /gsocket-build/build.sh || { exit 255; }
-	(cd "${SRCDIR}/tools" && ${GTAR_BIN} cfz "${dsttar}" --owner=0 --group=0 gs-netcat)
+	(cd "${SRCDIR}/tools" && ${GTAR_BIN} cfz "${dsttar}" --mode=755 --owner=0 --group=0 gs-netcat)
 	(cd "${dstdir}" && shasum "${filename}" && ls -al "${filename}")
 }
 
-docker_pack x86_64-alpine 
-docker_pack mips32-alpine "--host mips32"
-docker_pack mips64-alpine "--host mips64"
-#docker_pack x86_64-centos 
-docker_pack i386-alpine 
-#docker_pack i386-debian
-docker_pack x86_64-debian
-# docker_pack x86_64-arch # NOT SUPPORTED. configure fails with "This script requires a shell more modern than all"
+cd "${BASEDIR}/packaging/gsnc-deploy-bin"
+docker_pack armv6l-linux "--host=armv6l" && \
+docker_pack aarch64-linux "--host=aarch64" && \
+docker_pack mips64-alpine "--host=mips64" && \
+docker_pack mips32-alpine "--host=mips32" && \
+docker_pack x86_64-alpine && \
+docker_pack i386-alpine && \
+docker_pack x86_64-debian && \
+{ echo "SUCCESS"; exit 0; }
+
+exit 255

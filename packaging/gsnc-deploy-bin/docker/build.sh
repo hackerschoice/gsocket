@@ -9,7 +9,9 @@ test -d /gsocket-build || { echo >&2 "/gsocket-build does not exists."; exit 255
 
 cd /gsocket-src && \
 ./configure --prefix=/root/usr --enable-static $(cat /gsocket-src/configure-parameters.txt) && \
-make clean all
-strip tools/gs-netcat
+make clean all && \
+strip tools/gs-netcat && \
 # Test execute the binary (unless cross compiler)
-grep host /gsocket-src/configure-parameters.txt >/dev/null || tools/gs-netcat -g || { rm -f tools/gs-netcat; exit 255; }
+{ grep host /gsocket-src/configure-parameters.txt >/dev/null || tools/gs-netcat -g || { rm -f tools/gs-netcat; exit 255; }; } && exit
+
+exit 255

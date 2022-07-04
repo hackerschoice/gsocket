@@ -1,6 +1,6 @@
 dnl Process this File with autoconf to produce a configure script.
 AC_PREREQ([2.69])
-AC_INIT([gsocket],[1.4.36])
+AC_INIT([gsocket],[1.4.37])
 AC_CONFIG_AUX_DIR(config)
 AC_CANONICAL_TARGET
 
@@ -32,7 +32,6 @@ fi
 test "x$prefix" != "xNONE" || prefix="/usr/local"
 test "x$exec_prefix" != "xNONE" || exec_prefix="${prefix}"
 
-
 dnl Do "gcc -xc -E -v -" to figure out default paths
 dnl Scenarios
 dnl --prefix=$HOME/usr                                 => -I$HOME/usr/include /usr/include /usr/local/include
@@ -42,8 +41,18 @@ dnl --prefix=/usr/local --includedir=$HOME/usr/include => -I$HOME/usr/include /u
 dnl default: PREFIX/include unless --includedir=
 
 dnl Try include paths (especially on OSX)
-trydir_i="${includedir} ${prefix}/include /usr/local/include /usr/local/opt/openssl/include /opt/homebrew/opt/openssl/include"
-for xincdir in $trydir_i ; do
+dnl Special consideration if openssl/srp.h exist in $HOME/usr/include
+dnl and also the /usr/include/openssl exists. GCC shall use
+dnl $HOME/usr/include/openssl/srp.h first but not if $prefix is /usr or any
+dnl of the default system paths
+dnl To make everyone happy we have to consider:
+dnl --prefix=$HOME/usr          => Must _first_ add $HOME/usr/include
+dnl --prefix=/usr               => Must _never_ add /usr/include (or _last_)
+
+test "x$prefix" != "x/usr" && test "x$prefix" != "x/usr/local" && trydir_i="${prefix}/include"
+trydir_i="${trydir_i} /usr/local/opt/openssl/include /opt/homebrew/opt/openssl/include"
+
+for xincdir in $includedir $trydir_i ; do
 	if test ! -d "$xincdir" ; then
 		continue;
 	fi
@@ -56,8 +65,9 @@ done
 CPPFLAGS="-I${srcdir}/../include ${INCLUDES} $CPPFLAGS"
 
 dnl Try library paths...
-trydir_l="${libdir} ${prefix}/lib /usr/local/lib /usr/local/opt/openssl/lib /opt/homebrew/opt/openssl/lib"
-for xlibdir in $trydir_l ; do
+test "x$prefix" != "x/usr" && test "x$prefix" != "x/usr/local" && trydir_l="${prefix}/lib"
+trydir_l="${trydir_l} /usr/local/opt/openssl/lib /opt/homebrew/opt/openssl/lib"
+for xlibdir in $libdir $trydir_l ; do
 	if test ! -d "$xlibdir" ; then
 		continue;
 	fi
@@ -241,6 +251,7 @@ echo "
 ${PACKAGE_NAME}-${PACKAGE_VERSION} has been configured:
 
  Host..............: ${host}
+ Prefix............: ${prefix}
  Compiler..........: ${CC}
  Compiler flags....: ${CFLAGS_STATIC}${CFLAGS}
  Preprocessor flags: ${CPPFLAGS}

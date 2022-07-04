@@ -5,6 +5,7 @@ BASEDIR="$(cd "$(dirname "${0}")" || exit; pwd)"
 # IF this is not a live test then use local binaries (GS_DEBUG=1)
 if test -z "$GS_LIVE"; then
 	export GS_DEBUG=1
+	export GS_USELOCAL=1
 	${BASEDIR}/deploy.sh && \
 	GS_UNDO=1 ${BASEDIR}/deploy.sh
 else
