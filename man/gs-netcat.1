@@ -134,6 +134,14 @@ Connect with client using the same password:
 Log in to server's interactive shell:
 .Dl $ gs-netcat -s MySecret -i
 .Pp
+Log in via TOR:
+.Dl $ gs-netcat -s MySecret -i -T
+.Pp
+Log in via a Socks5 Proxy:
+.Dl $ export GSOCKET_SOCKS_IP=127.0.0.1
+.Dl $ export GSOCKET_SOCKS_PORT=1080
+.Dl $ gs-netcat -s MySecret -i -T
+.Pp
 .Nm Example 3
 - Execute a command when a client connects:
 .Dl $ gs-netcat -s MySecret -l -e 'echo hello world; id; exit'
@@ -196,10 +204,10 @@ The following environment variables can be set to control the behavior of
 .Nm
 .Pp
 .Nm GSOCKET_SOCKS_IP
-.Dl Specify the IP address of the TOR server (or any other SOCKS server). Default is 127.0.0.1.
+.Dl Specify the IP address of the TOR server (or any other SOCKS server). Use together with -T. Default is 127.0.0.1.
 .Pp
 .Nm GSOCKET_SOCKS_PORT
-.Dl The port number of the TOR server (or any other SOCKS server). Default is 9050.
+.Dl The port number of the TOR server (or any other SOCKS server). Use together with -T. Default is 9050.
 .Pp
 .Nm GSOCKET_ARGS
 .Dl A string containing additional command line parameters. First the normal command line parameters are processed and then the command line parameters from GSOCKET_ARGS.

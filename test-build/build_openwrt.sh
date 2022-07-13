@@ -11,7 +11,12 @@ OPENWRT_vars_init
 
 cp "${FILE}" "${OPENWRTDIR}/dl"
 
-cd "$OPENWRTDIR" && nice make -j1 package/gsocket/clean &&  make -j1 V=sc package/gsocket/compile && exit 0
+cd "$OPENWRTDIR" && \
+	git pull && \
+	nice make -j1 package/gsocket/clean && \
+	make -j1 V=sc package/gsocket/compile && \
+	git tag | tail -n1 && \
+	exit 0
 
 # FAILED
 exit 255

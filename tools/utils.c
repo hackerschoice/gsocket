@@ -271,7 +271,7 @@ usage(const char *params)
 				fprintf(stderr, "  -C           Disable encryption\n");
 				break;
 			case 'T':
-				fprintf(stderr, "  -T           Use TOR.\n");
+				fprintf(stderr, "  -T           Use TOR or any Socks proxy (See gs-netcat(1))\n");
 				break;
 		}
 

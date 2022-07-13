@@ -1345,7 +1345,7 @@ do_client(void)
 }
 
 static void
-my_usage(void)
+my_usage(int code)
 {
 	fprintf(stderr, ""
 "gs-netcat [-lwiC] [-e cmd] [-p port] [-d ip]\n"
@@ -1376,7 +1376,7 @@ my_usage(void)
 "    $ gs-netcat -l -i                       # Server\n"
 "    $ gs-netcat -i                          # Client\n"
 "");
-	exit(EX_UNKNWNCMD);
+	exit(code);
 }
 
 static void
@@ -1394,7 +1394,7 @@ my_getopt(int argc, char *argv[])
 
 	do_getopt(argc, argv);	/* from utils.c */
 	optind = 1;	/* Start from beginning */
-	while ((c = getopt(argc, argv, UTILS_GETOPT_STR "mWuP:")) != -1)
+	while ((c = getopt(argc, argv, UTILS_GETOPT_STR "hmWuP:")) != -1)
 	{
 		switch (c)
 		{
@@ -1435,11 +1435,13 @@ my_getopt(int argc, char *argv[])
 				fprintf(fp, "%u", getpid());
 				fclose(fp);
 				break;
+			case 'h':
+				my_usage(0); // On -h exit with 0 [it's a valid command]
 			default:
 				break;
 			case 'A':	// Disable -A for gs-netcat. Use gs-full-pipe instead
 			case '?':
-				my_usage();
+				my_usage(EX_UNKNWNCMD);
 		}
 	}
 

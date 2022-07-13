@@ -135,10 +135,10 @@ The following environment variables can be set to control the behavior of
 .Nm
 .Pp
 .Nm GSOCKET_SOCKS_IP
-.Dl Specify the IP address of the TOR server (or any other SOCKS server). Default is 127.0.0.1.
+.Dl Specify the IP address of the TOR server (or any other SOCKS server). Use together with -T. Default is 127.0.0.1.
 .Pp
 .Nm GSOCKET_SOCKS_PORT
-.Dl The port number of the TOR server (or any other SOCKS server). Default is 9050.
+.Dl The port number of the TOR server (or any other SOCKS server). Use together with -T. Default is 9050.
 .Pp
 .Nm GSOCKET_ARGS
 .Dl A string containing additional command line parameters. First the normal command line parameters are processed and then the command line parameters from GSOCKET_ARGS.
@@ -148,7 +148,7 @@ Passing the password as command line parameter is not secure. Consider using the
 .Dl $ gsocket -k <file>
 .Pp
 .Dl $ export GSOCKET_ARGS="-s MySecret"
-.Dl $ gs
+.Dl $ gsocket
 .Pp
 .Nm 1.
 The security is end-2-end. This means from user-2-user (and not just to the GSRN). The GSRN relays only (encrypted) data to and from the users.
