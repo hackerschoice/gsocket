@@ -130,6 +130,39 @@ to
 5. Connect from any other host to the newly created (hidden) openssh-server:
 .Dl $ gsocket -s MySecret ssh user@gsocket
 .Pp
+.Sh TESTING
+The
+.Nm
+tool uses the LD_PRELOAD method to hijack network calls from the calling process. It then concatenates the port number to the secret and spwans a gs-netcat process to forward the TCP connection. The setup can be tested with gs-netcat.
+.Pp
+1. This example uses gsocket to spawn a server and gs-netcat to test the connection:
+.Pp
+.Dl $ gsocket -s MySecret nc -lp 1234
+.Dl $ gs-netcat -s 1234-MySecret
+.Pp
+2. This example uses gs-netcat to spawn a server and gsocket to test the connection:
+.Pp
+.Dl $ gs-netcat -s 1234-MySecret -l
+.Dl $ gsocket -s MySecret nc blah.gsocket 1234
+.Pp
+Internally the
+.Nm
+tool detects the connectiong to blah.gsocket and redirects it to 127.31.33.7, which can also be used directly (for testing):
+.Dl $ gsocket -s MySecret nc -n 127.31.33.7 1234
+.Pp
+3. This example starts a SSHD via gsocket:
+.Pp
+.Dl $ gsocket -s MySecret /usr/sbin/sshd -D -p 1234
+.Pp
+Test the connection with gs-netcat:
+.Pp
+.Dl $ gs-netcat -s 1234-MySecret
+.Pp
+Use gs-netcat as a port-forwarder and ssh to connect:
+.Pp
+.Dl $ gs-netcat -s 1234-MySecret -p 44222
+.Dl $ ssh -p 44222 user@127.1
+.Pp
 .Sh ENVIRONMENT
 The following environment variables can be set to control the behavior of
 .Nm
