@@ -89,6 +89,12 @@ uchroot_check_sym()
 	done
 }
 
+failed()
+{
+	echo >&2 "ERROR: Self test failed: $1. Try -U to disable."
+
+	exit 255
+}
 # Verify that all symboles will get hijacked. exit on failure.
 # 			linux      osx		solaris
 # sftp		-Du			-pu		-Du
@@ -106,7 +112,7 @@ uchroot_check()
 	fi
 
 	# Run a self test (sftp -D sftp-server)
-	command -v sftp >/dev/null 2>&1 || { echo >&2 "chroot self-test failed (sftp not found). Try -U to disable."; exit 255; }
+	command -v sftp >/dev/null 2>&1 || { failed "sftp not found"; }
 	mkdir -p "${ROOTDIR}/ok"
 	mkdir -p "${ROOTDIR}/denied"
 	# echo "ROOTDIR=${ROOTDIR}"		# DEBUG
@@ -131,10 +137,10 @@ ls ${ROOTDIR}/ok/exist-allowed.txt
 put test1k.dat dir1
 mkdir ./dir2/
 "
-	[[ $(cd "${ROOTDIR}/ok"; echo "$VALID_CMD" | sftp -D "${ROOTDIR}/sftp-server.sh" 2>&1 | grep -c "Permission denied") -eq 0 ]] || { echo >&2 "Self test failed (valid cmd)"; exit 255; }
-	[[ -d "${ROOTDIR}/ok/dir1" ]] || { echo >&2 "chroot self-test failed (valid-cmd 1). Try -U to disable."; exit 255; }
-	[[ -d "${ROOTDIR}/ok/dir2" ]] || { echo >&2 "chroot self-test failed (valid-cmd 2). Try -U to disable."; exit 255; }
-	[[ -f "${ROOTDIR}/ok/dir1/test1k.dat" ]] || { echo >&2 "chroot self-test failed (valid-cmd 3). Try -U to disable."; exit 255; }
+	[[ $(cd "${ROOTDIR}/ok"; echo "$VALID_CMD" | sftp -D "${ROOTDIR}/sftp-server.sh" 2>&1 | grep -c "Permission denied") -eq 0 ]] || { failed "valid cmd 0"; }
+	[[ -d "${ROOTDIR}/ok/dir1" ]] || { failed "valid-cmd 1"; }
+	[[ -d "${ROOTDIR}/ok/dir2" ]] || { failed "valid-cmd 2"; }
+	[[ -f "${ROOTDIR}/ok/dir1/test1k.dat" ]] || { failed "valid-cmd 3"; }
 
 
 	FAIL_CMD="
@@ -152,12 +158,12 @@ put test1k.dat ../denied/exist-denied.txt
 rename exist-allowed.txt ../denied/0wned.txt
 rename exist-allowed.txt /0wned.txt
 "
-	[[ $(cd "${ROOTDIR}/ok"; echo "$FAIL_CMD" | sftp -D "${ROOTDIR}/sftp-server.sh" 2>&1 | grep -c "Permission denied") -eq 13 ]] || { echo >&2 "Self test failed (2)"; exit 255; }
+	[[ $(cd "${ROOTDIR}/ok"; echo "$FAIL_CMD" | sftp -D "${ROOTDIR}/sftp-server.sh" 2>&1 | grep -c "Permission denied") -eq 13 ]] || { failed "fail cmd (2)"; }
 
 	FAIL_CMD="
 ls dir1/../../denied
 ls ./../denied/exist-denied.txt"
-	[[ $(cd "${ROOTDIR}/ok"; echo "$FAIL_CMD" | sftp -D "${ROOTDIR}/sftp-server.sh" 2>&1 | grep -c "not found") -eq 2 ]] || { echo >&2 "Self test failed (3)"; exit 255; }
+	[[ $(cd "${ROOTDIR}/ok"; echo "$FAIL_CMD" | sftp -D "${ROOTDIR}/sftp-server.sh" 2>&1 | grep -c "not found") -eq 2 ]] || { failed "fail cmd (3)"; }
 	rm -rf "${ROOTDIR}/ok" &>/dev/null
 	rm -rf "${ROOTDIR}/denied" &>/dev/null
 	rm -rf "${ROOTDIR}/sftp-server.sh" &>/dev/null
@@ -369,7 +375,7 @@ sftp_server_start()
 	ENV_ARGS="${GSOCKET_ARGS}${GSNC_ENV_ARGS[*]}"
 
 	if [[ -n "${IS_UCHROOT}" ]]; then
-		[[ -z "${ROOTDIR}" ]] && { echo >&2 "chroot self test failed (mktemp). Try -U to disable."; exit 1; }
+		[[ -z "${ROOTDIR}" ]] && { failed "(mktemp)"; }
 		uchroot_check
 		# Try to delete temporary directory. OSX still has sftp-server bin in there and must be deleted
 		rmdir "${ROOTDIR}" &>/dev/null

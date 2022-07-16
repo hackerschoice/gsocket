@@ -222,11 +222,11 @@ GS_CTX_init(GS_CTX *ctx, fd_set *rfd, fd_set *wfd, fd_set *r, fd_set *w, struct 
 
 	ctx->socks_port = htons(GS_SOCKS_DFL_PORT);
 	char *ptr;
-	ptr = getenv("GSOCKET_SOCKS_IP");
+	ptr = GS_getenv("GSOCKET_SOCKS_IP");
 	if ((ptr != NULL) && (*ptr != '\0'))
 		ctx->socks_ip = inet_addr(ptr);
 
-	ptr = getenv("GSOCKET_SOCKS_PORT");
+	ptr = GS_getenv("GSOCKET_SOCKS_PORT");
 	if (ptr != NULL)
 		ctx->socks_port = htons(atoi(ptr));
 
@@ -344,7 +344,7 @@ GS_new(GS_CTX *ctx, GS_ADDR *addr)
 	gsocket->fd = -1;
 
 	uint16_t gs_port;
-	ptr = getenv("GSOCKET_PORT");
+	ptr = GS_getenv("GSOCKET_PORT");
 	if (ptr != NULL)
 		gs_port = htons(atoi(ptr));
 	else
@@ -353,7 +353,7 @@ GS_new(GS_CTX *ctx, GS_ADDR *addr)
 	ctx->gs_port = gs_port;	// Socks5 needs to know
 	gsocket->net.port = gs_port;
 
-	ptr = getenv("GSOCKET_IP");
+	ptr = GS_getenv("GSOCKET_IP");
 	if (ptr != NULL)
 	{
 		gsocket->net.addr = inet_addr(ptr);
@@ -363,19 +363,26 @@ GS_new(GS_CTX *ctx, GS_ADDR *addr)
 	{
 		/* HERE: Use Socks5 -or- GSOCKET_IP not available */
 		char buf[256];
-		hostname = getenv("GSOCKET_HOST");
+		hostname = GS_getenv("GSOCKET_HOST");
 		if (hostname == NULL)
 		{
-			uint8_t hostname_id;
-			hostname_id = GS_ADDR_get_hostname_id(addr->addr);
-			// Connect to [a-z].gsocket.io depending on GS-address
-			const char *domain;
-			domain = getenv("GSOCKET_DOMAIN");
-			if (domain == NULL)
-				domain = GS_NET_DEFAULT_HOST;
+			if (gsocket->net.addr != 0)
+			{
+				// Socks5 is used and GSOCKET_IP is set. Connect
+				// to GSOCKET_IP via Socks5.
+				hostname = strdup(int_ntoa(gsocket->net.addr));
+			} else {
+				uint8_t hostname_id;
+				hostname_id = GS_ADDR_get_hostname_id(addr->addr);
+				// Connect to [a-z].gsocket.io depending on GS-address
+				const char *domain;
+				domain = GS_getenv("GSOCKET_DOMAIN");
+				if (domain == NULL)
+					domain = GS_NET_DEFAULT_HOST;
 
-			snprintf(buf, sizeof buf, "%c.%s", 'a' + hostname_id, domain);
-			hostname = buf;
+				snprintf(buf, sizeof buf, "%c.%s", 'a' + hostname_id, domain);
+				hostname = buf;
+			}
 		}
 		gsocket->net.hostname = strdup(hostname);
 

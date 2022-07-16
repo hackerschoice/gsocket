@@ -1,12 +1,12 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=gsocket
-PKG_VERSION:=1.4.37
+PKG_VERSION:=1.4.38-dev
 PKG_RELEASE:=1
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://github.com/hackerschoice/gsocket/releases/download/v$(PKG_VERSION)/
-PKG_HASH:=4f64f71a7d6b8be79754e7bf2109675ffc8a3e37a4a55b08c95a1b1d25e458e5
+PKG_HASH:=e9fbc63f34c30416fd4ae4fdb0371c5a00fd4239d3d70a1287a0c07acdfa65ab
 
 PKG_MAINTAINER:=Ralf Kaiser <skyper@thc.org>
 PKG_LICENSE:=BSD-2-Clause

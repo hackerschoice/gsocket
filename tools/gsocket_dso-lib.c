@@ -155,4 +155,17 @@ GS_portrange_free(struct _gs_portrange_list *l)
 	XFREE(l->list);
 }
 
+char *
+gs_getenv(const char *name)
+{
+	char *ptr = getenv(name);
+	if (ptr == NULL)
+		return NULL;
+	if (*ptr == '\0')
+		return NULL;
+
+	return ptr;
+}
+
+
 

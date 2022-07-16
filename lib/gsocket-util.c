@@ -112,6 +112,18 @@ user_secret_from_file(GS_CTX *ctx, const char *file)
 	return strdup(buf);
 }
 
+char *
+GS_getenv(const char *name)
+{
+	char *ptr = getenv(name);
+	if (ptr == NULL)
+		return NULL;
+	if (*ptr == '\0')
+		return NULL;
+
+	return ptr;
+}
+
 uint32_t
 GS_hton(const char *hostname)
 {

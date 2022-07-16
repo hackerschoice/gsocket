@@ -28,8 +28,6 @@ static char stdin_buf[1024];//2*16*1024];
 
 static int write_gs(GS_SELECT_CTX *ctx, GS *gs);
 static void do_exit(GS_SELECT_CTX *ctx, GS *gs);
-static void flush_kernel_buffer(int fd);
-
 
 static int
 shutdown_net(GS *gs)
@@ -62,6 +60,7 @@ cb_read_stdin(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 		DEBUGF_R("STDIN EOF (%zd)\n", stdin_len);
 
 		FD_CLR(0, ctx->rfd);	// Stop reading from STDIN
+		fd_kernel_flush(gs->fd);
 		// flush_kernel_buffer(gs->fd);
 		// // FIXME: Test 5.5 fails if we do not call usleep() here but before fixing kernel-flush in gsrnd...
 		// if (GS_is_server(gs))
@@ -126,24 +125,6 @@ write_gs(GS_SELECT_CTX *ctx, GS *gs)
 	ERREXIT("Fatal write error. FIXME: reconnect?(%s)\n", strerror(errno));
 
 	return GS_ERROR;	/* NOT REACHED */
-}
-
-static void
-flush_kernel_buffer(int fd)
-{
-#ifdef TIOCOUTQ	
-	int i;
-	int value = 0;
-	for (i = 0; i < 50; i++)
-	{
-		if (ioctl(fd, TIOCOUTQ, &value) != 0)
-			break;
-		DEBUGF("Left in kernel buffer(fd=%d)=%d\n", fd, value);
-		if (value == 0)
-			break;
-		usleep(10 * 1000);
-	}
-#endif
 }
 
 static void

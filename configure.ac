@@ -197,7 +197,7 @@ AC_ARG_ENABLE(dist,
 )
 
 AC_ARG_ENABLE(realprefix,
-[ --enable-realprefix      Set real prefix (for dpkg packaging)],
+[  --enable-realprefix     Set real prefix (for dpkg packaging)],
 	[REALPREFIX="${enableval}"], [REALPREFIX="${prefix}"]
 )
 

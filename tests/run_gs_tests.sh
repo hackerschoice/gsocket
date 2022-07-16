@@ -92,7 +92,6 @@ fi
 fsize() { stat -c%s "$1" 2>/dev/null || echo 0;}
 stat -f%z /etc/hosts &>/dev/null && fsize() { stat -f%z "$1" 2>/dev/null || echo 0;}
 
-
 export NC
 export NC_EOF_ARG
 export NC_LISTEN_ARG
@@ -107,33 +106,34 @@ ECHO="echo -e"
 
 if [[ -n "$IS_HAVE_NETSTAT" ]]; then
 	NETSTATTCP(){ netstat -ant;}
-	[[ x"$OSTYPE" == "xsolaris"* ]] && NETSTATTCP(){ netstat -an -f inet; }
-	[[ x"$OSTYPE" == *BSD* ]] && NETSTATTCP(){ netstat -an -f inet; }
+	[[ "$OSTYPE" == *"solaris"* ]] && NETSTATTCP(){ netstat -an -f inet; }
+	[[ "$OSTYPE" == *"BSD"* ]] && NETSTATTCP(){ netstat -an -f inet; }
 else
 	echo >&2 "***** WARNING: netstat not found. Attempting anyway... *****"
 fi
 
-tests="1.1 "
-tests+="2.1 2.2 "
-tests+="3.1 "
-tests+="4.1 4.2 "
-tests+="5.1 5.2 5.3 5.4 "
-# tests+="5.5 "		# cleartext
-tests+="6.1 6.2 6.3 6.4 6.5 6.6 "	# gs-netcat
-# tests+="6.7 "		# cleartext
-tests+="6.8 "		# TOR
-tests+="7.1 7.2 7.3 7.4 "
-tests+="8.1 8.2 8.3 "
-tests+="9.1 9.2 9.3 9.4 "
-tests+="10.1 10.2 10.3 " # blitz, gs-sftp
-tests+="10.4 "		# gs-mount
-tests+="10.5 "		# gsocket nc
-tests+="10.6 "		# gsocket socat
-tests+="10.7 "		# gsocket ssh
+tests+=("1.1")
+tests+=("2.1" "2.2")
+tests+=("3.1")
+tests+=("4.1" "4.2")
+tests+=("5.1" "5.2" "5.3" "5.4")
+# tests+=("5.5")	# cleartext
+tests+=("6.1" "6.2" "6.3" "6.4" "6.5" "6.6")	# gs-netcat
+# tests+=("6.7")	# cleartext
+tests+=("6.8")		# TOR
+tests+=("7.1" "7.2" "7.3" "7.4")
+tests+=("8.1" "8.2" "8.3")
+tests+=("9.1" "9.2" "9.3" "9.4")
+tests+=("10.1")         # blitz
+tests+=("10.2" "10.3")  # gs-sftp, gs-mount (uchroot)
+tests+=("10.4")		# gs-mount
+tests+=("10.5")		# gsocket nc
+tests+=("10.5.1")	# gsocket nc
+tests+=("10.5.2")	# gsocket nc
+tests+=("10.6")		# gsocket socat
+tests+=("10.7")		# gsocket ssh
 
-if [ x"$1" != x ]; then
-	tests="$@ "
-fi
+[[ -n $1 ]] && tests=("$@")
 
 mk_dummy()
 {
@@ -320,7 +320,7 @@ new_id()
 # killall -9 gs-helloworld gs-pipe gs-full-pipe gs-netcat &>/dev/null
 # [[ -f id_sec.txt ]] || new_id
 
-if [[ "$tests" =~ '1.1 ' ]]; then
+if [[ " ${tests[*]} " =~ ' 1.1 ' ]]; then
 ### 1 - Hello World
 test_start -n "Running: Hello World #1.1 ................................"
 GSPID="$(sh -c '../tools/gs-helloworld -k id_sec.txt -l 2>server_err.txt >server_out.dat & echo ${!}')"
@@ -332,7 +332,7 @@ if [ "$(MD5 client_out.dat)" != "628eca04c4cb6c8f539381be1c5cd325" ]; then fail 
 $ECHO "${OK}"
 fi
 
-if [[ "$tests" =~ '2.1 ' ]]; then
+if [[ " ${tests[*]} " =~ ' 2.1 ' ]]; then
 ### 2 - Pipe
 # Normal (server listening, client connecting)
 test_start -n "Running: pipe #2.1 ......................................."
@@ -343,7 +343,7 @@ if [ "$(MD5 test50k.dat)" != "$(MD5 server_out.dat)" ]; then fail 1; fi
 $ECHO "${OK}"
 fi
 
-if [[ "$tests" =~ '2.2 ' ]]; then
+if [[ " ${tests[*]} " =~ ' 2.2 ' ]]; then
 ### Waiting client test
 test_start -n "Running: pipe #2.2 (waiting for server)..................."
 GSPID="$(sh -c '../tools/gs-pipe -k id_sec.txt -w <test50k.dat 2>client_err.txt >client_out.dat & echo ${!}')"
@@ -353,7 +353,7 @@ if [ "$(MD5 test50k.dat)" != "$(MD5 server_out.dat)" ]; then fail 1; fi
 $ECHO "${OK}"
 fi
 
-if [[ "$tests" =~ '3.1 ' ]]; then
+if [[ " ${tests[*]} " =~ ' 3.1 ' ]]; then
 ### Impersonate 'listen'
 test_start -n "Running: pipe #3.1 (auth token)..........................."
 GS1PID="$(sh -c '../tools/gs-pipe -k id_sec.txt -l -a player-alice 2>server1_err.txt >server1_out.dat & echo ${!}')"
@@ -372,7 +372,7 @@ if [ "$(MD5 test50k.dat)" != "$(MD5 server2_out.dat)" ]; then fail 3; fi
 $ECHO "${OK}"
 fi
 
-if [[ "$tests" =~ '4.1' ]]; then
+if [[ " ${tests[*]} " =~ ' 4.1 ' ]]; then
 ### Client to become a server if no server is listening
 test_start -n "Running: pipe #4.1 (become server if possible)............"
 GSPID="$(sh -c '../tools/gs-pipe -k id_sec.txt -A <test1k.dat 2>server_err.txt >server_out.dat & echo ${!}')"
@@ -386,7 +386,7 @@ FC=0
 $ECHO "${OK}"
 fi
 
-if [[ "$tests" =~ '4.2' ]]; then
+if [[ " ${tests[*]} " =~ ' 4.2 ' ]]; then
 # Client already waiting. 2nd client to become server (if no server available)
 test_start -n "Running: pipe #4.2 (..while client waiting)..............."
 GSPID="$(sh -c '../tools/gs-pipe -k id_sec.txt -w <test50k.dat 2>client_err.txt >client_out.dat & echo ${!}')"
@@ -397,7 +397,7 @@ if [ "$(MD5 test50k.dat)" != "$(MD5 server_out.dat)" ]; then fail 1; fi
 $ECHO "${OK}"
 fi
 
-if [[ "$tests" =~ '5.1' ]]; then
+if [[ " ${tests[*]} " =~ ' 5.1 ' ]]; then
 test_start -n "Running: full-pipe #5.1..................................."
 GSPID="$(sh -c '../tools/gs-full-pipe -k id_sec.txt -A <test50k.dat 2>client_err.txt >client_out.dat & echo ${!}')"
 sleep_ct
@@ -408,7 +408,7 @@ if [ "$(MD5 test50k.dat)" != "$(MD5 client_out.dat)" ]; then fail 2; fi
 $ECHO "${OK}"
 fi
 
-if [[ "$tests" =~ '5.2' ]]; then
+if [[ " ${tests[*]} " =~ ' 5.2 ' ]]; then
 test_start -n "Running: full-pipe #5.2 (50MB)............................"
 GSPID="$(sh -c '../tools/gs-full-pipe -k id_sec.txt -A <test50M.dat 2>client_err.txt >client_out.dat & echo ${!}')"
 sleep_ct
@@ -419,7 +419,7 @@ if [ "$MD50MB" != "$(MD5 client_out.dat)" ]; then fail 2; fi
 $ECHO "${OK}"
 fi
 
-if [[ "$tests" =~ '5.3' ]]; then
+if [[ " ${tests[*]} " =~ ' 5.3 ' ]]; then
 test_start -n "Running: full-pipe #5.3 (assym sizes, large server)......."
 GSPID="$(sh -c '../tools/gs-full-pipe -k id_sec.txt -A <test1M.dat 2>server_err.txt >server_out.dat & echo ${!}')"
 sleep_ct
@@ -432,7 +432,7 @@ if [ "$(MD5 test50k.dat)" != "$(MD5 server_out.dat)" ]; then fail 2; fi
 $ECHO "${OK}"
 fi
 
-if [[ "$tests" =~ '5.4' ]]; then
+if [[ " ${tests[*]} " =~ ' 5.4 ' ]]; then
 test_start -n "Running: full-pipe #5.4 (assym sizes, small server)......."
 GSPID="$(sh -c '../tools/gs-full-pipe -k id_sec.txt -A <test50k.dat 2>server_err.txt >server_out.dat & echo ${!}')"
 sleep_ct
@@ -445,7 +445,7 @@ if [ "$(MD5 test50k.dat)" != "$(MD5 client_out.dat)" ]; then fail 2; fi
 $ECHO "${OK}"
 fi
 
-if [[ "$tests" =~ '5.5' ]]; then
+if [[ " ${tests[*]} " =~ ' 5.5 ' ]]; then
 test_start -n "Running: full-pipe #5.5 (assymetric sizes, clear)........."
 GSPID="$(sh -c '../tools/gs-full-pipe -k id_sec.txt -AC <test1M.dat 2>server_err.txt >server_out.dat & echo ${!}')"
 sleep_ct
@@ -456,7 +456,7 @@ if [ "$(MD5 test4k.dat)" != "$(MD5 server_out.dat)" ]; then fail 2; fi
 $ECHO "${OK}"
 fi
 
-if [[ "$tests" =~ '6.1' ]]; then
+if [[ " ${tests[*]} " =~ ' 6.1 ' ]]; then
 test_start -n "Running: netcat #6.1 (stdin, 1MB)........................."
 GSPID="$(sh -c '../tools/gs-netcat -k id_sec.txt -w <test1M.dat 2>client_err.txt >client_out.dat & echo ${!}')"
 sleep_ct
@@ -467,7 +467,7 @@ if [ "$MD1MB" != "$(MD5 client_out.dat)" ]; then fail 2; fi
 $ECHO "${OK}"
 fi
 
-if [[ "$tests" =~ '6.2' ]]; then
+if [[ " ${tests[*]} " =~ ' 6.2 ' ]]; then
 test_start -n "Running: netcat #6.2 (stdin, assymetric sizes)............"
 GSPID="$(sh -c '../tools/gs-netcat -k id_sec.txt -w <test50k.dat 2>client_err.txt >client_out.dat & echo ${!}')"
 sleep_ct
@@ -480,7 +480,7 @@ if [ "$(MD5 test50k.dat)" != "$(MD5 server_out.dat)" ]; then fail 2; fi
 $ECHO "${OK}"
 fi
 
-if [[ "$tests" =~ '6.3' ]]; then
+if [[ " ${tests[*]} " =~ ' 6.3 ' ]]; then
 test_start -n "Running: netcat #6.3 (stdin, assym sizes, kill client)...."
 GSPID1="$(sh -c '(cat test4k.dat; sleep 30) | ../tools/gs-netcat -k id_sec.txt -w 2>client_err.txt >client_out.dat & echo ${!}')"
 GSPID2="$(sh -c '(cat test1k.dat; sleep 30) | ../tools/gs-netcat -k id_sec.txt -l 2>server_err.txt >server_out.dat & echo ${!}')"
@@ -494,7 +494,7 @@ if [ "$(MD5 test1k.dat)" != "$(MD5 client_out.dat)" ]; then fail 2; fi
 $ECHO "${OK}"
 fi
 
-if [[ "$tests" =~ '6.4' ]]; then
+if [[ " ${tests[*]} " =~ ' 6.4 ' ]]; then
 test_start -n "Running: netcat #6.4 (stdin, assym sizes, kill server)...."
 GSPID1="$(sh -c '(cat test4k.dat; sleep 30) | ../tools/gs-netcat -k id_sec.txt -w 2>client_err.txt >client_out.dat & echo ${!}')"
 GSPID2="$(sh -c '(cat test1k.dat; sleep 30) | ../tools/gs-netcat -k id_sec.txt -l 2>server_err.txt >server_out.dat & echo ${!}')"
@@ -507,7 +507,7 @@ if [ "$(MD5 test1k.dat)" != "$(MD5 client_out.dat)" ]; then fail 2; fi
 $ECHO "${OK}"
 fi
 
-if [[ "$tests" =~ '6.5' ]]; then
+if [[ " ${tests[*]} " =~ ' 6.5 ' ]]; then
 test_start -n "Running: netcat #6.5 (/dev/null C2S)......................"
 GSPID="$(sh -c '../tools/gs-netcat -k id_sec.txt -w </dev/null 2>client_err.txt >client_out.dat & echo ${!}')"
 sleep_ct
@@ -518,7 +518,7 @@ if [ "$(MD5 test4k.dat)" != "$(MD5 client_out.dat)" ]; then fail 2; fi
 $ECHO "${OK}"
 fi
 
-if [[ "$tests" =~ '6.6' ]]; then
+if [[ " ${tests[*]} " =~ ' 6.6 ' ]]; then
 test_start -n "Running: netcat #6.6 (/dev/null S2C)......................"
 GSPID="$(sh -c '../tools/gs-netcat -k id_sec.txt -w <test4k.dat 2>client_err.txt >client_out.dat & echo ${!}')"
 sleep_ct
@@ -529,7 +529,7 @@ if [ "$(MD5 test4k.dat)" != "$(MD5 server_out.dat)" ]; then fail 2; fi
 $ECHO "${OK}"
 fi
 
-if [[ "$tests" =~ '6.7' ]]; then
+if [[ " ${tests[*]} " =~ ' 6.7 ' ]]; then
 test_start -n "Running: netcat #6.7 (stdin, assymetric sizes, clear)....."
 GSPID="$(sh -c '../tools/gs-netcat -k id_sec.txt -wC <test1M.dat 2>client_err.txt >client_out.dat & echo ${!}')"
 sleep_ct
@@ -540,7 +540,7 @@ if [ "$(MD5 test50k.dat)" != "$(MD5 client_out.dat)" ]; then fail 2; fi
 $ECHO "${OK}"
 fi
 
-if [[ "$tests" =~ '6.8' ]]; then
+if [[ " ${tests[*]} " =~ ' 6.8 ' ]]; then
 test_start -n "Running: netcat #6.8 (stdin, assymetric sizes, TOR)......."
 if [[ "$GSOCKET_IP" =~ 192\.168\. ]]; then
 	skip "$GSOCKET_IP"
@@ -559,7 +559,7 @@ else
 fi
 fi
 
-if [[ "$tests" =~ '7.1' ]]; then
+if [[ " ${tests[*]} " =~ ' 7.1 ' ]]; then
 test_start -n "Running: netcat #7.1 (cmd, multi connect)................."
 GSPID1="$(sh -c '../tools/gs-netcat -k id_sec.txt -l -e "echo Hello World && sleep 1" 2>server_err.txt >server_out.dat & echo ${!}')"
 GSPID2="$(sh -c '../tools/gs-netcat -k id_sec.txt -w </dev/null 2>client2_err.txt >client2_out.dat & echo ${!}')"
@@ -573,7 +573,7 @@ if [ "${MDHELLOW}" != "$(MD5 client3_out.dat)" ]; then fail 3; fi
 $ECHO "${OK}"
 fi
 
-if [[ "$tests" =~ '7.2' ]]; then
+if [[ " ${tests[*]} " =~ ' 7.2 ' ]]; then
 test_start -n "Running: netcat #7.2 (shell, exit)........................"
 GSPID1="$(sh -c '../tools/gs-netcat -k id_sec.txt -l -e /bin/sh 2>server_err.txt >server_out.dat & echo ${!}')"
 echo "date; echo Hello World; exit" | ../tools/gs-netcat -k id_sec.txt -w 2>client_err.txt >client_out.dat
@@ -590,7 +590,7 @@ if [[ "$OSTYPE" == *"BSD"* ]]; then
 	XCMD="sleep 3; ${XCMD}"
 fi
 
-if [[ "$tests" =~ '7.3' ]]; then
+if [[ " ${tests[*]} " =~ ' 7.3 ' ]]; then
 test_start -n "Running: netcat #7.3 (pty shell, exit)...................."
 GSPID1="$(sh -c '../tools/gs-netcat -k id_sec.txt -l -i 2>server_err.txt >server_out.dat & echo ${!}')"
 # Can not start Client with -i because it's not a tty. Must 'fake' the terminal response.
@@ -603,7 +603,7 @@ if [ $? -ne 0 ]; then fail 1; fi
 $ECHO "${OK}"
 fi
 
-if [[ "$tests" =~ '7.4' ]]; then
+if [[ " ${tests[*]} " =~ ' 7.4 ' ]]; then
 test_start -n "Running: netcat #7.4 (multi pty shell, exit).............."
 GSPID1="$(sh -c '../tools/gs-netcat -k id_sec.txt -l -i 2>server_err.txt >server_out.dat & echo ${!}')"
 GSPID2=$(sh -c "($XCMD) | ../tools/gs-netcat -k id_sec.txt -w 2>client1_err.txt >client1_out.dat & echo \${!}")
@@ -617,7 +617,7 @@ if [ x"$(tail -2 client3_out.dat | grep 'Hello World')" == x ]; then fail 3; fi
 $ECHO "${OK}"
 fi
 
-if [[ "$tests" =~ '8.1' ]]; then
+if [[ " ${tests[*]} " =~ ' 8.1 ' ]]; then
 test_start -n "Running: netcat #8.1 (port forward server side)..........."
 GSPID1="$(sh -c '../tools/gs-netcat -k id_sec.txt -l -d 127.0.0.1 -p 12345 2>server_err.txt >server_out.dat & echo ${!}')"
 GSPID2="$(sh -c '(sleep 10) | $NC_LISTEN 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
@@ -629,7 +629,7 @@ if [ "$(MD5 test50k.dat)" != "$(MD5 nc1_out.dat)" ]; then fail 1; fi
 $ECHO "${OK}"
 fi
 
-if [[ "$tests" =~ '8.2' ]]; then
+if [[ " ${tests[*]} " =~ ' 8.2 ' ]]; then
 # nc -> Port 12344 -> GS-NET -> Port 12345 -> nc -ln
 test_start -n "Running: netcat #8.2 (port forward both sides)............"
 GSPID1="$(sh -c '../tools/gs-netcat -k id_sec.txt -l -d 127.0.0.1 -p 12345 2>server_err.txt >server_out.dat & echo ${!}')"
@@ -644,7 +644,7 @@ if [ "$(MD5 test50k.dat)" != "$(MD5 nc1_out.dat)" ]; then fail 1; fi
 $ECHO "${OK}"
 fi
 
-if [[ "$tests" =~ '8.3' ]]; then
+if [[ " ${tests[*]} " =~ ' 8.3 ' ]]; then
 # nc -> Port 12344 -> GS-NET -> Port 12345 -> nc -ln
 # Bi-Directional
 test_start -n "Running: netcat #8.3 (port forward both sides, bi-dir)...."
@@ -662,7 +662,7 @@ if [ "$(MD5 test4k.dat)" != "$(MD5 nc2_out.dat)" ]; then fail 2; fi
 $ECHO "${OK}"
 fi
 
-if [[ "$tests" =~ '9.1' ]]; then
+if [[ " ${tests[*]} " =~ ' 9.1 ' ]]; then
 # SOCKS test socat -> port 1085 -> GS-NET -> Port 12345 -> nc -ln
 test_start -n "Running: netcat #9.1 (socat/socks5)......................."
 socat -h 2>/dev/null | grep socks5 &>/dev/null
@@ -684,7 +684,7 @@ else
 	fi
 fi
 
-if [[ "$tests" =~ '9.2' ]]; then
+if [[ " ${tests[*]} " =~ ' 9.2 ' ]]; then
 # SOCKS test socat -> port 1085 -> GS-NET -> Port 12345 -> nc -ln
 test_start -n "Running: netcat #9.2 (socat/socks4)......................."
 socat -h 2>/dev/null | grep socks4 &>/dev/null
@@ -693,7 +693,7 @@ if [ $? -ne 0 ]; then
 else
 	GSPID1="$(sh -c '../tools/gs-netcat -k id_sec.txt -lS 2>server1_err.txt >server1_out.dat & echo ${!}')"
 	GSPID2="$(sh -c '(cat test4k.dat; sleep 15) | $NC_LISTEN 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
-	GSPID3="$(sh -c '../tools/gs-netcat -k id_sec.txt -p 1085 -w 2>client_err.txt >client_out.dat & echo ${!}')"
+	GSPID3="$(sh -c '../tools/gs-netcat -k id_sec.txt -w -p 1085 2>client_err.txt >client_out.dat & echo ${!}')"
 	waittcp 1085
 	waittcp 12345
 	GSPID4="$(sh -c '(cat test50k.dat; sleep 15) | socat -  "SOCKS4:127.0.0.1:127.0.0.1:12345,socksport=1085" >nc2_out.dat 2>nc2_err.txt & echo ${!}')"
@@ -706,7 +706,7 @@ else
 	fi
 fi
 
-if [[ "$tests" =~ '9.3' ]]; then
+if [[ " ${tests[*]} " =~ ' 9.3 ' ]]; then
 # SOCKS test socat -> port 1085 -> GS-NET -> Port 12345 -> nc -ln
 test_start -n "Running: netcat #9.3 (socat/socks4a)......................"
 socat -h 2>/dev/null | grep socks4 &>/dev/null
@@ -715,7 +715,7 @@ if [ $? -ne 0 ]; then
 else
 	GSPID1="$(sh -c '../tools/gs-netcat -k id_sec.txt -lS 2>server1_err.txt >server1_out.dat & echo ${!}')"
 	GSPID2="$(sh -c '(cat test4k.dat; sleep 15) | $NC_LISTEN 12345 >nc1_out.dat 2>nc1_err.txt & echo ${!}')"
-	GSPID3="$(sh -c '../tools/gs-netcat -k id_sec.txt -p 1085 2>client_err.txt >client_out.dat & echo ${!}')"
+	GSPID3="$(sh -c '../tools/gs-netcat -k id_sec.txt -w -p 1085 2>client_err.txt >client_out.dat & echo ${!}')"
 	waittcp 1085
 	waittcp 12345
 	GSPID4="$(sh -c '(cat test50k.dat; sleep 15) | socat -  "SOCKS4a:127.0.0.1:127.0.0.1:12345,socksport=1085" >nc2_out.dat 2>nc2_err.txt & echo ${!}')"
@@ -728,7 +728,7 @@ else
 	fi
 fi
 
-if [[ "$tests" =~ '9.4' ]]; then
+if [[ " ${tests[*]} " =~ ' 9.4 ' ]]; then
 # SOCKS test with cUrl
 test_start -n "Running: netcat #9.4 (curl/socks5, multi)................."
 curl --help all 2>/dev/null | grep socks5-hostname &>/dev/null
@@ -756,7 +756,7 @@ else
 	fi
 fi
 
-if [[ "${tests}" =~ '10.1' ]]; then
+if [[ " ${tests[*]} " =~ ' 10.1 ' ]]; then
 test_start -n "Running: blitz #10.1 ....................................."
 rm -rf test_server test_client
 mkdir -p test_server test_client/foo/bar test_client/empty
@@ -787,7 +787,7 @@ else
 	fi
 fi
 
-if [[ "${tests}" =~ '10.2' ]]; then
+if [[ " ${tests[*]} " =~ ' 10.2 ' ]]; then
 test_start -n "Running: blitz #10.2 (stdin).............................."
 rm -rf test_client
 mkdir -p test_client
@@ -803,7 +803,7 @@ rm -rf test_client
 $ECHO "${OK}"
 fi
 
-if [[ "${tests}" =~ '10.3' ]]; then
+if [[ " ${tests[*]} " =~ ' 10.3' ]]; then
 test_start -n "Running: gs-sftp #10.3 ..................................."
 rm -rf test_client
 mkdir -p test_client
@@ -817,7 +817,7 @@ md5fail 2 test4k.dat test_client/test4k.dat
 $ECHO "${OK}"
 fi
 
-if [[ "${tests}" =~ '10.4' ]]; then
+if [[ " ${tests[*]} " =~ ' 10.4 ' ]]; then
 test_start -n "Running: gs-mount #10.4 .................................."
 command -v sshfs  >/dev/null 2>&1
 if [ $? -ne 0 ]; then
@@ -854,16 +854,17 @@ else
 	fi
 fi
 
-if [[ "${tests}" =~ '10.5' ]]; then
-test_start -n "Running: gsocket nc #10.5 (stdin)........................."
 # Can not use nc here because nc does not terminate on EOF from stdin.
 # Socat can be configured to terminate 1 second after EOF has been received.
 # need sleep 3 on RPI (slow system)
-STDOUT_SLEEP=1
+STDOUT_SLEEP=3
 [[ -f /proc/cpuinfo ]] && grep Raspberry /proc/cpuinfo &>/dev/null && STDOUT_SLEEP=3
 export STDOUT_SLEEP
-GSPID1="$(sh -c '(cat test4k.dat; sleep $STDOUT_SLEEP) | GS_DEBUG=1 GSOCKET_ARGS="-Lserver_gs.log" gsocket -k id_sec.txt $NC $NC_EOF_ARG $NC_LISTEN_ARG 31337 2>server_err.txt >server_out.dat & echo ${!}')"
-GSPID2="$(sh -c '(cat test1k.dat; sleep $STDOUT_SLEEP) | GS_DEBUG=1 GSOCKET_ARGS="-w -Lclient_gs.log" gsocket -k id_sec.txt $NC $NC_EOF_ARG -v gsocket 31337 2>client_err.txt >client_out.dat & echo ${!}')"
+
+if [[ " ${tests[*]} " =~ ' 10.5 ' ]]; then
+test_start -n "Running: gsocket nc #10.5 (stdin)........................."
+GSPID1="$(sh -c '(cat test4k.dat; sleep $STDOUT_SLEEP) | GSOCKET_DEBUG=1 GSOCKET_ARGS="-Lserver_gs.log" gsocket -k id_sec.txt $NC $NC_EOF_ARG $NC_LISTEN_ARG 31337 2>server_err.txt >server_out.dat & echo ${!}')"
+GSPID2="$(sh -c '(cat test1k.dat; sleep $STDOUT_SLEEP) | GSOCKET_DEBUG=1 GSOCKET_ARGS="-w -Lclient_gs.log" gsocket -k id_sec.txt $NC $NC_EOF_ARG -v gsocket 31337 2>client_err.txt >client_out.dat & echo ${!}')"
 waitk $GSPID2
 kill $GSPID1 &>/dev/null
 md5fail 1 test1k.dat server_out.dat
@@ -871,7 +872,32 @@ md5fail 2 test4k.dat client_out.dat
 $ECHO "${OK}"
 fi
 
-if [[ "${tests}" =~ '10.6' ]]; then
+if [[ " ${tests[*]} " =~ ' 10.5.1 ' ]]; then
+test_start -n "Running: gsocket nc #10.5.1 (nc server)..................."
+export PORTSEC="31337-$(cat id_sec.txt)"
+GSPID1="$(sh -c '(cat test4k.dat; sleep $STDOUT_SLEEP) | GSOCKET_DEBUG=1 GSOCKET_ARGS="-Lserver_gs.log" gs-netcat -s $PORTSEC -l 2>server_err.txt >server_out.dat & echo ${!}')"
+GSPID2="$(sh -c '(cat test1k.dat; sleep $STDOUT_SLEEP) | GSOCKET_DEBUG=1 GSOCKET_ARGS="-w -Lclient_gs.log" gsocket -k id_sec.txt $NC $NC_EOF_ARG -v gsocket 31337 2>client_err.txt >client_out.dat & echo ${!}')"
+waitk $GSPID2
+kill $GSPID1 &>/dev/null
+md5fail 1 test1k.dat server_out.dat
+md5fail 2 test4k.dat client_out.dat
+$ECHO "${OK}"
+fi
+
+if [[ " ${tests[*]} " =~ ' 10.5.2 ' ]]; then
+test_start -n "Running: gsocket nc #10.5.2 (nc client)..................."
+export PORTSEC="31337-$(cat id_sec.txt)"
+GSPID1="$(sh -c '(cat test4k.dat; sleep $STDOUT_SLEEP) | GSOCKET_DEBUG=1 GSOCKET_ARGS="-Lserver_gs.log" gsocket -k id_sec.txt $NC $NC_EOF_ARG $NC_LISTEN_ARG 31337 2>server_err.txt >server_out.dat & echo ${!}')"
+GSPID2="$(sh -c '(cat test1k.dat; sleep $STDOUT_SLEEP) | GSOCKET_DEBUG=1 GSOCKET_ARGS="-w -Lclient_gs.log" gs-netcat -s $PORTSEC 2>client_err.txt >client_out.dat & echo ${!}')"
+waitk $GSPID2
+kill $GSPID1 &>/dev/null
+md5fail 1 test1k.dat server_out.dat
+md5fail 2 test4k.dat client_out.dat
+$ECHO "${OK}"
+fi
+
+
+if [[ " ${tests[*]} " =~ ' 10.6 ' ]]; then
 test_start -n "Running: gsocket socat #10.6 (stdin)......................"
 if ! socat -h 2>/dev/null | grep socks4 &>/dev/null; then
 	skip "(no socat)"
@@ -892,7 +918,7 @@ else
 fi
 fi
 
-if [[ "${tests}" =~ '10.7' ]]; then
+if [[ " ${tests[*]} " =~ ' 10.7 ' ]]; then
 test_start -n "Running: gsocket ssh #10.7 (stdin)........................"
 if [[ "$OSTYPE" == *"solaris"* ]]; then
 	# Solaris SSHD does not work unless it's run as root (some PAM shit)

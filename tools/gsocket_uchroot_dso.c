@@ -113,12 +113,6 @@ thc_init_cyg(void)
 static void thc_init_cyg(void) {}	// Do nothing.
 #endif
 
-#ifdef __APPLE__
-# define DYLD_INTERPOSE(_replacment,_replacee) \
-__attribute__((used)) static struct{ const void* replacment; const void* replacee; } _interpose_##_replacee \
-__attribute__ ((section ("__DATA,__interpose"))) = { (const void*)(unsigned long)&_replacment, (const void*)(unsigned long)&_replacee };
-#endif
-
 static void
 thc_init(void)
 {
@@ -128,11 +122,11 @@ thc_init(void)
 	thc_init_cyg();
 
 	DEBUGF("%s called\n", __func__);
-	if (getenv("GSOCKET_DEBUG"))
+	char *ptr = getenv("GSOCKET_DEBUG");
+	if ((ptr != NULL) && (*ptr != '\0'))
 		is_debug = 1;
 
 	/* OSX's getcwd() calls stat() */
-	char *ptr;
 #if defined(__sun) && defined(HAVE_OPEN64)
 	// This is solaris 10
 	ptr = getcwd(NULL, GS_PATH_MAX + 1); // solaris10 segfaults if size is 0...

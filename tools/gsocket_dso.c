@@ -63,32 +63,54 @@ thc_init_cyg(void)
 static void thc_init_cyg(void) {}	// Do nothing.
 #endif
 
+#if defined(__CYGWIN__) || defined(__APPLE__)
+# define THC_USE_FCI
+#endif
+
+#ifndef __APPLE__
+# define THC_USE_DLSYM
+#endif
+
+#ifdef THC_USE_DLSYM
+# define REAL(xn, a...) ((t_real_##xn)dlsym(RTLD_NEXT, #xn))(a)  
+#else
+# define REAL(xn, a...) xn(a)
+#endif
+
 // HOOK definitions
 // Note: Set errno=0 before libcall => Some programs (e.g. netcat) ignore
 // return value of listen() and just check if errno has changed.
 // Our .so may have changed errno...
-typedef int (*real_bind_t)(int sox, const struct sockaddr *addr, socklen_t addr_len);
-static int real_bind(int sox, const struct sockaddr *addr, socklen_t addr_len) { errno=0; return ((real_bind_t)dlsym(RTLD_NEXT, "bind"))(sox, addr, addr_len); }
-typedef int (*real_listen_t)(int sox, int backlog);
-static int real_listen(int sox, int backlog) { errno=0; return ((real_listen_t)dlsym(RTLD_NEXT, "listen"))(sox, backlog); }
-typedef int (*real_connect_t)(int sox, const struct sockaddr *addr, socklen_t addr_len);
-static int real_connect(int sox, const struct sockaddr *addr, socklen_t addr_len) { errno=0; return ((real_connect_t)dlsym(RTLD_NEXT, "connect"))(sox, addr, addr_len); }
+typedef int (*t_real_bind)(int sox, const struct sockaddr *addr, socklen_t addr_len);
+static int real_bind(int sox, const struct sockaddr *addr, socklen_t addr_len) { errno=0; return REAL(bind, sox, addr, addr_len); }
+
+typedef int (*t_real_listen)(int sox, int backlog);
+static int real_listen(int sox, int backlog) { errno=0; return REAL(listen, sox, backlog); }
+
+typedef int (*t_real_connect)(int sox, const struct sockaddr *addr, socklen_t addr_len);
+static int real_connect(int sox, const struct sockaddr *addr, socklen_t addr_len) { errno=0; return REAL(connect, sox, addr, addr_len); }
+
+typedef int (*t_real_close)(int fd);
+static int real_close(int fd) { return REAL(close, fd); }
+
 #if defined(HAVE_CONNECTX)
-  typedef int (*real_connectx_t)(int sox, const sa_endpoints_t *ep, sae_associd_t aid, unsigned int flags, const struct iovec *iov, unsigned int iovcnt, size_t *len, sae_connid_t *cid);
-  static int real_connectx(int sox, const sa_endpoints_t *ep, sae_associd_t aid, unsigned int flags, const struct iovec *iov, unsigned int iovcnt, size_t *len, sae_connid_t *cid) { errno=0; return ((real_connectx_t)dlsym(RTLD_NEXT, "connectx"))(sox, ep, aid, flags, iov, iovcnt, len, cid); }
+  typedef int (*t_real_connectx)(int sox, const sa_endpoints_t *ep, sae_associd_t aid, unsigned int flags, const struct iovec *iov, unsigned int iovcnt, size_t *len, sae_connid_t *cid);
+  static int real_connectx(int sox, const sa_endpoints_t *ep, sae_associd_t aid, unsigned int flags, const struct iovec *iov, unsigned int iovcnt, size_t *len, sae_connid_t *cid) { errno=0; return REAL(connectx, sox, ep, aid, flags, iov, iovcnt, len, cid); }
 #endif
 #if defined(HAVE_ACCEPT4)
-  typedef int (*real_accept4_t)(int sox, const struct sockaddr *addr, socklen_t *addr_len, int flags);
-  static int real_accept4(int sox, const struct sockaddr *addr, socklen_t *addr_len, int flags) { errno=0; return ((real_accept4_t)dlsym(RTLD_NEXT, "accept4"))(sox, addr, addr_len, flags); }
+  typedef int (*t_real_accept4)(int sox, const struct sockaddr *addr, socklen_t *addr_len, int flags);
+  static int real_accept4(int sox, const struct sockaddr *addr, socklen_t *addr_len, int flags) { errno=0; return REAL(accept4, sox, addr, addr_len, flags); }
 #else
   // Solaris10 & OSX do not have accept4()
-  typedef int (*real_accept_t)(int sox, const struct sockaddr *addr, socklen_t *addr_len);
-  static int real_accept4(int sox, const struct sockaddr *addr, socklen_t *addr_len, int flags) { errno=0; return ((real_accept_t)dlsym(RTLD_NEXT, "accept"))(sox, addr, addr_len); }
+  typedef int (*t_real_accept)(int sox, struct sockaddr *addr, socklen_t *addr_len);
+  static int real_accept4(int sox, struct sockaddr *addr, socklen_t *addr_len, int flags) { errno=0; return REAL(accept, sox, addr, addr_len); }
 #endif
-typedef struct hostent *(*real_gethostbyname_t)(const char *name);
-static struct hostent *real_gethostbyname(const char *name) { errno=0; return ((real_gethostbyname_t)dlsym(RTLD_NEXT, "gethostbyname"))(name); }
-typedef int (*real_getaddrinfo_t)(const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **res);
-static int real_getaddrinfo(const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **res) { errno=0; return ((real_getaddrinfo_t)dlsym(RTLD_NEXT, "getaddrinfo"))(node, service, hints, res); }
+
+typedef struct hostent *(*t_real_gethostbyname)(const char *name);
+static struct hostent *real_gethostbyname(const char *name) { errno=0; return REAL(gethostbyname, name); }
+
+typedef int (*t_real_getaddrinfo)(const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **res);
+static int real_getaddrinfo(const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **res) { errno=0; return REAL(getaddrinfo, node, service, hints, res); }
 
 // FUNCTION definitions
 static struct _gs_so_mgr *gs_so_listen(const char *secret, uint16_t port_orig, uint16_t *port_fake, int is_tor);
@@ -118,10 +140,10 @@ thc_init(const char *fname)
 	thc_init_cyg();
 
 #ifdef DEBUG
-	if (getenv("GS_DEBUG"))
+	if (gs_getenv("GSOCKET_DEBUG"))
 	{
 		is_debug = 1;
-		char *ptr = getenv("GS_LOGFILE");
+		char *ptr = gs_getenv("GSOCKET_LOGFILE");
 		if (ptr)
 			gopt.err_fp = fopen(ptr, "w");
 		if (gopt.err_fp == NULL)
@@ -142,10 +164,10 @@ thc_init(const char *fname)
 	unsetenv("DYLD_INSERT_LIBRARIES");
 	unsetenv("DYLD_FORCE_FLAT_NAMESPACE");
 
-	char *ptr = getenv("GS_HIJACK_PORTS");
+	char *ptr = gs_getenv("GS_HIJACK_PORTS");
 	GS_portrange_new(&hijack_ports, ptr?ptr:"1-65535");
 
-	g_secret = getenv("GSOCKET_SECRET");
+	g_secret = gs_getenv("GSOCKET_SECRET");
 }
 
 static struct _fd_info *
@@ -170,8 +192,6 @@ fdi_get(int fd)
 	return &fd_list[fd];
 }
 
-typedef int (*real_close_t)(int fd);
-static int real_close(int fd) { return ((real_close_t)dlsym(RTLD_NEXT, "close"))(fd); }
 static int
 thc_close(const char *fname, int fd)
 {
@@ -357,7 +377,7 @@ thc_bind(const char *fname, int sox, const struct sockaddr *addr, socklen_t addr
 	struct _fd_info *fdi;
 
 	thc_init(fname);
-	DEBUGF_W("BIND  called (sox=%d, addr=%p, family=%d (%s))\n", sox, addr, addr->sa_family, addr->sa_family==AF_INET?"IPv4":"IPv6");
+	DEBUGF_W("BIND  called (sox=%d, addr=%p, family=%d (%s))\n", sox, addr, addr?addr->sa_family:0, addr?addr->sa_family==AF_INET?"IPv4":"IPv6":"NULL");
 
 	if ((sox < 0) || (addr == NULL))
 		return real_bind(sox, addr, addr_len);
@@ -472,7 +492,7 @@ thc_listen(const char *fname, int sox, int backlog)
 
 
 static int
-thc_accept4(const char *fname, int ls, const struct sockaddr *addr, socklen_t *addr_len, int flags)
+thc_accept4(const char *fname, int ls, struct sockaddr *addr, socklen_t *addr_len, int flags)
 {
 	int sox;
 
@@ -732,6 +752,7 @@ gs_mgr_new(const char *secret, uint16_t port_orig, uint16_t *port_fake, enum gs_
 			break;
 	}
 	dup2(fds[1], free_fd);
+	DEBUGF("Moved fd=%d to fd=%d\n", fds[1], free_fd);
 	real_close(fds[1]);
 	fds[1] = free_fd;
 
@@ -760,7 +781,7 @@ gs_mgr_new(const char *secret, uint16_t port_orig, uint16_t *port_fake, enum gs_
 		// STDIN: gs-netcat monitors stdin to check if parent dies.
 		dup2(fds[0], STDIN_FILENO);
 
-		char *env_args = getenv("GSOCKET_ARGS");
+		char *env_args = gs_getenv("GSOCKET_ARGS");
 		char buf[1024];
 		char prg[256];
 		char *quiet_str = is_debug?"":"-q ";
@@ -796,7 +817,7 @@ gs_mgr_new(const char *secret, uint16_t port_orig, uint16_t *port_fake, enum gs_
 		// unsetenv("LD_PRELOAD");
 		setenv("_GSOCKET_INTERNAL", "1", 1);
 		setenv("GSOCKET_NO_GREETINGS", "1", 1);
-		char *bin = getenv("GS_NETCAT_BIN");
+		char *bin = gs_getenv("GS_NETCAT_BIN");
 		if (bin == NULL)
 			bin = "gs-netcat";
 		DEBUGF("ARGS='%s' bin=%s prg=%s\n", buf, bin, prg);
@@ -865,7 +886,11 @@ gs_so_connect(const char *secret, uint16_t port_orig, uint16_t *port_fake, int i
 }
 
 // HOOKS
-#ifndef __CYGWIN__
+// - UNIX/Linux overwrites the function names directly
+// - OSX requires DYLD_INTERPOSE, jumping via fci_<name>()
+// - CYGWIN requires cygwin_internal(CW_HOOK), jumping via fci_<name>()
+#ifndef THC_USE_FCI
+// HERE: UNIX/Linux
 int connect(int socket, const struct sockaddr *addr, socklen_t addr_len) {return thc_connect(__func__, socket, addr, addr_len); }
 #if defined(HAVE_CONNECTX)
   int connectx(int socket, const sa_endpoints_t *endpoints, sae_associd_t associd, unsigned int flags, const struct iovec *iov, unsigned int iovcnt, size_t *len, sae_connid_t *connid) {return thc_connectx(__func__, socket, endpoints, associd, flags, iov, iovcnt, len, connid); }
@@ -881,17 +906,41 @@ int listen(int socket, int backlog) {return thc_listen(__func__, socket, backlog
 int accept4(int socket, struct sockaddr *addr, socklen_t *addr_len, int flags) {return thc_accept4(__func__, socket, addr, addr_len, flags); }
 struct hostent *gethostbyname(const char *name) {return thc_gethostbyname(__func__, name); }
 int getaddrinfo(const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **res) {return thc_getaddrinfo(__func__, node, service, hints, res); }
-#endif
+#endif // !THC_USE_FCI
 
-#ifdef __CYGWIN__
+#ifdef THC_USE_FCI
 static int fci_connect(int socket, const struct sockaddr *addr, socklen_t addr_len) {return thc_connect("connect", socket, addr, addr_len); }
+#if defined(HAVE_CONNECTX)
+static int fci_connectx(int socket, const sa_endpoints_t *endpoints, sae_associd_t associd, unsigned int flags, const struct iovec *iov, unsigned int iovcnt, size_t *len, sae_connid_t *connid) { return thc_connectx("connectx", socket, endpoints, associd, flags, iov, iovcnt, len, connid); }
+#endif
 static int fci_close(int fd) {return thc_close("close", fd); }
 static int fci_bind(int fd, const struct sockaddr *addr, socklen_t addr_len) {return thc_bind("bind", fd, addr, addr_len); }
 static int fci_listen(int socket, int backlog) {return thc_listen("listen", socket, backlog); }
-static int fci_accept(int fd, const struct sockaddr *addr, socklen_t *addr_len) {return thc_accept4("accept", fd, addr, addr_len, 0); }
-static int fci_accept4(int fd, const struct sockaddr *addr, socklen_t *addr_len, int flags) {return thc_accept4("accept4", fd, addr, addr_len, flags); }
+static int fci_accept(int fd, struct sockaddr *addr, socklen_t *addr_len) {return thc_accept4("accept", fd, addr, addr_len, 0); }
+#if defined(HAVE_ACCEPT4)
+static int fci_accept4(int fd, struct sockaddr *addr, socklen_t *addr_len, int flags) {return thc_accept4("accept4", fd, addr, addr_len, flags); }
+#endif
 static struct hostent *fci_gethostbyname(const char *name) {return thc_gethostbyname("gethostbyname", name); }
 static int fci_getaddrinfo(const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **res) {return thc_getaddrinfo("getaddrinfo", node, service, hints, res); }
+#endif // THC_USE_FCI
+
+#ifdef __APPLE__
+DYLD_INTERPOSE(fci_connect, connect);
+#if defined(HAVE_CONNECTX)
+DYLD_INTERPOSE(fci_connectx, connectx);
+#endif
+DYLD_INTERPOSE(fci_close, close);
+DYLD_INTERPOSE(fci_bind, bind);
+DYLD_INTERPOSE(fci_listen, listen);
+DYLD_INTERPOSE(fci_accept, accept);
+#if defined(HAVE_ACCEPT4)
+DYLD_INTERPOSE(fci_accept4, accept4);
+#endif
+DYLD_INTERPOSE(fci_gethostbyname, gethostbyname);
+DYLD_INTERPOSE(fci_getaddrinfo, getaddrinfo);
+#endif
+
+#ifdef __CYGWIN__
 __attribute__((constructor))
 int
 fci_init(void)

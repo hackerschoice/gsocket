@@ -1445,18 +1445,18 @@ my_getopt(int argc, char *argv[])
 		}
 	}
 
-	if (getenv("_GSOCKET_WANT_AUTHCOOKIE") != NULL)
+	if (GS_getenv("_GSOCKET_WANT_AUTHCOOKIE") != NULL)
 		gopt.is_want_authcookie = 1;
-	if (getenv("_GSOCKET_SEND_AUTHCOOKIE") != NULL)
+	if (GS_getenv("_GSOCKET_SEND_AUTHCOOKIE") != NULL)
 		gopt.is_send_authcookie = 1;
 
-	if (getenv("_GSOCKET_INTERNAL") != NULL)
+	if (GS_getenv("_GSOCKET_INTERNAL") != NULL)
 	{
 		DEBUGF_G("IS_INTERNAL\n");
 		gopt.is_internal = 1;
 	}
 
-	ptr = getenv("_GSOCKET_SERVER_CHECK_SEC");
+	ptr = GS_getenv("_GSOCKET_SERVER_CHECK_SEC");
 	if (ptr != NULL)
 	{
 		DEBUGF_G("SERVER_CHECK_SEC=%s (%d)\n", ptr, atoi(ptr));
@@ -1545,7 +1545,7 @@ my_getopt(int argc, char *argv[])
 
 	gopt.gsocket = gs_create();
 	
-	if (getenv("GSOCKET_NO_GREETINGS") == NULL)
+	if (GS_getenv("GSOCKET_NO_GREETINGS") == NULL)
 		GS_LOG("=Encryption     : %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
 
 	atexit(cb_atexit);

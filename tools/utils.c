@@ -15,7 +15,7 @@ extern char **environ;
 static void
 add_env_argv(int *argcptr, char **argvptr[])
 {
-	char *str_orig = getenv("GSOCKET_ARGS");
+	char *str_orig = GS_getenv("GSOCKET_ARGS");
 	char *str = NULL;
 	char *next;
 	char **newargv = NULL;
@@ -75,6 +75,9 @@ add_env_argv(int *argcptr, char **argvptr[])
 void
 init_defaults(int *argcptr, char **argvptr[])
 {
+#ifdef DEBUG
+	gopt.is_built_debug = 1;
+#endif
 	gopt.log_fp = stderr;
 	gopt.err_fp = stderr;
 	signal(SIGPIPE, SIG_IGN);
@@ -203,11 +206,11 @@ init_vars(void)
 	// Prevent startup messages if gs-netcat is started as sub-system from
 	// gs-sftp or gs-mount
 	int is_greetings = 1;
-	if (getenv("GSOCKET_NO_GREETINGS") != NULL)
+	if (GS_getenv("GSOCKET_NO_GREETINGS") != NULL)
 		is_greetings = 0;
 
-	char *str = getenv("GSOCKET_ARGS");
-	if ((str != NULL) && (strlen(str) > 0) && (is_greetings))
+	char *str = GS_getenv("GSOCKET_ARGS");
+	if ((str != NULL) && (is_greetings))
 		GS_LOG_V("=Extra arguments: '%s'\n", str);
 
 	gopt.sec_str = GS_user_secret(&gopt.gs_ctx, gopt.sec_file, gopt.sec_str);
@@ -228,7 +231,7 @@ init_vars(void)
 void
 usage(const char *params)
 {
-	fprintf(stderr, "%s [0x%lxL] (GS v%s)\n", OPENSSL_VERSION_TEXT, OPENSSL_VERSION_NUMBER, PACKAGE_VERSION);
+	fprintf(stderr, "Version %s%s, %s %s [%s]\n", PACKAGE_VERSION, gopt.is_built_debug?"#debug":"", __DATE__, __TIME__, OPENSSL_VERSION_TEXT);
 
 	while (*params)
 	{
@@ -471,8 +474,8 @@ stty_check_esc(GS *gs, char c)
 static const char *
 mk_shellname(char *shell_name, ssize_t len)
 {
-	const char *shell = getenv("SHELL");
-	if ((shell == NULL) || (strlen(shell) == 0))
+	const char *shell = GS_getenv("SHELL");
+	if (shell == NULL)
 	{
 		shell = "/bin/sh";	// default
 		/* Try /bin/bash if available */
