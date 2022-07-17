@@ -1004,10 +1004,13 @@ void
 gs_watchdog(void)
 {
 	pid_t pid;
+	pid_t ppid = 0;
+	pid_t ppid_now = 0;
+	struct timeval tv;
+	struct timeval *tvptr = NULL;
 
 	while (1) // LOOP FOREVER
 	{
-
 		int fds[2];
 		socketpair(AF_UNIX, SOCK_STREAM, 0, fds);
 		pid = fork();
@@ -1023,16 +1026,25 @@ gs_watchdog(void)
 
 		// PARENT:
 		close(fds[0]);
+		ppid = getppid();
 		// fdsp[1] is a socket to the child. We can detect when it dies....
 		fd_set rfds;
-		FD_ZERO(&rfds);
 
 		int n;
 		while (1)
 		{
-			FD_SET(STDIN_FILENO, &rfds);
+			FD_ZERO(&rfds);
+			if (tvptr == NULL)
+			{
+				FD_SET(STDIN_FILENO, &rfds);
+			} else {
+				// Poll and check ppid has changed
+				XASSERT(gopt.is_internal != 0, "tvptr=%p but not internal(=%d)\n", tvptr, gopt.is_internal);
+				tv.tv_sec = 5;
+				tv.tv_usec = 0;
+			}
 			FD_SET(fds[1], &rfds);
-			n = select(fds[1] + 1, &rfds, NULL, NULL, NULL);
+			n = select(fds[1] + 1, &rfds, NULL, NULL, tvptr /* NULL unless is_internal */);
 			if (n < 0)
 			{
 				if (errno == EINTR)
@@ -1040,12 +1052,34 @@ gs_watchdog(void)
 				exit(EX_BADSELECT); // FATAL
 			}
 
-			// If parent dies then die immediately (this closes fds[0] and all child will die)
+			// Detect if the parent dies (e.g. STDIN closes).
+			// A special case is 'sshd -d': SSHD closes all 'not needed' FDs
+			// (including our IPC). We need a different way to check if
+			// parent died in addition to checking if our IPC got closed:
+			// Check if ppid has changed as well as IPC closed (parent is really dead).
 			if (FD_ISSET(STDIN_FILENO, &rfds))
 			{
-				// DEBUGF_Y("watchdog STDIN is set. EOF (parent died)?\n");
-				exit(0);
+				ppid_now = getppid();
+				DEBUGF_Y("Watchdog: EOF on STDIN. (parent=%d died or closed IPC. ppid_now=%d)?\n", ppid, ppid_now);
+				if (gopt.is_internal == 0)
+					exit(0); // NOT ./gsocket <app>
+
+				if (ppid_now < ppid)
+					exit(0);
+				close(STDIN_FILENO);
+				tvptr = &tv;
 			}
+			if (tvptr != NULL)
+			{
+				// Check if ppid has changed. Exit if it has.
+				ppid_now = getppid();
+				if (ppid_now < ppid)
+				{
+					DEBUGF_Y("Watchdog: PPID=%d changed (was %d). Parent is dead(?)\n", ppid_now, ppid);
+					exit(0);
+				}
+			}
+
 			if (FD_ISSET(fds[1], &rfds))
 			{
 				// Oops. Child died. Restart.

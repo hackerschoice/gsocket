@@ -742,15 +742,13 @@ gs_mgr_new(const char *secret, uint16_t port_orig, uint16_t *port_fake, enum gs_
 	// REEXEC_STARTUP_PIPE_FD is defined as STDOUT + 3 and OpenSSH does not give a damn if that socket
 	// is already used or not. It blindly calls dup2(, 5). Instead we do a hack to use
 	// a high socket number for our IPC comm.
-	// FIXME: OpenSSH run in debug mode (-d) calls execve() on itself. The OpenSSL/selinux subsystem
-	// then closes all 'not needed' open fd's including our fd. We would need to intercept
-	// execve() to add LD_PRELOAD again and then track close() not to close our IPC fd.
 	int free_fd;
 	for (free_fd = MIN(getdtablesize(), FD_SETSIZE) - 1; free_fd >= 0; free_fd--)
 	{
 		if (fcntl(free_fd, F_GETFD, 0) != 0)
 			break;
 	}
+
 	dup2(fds[1], free_fd);
 	DEBUGF("Moved fd=%d to fd=%d\n", fds[1], free_fd);
 	real_close(fds[1]);
