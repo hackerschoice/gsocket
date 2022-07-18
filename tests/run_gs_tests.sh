@@ -17,6 +17,13 @@
 
 # depend on: md5sum, rsync, netstat, netcat, dd, ssh, sshd
 
+CY="\033[1;33m" # yellow
+CG="\033[1;32m" # green
+CR="\033[1;31m" # red
+CC="\033[1;36m" # cyan
+CM="\033[1;35m" # magenta
+CN="\033[0m"    # none
+
 # Debian packaging: Force CWD to ./tests/
 BASEDIR="$(cd "$(dirname "${0}")" || exit; pwd)"
 cd "$BASEDIR"
@@ -29,12 +36,14 @@ if [ x"$GSOCKET_IP" == "x127.0.0.1" ]; then
 fi
 
 if [[ -z $GS_PREFIX ]]; then
-	GS_PREFIX="$(cd ${BASEDIR}/../tools || exit; pwd)"
-	GS_BINDIR="$GS_PREFIX"
+	# User binaries from built-directory
+	GS_BINDIR="$(cd ${BASEDIR}/../tools || exit; pwd)"
 else
-	GS_BINDIR="${GS_PREFIX}/bin/"
+	GS_BINDIR="${GS_PREFIX}/bin"
 fi
 export PATH=${GS_BINDIR}:/usr/local/bin:$PATH
+
+echo -e "${CY}*** ${CM}$(gs-netcat -h 2>&1 | grep ^Version)${CY} ***${CN}"
 
 # printf "#! /bin/bash\nexec nc\n" >gs_nc
 SLEEP_WD=20	# Max seconds to wait for a process to finish receiving...

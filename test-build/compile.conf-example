@@ -1,0 +1,24 @@
+#! /bin/bash
+
+# Used by 'test-compile.sh'. This file contains information how to execute a command
+# on various different architectures/VMs.
+
+# ENVIRONEMT VARIABLES
+#
+# _REXEC_CMD=     Command to execute remote command.
+# _PREFIX=        Added to ./configure --prefix=
+# _PRE_EXEC=      Command to execute before compile/test run
+# _COMPILE_EXEC=  Command to compile. [see OpenWRT]
+# _RUN_EXEC=      Command to run all tests. [see OpenWRT]
+# _DST=           Destination directory. [default is ~/]
+# _ENV=           Extra environment variables to set
+
+[[ $(basename "$0") == "compile.conf" ]] && { echo "This is an include file. Use test-compile.sh"; exit 1; }
+
+# Set DEFAULT values
+VMGUEST_USERHOST="skyper@127.1"
+
+osx_REXEC_CMD="ssh -p 22 -t ${VMGUEST_USERHOST}"
+osx_PREFIX='$HOME/usr'
+
+sid_REXEC_CMD="ssh -p 22107 -t ${VMGUEST_USERHOST}"

@@ -1,7 +1,7 @@
 #! /usr/bin/env bash
 
 
-[[ $(basename "$0") = "gs_funcs" ]] && { echo "Use gsocket, gs-netcat, gs-sftp, gs-mount or blitz instead."; exit 1; }
+[[ $(basename "$0") == "gs_funcs" ]] && { echo "Use gsocket, gs-netcat, gs-sftp, gs-mount or blitz instead."; exit 1; }
 
 # Find a sftp-server binary
 find_binary()
@@ -119,7 +119,7 @@ uchroot_check()
 	echo hello exist-allowed.txt >"${ROOTDIR}/ok/exist-allowed.txt"
 	echo hello exist-denied.txt >"${ROOTDIR}/denied/exist-denied.txt"
 	dd if=/dev/urandom bs=1k count=1 2>/dev/null >"${ROOTDIR}/ok/test1k.dat"
-	echo "
+	echo "\
 #! /bin/bash
 cd \"${ROOTDIR}\"/ok
 ${PRELOAD} ${SFTP_SERVER_BIN} ${SFTP_ARGS[*]}" >"${ROOTDIR}/sftp-server.sh"

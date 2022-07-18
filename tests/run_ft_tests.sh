@@ -515,26 +515,55 @@ run_get_dst ../0wned.dat
 $ECHO "${OK}"
 fi
 
-bigdir="share/man" # HUGE
-[[ -n "$QUICK" ]] && bigdir="share/man/man4" # Less huge
-[[ -n "$QUICK" ]] && [[ $(uname) =~ CYGWIN ]] && bigdir="share/man/man8" # Less huge
-[[ -n "$QUICK" ]] && [[ $(uname) =~ FreeBSD ]] && bigdir="share/man/man6" # Less huge
-[[ -n "$QUICK" ]] && [[ $(uname) =~ SunOS ]] && bigdir="share/man/man9p" # Less huge
+# Find a local directory that contains some huge amount of files
+try_find_bigdir()
+{
+	local dir
+
+	[[ -n $bigdir ]] && return
+
+	dir=$1
+	[[ -n $QUICK ]] && dir=$2
+
+	[[ ! -d "/usr/${dir}" ]] && return
+
+	# return if it is to small
+	[[ $(du -sk "/usr/${dir}"  | cut -f1) -lt 64 ]] && return
+
+	bigdir="$dir"
+}
+
+unset bigdir
+quick_dir="share/man/man4"
+[[ $(uname) =~ CYGWIN ]] && quick_dir="share/man/man8" # Less huge
+[[ $(uname) =~ FreeBSD ]] && quick_dir="share/man/man6" # Less huge
+[[ $(uname) =~ SunOS ]] && quick_dir="share/man/man9p" # Less huge
+
+try_find_bigdir share/man "${quick_dir}"
+try_find_bigdir include include/bits
 
 if [[ "$tests" =~ '9.1 ' ]]; then
 test_start -n "Running #9.1 (HUGE put).........................."
+if [[ -z $bigdir ]]; then
+	$ECHO "${SKIP} (no files)"
+else
 run_put "/usr/./${bigdir}"
 $ECHO -n "verify..."
 fail_dir_compare 1 "/usr/${bigdir}" "${IODIR}/${bigdir}" .
 $ECHO "${OK}"
 fi
+fi
 
 if [[ "$tests" =~ '9.2 ' ]]; then
 test_start -n "Running #9.2 (HUGE get).........................."
+if [[ -z $bigdir ]]; then
+	$ECHO "${SKIP} (no files)"
+else
 run_get "/usr/./${bigdir}"
 $ECHO -n "verify..."
 fail_dir_compare 1 "/usr/${bigdir}" "${IODIR}/${bigdir}" .
 $ECHO "${OK}"
+fi
 fi
 
 
