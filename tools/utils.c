@@ -656,7 +656,7 @@ forkpty(int *fd, void *a, void *b, void *c)
 	switch (pid)
 	{
 		case -1:
-			return -1;
+			return -2;
 		case 0:
 			/* CHILD */
 		#ifdef TIOCNOTTY
@@ -676,7 +676,7 @@ forkpty(int *fd, void *a, void *b, void *c)
 			return pid;
 	}
 
-	return -1; // NOT REACHED
+	return -3; // NOT REACHED
 }
 #endif /* HAVE_FORKPTY */
 
@@ -687,7 +687,7 @@ pty_cmd(const char *cmd, pid_t *pidptr)
 	int fd;
 	
 	pid = forkpty(&fd, NULL, NULL, NULL);
-	XASSERT(pid >= 0, "Error: forkpty(): %s\n", strerror(errno));
+	XASSERT(pid >= 0, "Error: forkpty()=%d: %s\n", pid, strerror(errno));
 
 	if (pid == 0)
 	{

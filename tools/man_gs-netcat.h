@@ -134,6 +134,14 @@ EXAMPLES\n\
      Log in to server's interactive shell:\n\
 	   $ gs-netcat -s MySecret -i\n\
 \n\
+     Log in via TOR:\n\
+	   $ gs-netcat -s MySecret -i -T\n\
+\n\
+     Log in via a Socks5 Proxy:\n\
+	   $ export GSOCKET_SOCKS_IP=127.0.0.1\n\
+	   $ export GSOCKET_SOCKS_PORT=1080\n\
+	   $ gs-netcat -s MySecret -i -T\n\
+\n\
      Example 3 - Execute a command when a client connects:\n\
 	   $ gs-netcat -s MySecret -l -e 'echo hello world; id; exit'\n\
 \n\
@@ -206,11 +214,11 @@ ENVIRONMENT\n\
 \n\
      GSOCKET_SOCKS_IP\n\
 	   Specify the IP address of the TOR server (or any other SOCKS server).\n\
-	   Default is 127.0.0.1.\n\
+	   Use together with -T. Default is 127.0.0.1.\n\
 \n\
      GSOCKET_SOCKS_PORT\n\
-	   The port number of the TOR server (or any other SOCKS server).\n\
-	   Default is 9050.\n\
+	   The port number of the TOR server (or any other SOCKS server). Use\n\
+	   together with -T. Default is 9050.\n\
 \n\
      GSOCKET_ARGS\n\
 	   A string containing additional command line parameters. First the\n\

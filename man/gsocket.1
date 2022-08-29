@@ -135,34 +135,55 @@ The
 .Nm
 tool uses the LD_PRELOAD method to hijack network calls from the calling process. It then concatenates the port number to the secret and spwans a gs-netcat process to forward the TCP connection. The setup can be tested with gs-netcat.
 .Pp
-1. This example uses gsocket to spawn a server and gs-netcat to test the connection:
+.Nm Test 1
+- gsocket server and gs-netcat client:
 .Pp
-.Dl $ gsocket -s MySecret nc -lp 1234
-.Dl $ gs-netcat -s 1234-MySecret
+Server:
+.Dl $ gsocket -s MySecret nc -lp 1234 # TCP port is 1234
+Client:
+.Dl $ gs-netcat -s 1234-MySecret      # Notice `<port>-<SECRET>`
 .Pp
-2. This example uses gs-netcat to spawn a server and gsocket to test the connection:
+.Nm Test 2
+- gsocket client and gs-netcat server:
 .Pp
+Server:
 .Dl $ gs-netcat -s 1234-MySecret -l
+Client:
 .Dl $ gsocket -s MySecret nc blah.gsocket 1234
 .Pp
 Internally the
 .Nm
-tool detects the connectiong to blah.gsocket and redirects it to 127.31.33.7, which can also be used directly (for testing):
+tool (on the client side) forks a background gs-netcat process listening on 127.31.33.7 on a random TCP port. The
+.Nm
+tool then detects `nc` trying to resolve `blah.gsocket` and returns 127.31.33.7 to `nc`. The `nc` process then connects to 127.31.33.7 instead and the gs-netcat process (that got started automatically) takes the connection and forwards the traffic via the GSRN. The `nc` tool can also directly connect to 127.31.33.7 instead of blah.gsocket (for testing):
+.Pp
+Client:
 .Dl $ gsocket -s MySecret nc -n 127.31.33.7 1234
 .Pp
-3. This example starts a SSHD via gsocket:
+.Nm Test 3
+- SSHD via gsocket:
 .Pp
+Server:
 .Dl $ gsocket -s MySecret /usr/sbin/sshd -D -p 1234
-.Pp
-Test the connection with gs-netcat:
-.Pp
+Client:
 .Dl $ gs-netcat -s 1234-MySecret
 .Dl SSH-2.0-OpenSSH_8.4p1 Debian-2
 .Pp
 Use gs-netcat as a port-forwarder and ssh to connect:
 .Pp
+Client:
 .Dl $ gs-netcat -s 1234-MySecret -p 44222
 .Dl $ ssh -p 44222 user@127.1
+.Pp
+.Nm Test 4
+- SSH via gsocket:
+.Pp
+On the server start a gs-netcat port forward to forward incoming GSRN connections to the SSHD on localhost:
+.Pp
+Server:
+.Dl $ gs-netcat -s 22-MySecret -l -d 127.0.0.1 -p 22
+Client:
+.Dl $ gsocket -s MySecret ssh user@gsocket
 .Pp
 .Sh ENVIRONMENT
 The following environment variables can be set to control the behavior of
