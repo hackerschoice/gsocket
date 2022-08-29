@@ -395,7 +395,7 @@ stty_set_raw(void)
     	return;
     memcpy(&tios_saved, &tios, sizeof tios_saved);
     // -----BEGIN ORIG-----
- //    tios.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+	// tios.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
 	// tios.c_oflag &= ~(OPOST);
 	// tios.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
 	// tios.c_cflag |= (CS8);
@@ -474,20 +474,26 @@ stty_check_esc(GS *gs, char c)
 static const char *
 mk_shellname(char *shell_name, ssize_t len)
 {
+	char *dfl_shell = "/bin/sh";
+	struct stat sb;
+	if (stat("/bin/bash", &sb) == 0)
+		dfl_shell = "/bin/bash";
+
 	const char *shell = GS_getenv("SHELL");
 	if (shell == NULL)
 	{
-		shell = "/bin/sh";	// default
-		/* Try /bin/bash if available */
-		struct stat sb;
-		if (stat("/bin/bash", &sb) == 0)
-			shell = "/bin/bash";
+		shell = dfl_shell;
 	}
 	char *ptr = strrchr(shell, '/');
 	if (ptr == NULL)
 	{
-		shell = "/bin/sh";
-		ptr = "/sh";
+		// ENV is set but not a path. Perhaps just 'zsh' or 'bash'
+		shell = dfl_shell;
+		char buf[32];
+		snprintf(buf, sizeof buf, "/bin/%s", shell);
+		if (stat(buf, &sb) == 0)
+			shell = strdup(buf);
+		ptr = strrchr(shell, '/');
 	}
 	snprintf(shell_name, len, "-%s", ptr + 1);
 
@@ -680,13 +686,51 @@ forkpty(int *fd, void *a, void *b, void *c)
 }
 #endif /* HAVE_FORKPTY */
 
-int
+static pid_t
+forkfd(int *fd)
+{
+	int fds[2];
+	int ret;
+	pid_t pid;
+
+	ret = socketpair(AF_UNIX, SOCK_STREAM, 0, fds);
+	if (ret != 0)
+		return -1;
+
+	pid = fork();
+	if (pid < 0)
+		return pid;
+
+	if (pid == 0)
+	{
+		dup2(fds[0], STDOUT_FILENO);
+		dup2(fds[0], STDERR_FILENO);
+		dup2(fds[0], STDIN_FILENO);
+		*fd = fds[0];
+
+		return pid;
+	}
+
+	/* HERE: Parent process */
+	close(fds[0]);
+	*fd = fds[1];
+
+	return pid;
+}
+
+static int
 pty_cmd(const char *cmd, pid_t *pidptr)
 {
 	pid_t pid;
 	int fd;
 	
 	pid = forkpty(&fd, NULL, NULL, NULL);
+	if (pid < 0)
+	{
+		// In stricted environments /dev/ptmx is not available.
+		// Drop into a dump shell (without PTY control)
+		pid = forkfd(&fd);
+	}
 	XASSERT(pid >= 0, "Error: forkpty()=%d: %s\n", pid, strerror(errno));
 
 	if (pid == 0)
@@ -697,7 +741,10 @@ pty_cmd(const char *cmd, pid_t *pidptr)
 		 * /dev/tty to get correct fd for child's tty.
 		 */
 		#ifdef HAVE_FORKPTY
-		fd = open("/dev/tty", O_NOCTTY | O_RDWR);
+		int fd_x;
+		fd_x = open("/dev/tty", O_NOCTTY | O_RDWR);
+		if (fd_x >= 0)
+			fd = fd_x;
 		#endif
 
 		/* HERE: Child */
