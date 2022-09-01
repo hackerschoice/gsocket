@@ -176,6 +176,11 @@ AC_ARG_ENABLE([31337],
 	AC_DEFINE(D31337, 1, [Expermental feature])
 )
 
+AC_ARG_ENABLE([stealth],
+	AS_HELP_STRING([--enable-stealth], [Stip -h and -m strings.]),
+	AC_DEFINE(STEALTH, 1, [Stealth Mode])
+)
+
 AC_ARG_ENABLE([debug],
 	AS_HELP_STRING([--enable-debug], [Enable debug information.]),
 	[debug=true AC_DEFINE(DEBUG, 1, [Debug infos])]

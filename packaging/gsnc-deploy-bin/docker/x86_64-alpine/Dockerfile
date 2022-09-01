@@ -5,7 +5,7 @@ ENV OPENSSL_ARCH=linux-generic64
 
 WORKDIR /root/
 RUN apk update \
-	&& apk add --no-cache bash musl-dev linux-headers gcc make automake openssl-dev curl && \
+	&& apk add --no-cache bash musl-dev linux-headers gcc make automake openssl-dev curl upx && \
 	rm -rf /var/cache/apk/* && \
 	curl https://www.openssl.org/source/openssl-${OPENSSL_VER}.tar.gz \
 	| tar -xzC /tmp/ && \

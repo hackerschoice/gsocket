@@ -54,7 +54,8 @@
 
 #define GSRN_DEFAULT_PORT           443
 #define GSRN_DEFAULT_PORT_CON       7351
-#define GSRN_DEFAULT_PING_INTERVAL  (60 * 2)
+// Some FW's kill connections after 60 seconds.
+#define GSRN_DEFAULT_PING_INTERVAL  (45)
 // Wait before allowing same listening address with different auth-token
 #define GSRN_TOKEN_LINGER_SEC       (7)
 

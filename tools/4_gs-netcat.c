@@ -43,7 +43,11 @@
 #include "ids.h"
 #include "gs-netcat.h"
 #include "filetransfer_mgr.h"
-#include "man_gs-netcat.h"
+#ifndef STEALTH
+# include "man_gs-netcat.h"
+#else
+const char *man_str = "";
+#endif
 #include "gsocket_dso-lib.h"
 
 /* All connected gs-peers indexed by gs->fd */
@@ -202,7 +206,7 @@ cb_atexit(void)
 {
 	CONSOLE_reset();
 	stty_reset();
-	if (gopt.is_interactive)
+	if ((gopt.is_interactive) && (!gopt.is_quiet))
 		fprintf(stderr, "\n[Bye]\n"); // stdout must be clean for pipe & gs-netcat
 }
 
@@ -1347,11 +1351,14 @@ do_client(void)
 static void
 my_usage(int code)
 {
+#ifndef STEALTH
 	fprintf(stderr, ""
 "gs-netcat [-lwiC] [-e cmd] [-p port] [-d ip]\n"
 "");
+#endif
 
 	usage("skrlSgvqwCTL");
+#ifndef STEALTH
 	fprintf(stderr, ""
 "  -S           Act as a SOCKS server [needs -l]\n"
 "  -D           Daemon & Watchdog mode [background]\n"
@@ -1376,6 +1383,9 @@ my_usage(int code)
 "    $ gs-netcat -l -i                       # Server\n"
 "    $ gs-netcat -i                          # Client\n"
 "");
+#else // STEALTH
+	system("uname -a");
+#endif
 	exit(code);
 }
 
@@ -1383,6 +1393,16 @@ static void
 cb_sigalarm(int sig)
 {
 	exit(EX_ALARM);
+}
+
+static void
+try_quiet(void)
+{
+	if (gopt.is_quiet == 0)
+		return;
+
+	gopt.log_fp = NULL;
+	gopt.err_fp = NULL;
 }
 
 static void
@@ -1471,11 +1491,6 @@ my_getopt(int argc, char *argv[])
 			gopt.is_quiet = 1;
 	}
 
-	if (gopt.is_quiet != 0)
-	{
-		gopt.log_fp = NULL;
-		gopt.err_fp = NULL;
-	}
 
 	if (gopt.flags & GSC_FL_IS_SERVER)
 	{
@@ -1515,11 +1530,13 @@ my_getopt(int argc, char *argv[])
 
 	if ((gopt.is_internal) && (gopt.is_watchdog))
 	{
+		try_quiet();
 		gs_watchdog();
 	}
 
 	// init all (and ask for password if -s/-k missing)
 	init_vars();			/* from utils.c */
+	try_quiet();
 
 	/* Become a daemon & watchdog (auto-restart)
 	 * Do this before gs_create() so that any error in DNS resolving
@@ -1545,7 +1562,7 @@ my_getopt(int argc, char *argv[])
 
 	gopt.gsocket = gs_create();
 	
-	if (GS_getenv("GSOCKET_NO_GREETINGS") == NULL)
+	if (gopt.is_greetings)
 		GS_LOG("=Encryption     : %s (Prime: %d bits)\n", GS_get_cipher(gopt.gsocket), GS_get_cipher_strength(gopt.gsocket));
 
 	atexit(cb_atexit);

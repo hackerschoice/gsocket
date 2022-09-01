@@ -162,7 +162,9 @@ struct _gopt
 	int is_internal;        // -I flag
 	int is_udp;             // Port forwarding only. GSRN is always TCP.
 	int is_built_debug;     // DEBUG is set
+	int is_greetings;
 	int gs_server_check_sec;
+	char *prg_name;         // argv[0]
 	uint64_t ts_ping_sent;  // TimeStamp ping sent
 	fd_set rfd, r;
 	fd_set wfd, w;

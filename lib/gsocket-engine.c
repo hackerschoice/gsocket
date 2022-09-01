@@ -345,6 +345,8 @@ GS_new(GS_CTX *ctx, GS_ADDR *addr)
 
 	uint16_t gs_port;
 	ptr = GS_getenv("GSOCKET_PORT");
+	if (ptr == NULL)
+		ptr = GS_getenv("GS_PORT");
 	if (ptr != NULL)
 		gs_port = htons(atoi(ptr));
 	else
@@ -364,6 +366,8 @@ GS_new(GS_CTX *ctx, GS_ADDR *addr)
 		/* HERE: Use Socks5 -or- GSOCKET_IP not available */
 		char buf[256];
 		hostname = GS_getenv("GSOCKET_HOST");
+		if (hostname == NULL)
+			hostname = GS_getenv("GS_HOST");
 		if (hostname == NULL)
 		{
 			if (gsocket->net.addr != 0)

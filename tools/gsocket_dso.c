@@ -780,6 +780,8 @@ gs_mgr_new(const char *secret, uint16_t port_orig, uint16_t *port_fake, enum gs_
 		dup2(fds[0], STDIN_FILENO);
 
 		char *env_args = gs_getenv("GSOCKET_ARGS");
+		if (env_args == NULL)
+			gs_getenv("GS_ARGS");
 		char buf[1024];
 		char prg[256];
 		char *quiet_str = is_debug?"":"-q ";
