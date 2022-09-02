@@ -77,6 +77,9 @@ OPTIONS\n\
 	     requires TOR to be installed and running. The IP and PORT of the\n\
 	     TOR server can be set using environment variables.\n\
 \n\
+     -t      Connect to the GSRN (only) and check if the peer is listening. Do\n\
+	     not connect the peer.\n\
+\n\
      -u      Use UDP instead of TCP for port forwarding. Needs -p.\n\
 \n\
      -v      Prints status messages. Use -vv to be more verbose and -vvv to be\n\
