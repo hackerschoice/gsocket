@@ -384,7 +384,7 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 			}
 		} else {
 			p->wlen = read(fd, p->wbuf, p->w_max);
-			DEBUGF("read=%zd\n", p->wlen);
+			// DEBUGF("read(%d)=%zd\n", fd, p->wlen);
 		}
 
 		if (p->wlen == 0)
@@ -439,6 +439,7 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	int was_data_for_console = 0;
 	if ((gopt.is_interactive) && (!(gopt.flags & GSC_FL_IS_SERVER)))
 	{
+		// CLIENT
 		was_data_for_console = CONSOLE_readline(p, p->wbuf, p->wlen);
 		if (was_data_for_console)
 			p->wlen = 0;
@@ -619,6 +620,7 @@ cb_read_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	}
 
 	p->rlen += len;
+	// HEXDUMP(p->rbuf, p->rlen);
 
 	if ((gopt.is_socks_server && (p->socks.state != GSNC_STATE_CONNECTED)))
 	{
@@ -665,6 +667,17 @@ cb_read_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 				/* Protocol Error [FATAL] */
 				cb_read_gs_error(ctx, p, GS_ERR_FATAL);
 				return GS_SUCCESS; // Successfully removed peer
+			}
+
+			if ((gopt.is_pty_failed) && (gopt.flags & GSC_FL_IS_SERVER) && (p->pid > 0))
+			{
+				// Try our best to emulate at least Ctrl-C (0x03)
+				if ((p->rlen == 1) && (p->rbuf[0] == 0x03))
+				{
+					p->rlen = 0;
+					// Try to kill the process.
+					ctrl_c_child(p->pid);
+				}				
 			}
 		}
 
@@ -759,6 +772,11 @@ write_gs(GS_SELECT_CTX *ctx, struct _peer *p, int *killed)
 			gopt.is_win_resized = 0;
 			/* Calls write_gs() */
 			return pkt_app_send_wsize(ctx, p, row);
+		}
+		if (gopt.is_status_nopty_pending)
+		{
+			gopt.is_status_nopty_pending = 0;
+			return pkt_app_send_status_nopty(ctx, p);
 		}
 		if (gopt.is_pong_pending)
 		{
@@ -989,10 +1007,15 @@ peer_new(GS_SELECT_CTX *ctx, GS *gs)
 	/* Create a new fd to relay gs-traffic to/from */
 	if ((gopt.cmd != NULL) || (gopt.is_interactive))
 	{
-		p->fd_in = fd_cmd(gopt.cmd, &p->pid);// Forward to forked process stdin/stdout
+		p->fd_in = fd_cmd(gopt.cmd, &p->pid, &ret);// Forward to forked process stdin/stdout
 		DEBUGF_W("fd=%d, pid=%d\n", p->fd_in, p->pid);
 		p->fd_out = p->fd_in;
 		p->is_app_forward = 1;
+		if (ret == GS_FD_CMD_ERR_NOPTY)
+		{
+			gopt.is_pty_failed = 1;
+			gopt.is_status_nopty_pending = 1;
+		}
 	} else if (gopt.port != 0) {
 		p->fd_in = fd_new_socket(gopt.is_udp?SOCK_DGRAM:SOCK_STREAM);	// Forward to ip:port
 		p->fd_out = p->fd_in;
@@ -1110,6 +1133,7 @@ do_server(void)
 	GS_SELECT_CTX ctx;
 	int n;
 
+	gopt.app_keepalive_sec = GS_APP_KEEPALIVE_SERVER;
 	GS_SELECT_CTX_init(&ctx, &gopt.rfd, &gopt.wfd, &gopt.r, &gopt.w, &gopt.tv_now, GS_SEC_TO_USEC(1));
 	/* Tell GS_CTX subsystem to use GS-SELECT */
 	GS_CTX_use_gselect(&gopt.gs_ctx, &ctx);
@@ -1210,6 +1234,7 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd_notused, void *arg, int val)
 		GS_SELECT_FD_SET_W(p->gs);
 		GS_PKT_assign_msg(&p->pkt, PKT_MSG_PONG, pkt_app_cb_pong, p);
 		GS_PKT_assign_msg(&p->pkt, PKT_MSG_LOG, pkt_app_cb_log, p);
+		GS_PKT_assign_msg(&p->pkt, PKT_MSG_STATUS, pkt_app_cb_status, p);
 		GS_PKT_assign_chn(&p->pkt, GS_CHN_PWD, pkt_app_cb_pwdreply, p); // Channel
 
 		GS_FTM_init(p, 0 /*client*/);

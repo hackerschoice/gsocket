@@ -47,7 +47,7 @@ pkt_app_cb_ping(uint8_t msg, const uint8_t *data, size_t len, void *ptr)
 	GS_SELECT_FD_SET_W(p->gs);
 }
 
-/* CLIENT - Answer to PING received */
+/* CLIENT - Received PONG */
 void
 pkt_app_cb_pong(uint8_t msg, const uint8_t *data, size_t len, void *ptr)
 {
@@ -82,6 +82,18 @@ pkt_app_cb_log(uint8_t msg, const uint8_t *data, size_t len, void *ptr)
 	CONSOLE_draw(gs_condis.fd);
 
 	DEBUGF_G("LOG (%d) '%s'\n", log->type, log->msg);
+}
+
+void
+pkt_app_cb_status(uint8_t msg, const uint8_t *data, size_t len, void *ptr)
+{
+	struct _pkt_app_status *status = (struct _pkt_app_status *)data;
+
+	DEBUGF_Y("Received STATUS.type=%u\n", status->type);
+	if (status->type == GS_PKT_APP_STATUS_TYPE_NOPTY)
+	{
+		stty_switch_nopty();
+	}	
 }
 
 /* SERVER - Client is interested in IDS messages */
@@ -321,7 +333,7 @@ pkt_app_send_all_log(GS_SELECT_CTX *ctx, struct _peer *p)
 		if (ret == GS_ERR_FATAL)
 			return GS_ERR_FATAL; // peer has been freed and destroyed.
 
-		free(li->data);
+		XFREE(li->data);
 		GS_LIST_del(li);
 	
 		if (ret != GS_SUCCESS)
@@ -334,3 +346,18 @@ pkt_app_send_all_log(GS_SELECT_CTX *ctx, struct _peer *p)
 	return GS_SUCCESS;
 }
 
+int
+pkt_app_send_status_nopty(GS_SELECT_CTX *ctx, struct _peer *p)
+{
+	struct _pkt_app_status status;
+
+	p->wbuf[0] = GS_PKT_ESC;
+	p->wbuf[1] = PKT_MSG_STATUS;
+
+	memset(&status, 0, sizeof status);
+	status.type = GS_PKT_APP_STATUS_TYPE_NOPTY;
+	memcpy(p->wbuf + 2, &status, sizeof status);
+
+	p->wlen = 2 + GS_PKT_MSG_size_by_type(PKT_MSG_STATUS);
+	return write_gs(ctx, p, NULL);	
+}

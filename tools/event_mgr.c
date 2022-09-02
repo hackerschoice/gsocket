@@ -24,7 +24,7 @@ cbe_ping(void *ptr)
 	if (gopt.is_console == 0)
 	{
 		// Return if data was transmitted recently
-		if (p->gs->ts_net_io + GS_APP_KEEPALIVE >= GS_TV_TO_USEC(&gopt.tv_now))
+		if (p->gs->ts_net_io + GS_SEC_TO_USEC(gopt.app_keepalive_sec) >= GS_TV_TO_USEC(&gopt.tv_now))
 			return 0;
 	}
 

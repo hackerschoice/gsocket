@@ -1,15 +1,17 @@
 #ifndef __GS_PKT_MGR_H__
 #define __GS_PKT_MGR_H__ 1
 
-// Message Numbers
+// Message Numbers for fixed size messages
+// The number also sets the size. See GS_PKT_MSG_size_by_type()
 #define PKT_MSG_WSIZE		(1)
 #define PKT_MSG_IDS			(2)
 #define PKT_MSG_PWD         (3)   // pwd request
 #define PKT_MSG_PING		(16)
 #define PKT_MSG_PONG		(16)
 #define PKT_MSG_LOG			(32)  // max 64 bytes long
+#define PKT_MSG_STATUS      (33)  // max 64 bytes long
 
-// Channel Numbers
+// Channel Numbers, variable size messages
 #define GS_FT_CHN_PUT           (0)  // 128
 #define GS_FT_CHN_ACCEPT        (1)  // 129
 #define GS_FT_CHN_LIST_REQUEST  (2)  // 130 0x82
@@ -55,11 +57,20 @@ struct _pkt_app_log
 #define GS_PKT_APP_LOG_TYPE_INFO	(0x03)  // green
 #define GS_PKT_APP_LOG_TYPE_MAX	    (0x03)  // set to highest color code
 
+struct _pkt_app_status
+{
+	uint8_t type;
+	uint8_t msg[63];
+} __attribute__((__packed__));
+
+#define GS_PKT_APP_STATUS_TYPE_NOPTY  (0x01)  // Server could not allocate PTY
+
 void pkt_app_cb_wsize(uint8_t msg, const uint8_t *data, size_t len, void *ptr);
 void pkt_app_cb_ping(uint8_t msg, const uint8_t *data, size_t len, void *ptr);
 void pkt_app_cb_pong(uint8_t msg, const uint8_t *data, size_t len, void *ptr);
 void pkt_app_cb_ids(uint8_t msg, const uint8_t *data, size_t len, void *ptr);
 void pkt_app_cb_log(uint8_t msg, const uint8_t *data, size_t len, void *ptr);
+void pkt_app_cb_status(uint8_t msg, const uint8_t *data, size_t len, void *ptr);
 void pkt_app_cb_pwdrequest(uint8_t msg, const uint8_t *data, size_t len, void *ptr);
 void pkt_app_cb_pwdreply(uint8_t msg, const uint8_t *data, size_t len, void *ptr);
 
@@ -68,6 +79,7 @@ int pkt_app_send_pong(GS_SELECT_CTX *ctx, struct _peer *p);
 int pkt_app_send_ping(GS_SELECT_CTX *ctx, struct _peer *p);
 int pkt_app_send_ids(GS_SELECT_CTX *ctx, struct _peer *p);
 int pkt_app_send_all_log(GS_SELECT_CTX *ctx, struct _peer *p);
+int pkt_app_send_status_nopty(GS_SELECT_CTX *ctx, struct _peer *p);
 int pkt_app_send_ft(GS_SELECT_CTX *ctx, struct _peer *p);
 int pkt_app_send_pwdrequest(GS_SELECT_CTX *ctx, struct _peer *p);
 int pkt_app_send_pwdreply(GS_SELECT_CTX *ctx, struct _peer *p);

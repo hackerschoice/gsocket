@@ -152,6 +152,8 @@ struct _gopt
 	int is_win_resized;     // window size changed (signal)
 	int is_console;		    // console is being displayed
 	int is_pong_pending;    // Server: Answer to PING waiting to be send
+	int is_status_nopty_pending;
+	int is_pty_failed;      // Tried to create PTY but failed. Dump terminal.
 	int is_want_ping;       // Client: Wants to send a ping
 	int is_want_pwd;        // Client: Wants server to send cwd
 	int is_pwdreply_pending; // Server: Answer to pwd-request
@@ -185,7 +187,17 @@ struct _gopt
 	char *ids_active_user;
 	int ids_idle;
 	int n_users;             // Number of unique logged in users (from utmp)
+	int app_keepalive_sec;   // Interval for app-keepalive
 };
+
+#ifdef DEBUG
+#define GS_APP_KEEPALIVE        10 // If no activty send app-layer ping (-i needed)
+#else
+#define GS_APP_KEEPALIVE        GSRN_DEFAULT_PING_INTERVAL // If no activty send app-layer ping (-i needed)
+#endif
+// Let the client be in control to send PING's to keep the connection busy
+// but if the client is 5 sec late then start sending PINGS to client.
+#define GS_APP_KEEPALIVE_SERVER   (GS_APP_KEEPALIVE + 5)
 
 #define EX_CONNREFUSED  61  // Used by deploy.sh to verify that server is responding
 #define EX_BAD_AUTH    201  // Used to terminate watchdog/daemon

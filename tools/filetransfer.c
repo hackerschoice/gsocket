@@ -1225,6 +1225,8 @@ GS_FT_switch(GS_FT *ft, uint32_t id, int64_t offset)
 static void
 file_free(struct _gs_ft_file *f)
 {
+	if (f == NULL)
+		return;
 	XFREE(f->name);
 	XFREE(f->fn_local);
 	XFREE(f->fn_relative);
@@ -1976,12 +1978,11 @@ GS_FT_packet(GS_FT *ft, void *dst, size_t len, int *pkt_type)
 static void
 free_gsl(GS_LIST *gsl)
 {
-	GS_LIST_ITEM *li = GS_LIST_next(gsl, NULL);
+	GS_LIST_ITEM *li;
 
-	for (; li != NULL; li = GS_LIST_next(gsl, li))
+	while ((li = GS_LIST_next(gsl, NULL)) != NULL)
 	{
 		struct _gs_ft_file *f = (struct _gs_ft_file *)li->data;
-
 		file_free(f);
 		GS_LIST_del(li);
 	}
@@ -1999,9 +2000,9 @@ free_get_li(GS_LIST_ITEM *li)
 static void
 free_get_gsl(GS_LIST *gsl)
 {
-	GS_LIST_ITEM *li = GS_LIST_next(gsl, NULL);
+	GS_LIST_ITEM *li;
 
-	for (; li != NULL; li = GS_LIST_next(gsl, li))
+	while ((li = GS_LIST_next(gsl, NULL)) != NULL)
 	{
 		free_get_li(li);
 	}
@@ -2029,10 +2030,9 @@ GS_FT_free(GS_FT *ft)
 	free_gsl(&ft->fdl);
 
 	GS_LIST_ITEM *li;
-	for (li = GS_LIST_next(&ft->qerrs, NULL); li != NULL; li = GS_LIST_next(&ft->qerrs, li))
+	while ((li = GS_LIST_next(&ft->qerrs, NULL)) != NULL)
 	{
 		qerr_free((struct _gs_ft_qerr *)li->data);
-
 		GS_LIST_del(li);
 	}
 

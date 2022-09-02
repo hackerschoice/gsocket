@@ -113,6 +113,8 @@ init_defaults(int *argcptr, char **argvptr[])
 	}
 
 	add_env_argv(argcptr, argvptr);
+
+	gopt.app_keepalive_sec = GS_APP_KEEPALIVE;
 }
 
 GS *
@@ -411,6 +413,7 @@ do_getopt(int argc, char *argv[])
 
 static struct termios tios_saved;
 static int is_stty_raw;
+static int is_stty_nopty;
 /*
  * Client only: Save TTY state and set raw mode.
  */
@@ -463,6 +466,35 @@ stty_set_raw(void)
     is_stty_raw = 1;
 }
 
+// Switch from RAW to NO-PTY
+// Called when server could not allocated PTY and goes into 
+// dump terminal mode.
+void
+stty_switch_nopty(void)
+{
+	if (is_stty_nopty != 0)
+		return;
+
+	if (is_stty_raw == 0)
+		DEBUGF_R("ERROR: switch_nopty() while stty is not raw\n");
+
+	if (!isatty(STDIN_FILENO))
+		return;
+
+	// Use print as this must always go out to stdin (never log file) as the \r\n
+	// make the terminal look less messed up when bash reports bad ioctl.
+	printf("\r=No PTY on remote. Using dump terminal instead.\r\n");
+	int ret;
+    struct termios tios;
+    ret = tcgetattr(STDIN_FILENO, &tios);
+    if (ret != 0)
+    	return;
+    tios.c_oflag |= OPOST;
+    tcsetattr(STDIN_FILENO, TCSADRAIN, &tios);
+
+    is_stty_nopty = 1;
+}
+
 /*
  * Restore TTY state
  */
@@ -473,6 +505,7 @@ stty_reset(void)
 		return;
 
 	is_stty_raw = 0;
+	is_stty_nopty = 0;
 	DEBUGF_G("resetting TTY\n");
     tcsetattr(STDIN_FILENO, TCSADRAIN, &tios_saved);
 }
@@ -504,11 +537,73 @@ stty_check_esc(GS *gs, char c)
 		esc_pos = 1;
 }
 
+// Try our best to send a SIGINT to the foreground process of the
+// specified pid (bash).
+// This is used when no PTY is available and the client sends a CTRL-C.
+// Hack: Just send it to the last child that the pid spawned. This
+// may be a background process (sleep 31337 &). Ideally we should check
+// if the last process is a foreground process.
+void
+ctrl_c_child(pid_t pid)
+{
+	char buf[1024];
+	char *ptr;
+	char *end;
+	FILE *fp;
+
+	DEBUGF_Y("Ctrl-c child(%d)'s children\n", pid);
+	snprintf(buf, sizeof buf, "/proc/%d/task/%d/children", pid, pid);
+	fp = fopen(buf, "r");
+	if (fp == NULL)
+	{
+		DEBUGF_M("fopen(%s) failed\n", buf);
+		return;
+	}
+	ptr = fgets(buf, sizeof buf, fp);
+	fclose(fp);
+
+	if (ptr != NULL)
+	{
+		end = ptr + strlen(ptr);
+		while (ptr < end)
+		{
+			end--;
+			if (*end != ' ')
+				break;
+			*end = 0;
+		}
+	}
+
+	if ((ptr == NULL) || (ptr >= end))
+	{
+		// SIGINT to bash to clear command line
+		kill(pid, SIGINT);
+		return;
+	}
+
+	// Get last PID in file and hope that's the foreground process
+	ptr = strrchr(buf, ' ');
+	if (ptr == NULL)
+		ptr = buf;  // Only 1 PID in there
+
+	int child = atoi(ptr);
+	if (child <= 0)
+	{
+		DEBUGF_R("children entry not valid: %s\n", ptr);
+		return;
+	}
+
+	// Send to process entire process group
+	pid_t pgrp = getpgid(child);
+	kill(-pgrp, SIGINT);
+}
+
+
 /*
- * Return SHELL and shell name (/bin/bash , -bash)
+ * Return SHELL, shell name (/bin/bash , -bash) and prgname (procps)
  */
 static const char *
-mk_shellname(char *shell_name, ssize_t len)
+mk_shellname(char *shell_name, ssize_t len, const char **prgname)
 {
 	char *dfl_shell = "/bin/sh";
 	struct stat sb;
@@ -540,14 +635,14 @@ mk_shellname(char *shell_name, ssize_t len)
 	}
 	ptr += 1;
 #ifdef STEALTH
+	*prgname = gopt.prg_name;
 	if (gopt.prg_name != NULL)
-		ptr = gopt.prg_name;
-	snprintf(shell_name, len, "%s", ptr);
+		*prgname = gopt.prg_name;
 #else
+	*prgname = shell_name;
 	snprintf(shell_name, len, "-%s", ptr);
 #endif
 
-	DEBUGF("shell=%s name=%s\n", shell, shell_name);
 	return shell;
 }
 
@@ -561,86 +656,86 @@ mk_shellname(char *shell_name, ssize_t len)
  * If blacklist and addlist contain the same variable then that variable
  * will be replaced with the one from addlist.
  */
-char **
-mk_env(char **blacklist, char **addlist)
-{
-	char **env;
-	int total = 0;
-	int add_total = 0;
-	int i;
-	char *end;
-	int n;
+// char **
+// mk_env(char **blacklist, char **addlist)
+// {
+// 	char **env;
+// 	int total = 0;
+// 	int add_total = 0;
+// 	int i;
+// 	char *end;
+// 	int n;
 
-	for (i = 0; environ[i] != NULL; i++)
-		total++;
+// 	for (i = 0; environ[i] != NULL; i++)
+// 		total++;
 
-	for (i = 0; addlist[i] != NULL; i++)
-		add_total++;
+// 	for (i = 0; addlist[i] != NULL; i++)
+// 		add_total++;
 
-	// DEBUGF("Number of environment variables: %d (calloc(%d, %zu)\n", total, total + 1, sizeof *env);
-	env = calloc(total + add_total + 1, sizeof *env);
+// 	// DEBUGF("Number of environment variables: %d (calloc(%d, %zu)\n", total, total + 1, sizeof *env);
+// 	env = calloc(total + add_total + 1, sizeof *env);
 
-	/* Copy to env unless variable is in blacklist */
-	int ii = 0;
-	for (i = 0; i < total; i++)
-	{
-		char *s = environ[i];
+// 	/* Copy to env unless variable is in blacklist */
+// 	int ii = 0;
+// 	for (i = 0; i < total; i++)
+// 	{
+// 		char *s = environ[i];
 
-		/* Check if we want this env variable and continue if not */
-		end = strchr(s, '=');
-		if (end == NULL)
-			continue;			// Illegal enviornment variable
-		/* Check if the env is in the BLACK list */
-		char **b = blacklist;
-		for (; *b != NULL; b++)
-		{
-			if (end - s > strlen(*b))
-				continue;
-			if (memcmp(s, *b, end - s) == 0)
-				break;			// In the blacklist
-		}
-		if (*b != NULL)
-			continue;			// Skip if in blacklist
+// 		/* Check if we want this env variable and continue if not */
+// 		end = strchr(s, '=');
+// 		if (end == NULL)
+// 			continue;			// Illegal enviornment variable
+// 		/* Check if the env is in the BLACK list */
+// 		char **b = blacklist;
+// 		for (; *b != NULL; b++)
+// 		{
+// 			if (end - s > strlen(*b))
+// 				continue;
+// 			if (memcmp(s, *b, end - s) == 0)
+// 				break;			// In the blacklist
+// 		}
+// 		if (*b != NULL)
+// 			continue;			// Skip if in blacklist
 
-		env[ii] = strdup(s);
-		ii++;
-	}
+// 		env[ii] = strdup(s);
+// 		ii++;
+// 	}
 
-	/* Append to env unless variable is already in env */
-	int env_len = ii;
-	int should_add;
-	for (n = 0; addlist[n] != NULL; n++)
-	{
-		char *al_end = strchr(addlist[n], '=');
-		if (al_end == NULL)
-			continue;
+// 	/* Append to env unless variable is already in env */
+// 	int env_len = ii;
+// 	int should_add;
+// 	for (n = 0; addlist[n] != NULL; n++)
+// 	{
+// 		char *al_end = strchr(addlist[n], '=');
+// 		if (al_end == NULL)
+// 			continue;
 
-		should_add = 1;
-		for (i = 0; i < env_len; i++)
-		{
-			char *s = env[i];
-			end = strchr(s, '=');
-			if (end == NULL)
-				continue;
-			if (al_end - addlist[n] != end - s)
-				continue;
-			if (memcmp(s, addlist[n], end - s) == 0)
-			{
-				should_add = 0;
-				break;	// Already in this list
-			}
-		}
-		if (should_add != 0)
-		{
-			// DEBUGF_C("Adding %s\n", addlist[n]);
-			env[ii] = strdup(addlist[n]);
-			ii++;
-		}
+// 		should_add = 1;
+// 		for (i = 0; i < env_len; i++)
+// 		{
+// 			char *s = env[i];
+// 			end = strchr(s, '=');
+// 			if (end == NULL)
+// 				continue;
+// 			if (al_end - addlist[n] != end - s)
+// 				continue;
+// 			if (memcmp(s, addlist[n], end - s) == 0)
+// 			{
+// 				should_add = 0;
+// 				break;	// Already in this list
+// 			}
+// 		}
+// 		if (should_add != 0)
+// 		{
+// 			// DEBUGF_C("Adding %s\n", addlist[n]);
+// 			env[ii] = strdup(addlist[n]);
+// 			ii++;
+// 		}
 
-	}
+// 	}
 
-	return env;
-}
+// 	return env;
+// }
 
 static void
 setup_cmd_child(int except_fd)
@@ -754,6 +849,11 @@ forkfd(int *fd)
 
 	if (pid == 0)
 	{
+		// Put this child into its group.
+		// Otherwise keypress 'Ctrl-C' on the server would not
+		// send SIGINT to the server but to the forked child() (bash).
+		setsid();
+
 		dup2(fds[0], STDOUT_FILENO);
 		dup2(fds[0], STDERR_FILENO);
 		dup2(fds[0], STDIN_FILENO);
@@ -770,16 +870,21 @@ forkfd(int *fd)
 }
 
 static int
-pty_cmd(const char *cmd, pid_t *pidptr)
+pty_cmd(const char *cmd, pid_t *pidptr, int *err)
 {
 	pid_t pid;
-	int fd;
+	int fd = -1;
+	int is_nopty = 0;
 	
+	*err = 0;
 	pid = forkpty(&fd, NULL, NULL, NULL);
 	if (pid < 0)
 	{
-		// In stricted environments /dev/ptmx is not available.
-		// Drop into a dump shell (without PTY control)
+		*err = GS_FD_CMD_ERR_NOPTY;
+		is_nopty = 1;
+		// In restricted environments /dev/ptmx is not available.
+		// Drop into a dump shell (without PTY control) and
+		// emulate Ctrl-C etc. There will be dragons...
 		pid = forkfd(&fd);
 	}
 	XASSERT(pid >= 0, "Error: forkpty()=%d: %s\n", pid, strerror(errno));
@@ -787,51 +892,78 @@ pty_cmd(const char *cmd, pid_t *pidptr)
 	if (pid == 0)
 	{
 		/* Our own forkpty() (solaris 10) returns the actual slave TTY.
-		 * We can not open /dev/tty on solaris10 and use the fd that
+		 * We can not open /dev/st on solaris10 and use the fd that
 		 * our own forkpty() returns. Any other OS needs to open
 		 * /dev/tty to get correct fd for child's tty.
 		 */
 		#ifdef HAVE_FORKPTY
-		int fd_x;
-		fd_x = open("/dev/tty", O_NOCTTY | O_RDWR);
-		if (fd_x >= 0)
-			fd = fd_x;
+		if (*err != GS_FD_CMD_ERR_NOPTY)
+		{
+			int fd_x;
+			fd_x = open("/dev/tty", O_NOCTTY | O_RDWR);
+			if (fd_x >= 0)
+				fd = fd_x;
+		}
 		#endif
 
 		/* HERE: Child */
 		setup_cmd_child(fd);
 
 		/* Find out default ENV (just in case they do not exist in current
-		 * env-variable such as when started during bootup
+		 * env-variable such as when started during bootup.
+		 * Note: Do not use shell from /etc/passwd as this might be /bin/nologin.
+		 * Instead, use the same shell that was used when gs-netcat server got
+		 * started.
 		 */
 		const char *shell;		// e.g. /bin/bash
 		char shell_name[64];	// e.g. -bash
+		const char *prg_name;
 		if (cmd != NULL)
 		{
 			shell = "/bin/sh";
 		} else {
-			shell = mk_shellname(shell_name, sizeof shell_name);
+			shell = mk_shellname(shell_name, sizeof shell_name, &prg_name);
 		}
-		char shell_env[64];		// e.g. SHELL=/bin/bash
-		snprintf(shell_env, sizeof shell_env, "SHELL=%s", shell);
 
-		char home_env[128];
+		char buf[1024];
+		snprintf(buf, sizeof buf, "SHELL=%s", shell);
+		char *shell_env = strdup(buf);
+
+		char *user = "root";
+		char *home_env = "HOME=/root";
+		char *name_env;
+		char *logname_env;
 		struct passwd *pwd;
 		pwd = getpwuid(getuid());
 		if (pwd != NULL)
-			snprintf(home_env, sizeof home_env, "HOME=%s", pwd->pw_dir);
-		else
-			snprintf(home_env, sizeof home_env, "HOME=/root");	// default
+		{
+			user = strdup(pwd->pw_name);
+			snprintf(buf, sizeof buf, "HOME=%s", pwd->pw_dir);
+			home_env = strdup(buf);
+		}
 
-		/* Remove some environment variables:
+		snprintf(buf, sizeof buf, "USER=%s", user);
+		name_env = strdup(buf);
+		snprintf(buf, sizeof buf, "LOGNAME=%s", user);
+		logname_env = strdup(buf);
+
+		snprintf(buf, sizeof buf, "PATH=%s", getenv("PATH")?:"/usr/bin:/bin:/usr/sbin:/sbin");
+		char *path_env = strdup(buf);
+
+		snprintf(buf, sizeof buf, "MAIL=/var/mail/%.50s", user);
+		char *mail_env = strdup(buf);
+
+		/* Start with a clean environemnt (like OpenSSH does).
 		 * STY = Confuses screen if gs-netcat is started from within screen (OSX)
 		 * GSOCKET_ARGS = Otherwise any further gs-netcat command would
 		 *    execute with same (hidden) commands as the current shell.
 		 * HISTFILE= does not work on oh-my-zsh (it sets it again)
+		 * FIXME: See OpenSSH/session.c:
+		 * 1. Read /etc/default/login
+		 * 2. Retrieve TZ, TERM, DISPLAY, LANG, LC from client.
+		 * 3. Add ~/.ssh/environment
 		 */
-		char *env_blacklist[] = {"STY", "GSOCKET_ARGS", "GS_ARGS", "HISTFILE", NULL};
-		char *env_addlist[] = {shell_env, "TERM=xterm-256color", "HISTFILE=/dev/null", home_env, NULL};
-		char **envp = mk_env(env_blacklist, env_addlist);
+		char *envp[] = {path_env, shell_env, mail_env, "TERM=xterm-256color", "HISTFILE=/dev/null", "LANG=en_US.UTF-8", home_env, name_env, logname_env, NULL};
 
 		if (cmd != NULL)
 		{
@@ -839,13 +971,18 @@ pty_cmd(const char *cmd, pid_t *pidptr)
 			ERREXIT("exec(%s) failed: %s\n", cmd, strerror(errno));
 		} 
 
-		const char *args = "-il";	// bash, fish, zsh
-		if (strcmp(shell_name, "-sh") == 0)
-			args = "-i";	// solaris 10 /bin/sh does not like -l
-		if (strcmp(shell_name, "-csh") == 0)
-			execle(shell, shell_name, NULL, envp); // csh (fbsd) without any arguments
+		if (is_nopty)
+		{
+			const char *args = "-il";	// bash, fish, zsh
+			if (strcmp(shell_name, "-sh") == 0)
+				args = "-i";	// solaris 10 /bin/sh does not like -l
+			if (strcmp(shell_name, "-csh") == 0)
+				execle(shell, prg_name, NULL, envp); // csh (fbsd) without any arguments
+			execle(shell, prg_name, args, NULL, envp); // No PTY. Need '-il'.
+		}
 
-		execle(shell, shell_name, args, NULL, envp);
+		// For PTY Terminals the -il is not needed
+		execle(shell, prg_name, NULL, envp);
 		ERREXIT("execlp(%s) failed: %s\n", shell, strerror(errno));
 	}
 	/* HERE: Parent */
@@ -860,15 +997,17 @@ pty_cmd(const char *cmd, pid_t *pidptr)
  * Spawn a cmd and return fd.
  */
 int
-fd_cmd(const char *cmd, pid_t *pidptr)
+fd_cmd(const char *cmd, pid_t *pidptr, int *err)
 {
 	pid_t pid;
 	int fds[2];
 	int ret;
 
+	*err = 0;
+
 	if (gopt.is_interactive)
 	{
-		return pty_cmd(cmd, pidptr);
+		return pty_cmd(cmd, pidptr, err);
 	}
 
 	ret = socketpair(AF_UNIX, SOCK_STREAM, 0, fds);
