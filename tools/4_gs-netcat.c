@@ -206,6 +206,9 @@ cb_atexit(void)
 {
 	CONSOLE_reset();
 	stty_reset();
+	if (gopt.is_try_server == 1)
+		printf("%s %s NET-ERROR\n", gopt.sec_str, GS_addr2hex(NULL, gopt.gs_addr.addr));
+
 	if ((gopt.is_interactive) && (!gopt.is_quiet))
 		fprintf(stderr, "\n[Bye]\n"); // stdout must be clean for pipe & gs-netcat
 }
@@ -1179,11 +1182,25 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd_notused, void *arg, int val)
 		if (gopt.is_multi_peer == 0)
 		{
 			if (gs->status_code == GS_STATUS_CODE_CONNREFUSED)
+			{
+				if (gopt.is_try_server)
+				{
+					printf("%s %s NO\n", gopt.sec_str, GS_addr2hex(NULL, gopt.gs_addr.addr));
+					gopt.is_try_server = 2; // Stop 'cb_atexit()' to print bad state.
+				}
 				exit(EX_CONNREFUSED); // Used by deploy.sh to verify that server is responding.
+			}
 			// Used in deploy.sh to check if server is listening with
 			// _GSOCKET_SERVER_CHECK_SEC=10 gs-netcat -s foobar
 			if ((gopt.gs_server_check_sec > 0) && (gs->status_code == GS_STATUS_CODE_SERVER_OK))
+			{
+				if (gopt.is_try_server)
+				{
+					printf("%s %s OK\n", gopt.sec_str, GS_addr2hex(NULL, gopt.gs_addr.addr));
+					gopt.is_try_server = 2; // Stop 'cb_atexit()' to print bad state.
+				}
 				exit(0);
+			}
 			if (gs->status_code == GS_STATUS_CODE_NETERROR)
 				exit(EX_NETERROR);
 			exit(EX_FATAL);
@@ -1378,13 +1395,14 @@ my_usage(int code)
 {
 #ifndef STEALTH
 	fprintf(stderr, ""
-"gs-netcat [-lwiC] [-e cmd] [-p port] [-d ip]\n"
+"gs-netcat [-skrlgvqwCTLtSDuim] [-s secret] [-e cmd] [-p port] [-d ip]\n"
 "");
 #endif
 
 	usage("skrlSgvqwCTL");
 #ifndef STEALTH
 	fprintf(stderr, ""
+"  -t           Check if peer is listening (do not connect)\n"
 "  -S           Act as a SOCKS server [needs -l]\n"
 "  -D           Daemon & Watchdog mode [background]\n"
 "  -d <IP>      IPv4 address for port forwarding\n"
@@ -1439,10 +1457,15 @@ my_getopt(int argc, char *argv[])
 
 	do_getopt(argc, argv);	/* from utils.c */
 	optind = 1;	/* Start from beginning */
-	while ((c = getopt(argc, argv, UTILS_GETOPT_STR "hmWuP:")) != -1)
+	while ((c = getopt(argc, argv, UTILS_GETOPT_STR "thmWuP:")) != -1)
 	{
 		switch (c)
 		{
+			case 't':
+				gopt.is_try_server = 1;
+				gopt.gs_server_check_sec = 10;
+				gopt.is_quiet = 1; // Implied
+				break;
 			case 'm':
 				printf("%s", man_str);
 				exit(0);
@@ -1503,9 +1526,11 @@ my_getopt(int argc, char *argv[])
 
 	ptr = GS_getenv("_GSOCKET_SERVER_CHECK_SEC");
 	if (ptr != NULL)
+		gopt.gs_server_check_sec = atoi(ptr);
+
+	if (gopt.gs_server_check_sec > 0)
 	{
 		DEBUGF_G("SERVER_CHECK_SEC=%s (%d)\n", ptr, atoi(ptr));
-		gopt.gs_server_check_sec = atoi(ptr);
 		alarm(gopt.gs_server_check_sec);
 		signal(SIGALRM, cb_sigalarm);
 	}

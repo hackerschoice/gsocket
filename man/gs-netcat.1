@@ -77,6 +77,8 @@ clients to (securely) relay traffic via the server. Needs -l.
 Use TOR. The
 .Nm
 tool will connect via TOR to the GSRN. This requires TOR to be installed and running. The IP and PORT of the TOR server can be set using environment variables.
+.It Fl t
+Connect to the GSRN (only) and check if the peer is listening. Do not connect the peer. 
 .It Fl u
 Use UDP instead of TCP for port forwarding. Needs -p. 
 .It Fl v

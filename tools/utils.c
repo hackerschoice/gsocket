@@ -228,6 +228,10 @@ init_vars(void)
 	if (gs_args == NULL)
 		gs_args = GS_getenv("GS_ARGS");
 
+	int is_sec_by_prompt = 0;
+	if ((gopt.sec_file == NULL) && (gopt.sec_str == NULL))
+		is_sec_by_prompt = 1;
+
 #ifdef STEALTH
 	// No "=Secret   :" if GS_ARGS is set as we assume secret is passed
 	// by GS_ARGS (and thus known to user)
@@ -237,7 +241,7 @@ init_vars(void)
 	// do not allow execution without supplied secret.
 	if (gs_args == NULL)
 	{
-		if ((gopt.sec_file == NULL) || (gopt.sec_str == NULL))
+		if (is_sec_by_prompt)
 		{
 			system("uname -a");
 			exit(0);
@@ -246,6 +250,9 @@ init_vars(void)
 #endif
 	if (gs_args != NULL)
 		GS_LOG_V("=Extra arguments: '%s'\n", gs_args);
+
+	if ((gopt.is_quiet) && (!is_sec_by_prompt))
+		gopt.is_greetings = 0;
 
 	gopt.sec_str = GS_user_secret(&gopt.gs_ctx, gopt.sec_file, gopt.sec_str);
 	if (gopt.sec_str == NULL)

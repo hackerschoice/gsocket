@@ -165,6 +165,7 @@ struct _gopt
 	int is_udp;             // Port forwarding only. GSRN is always TCP.
 	int is_built_debug;     // DEBUG is set
 	int is_greetings;
+	int is_try_server;      // Check with GSRN is server is listening.
 	int gs_server_check_sec;
 	char *prg_name;         // argv[0]
 	uint64_t ts_ping_sent;  // TimeStamp ping sent
