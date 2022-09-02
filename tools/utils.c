@@ -610,7 +610,7 @@ ctrl_c_child(pid_t pid)
  * Return SHELL, shell name (/bin/bash , -bash) and prgname (procps)
  */
 static const char *
-mk_shellname(char *shell_name, ssize_t len, const char **prgname)
+mk_shellname(const char *shell, char *shell_name, ssize_t len, const char **prgname)
 {
 	char *dfl_shell = "/bin/sh";
 	struct stat sb;
@@ -619,7 +619,6 @@ mk_shellname(char *shell_name, ssize_t len, const char **prgname)
 	else if (stat("/usr/bin/bash", &sb) == 0)
 		dfl_shell = "/usr/bin/bash";
 
-	const char *shell = GS_getenv("SHELL");
 	if (shell != NULL)
 	{
 		if ((strcmp(shell, "sh") == 0) || (strcmp(shell, "/bin/sh") == 0))
@@ -922,15 +921,13 @@ pty_cmd(const char *cmd, pid_t *pidptr, int *err)
 		 * Instead, use the same shell that was used when gs-netcat server got
 		 * started.
 		 */
-		const char *shell;		// e.g. /bin/bash
+		const char *shell = "/bin/sh"; // default
 		char shell_name[64];	// e.g. -bash
 		const char *prg_name;
-		if (cmd != NULL)
-		{
-			shell = "/bin/sh";
-		} else {
-			shell = mk_shellname(shell_name, sizeof shell_name, &prg_name);
-		}
+		shell_name[0] = '\0';
+		if (cmd == NULL)
+			shell = GS_getenv("SHELL");
+		shell = mk_shellname(shell, shell_name, sizeof shell_name, &prg_name);
 
 		char buf[1024];
 		snprintf(buf, sizeof buf, "SHELL=%s", shell);

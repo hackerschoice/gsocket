@@ -1054,7 +1054,7 @@ gs_start()
 		#     FOO="X=1" && ($FOO id)  # => -bash: X=1: command not found
 		# This does work:
 		#     FOO="X=1" && (eval $FOO id)
-		(eval ${ENV_LINE[*]}TERM=xterm-256color GS_ARGS=\"-s $GS_SECRET -liD\" exec -a \"$PROC_HIDDEN_NAME\" \"$DSTBIN\") || errexit
+		(eval "${ENV_LINE[*]}"TERM=xterm-256color GS_ARGS=\"-s "$GS_SECRET" -liD\" exec -a \""$PROC_HIDDEN_NAME"\" \""$DSTBIN"\") || errexit
 		IS_GS_RUNNING=1
 	fi
 }
