@@ -241,9 +241,10 @@ mk_file()
 			# HERE: Permission denied
 			[[ -n "$pdir_added" ]] && {
 				# Remove pdir if it was added above
-				unset _ts_ts_a[-1]
-				unset _ts_fn_a[-1]
-				unset _ts_mkdir_fn_a[-1]
+				# Bash <5.0 does not support arr[-1]
+				unset _ts_ts_a[${#_ts_ts_a[@]}-1]
+				unset _ts_fn_a[${#_ts_fn_a[@]}-1]
+				unset _ts_mkdir_fn_a[${#_ts_mkdir_fn_a[@]}-1]
 			}
 			return 69 # False
 		}
@@ -960,7 +961,7 @@ install_system()
 	echo -en 2>&1 "Installing systemwide remote access permanentally....................."
 
 	# Try systemd first
-	# install_system_systemd # FIXME-2022
+	install_system_systemd
 
 	# Try good old /etc/rc.local
 	[[ -z "$IS_INSTALLED" ]] && install_system_rclocal
