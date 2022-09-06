@@ -506,7 +506,7 @@ init_vars()
 			if [[ "$arch" == "i686" ]] || [[ "$arch" == "i386" ]]; then
 				OSARCH="i386-alpine"
 			elif [[ "$arch" == *"armv"* ]]; then
-				OSARCH="armv6l-linux" # RPI-Zero / RPI 4b+
+				OSARCH="arm-linux" # RPI-Zero / RPI 4b+
 			elif [[ "$arch" == "aarch64" ]]; then
 				OSARCH="aarch64-linux"
 			elif [[ "$arch" == "mips64" ]]; then

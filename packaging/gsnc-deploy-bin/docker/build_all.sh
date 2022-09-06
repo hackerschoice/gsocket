@@ -42,7 +42,9 @@ docker_pack()
 }
 
 cd "${BASEDIR}/packaging/gsnc-deploy-bin"
-docker_pack armv6l-linux "--host=armv6l" && \
+docker_pack arm-linux "--host=arm" && \
+#docker_pack armv7l-linux "--host=armv7l" && \
+#docker_pack armv6l-linux "--host=armv6l" && \
 docker_pack aarch64-linux "--host=aarch64" && \
 docker_pack mips64-alpine "--host=mips64" && \
 docker_pack mips32-alpine "--host=mips32" && \
