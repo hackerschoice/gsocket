@@ -226,9 +226,11 @@ mk_file()
 	local pdir
 	local pdir_added
 	fn="$1"
+	local exists
 
 	# DEBUGF "${CC}MK_FILE($fn)${CN}"
 	pdir="$(dirname "$fn")"
+	[[ -e "$fn" ]] && exists=1
 
 	ts_is_marked "$pdir" || {
 		# HERE: Parent not tracked
@@ -251,7 +253,7 @@ mk_file()
 			}
 			return 69 # False
 		}
-		chmod 600 "$fn"
+		[[ -z $exists ]] && chmod 600 "$fn"
 		_ts_ts_a+=("$_ts_ts")
 		_ts_fn_a+=("$fn");
 		_ts_mkdir_fn_a+=("<NOT BY XMKDIR>")
@@ -259,7 +261,7 @@ mk_file()
 	}
 
 	touch "$fn" 2>/dev/null || return
-	chmod 600 "$fn"
+	[[ -z $exists ]] && chmod 600 "$fn"
 	true
 }
 
