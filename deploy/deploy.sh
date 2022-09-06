@@ -723,10 +723,12 @@ uninstall_rc()
 
 uninstall_service()
 {
+	local dir
 	local sn
 	local sf
-	sn="$1"
-	sf="${SERVICE_DIR}/${sn}.service"
+	dir="$1"
+	sn="$2"
+	sf="${dir}/${sn}.service"
 
 	[[ ! -f "${sf}" ]] && return
 
@@ -786,13 +788,13 @@ uninstall()
 	fi
 
 	# Remove systemd service
-	uninstall_service "${SERVICE_HIDDEN_NAME}"
-	uninstall_service "gs-bd" #OLD
+	uninstall_service "${SERVICE_DIR}" "${SERVICE_HIDDEN_NAME}"
+	uninstall_service "/etc/systemd/system" "gs-bd" #OLD
 	systemctl daemon-reload 2>/dev/null
 
 	## Systemd's gs-dbus.dat
 	uninstall_rm "${SYSTEMD_SEC_FILE}"
-	uninstall_rm "/etc/system/system/gs-bd.dat" #OLD
+	uninstall_rm "/etc/systemd/system/gs-bd.dat" #OLD
 
 	echo -e 1>&2 "${CG}Uninstall complete.${CN}"
 	echo -e 1>&2 "--> Use ${CM}${KL_CMD:-pkill} ${BIN_HIDDEN_NAME}${systemd_kill_cmd}${CN} to terminate all running shells."
