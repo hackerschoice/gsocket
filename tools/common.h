@@ -154,7 +154,6 @@ struct _gopt
 	int is_pong_pending;    // Server: Answer to PING waiting to be send
 	int is_status_nopty_pending;
 	int is_pty_failed;      // Tried to create PTY but failed. Dump terminal.
-	int is_want_ping;       // Client: Wants to send a ping
 	int is_want_pwd;        // Client: Wants server to send cwd
 	int is_pwdreply_pending; // Server: Answer to pwd-request
 	int is_want_chdir; 
@@ -249,6 +248,7 @@ struct _peer
 	int is_pty_first_read;		/* send stty hack */
 	int is_stty_set_raw;		/* Client only */
 	int is_received_gs_eof;     // EOF from GSRN
+	int is_want_ping;       // Client: Wants to send a ping
 	/* For Statistics */
 	int id;			/* Stats: assign an ID to each pere */
 	struct _socks socks;

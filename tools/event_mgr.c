@@ -12,20 +12,20 @@
 #include "ids.h"
 
 /*
- * When console is visible then send a ping more often. Otherwise
- * only if there is no other network i/o for GS_APP_KEEPLIVE usec.
+ * When console is visible then send a ping more often.
  */
 int
 cbe_ping(void *ptr)
 {
 	GS_EVENT *event = (GS_EVENT *)ptr;
-	struct _peer *p = (struct _peer *)event->data;
 
 	if (gopt.is_console == 0)
 	{
+		return 0;
 		// Return if data was transmitted recently
-		if (p->gs->ts_net_io + GS_SEC_TO_USEC(gopt.app_keepalive_sec) >= GS_TV_TO_USEC(&gopt.tv_now))
-			return 0;
+		// struct _peer *p = (struct _peer *)event->data;
+		// if (p->gs->ts_net_io + GS_SEC_TO_USEC(gopt.app_keepalive_sec) >= GS_TV_TO_USEC(&gopt.tv_now))
+			// return 0;
 	}
 
 	cmd_ping(event->data);

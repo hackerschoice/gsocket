@@ -213,8 +213,9 @@ cb_atexit(void)
 		fprintf(stderr, "\n[Bye]\n"); // stdout must be clean for pipe & gs-netcat
 }
 
-// Timer event for UDP to close peer when no data is transmitted for long
-// time.
+// Timer event for
+// 1. UDP to close peer when no data is transmitted for long time.
+// 2. Keep GSNC alive
 // This is called every second and checks if the idle timer
 // is larger than GS_PEER_IDLE_TIMEOUT (5*60 sec).
 // FIXME-Performance: Could have 1 event in gopt. and loop through all connected peers
@@ -232,6 +233,20 @@ cbe_peer_timeout(void *ptr)
 		return -1;
 	}
 
+	// Check if there was an idle timeout...
+	if (gopt.is_interactive)
+	{
+		// SERVER: app_keepalive_sec is +5 seconds larger than clients. This
+		// puts client in charge to keep connection alive before server
+		// checks. Server's ping are not answered by client (which is ok)
+		if (p->gs->ts_net_io + GS_SEC_TO_USEC(gopt.app_keepalive_sec) < GS_TV_TO_USEC(&gopt.tv_now))
+		{
+			DEBUGF_M("[%d] Sending PING\n", p->id);
+			cmd_ping(p);
+		}
+	}
+
+	// Timeout for gs-netcat <-> UDP/TCP-forward or stdin (/bin/bash).
 	uint64_t expire = p->ts_peer_io + GS_PEER_IDLE_TIMEOUT;
 	if (gopt.is_udp)
 	{
@@ -786,9 +801,9 @@ write_gs(GS_SELECT_CTX *ctx, struct _peer *p, int *killed)
 			gopt.is_pong_pending = 0;
 			return pkt_app_send_pong(ctx, p);
 		}
-		if (gopt.is_want_ping)
+		if (p->is_want_ping)
 		{
-			gopt.is_want_ping = 0;
+			p->is_want_ping = 0;
 			return pkt_app_send_ping(ctx, p);
 		}
 		if (gopt.is_want_pwd)

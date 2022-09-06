@@ -97,7 +97,7 @@ do_test()
 		echo -e "${CSTR} ${CG}Compiling ${CY}${target}${CN} [${REXEC_CMD}]"
 		if [[ -n $COMPILE_EXEC ]]; then
 			# HERE: Custom compile action (for openwrt)
-			$REXEC_CMD "$COMPILE_EXEC" || { echo "Failed-3 ${*}"; exit 253; }
+			$REXEC_CMD "$COMPILE_EXEC" || { echo "Failed-3 ${*}"; false; return; }
 			echo "Done ${target}. [${COMPILE_EXEC}]"
 			return
 		fi
@@ -111,7 +111,7 @@ do_test()
 		(cat "${TOPDIR}/${FILE}" ) | $REXEC_CMD "$PRE_EXEC && (cd $DST; gunzip | tar xf -)" && \
 			$REXEC_CMD "$COMPILE"
 
-		[[ $? -eq 0 ]] || { echo "Failed ${target} [${REXEC_CMD}]"; exit 255; }
+		[[ $? -eq 0 ]] || { echo "Failed ${target} [${REXEC_CMD}]"; false; return; }
 	fi
 
 
@@ -119,14 +119,18 @@ do_test()
 		echo -e "${CSTR} ${CM}TESTING ${CY}${target}${CN} [${REXEC_CMD}]"
 		# OpenWRT does not have a RUN test...
 		if [[ -n $RUN_EXEC ]]; then
-			$REXEC_CMD "$RUN_EXEC" || { echo "Failed-2 ${*}"; exit 254; }
+			$REXEC_CMD "$RUN_EXEC" || { echo "Failed-2 ${*}"; false; return; }
 		else
-			$REXEC_CMD "cd ${DST}/${DIR}/tests/ && ${ENV_run} ./run_all_tests.sh" || { echo "Failed-2 ${*}"; exit 254; }
+			$REXEC_CMD "cd ${DST}/${DIR}/tests/ && ${ENV_run} ./run_all_tests.sh" || { echo "Failed-2 ${*}"; false; return; }
 		fi
 	fi
 	echo "Done ${target}. [${REXEC_CMD}]"
 }
 
 for t in "${targets[@]}"; do
-	do_test "${t}"
+	do_test "${t}" || break
+	((n++))
 done
+
+NOTRUN="${targets[@]:$n}"
+[[ -n $NOTRUN ]] && echo "Not run: $NOTRUN"

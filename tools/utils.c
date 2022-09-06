@@ -621,6 +621,7 @@ mk_shellname(const char *shell, char *shell_name, ssize_t len, const char **prgn
 
 	if (shell != NULL)
 	{
+		// DO not use /bin/sh if /bin/bash is around
 		if ((strcmp(shell, "sh") == 0) || (strcmp(shell, "/bin/sh") == 0))
 			shell = NULL; 
 	}
@@ -915,6 +916,10 @@ pty_cmd(const char *cmd, pid_t *pidptr, int *err)
 		/* HERE: Child */
 		setup_cmd_child(fd);
 
+		signal(SIGINT, SIG_DFL);
+		signal(SIGCHLD, SIG_DFL);
+		signal(SIGTERM, SIG_DFL);
+
 		/* Find out default ENV (just in case they do not exist in current
 		 * env-variable such as when started during bootup.
 		 * Note: Do not use shell from /etc/passwd as this might be /bin/nologin.
@@ -1207,10 +1212,11 @@ fd_kernel_flush(int fd)
 void
 cmd_ping(struct _peer *p)
 {
-	if (gopt.is_want_ping != 0)
+	DEBUGF("Sending PING\n");
+	if (p->is_want_ping != 0)
 		return;
 
-	gopt.is_want_ping = 1;
+	p->is_want_ping = 1;
 	GS_SELECT_FD_SET_W(p->gs);
 }
 

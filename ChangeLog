@@ -1,3 +1,7 @@
+1.4.39-dev - 2022-09-01
+    * -t flag to check if peer is listening
+    * Software emulation of PTY if /dev/ptmx is unavailable
+    * Keepalive improved for Port 443 connections
 
 1.4.31-dev - 2021-06-08
     * Protocol 1.3 - BREAKS BACKWARD COMPATIBILITY

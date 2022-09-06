@@ -2150,6 +2150,7 @@ GS_write(GS *gsocket, const void *buf, size_t count)
 	if (len > 0)
 	{
 			errno = 0;
+			gsocket->ts_net_io = GS_TV_TO_USEC(gsocket->ctx->tv_now);
 			gsocket->bytes_written += len;
 			if (gsocket->read_pending == 0)
 				gs_ssl_want_io_finished(gsocket);
