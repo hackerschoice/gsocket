@@ -461,6 +461,9 @@ init_dstbin()
 	[[ ! -d "${GS_PREFIX}${HOME}/.config" ]] && xmkdir "${GS_PREFIX}${HOME}/.config"
 	try_dstdir "${GS_PREFIX}${HOME}/.config/dbus" && return
 
+	# Try current working directory
+	try_dstdir "${PWD}" && return
+
 	# Try /tmp/.gsusr-*
 	try_dstdir "/tmp/.gsusr-${UID}" && { IS_DSTBIN_TMP=1; return; }
 
@@ -510,6 +513,9 @@ init_vars()
 		[[ ! -d "$HOME" ]] && errexit "ERROR: \$HOME not set. Try 'export HOME=<users home directory>'"
 		WARN "HOME not set. Using 'HOME=$HOME'"
 	fi
+
+	# set PWD if not set
+	[[ -z "$PWD" ]] && PWD="$(pwd 2>/dev/null)"
 
 	# User supplied OSARCH
 	[[ -n "$GS_OSARCH" ]] && OSARCH="$GS_OSARCH"

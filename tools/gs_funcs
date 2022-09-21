@@ -1,7 +1,7 @@
 #! /usr/bin/env bash
 
 
-[[ $(basename "$0") == "gs_funcs" ]] && { echo "Use gsocket, gs-netcat, gs-sftp, gs-mount or blitz instead."; exit 1; }
+[[ $(basename -- "$0") == "gs_funcs" ]] && { echo "Use gsocket, gs-netcat, gs-sftp, gs-mount or blitz instead."; exit 1; }
 
 # Find a sftp-server binary
 find_binary()
