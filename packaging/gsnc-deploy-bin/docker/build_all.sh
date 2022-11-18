@@ -48,6 +48,7 @@ docker_pack arm-linux "--host=arm" && \
 docker_pack aarch64-linux "--host=aarch64" && \
 docker_pack mips64-alpine "--host=mips64" && \
 docker_pack mips32-alpine "--host=mips32" && \
+docker_pack mipsel32-alpine "--host=mips32" && \
 docker_pack x86_64-alpine && \
 docker_pack i386-alpine && \
 { echo "SUCCESS"; exit 0; }

