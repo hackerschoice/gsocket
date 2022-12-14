@@ -562,7 +562,8 @@ init_vars()
 		elif [[ $OSTYPE == *FreeBSD* ]]; then
 				OSARCH="x86_64-freebsd"
 		elif [[ $OSTYPE == *cygwin* ]]; then
-				OSARCH="x86_64-cygwin"
+			OSARCH="i686-cygwin"
+			[[ "$arch" == "x86_64" ]] && OSARCH="x86_64-cygwin"
 		# elif [[ $OSTYPE == *gnu* ]] && [[ "$(uname -v)" == *Hurd* ]]; then
 				# OSARCH="i386-hurd" # debian-hurd
 		fi
@@ -1356,7 +1357,7 @@ try()
 # binaries and fail hard if none could be found.
 try_any()
 {
-	targets="x86_64-alpine i386-alpine aarch64-linux arm-linux x86_64-cygwin x86_64-freebsd x86_64-osx"
+	targets="x86_64-alpine i386-alpine aarch64-linux arm-linux x86_64-osx x86_64-cygwin i686-cygwin mips32-alpine mipsel32-alpine x86_64-freebsd"
 	for osarch in $targets; do
 		[[ "$osarch" = "$OSARCH" ]] && continue # Skip the default OSARCH (already tried)
 		try "$osarch"

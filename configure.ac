@@ -1,6 +1,6 @@
 dnl Process this File with autoconf to produce a configure script.
 AC_PREREQ([2.69])
-AC_INIT([gsocket],[1.4.39-dev4])
+AC_INIT([gsocket],[1.4.39])
 AC_CONFIG_AUX_DIR(config)
 AC_CANONICAL_TARGET
 
@@ -241,7 +241,7 @@ if test x"${STATIC}" = xyes; then
 * Your MUST compile OpenSSL like this:                                       *
 * openssl-src>                                                               *
 * ./Configure --prefix=\$HOME/usr no-dso no-threads no-shared linux-generic64 * 
-* mkdir -p \$HOME/usr && make all install                                     *
+* mkdir -p \$HOME/usr && make install_sw                                      *
 * Only then compile gsocket \(using the same --prefix=\):                    *
 * gsocket-src> ./configure --prefix=\$HOME/usr --enable-static                *
 * gsocket-src> make all install                                              *
