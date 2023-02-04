@@ -641,15 +641,20 @@ mk_shellname(const char *shell, char *shell_name, ssize_t len, const char **prgn
 		ptr = strrchr(shell, '/');
 	}
 	ptr += 1;
+	*prgname = NULL;
 #ifdef STEALTH
-	*prgname = gopt.prg_name;
-	if (gopt.prg_name != NULL)
-		*prgname = gopt.prg_name;
-#else
-	*prgname = shell_name;
-	snprintf(shell_name, len, "-%s", ptr);
+	struct stat st;
+	// Set PRGNAME unless it's a link (BusyBox etc)
+	if (lstat(shell, &st) == 0)
+	{
+		if (!S_ISLNK(st.st_mode))
+			*prgname = gopt.prg_name; // HIDE as prg_name
+	}
 #endif
-
+	
+	snprintf(shell_name, len, "-%s", ptr);
+	if (*prgname == NULL)
+		*prgname = shell_name;
 	return shell;
 }
 
