@@ -10,6 +10,10 @@ The [deploy instructions](https://www.gsocket.io/deploy/) are the fastest way to
 A stripped down version of just gs-netcat (without blitz, gs-mount, gs-ftp, ...) and no help (`--help`) is available as [pre-compiled static binary](https://github.com/hackerschoice/binary/tree/main/gsocket/bin).
 
 ---
+
+**Lastest Source: https://github.com/hackerschoice/gsocket/releases/latest**  
+
+---
 **Generic - Compile from Source (automatically)**
 ```
 /bin/bash -c "$(curl -fsSL https://tiny.cc/gsinst)"
