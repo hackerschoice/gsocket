@@ -5,7 +5,7 @@ GSOCKET works on Linux, FreeBSD, macOS, Cygwin and many others. If the particula
 ---
 **Generic - Install Script**
 ```
-/bin/bash -c "$(curl -fsSL https://tiny.cc/gsinst)"
+/bin/bash -c "$(curl -fsSL gsocket.io/x)"
 ```
 ---
 **Generic - Compile from Source**

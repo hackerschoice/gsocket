@@ -1,6 +1,9 @@
 #! /bin/bash
 
 
+echo "use gsocket-relay/monitor/ping_gsrn.sh instead"
+exit 255
+
 date_bin="date"
 command -v gdate >/dev/null && date_bin="gdate"
 unset GSOCKET_IP
