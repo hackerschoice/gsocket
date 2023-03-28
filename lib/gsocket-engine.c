@@ -1960,7 +1960,7 @@ GS_read(GS *gsocket, void *buf, size_t count)
 		{
 			err = SSL_get_error(gsocket->ssl, len);
 			DEBUGF_Y("fd=%d, SSL Error: ret = %zd, err = %d (%s) %s\n", gsocket->fd, len, err, GS_SSL_strerror(err), strerror(errno));
-			ERR_print_errors_fp(stderr);
+			gs_set_errorf(gsocket, "SSL: %s", ERR_error_string(err, NULL));
 		}
 #endif
 	} else {
