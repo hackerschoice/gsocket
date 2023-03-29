@@ -607,39 +607,80 @@ ctrl_c_child(pid_t pid)
 
 
 /*
- * Return SHELL, shell name (/bin/bash , -bash) and prgname (procps)
+ * Return SHELL_PATH, shell name (/bin/bash , -bash) and prgname (procps)
  */
 static const char *
 mk_shellname(const char *shell, char *shell_name, ssize_t len, const char **prgname)
 {
-	char *dfl_shell = "/bin/sh";
+	char *dfl_shell = NULL;
+	char *ptr;
 	struct stat sb;
-	if (stat("/bin/bash", &sb) == 0)
+	int is_great_shell = 0;
+	if (stat("/bin/bash", &sb) == 0) {
 		dfl_shell = "/bin/bash";
-	else if (stat("/usr/bin/bash", &sb) == 0)
+		is_great_shell = 1;
+	} else if (stat("/usr/bin/bash", &sb) == 0) {
 		dfl_shell = "/usr/bin/bash";
+		is_great_shell = 1;
+	} else if (stat("/bin/csh", &sb) == 0) {
+		dfl_shell = "/bin/csh";
+		is_great_shell = 1;
+	} else if (stat("/bin/sh", &sb) == 0)
+		dfl_shell = "/bin/sh";
+	else if (stat("./bash", &sb) == 0) {
+		dfl_shell = "./bash";
+		is_great_shell = 1;
+	} else if (stat("./sh", &sb) == 0)
+		dfl_shell = "./sh";
 
-	if (shell != NULL)
+	// Check if absolute 'shell' exists or name exists in /bin, /usr/bin
+	while (shell != NULL)
 	{
-		// DO not use /bin/sh if /bin/bash is around
-		if ((strcmp(shell, "sh") == 0) || (strcmp(shell, "/bin/sh") == 0))
-			shell = NULL; 
-	}
-	if (shell == NULL)
-		shell = dfl_shell;
+		ptr = strrchr(shell, '/');
+		if (ptr != NULL)
+		{
+			// /bin/sh, /bin/bash, ./sh, ./bash
+			if (stat(shell, &sb) != 0)
+				shell = NULL;  // e.g. /bin/bash does not exists.
+			break;
+		}
 
-	char *ptr = strrchr(shell, '/');
-	if (ptr == NULL)
-	{
-		// SHELL= is not an absolute path. Perhaps just 'zsh' or 'bash'
-		// Find the absolute path
-		shell = dfl_shell;
 		char buf[32];
 		snprintf(buf, sizeof buf, "/bin/%s", shell);
 		if (stat(buf, &sb) == 0)
+		{
 			shell = strdup(buf);
-		ptr = strrchr(shell, '/');
+			break;
+		}
+		snprintf(buf, sizeof buf, "/usr/bin/%s", shell);
+		if (stat(buf, &sb) == 0)
+		{
+			shell = strdup(buf);
+			break;
+		}
+
+		shell = NULL;
 	}
+
+	// Check if 'shell' is just 'sh' and a better shell exists.
+	if (is_great_shell == 1)
+	{
+		ptr = strrchr(shell, '/');
+		if ((ptr != NULL) && (strcmp(ptr, "/sh") == 0))
+			shell = NULL;
+	}
+
+	if (shell == NULL)
+	{
+		if (dfl_shell == NULL)
+			return NULL;
+		shell = dfl_shell;
+	}
+
+	ptr = strrchr(shell, '/');
+	if (ptr == NULL)
+		return NULL;
+
 	ptr += 1;
 	*prgname = NULL;
 #ifdef STEALTH
@@ -655,6 +696,7 @@ mk_shellname(const char *shell, char *shell_name, ssize_t len, const char **prgn
 	snprintf(shell_name, len, "-%s", ptr);
 	if (*prgname == NULL)
 		*prgname = shell_name;
+
 	return shell;
 }
 
@@ -931,13 +973,15 @@ pty_cmd(const char *cmd, pid_t *pidptr, int *err)
 		 * Instead, use the same shell that was used when gs-netcat server got
 		 * started.
 		 */
-		const char *shell = "/bin/sh"; // default
+		const char *shell = NULL; //"/bin/sh"; // default
 		char shell_name[64];	// e.g. -bash
 		const char *prg_name;
 		shell_name[0] = '\0';
 		if (cmd == NULL)
 			shell = GS_getenv("SHELL");
 		shell = mk_shellname(shell, shell_name, sizeof shell_name, &prg_name);
+		if (shell == NULL)
+			ERREXIT("No shell found in /bin or /usr/bin. Try setting SHELL=\n");
 
 		char buf[1024];
 		snprintf(buf, sizeof buf, "SHELL=%s", shell);
@@ -961,7 +1005,13 @@ pty_cmd(const char *cmd, pid_t *pidptr, int *err)
 		snprintf(buf, sizeof buf, "LOGNAME=%s", user);
 		logname_env = strdup(buf);
 
-		snprintf(buf, sizeof buf, "PATH=%s", getenv("PATH")?:"/usr/bin:/bin:/usr/sbin:/sbin");
+		if (shell[0] == '.')
+		{
+			// Windows without cygwin install executes ./bash or ./sh
+			snprintf(buf, sizeof buf, "PATH=%s:%s", getwd(NULL)?:"/", getenv("PATH")?:"/usr/bin:/bin:/usr/sbin:/sbin");
+		} else {
+			snprintf(buf, sizeof buf, "PATH=%s", getenv("PATH")?:"/usr/bin:/bin:/usr/sbin:/sbin");
+		}
 		char *path_env = strdup(buf);
 
 		snprintf(buf, sizeof buf, "MAIL=/var/mail/%.50s", user);
