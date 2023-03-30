@@ -533,6 +533,19 @@ init_vars()
 	# set PWD if not set
 	[[ -z "$PWD" ]] && PWD="$(pwd 2>/dev/null)"
 
+	[[ -z "$OSTYPE" ]] && {
+		local osname
+		osname="$(uname -s)"
+		if [[ "$osname" == *FreeBSD* ]]; then
+			OSTYPE="FreeBSD"
+		elif [[ "$osname" == *Darwin* ]]; then
+			OSTYPE="darwin22.0"
+		elif [[ "$osname" == *Linux* ]]; then
+			OSTYPE="linux-gnu"
+		fi
+	}
+
+	unset OSARCH
 	# User supplied OSARCH
 	[[ -n "$GS_OSARCH" ]] && OSARCH="$GS_OSARCH"
 
@@ -1359,7 +1372,7 @@ try_any()
 {
 	targets="x86_64-alpine i386-alpine aarch64-linux arm-linux x86_64-osx x86_64-cygwin i686-cygwin mips32-alpine mipsel32-alpine x86_64-freebsd"
 	for osarch in $targets; do
-		[[ "$osarch" = "$OSARCH" ]] && continue # Skip the default OSARCH (already tried)
+		[[ "$osarch" == "$OSARCH" ]] && continue # Skip the default OSARCH (already tried)
 		try "$osarch"
 		[[ -n "$IS_TESTBIN_OK" ]] && break
 	done
