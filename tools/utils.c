@@ -630,8 +630,10 @@ mk_shellname(const char *shell, char *shell_name, ssize_t len, const char **prgn
 	else if (stat("./bash", &sb) == 0) {
 		dfl_shell = "./bash";
 		is_great_shell = 1;
-	} else if (stat("./sh", &sb) == 0)
+	} else if (stat("./sh", &sb) == 0) {
 		dfl_shell = "./sh";
+	} else if (stat("/cygdrive/c/WINDOWS/system32/cmd.exe", &sb) == 0)
+		dfl_shell = "/cygdrive/c/WINDOWS/system32/cmd.exe";
 
 	// Check if absolute 'shell' exists or name exists in /bin, /usr/bin
 	while (shell != NULL)
@@ -663,7 +665,7 @@ mk_shellname(const char *shell, char *shell_name, ssize_t len, const char **prgn
 	}
 
 	// Check if 'shell' is just 'sh' and a better shell exists.
-	if (is_great_shell == 1)
+	if ((shell != NULL) && (is_great_shell == 1))
 	{
 		ptr = strrchr(shell, '/');
 		if ((ptr != NULL) && (strcmp(ptr, "/sh") == 0))
@@ -923,6 +925,15 @@ forkfd(int *fd)
 	return pid;
 }
 
+// Child's process stderr goes to client via TCP. On (some) Cygwin/Windows
+// we need to slee() for the stderr buffer to flush (wtf).
+#define SLOWEXIT(a...)	do { \
+	fprintf(stderr, "ERROR: "); \
+	fprintf(stderr, a); \
+	sleep(1); \
+	exit(255); \
+} while (0)
+
 static int
 pty_cmd(const char *cmd, pid_t *pidptr, int *err)
 {
@@ -966,7 +977,6 @@ pty_cmd(const char *cmd, pid_t *pidptr, int *err)
 		signal(SIGINT, SIG_DFL);
 		signal(SIGCHLD, SIG_DFL);
 		signal(SIGTERM, SIG_DFL);
-
 		/* Find out default ENV (just in case they do not exist in current
 		 * env-variable such as when started during bootup.
 		 * Note: Do not use shell from /etc/passwd as this might be /bin/nologin.
@@ -981,7 +991,7 @@ pty_cmd(const char *cmd, pid_t *pidptr, int *err)
 			shell = GS_getenv("SHELL");
 		shell = mk_shellname(shell, shell_name, sizeof shell_name, &prg_name);
 		if (shell == NULL)
-			ERREXIT("No shell found in /bin or /usr/bin. Try setting SHELL=\n");
+			SLOWEXIT("No shell found in /bin or /usr/bin or ./. Try setting SHELL=\n");
 
 		char buf[1024];
 		snprintf(buf, sizeof buf, "SHELL=%s", shell);
@@ -1032,7 +1042,7 @@ pty_cmd(const char *cmd, pid_t *pidptr, int *err)
 		if (cmd != NULL)
 		{
 			execle("/bin/sh", cmd, "-c", cmd, NULL, envp);
-			ERREXIT("exec(%s) failed: %s\n", cmd, strerror(errno));
+			SLOWEXIT("exec(%s) failed: %s\n", cmd, strerror(errno));
 		} 
 
 		if (is_nopty)
@@ -1047,7 +1057,7 @@ pty_cmd(const char *cmd, pid_t *pidptr, int *err)
 
 		// For PTY Terminals the -il is not needed
 		execle(shell, prg_name, NULL, envp);
-		ERREXIT("execlp(%s) failed: %s\n", shell, strerror(errno));
+		SLOWEXIT("execlp(%s) failed: %s\n", shell, strerror(errno));
 	}
 	/* HERE: Parent */
 
