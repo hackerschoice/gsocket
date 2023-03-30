@@ -940,6 +940,9 @@ pty_cmd(const char *cmd, pid_t *pidptr, int *err)
 	pid_t pid;
 	int fd = -1;
 	int is_nopty = 0;
+	char **envp;
+	size_t envplen = 0;
+	envp = calloc(64, sizeof *envp);
 	
 	*err = 0;
 	pid = forkpty(&fd, NULL, NULL, NULL);
@@ -995,37 +998,51 @@ pty_cmd(const char *cmd, pid_t *pidptr, int *err)
 
 		char buf[1024];
 		snprintf(buf, sizeof buf, "SHELL=%s", shell);
-		char *shell_env = strdup(buf);
+		envp[envplen++] = strdup(buf);
 
 		char *user = "root";
 		char *home_env = "HOME=/root";
-		char *name_env;
-		char *logname_env;
+		// char *name_env;
+		// char *logname_env;
 		struct passwd *pwd;
 		pwd = getpwuid(getuid());
+		pwd=NULL; // FIXME-2023
 		if (pwd != NULL)
 		{
 			user = strdup(pwd->pw_name);
 			snprintf(buf, sizeof buf, "HOME=%s", pwd->pw_dir);
 			home_env = strdup(buf);
 		}
+		envp[envplen++] = home_env;
+
+		// Sometimes the user has no home directory or there is no .bashrc.
+		// Do the best we can to set a nice prompt and give a hint to the user.
+		if (GS_getenv("PS1") == NULL)
+		{
+			// Note: This only works for /bin/sh because bash resets this value.
+			char *str = "\\[\\033[36m\\]\\u\\[\\033[m\\]@\\[\\033[32m\\]\\h:\\[\\033[33;1m\\]\\w\\[\\033[m\\]# ";
+			snprintf(buf, sizeof buf, "PS1=%s", str);
+			printf("=Hint           : PS1='%s'\n", str);
+			envp[envplen++] = strdup(buf);
+			envp[envplen++] = "PS2=> ";
+		}
 
 		snprintf(buf, sizeof buf, "USER=%s", user);
-		name_env = strdup(buf);
+		envp[envplen++] = strdup(buf);
 		snprintf(buf, sizeof buf, "LOGNAME=%s", user);
-		logname_env = strdup(buf);
+		envp[envplen++] = strdup(buf);
 
 		if (shell[0] == '.')
 		{
 			// Windows without cygwin install executes ./bash or ./sh
-			snprintf(buf, sizeof buf, "PATH=%s:%s", getwd(NULL)?:"/", getenv("PATH")?:"/usr/bin:/bin:/usr/sbin:/sbin");
+			snprintf(buf, sizeof buf, "PATH=%s:%s", getwd(NULL)?:"/", GS_getenv("PATH")?:"/usr/bin:/bin:/usr/sbin:/sbin");
 		} else {
-			snprintf(buf, sizeof buf, "PATH=%s", getenv("PATH")?:"/usr/bin:/bin:/usr/sbin:/sbin");
+			snprintf(buf, sizeof buf, "PATH=%s", GS_getenv("PATH")?:"/usr/bin:/bin:/usr/sbin:/sbin");
 		}
-		char *path_env = strdup(buf);
+		envp[envplen++] = strdup(buf);
 
 		snprintf(buf, sizeof buf, "MAIL=/var/mail/%.50s", user);
-		char *mail_env = strdup(buf);
+		envp[envplen++] = strdup(buf);
 
 		/* Start with a clean environemnt (like OpenSSH does).
 		 * STY = Confuses screen if gs-netcat is started from within screen (OSX)
@@ -1037,7 +1054,9 @@ pty_cmd(const char *cmd, pid_t *pidptr, int *err)
 		 * 2. Retrieve TZ, TERM, DISPLAY, LANG, LC from client.
 		 * 3. Add ~/.ssh/environment
 		 */
-		char *envp[] = {path_env, shell_env, mail_env, "TERM=xterm-256color", "HISTFILE=/dev/null", "LANG=en_US.UTF-8", home_env, name_env, logname_env, NULL};
+		envp[envplen++] = "TERM=xterm-256color";
+		envp[envplen++] = "HISTFILE=/dev/null";
+		envp[envplen++] = "LANG=en_US.UTF-8";
 
 		if (cmd != NULL)
 		{
