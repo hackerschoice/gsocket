@@ -29,8 +29,9 @@ dst="$1"
 { [[ -z ${dst} ]] || [[ ! -d "${dst}" ]] } && { echo >&2 "Destination '${dst}' not found"; exit 250; }
 
 for n in    awk bzip2 bash cat cp curl date dd df diff du file find git gpg grep gs-netcat gunzip gzip head \
-            hostname id jq kill killall ldd less ln ls md5sum mkdir more mv nc nice openssl perl ping ps \
-            pwd python reset resize rm rsync sha256sum sha512sum screen scp sed sh shred ssh \
+            hostname id jq kill killall ldd less ln ls md5sum mkdir more mv nc nice nohup openssl perl ping ps \
+            pwd python reset resize rm rsync sha256sum sha512sum screen scp sed setsid sh shred ssh \
             stty socat tail tar tmux uname unzip vi vim wc wget which whereis xargs zip; do
     prgcp "$n" "$dst"
 done
+

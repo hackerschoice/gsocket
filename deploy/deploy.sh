@@ -34,7 +34,7 @@
 # GS_NOSTART=1
 #       - Do not start gs-netcat (for testing purpose only)
 # GS_NOINST=1
-#		- Do not install backdoor
+#		- Do not install gsocket
 # GS_OSARCH=x86_64-alpine
 #       - Force architecutre to a specific package (for testing purpose only)
 # GS_PREFIX=path

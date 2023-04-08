@@ -1006,7 +1006,6 @@ pty_cmd(const char *cmd, pid_t *pidptr, int *err)
 		// char *logname_env;
 		struct passwd *pwd;
 		pwd = getpwuid(getuid());
-		pwd=NULL; // FIXME-2023
 		if (pwd != NULL)
 		{
 			user = strdup(pwd->pw_name);
