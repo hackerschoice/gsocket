@@ -96,6 +96,7 @@ $ gs-netcat -i      # Workstation B
 ```
 See also: [gs-netcat(1)](https://hackerschoice.github.io/gs-netcat.1.html)
 
+<a id="blitz"></a>
 2. Transfer files from *Workstation B* to *Workstation A*
 ```
 $ blitz -l                         # Workstation A
