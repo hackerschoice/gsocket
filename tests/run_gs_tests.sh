@@ -933,6 +933,8 @@ if [[ "$OSTYPE" == *"solaris"* ]]; then
 	# Solaris SSHD does not work unless it's run as root (some PAM shit)
 	# Also needs -4 flag to run as IPv4 only (still, PAM shit afterwards)
 	skip "(needs root)"
+elif [[ -n "$GITHUB_ACTIONS" ]]; then
+	skip "(GitHub Actions TODO needs fix)"
 else
 	[[ -f ssh_host_rsa_key ]] || ssh-keygen -q -N "" -t rsa -b 2048 -f ssh_host_rsa_key
 	[[ -d ~/.ssh ]] || mkdir ~/.ssh
