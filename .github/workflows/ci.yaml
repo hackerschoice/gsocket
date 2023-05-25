@@ -19,6 +19,8 @@ jobs:
         sudo apt update
         sudo apt install -y automake autoconf
     - name: Bootstrap
+      env:
+        CFLAGS: "-fdiagnostics-color=always"
       run: |
         ./bootstrap
         ./configure
