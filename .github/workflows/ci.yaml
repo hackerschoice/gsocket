@@ -1,0 +1,28 @@
+name: CI
+
+
+on:
+  push:
+    branches:
+    - master
+    - actions
+  pull_request:
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Install dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y automake autoconf
+    - name: Bootstrap
+      run: |
+        ./bootstrap
+        ./configure
+    - name: Build
+      run: make -j$(nproc)
+    - name: Test
+      run: ./tests/run_all_tests.sh
