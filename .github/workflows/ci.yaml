@@ -23,7 +23,7 @@ jobs:
         CFLAGS: "-fdiagnostics-color=always"
       run: |
         ./bootstrap
-        ./configure
+        ./configure --enable-tests
     - name: Build
       run: make -j$(nproc)
     - name: Test
