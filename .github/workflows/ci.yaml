@@ -16,8 +16,13 @@ jobs:
     - uses: actions/checkout@v3
     - name: Install dependencies
       run: |
-        sudo apt update
-        sudo apt install -y automake autoconf
+        for TOOL in automake autoconf socat sshd sshfs; do
+          if ! sudo command -v $TOOL >/dev/null; then
+            sudo apt update
+            sudo apt install -y \
+              automake autoconf openssh-server socat sshfs
+          fi
+        done
     - name: Bootstrap
       env:
         CFLAGS: "-fdiagnostics-color=always"
@@ -28,4 +33,4 @@ jobs:
       run: make -j$(nproc)
     - name: Test
       working-directory: tests
-      run: ./run_all_tests.sh
+      run: ./run_all_tests.sh || (cat *.log; exit 1)
