@@ -17,7 +17,7 @@ jobs:
     - name: Install dependencies
       run: |
         for TOOL in automake autoconf socat sshd sshfs; do
-          if ! sudo command -v $TOOL >/dev/null; then
+          if ! command -v $TOOL >/dev/null; then
             sudo apt update
             sudo apt install -y \
               automake autoconf openssh-server socat sshfs
