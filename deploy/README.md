@@ -21,7 +21,7 @@ A stripped down version of just gs-netcat (without blitz, gs-mount, gs-ftp, ...)
 ---
 **Generic - Compile from Source (manually)**
 
-Download the [latest source](https://github.com/hackerschoice/gsocket/releases/tag/v1.4.33).
+Download the [latest source](https://github.com/hackerschoice/gsocket/releases/latest).
 ```
 tar xfz gsocket-*.tar.gz
 cd gsocket-*
@@ -36,7 +36,7 @@ apt install gsocket
 ---
 **Other Linux**
 ```
-curl -fsSL https://github.com/hackerschoice/binary/raw/main/gsocket/latest/gsocket_1.4.32_all.deb --output gsocket_latest.deb
+curl -fsSL https://github.com/hackerschoice/binary/blob/main/gsocket/latest/gsocket_latest_all.deb --output gsocket_latest.deb
 dpkg -i gsocket_latest.deb
 ```
 ---
