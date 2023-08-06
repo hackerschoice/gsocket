@@ -14,12 +14,12 @@ A stripped down version of just gs-netcat (without blitz, gs-mount, gs-ftp, ...)
 **Lastest Source: https://github.com/hackerschoice/gsocket/releases/latest**  
 
 ---
-**Generic - Compile from Source (automatically)**
+**Generic - Compile from GitHub**
 ```
-/bin/bash -c "$(curl -fsSL gsocket.io/x)"
+/bin/bash -c "$(curl -fsSL gsocket.io/install.sh)"
 ```
 ---
-**Generic - Compile from Source (manually)**
+**Generic - Compile from Source**
 
 Download the [latest source](https://github.com/hackerschoice/gsocket/releases/latest).
 ```
