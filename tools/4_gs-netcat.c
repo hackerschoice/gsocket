@@ -1540,12 +1540,14 @@ my_getopt(int argc, char *argv[])
 	}
 
 	ptr = GS_getenv("_GSOCKET_SERVER_CHECK_SEC");
-	if (ptr != NULL)
+	if (ptr != NULL) {
 		gopt.gs_server_check_sec = atoi(ptr);
+		DEBUGF_G("_GSOCKET_SERVER_CHECK_SEC=%s (%d)\n", ptr, atoi(ptr));
+	}
 
 	if (gopt.gs_server_check_sec > 0)
 	{
-		DEBUGF_G("SERVER_CHECK_SEC=%s (%d)\n", ptr, atoi(ptr));
+		DEBUGF_G("SERVER_CHECK_SEC=%d\n", gopt.gs_server_check_sec);
 		alarm(gopt.gs_server_check_sec);
 		signal(SIGALRM, cb_sigalarm);
 	}
