@@ -227,7 +227,7 @@ gs_init()
 	# accepted to call them .so. OSX keep those is /System/Library/gsocket
 	# but automake insists on ${PREFIX}/lib
 	UCHROOT_BIN=$(gs_find_so "$PREFIX" "gsocket_uchroot_dso.so.0${EXE}")
-	[[ -z "$UCHROOT_BIN" ]] && { echo >&2 "gsocket: gsocket_uchroot_dso.so.0${EXE} not found."; exit 5; }
+	[[ -z "$UCHROOT_BIN" ]] && { echo >&2 "gsocket: gsocket_uchroot_dso.so.0${EXE} not found. Try 'apt install dpkg-dev'."; exit 5; }
 	# shellcheck disable=SC2034 # appears unused. Verify use (or export if used externally).
 	GS_SO_BIN=$(gs_find_so "$PREFIX" "gsocket_dso.so.0${EXE}")
 	[[ -z "$GS_SO_BIN" ]] && { echo >&2 "gsocket: gsocket_dso.so.0${EXE} not found."; exit 5; }

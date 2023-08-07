@@ -6,6 +6,7 @@ test -d /gsocket-deb || { echo >&2 "/gsocket-deb does not exists."; exit 255; }
 [[ -z "$VER" ]] && { echo >&2 "VER not set"; exit 255; }
 
 PREFIX="/gsocket-deb/build/gsocket_${VER}_all"
+[[ -e "${PREFIX}" ]] && rm -rf "${PREFIX:?}"
 mkdir -p "${PREFIX}/DEBIAN" && \
 sed "s/@@VER@@/$VER/" < /gsocket-deb/DEBIAN/control.in >"${PREFIX}/DEBIAN/control" && \
 cd /gsocket-src && \

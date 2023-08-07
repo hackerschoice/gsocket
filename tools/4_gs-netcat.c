@@ -1545,7 +1545,7 @@ my_getopt(int argc, char *argv[])
 
 	if (gopt.gs_server_check_sec > 0)
 	{
-		DEBUGF_G("SERVER_CHECK_SEC=%s (%d)\n", ptr, atoi(ptr));
+		DEBUGF_G("SERVER_CHECK_SEC=%s (%d)\n", ptr, gopt.gs_server_check_sec);
 		alarm(gopt.gs_server_check_sec);
 		signal(SIGALRM, cb_sigalarm);
 	}

