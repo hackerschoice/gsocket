@@ -75,70 +75,63 @@ Follow the [Installation Instructions](https://github.com/hackerschoice/gsocket/
 ---
 **Usage:**
 
-1. SSH from *Workstation B* to *Workstation A* through any firewall/NAT
-```
-$ gsocket /usr/sbin/sshd     # Workstation A
-$ gsocket ssh root@gsocket   # Workstation B
-```
-See also: [gsocket(1)](https://hackerschoice.github.io/gsocket.1.html)
-
-2. OpenVPN between two firewalled workstations:
-```
-$ gsocket openvpn --dev tun1 --proto tcp-server --ifconfig 10.9.8.1 10.9.8.2                   # Workstation A
-$ gsocket openvpn --dev tun1 --proto tcp-client --ifconfig 10.9.8.2 10.9.8.1 --remote gsocket  # Workstation B
-```
-See also: [gsocket(1)](https://hackerschoice.github.io/gsocket.1.html)
-
-3. Log in to Workstation A from Workstation B through any firewall/NAT
+1. Log in to Workstation A from Workstation B through any firewall/NAT
 ```
 $ gs-netcat -l -i   # Workstation A
 $ gs-netcat -i      # Workstation B
 ```
 See also: [gs-netcat(1)](https://hackerschoice.github.io/gs-netcat.1.html)
 
-<a id="blitz"></a>
-2. Transfer files from *Workstation B* to *Workstation A*
+2. A Simple TCP forward
+```
+$ gs-netcat -l -d 127.0.0.1 -p 22  # Workstation A
+$ gs-netcat -p 2222                # Workstation B
+# A connection on B's port 2222 will end up on A's port 22
+$ nc -vn 127.0.0.1 2222            
+```
+
+3. SSH from *Workstation B* to *Workstation A* through any firewall/NAT
+```
+$ gsocket /usr/sbin/sshd     # Workstation A
+$ gsocket ssh root@gsocket   # Workstation B
+```
+See also: [gsocket(1)](https://hackerschoice.github.io/gsocket.1.html)
+
+4. Transfer files from *Workstation B* to *Workstation A*<a id="blitz"></a>
 ```
 $ blitz -l                         # Workstation A
 $ blitz /usr/share/*  /etc/*       # Workstation B
 ```
 See also: [blitz(1)](https://hackerschoice.github.io/blitz.1.html)
 
-3. SFTP through Global Socket Relay Network
+5. SFTP through Global Socket Relay Network
 ```
 $ gs-sftp -l                  # Workstation A
 $ gs-sftp                     # Workstation B
 ```
 See also: [gs-sftp(1)](https://hackerschoice.github.io/gs-sftp.1.html)
 
-4. Mount *Workstation A's* directory from  *Workstation B*
+6. Mount *Workstation A's* directory from  *Workstation B*
 ```
 $ gs-mount -l                # Workstation A
 $ gs-mount ~/mnt             # Workstation B
 ```
 See also: [gs-mount(1)](https://hackerschoice.github.io/gs-mount.1.html)
 
-5. Pipe data from Workstation B to Workstation A
+7. Pipe data from Workstation B to Workstation A
 ```
 $ gs-netcat -l -r >warez.tar.gz    # Workstation A
 $ gs-netcat <warez.tar.gz          # Workstation B
 ```
 
-6. Port forward. Access 192.168.6.7:22 on Workstation's A private LAN from Workstation B:
+8. OpenVPN between two firewalled workstations:
 ```
-# On Workstation A execute:
-gs-netcat -l -d 192.168.6.7 -p 22
+$ gsocket openvpn --dev tun1 --proto tcp-server --ifconfig 10.9.8.1 10.9.8.2                   # Workstation A
+$ gsocket openvpn --dev tun1 --proto tcp-client --ifconfig 10.9.8.2 10.9.8.1 --remote gsocket  # Workstation B
 ```
-```
-# On Workstation B execute:
-gs-netcat -p 2222
-```
-```
-# In a new terminal on Workstation B execute:
-ssh -p 2222 root@127.0.0.1        # Will ssh to 192.168.6.7:22 on Workstation's A private LAN
-```
+See also: [gsocket(1)](https://hackerschoice.github.io/gsocket.1.html)
 
-7. Execute any command (nc -e style) on *Workstation A*
+9. Execute any command (nc -e style) on *Workstation A*
 ```
 $ gs-netcat -l -e "echo hello world; id; exit"   # Workstation A
 $ gs-netcat                                      # Workstation B
@@ -157,15 +150,15 @@ gs-netcat -i
 
 This is particularly useful to allow fellow hackers to access a private network without having to give them access to the system itself.
 
-8. Quick Secure Chat with a friend
+10. Quick Secure Chat with a friend
 ```
 $ gs-full-pipe -s MySecret -A               # You
 $ gs-full-pipe -s MySecret -A               # Them
 ```
 
-9. Access entirety of *Workstation A's* private LAN (Sock4/4a/5 proxy)
+11. Access entirety of *Workstation A's* private LAN (Sock4/4a/5 proxy)
 ```
-$ gs-netcat -l -S          # Workstation A
+$ gs-netcat -l -S          # Workstation A (EXIT)
 $ gs-netcat -p 1080        # Workstation B
 
 Access www.google.com via Workstation A's private LAN from your Workstation B:
@@ -175,14 +168,30 @@ Access fileserver.local:22 on Workstation A's private LAN from your Workstation 
 $ socat -  "SOCKS4a:127.1:fileserver.local:22"
 ```
 
+A far more powerful solution is to multiplex the TCP connection with [Gost](https://v2.gost.run/en/getting-started/):
+```
+### Workstation A (EXIT)
+$ gost -L mws://:40009 &
+$ gs-netcat -l -p 40009
 
-10. Persistant, daemonized and auto-respawn/watchdog reverse PTY backdoor via TOR
+### Workstation B:
+$ gost -L :1080 -F 'mws://:40008' &
+$ gs-netcat -p 40008
+$ curl -x socks5h://0 ipinfo.io
+```
+
+The packet goes from Curl -> Gost (Port 1080). It is then multiplexed into the single
+single TCP connection to B's gs-netcat (Port 40008) and forwarded via GSRN to A's gs-netcat.
+A's gs-netcat forwards the packet to A's Gost (Port 40009) where the stream is de-multiplexed
+and send to Gost's socks5 server and then forwarded to the Internet.
+
+12. Persistant, daemonized and auto-respawn/watchdog reverse PTY backdoor via TOR
 ```
 $ gs-netcat -l -i -D    # some firewalled server
 $ gs-netcat -i -T       # You, via TOR
 ```
 
-11. SoCAT 2 
+13. SoCAT 2 
 ```
 gs-netcat can be used in a socat address-chain using the EXEC target. Happy bouncing. Enjoy. :> 
 ```
