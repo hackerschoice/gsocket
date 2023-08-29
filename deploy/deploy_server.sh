@@ -12,7 +12,7 @@
 # 2. Use your own Global Socket Relay Network
 #
 # To run this script type:
-#   bash -c $(curl -fsSL https://github.com/hackerschoice/gsocket/raw/master/deploy/deploy_server.sh)
+#   bash -c "$(curl -fsSL https://github.com/hackerschoice/gsocket/raw/master/deploy/deploy_server.sh)"
 
 [[ -z $PORT ]] && PORT="32803"
 DATA_DIR="gs-www-data"
