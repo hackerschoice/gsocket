@@ -40,6 +40,7 @@ packages+=("x86_64-freebsd.tar.gz")
 	CDM="\033[0;35m" # magenta
 	CN="\033[0m"    # none
 	CW="\033[1;37m"
+    CF="\e[2m"    # faint
 }
 
 do_stop()
@@ -72,7 +73,7 @@ ERREXIT()
     exit "$code"
 }
 
-control_c()
+do_sigtrap()
 {
     do_stop
     do_cleanup
@@ -80,7 +81,7 @@ control_c()
     exit 0
 }
 
-trap control_c SIGINT
+trap do_sigtrap SIGINT SIGPIPE SIGTERM SIGHUP
 
 check_prog()
 {
@@ -146,13 +147,15 @@ URL_BASE="${str:8}"
     ERREXIT 255 "Could not get CF URL. See cloudflare.log for details"
 }
 echo -e "\
-Edit ${CG}${DATA_DIR}/x${CN} and set
+${CDY}Edit ${CW}$(realpath "$(pwd)/${DATA_DIR}/x")${CDY} and set${CN}
 1. ${CDC}GS_TG_TOKEN=${CN}, ${CDC}GS_TG_CHATID=${CN} OR ${CDC}GS_DISCORD_KEY=${CN} OR ${CDC}GS_WEBHOOK_KEY=${CN}
 2. ${CDC}GS_URL_BASE=\"${URL_BASE}\"${CN}
+${CW}${CF}Set the IP/HOST and PORT if you run your OWN Relay Network:
+${CF}3. ${CC}${CF}GS_HOST=1.2.3.4${CN}, ${CC}${CF}GS_PORT=443${CN}
 To deploy gsocket:
     ${CM}bash -c \"\$(curl -fsSL ${URL_BASE}/x)\"${CN}
     ${CM}bash -c \"\$(wget --no-verbose -O- ${URL_BASE}/x)\"${CN}
-or to deploy gsocket and set all variables during deployment:
+or to deploy gsocket and set all variables during deployment. Example:
     ${CDM}GS_URL_BASE='${URL_BASE}' \\
     GS_DISCORD_KEY='1106565073956253736/mEDRS5iY0S4sgUnRh8Q5pC4S54zYwczZhGOwXvR3vKr7YQmA0Ej1-Ig60Rh4P_TGFq-m' \\
     bash -c \"\$(curl -fsSL ${URL_BASE}/x)\"${CN}
@@ -161,3 +164,4 @@ Press CTRL-C to stop"
 # tail -f cloudflare.log
 # read -r -d '' _ </dev/tty
 sleep infinity
+do_sigtrap

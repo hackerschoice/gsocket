@@ -14,12 +14,6 @@
 # Uninstall
 #   $ GS_UNDO=1 bash -c" $(curl -fsSL gsocket.io/x)"
 #
-# Steps taken:
-# 1. Download pre-compiled binary
-# 2. Create a new secret (random)
-# 3. Start gs-netcat as a interactive reverse login shell and hidden process
-# 4. Install gs-netcat and automatically start after reboot
-#
 # Other variables:
 # GS_DEBUG=1
 #		- Verbose output
@@ -37,26 +31,31 @@
 #		- Do not install gsocket
 # GS_OSARCH=x86_64-alpine
 #       - Force architecutre to a specific package (for testing purpose only)
-# GS_PREFIX=path
+# GS_PREFIX=
 #		- Use 'path' instead of '/' (needed for packaging/testing)
 # GS_URL_BASE=gsocket.io
 #		- Specify URL of static binaries
-# GS_URL_BIN=https://github.com/hackerschoice/binary/raw/main/gsocket/bin/
+# GS_URL_BIN=
 #		- Specify URL of static binaries, defaults to https://${GS_URL_BASE}/bin
 # GS_DSTDIR="/tmp/foobar/blah"
 #		- Specify custom installation directory
 # GS_HIDDEN_NAME="-bash"
 #       - Specify custom hidden name for process
 # GS_DL=wget
-#       - Command to use for download. =wget or =curl
-# GS_TG_TOKEN
+#       - Command to use for download. =wget or =curl.
+# GS_TG_TOKEN=
 #       - Telegram Bot ID, =5794110125:AAFDNb...
-# GS_TG_CHATID
-#        - Telegram Chat ID, =-8834838...
-# GS_DISCORD_KEY
-#        - Discord API key, ="1106565073956253736/mEDRS5iY0S4sgUnRh8Q5pC4S54zYwczZhGOwXvR3vKr7YQmA0Ej1-Ig60Rh4P_TGFq-m"
-# GS_WEBHOOK_KEY
-#        - https://webhook.site key, ="dc3c1af9-ea3d-4401-9158-eb6dda735276"
+# GS_TG_CHATID=
+#       - Telegram Chat ID, =-8834838...
+# GS_DISCORD_KEY=
+#       - Discord API key, ="1106565073956253736/mEDRS5iY0S4sgUnRh8Q5pC4S54zYwczZhGOwXvR3vKr7YQmA0Ej1-Ig60Rh4P_TGFq-m"
+# GS_WEBHOOK_KEY=
+#       - https://webhook.site key, ="dc3c1af9-ea3d-4401-9158-eb6dda735276"
+# GS_HOST=
+#       - IP or HOSTNAME of the GSRN-Server. Default is to use THC's infrastructure.
+#       - See https://github.com/hackerschoice/gsocket-relay
+# GS_PORT=
+#       - Port for the GSRN-Server. Default is 443.
 # TMPDIR=
 #       - Guess what...
 
