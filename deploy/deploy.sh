@@ -62,7 +62,7 @@
 
 # Global Defines
 URL_BASE="gsocket.io"
-[[ -n $GS_URL_BASE ]] && URL_BASE="${GS_DOMAIN_BASE}"
+[[ -n $GS_URL_BASE ]] && URL_BASE="${GS_URL_BASE}"
 URL_BIN="https://${URL_BASE}/bin"
 URL_DEPLOY="${URL_BASE}/x"
 [[ -n $GS_URL_BIN ]] && URL_BIN="${GS_URL_BIN}"
