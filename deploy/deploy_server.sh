@@ -11,6 +11,8 @@
 # 1. Received a Telegram, Discord or Webhook notification on installs
 # 2. Use your own Global Socket Relay Network
 #
+# To run this script type:
+#   bash -c $(curl -fsSL https://github.com/hackerschoice/gsocket/raw/master/deploy/deploy_server.sh)
 
 [[ -z $PORT ]] && PORT="32803"
 DATA_DIR="gs-www-data"
@@ -124,7 +126,7 @@ for n in "${packages[@]}"; do
     curl -fsSL "https://github.com/hackerschoice/binary/raw/main/gsocket/bin/gs-netcat_${n}" --output "${DATA_DIR}/bin/gs-netcat_${n}"
 done
 
-start "Cloudflare" cloudflared tunnel --url http://localhost:${PORT} --no-autoupdate --pidfile cf.pid --logfile cloudflare.log
+start "Cloudflare" cloudflared tunnel --url http://localhost:${PORT} --no-autoupdate --pidfile cloudflare.pid --logfile cloudflare.log
 start "www" "$PYTHON" -m http.server --bind 127.0.0.1 --directory "${DATA_DIR}" "${PORT}"
 i=0
 while :; do
