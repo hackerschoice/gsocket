@@ -13,6 +13,7 @@
 #
 # To run this script type:
 #   bash -c "$(curl -fsSL https://github.com/hackerschoice/gsocket/raw/master/deploy/deploy_server.sh)"
+#   LOG=results.log bash -c "$(curl -fsSL https://github.com/hackerschoice/gsocket/raw/master/deploy/deploy_server.sh)"
 
 [[ -z $PORT ]] && PORT="32803"
 DATA_DIR="gs-www-data"
@@ -182,6 +183,8 @@ tail -f www_err.log | while read -r str; do
     str="${str%% *}"
     str="${str//[^[:alnum:]]/}"  # sanitize
     [[ ${#str} -ne 22 ]] && continue
-    echo -e "[${CDG}$(date -u)${CN}] ${CDC}gs-netcat -i -s '${CC}${str}${CDC}'${CN}"
+    d=$(date -u)
+    echo -e "[${CDG}${d}${CN}] ${CDC}gs-netcat -i -s '${CC}${str}${CDC}'${CN}"
+    [[ -n $LOG ]] && echo -e "[${d}] gs-netcat -i -s '${str}'" >>"${LOG}"
 done
 do_sigtrap
