@@ -4,7 +4,7 @@
 # then go to https://gsocket.io/deploy or use
 #    bash -c "$(curl -fsSL https://gsocket.io/x)"
 
-# This script spins up a Cloudflare Tunnel to serve the deploy.sh
+# This script spins up a Cloudflare Tunnel to serve the deploy.sh script
 # and all binary files from an ephemeral URL.
 #
 # This is helpful if the user wants to:
@@ -12,8 +12,9 @@
 # 2. Use your own Global Socket Relay Network
 #
 # To run this script type:
-#   bash -c "$(curl -fsSL https://github.com/hackerschoice/gsocket/raw/master/deploy/deploy_server.sh)"
-#   LOG=results.log bash -c "$(curl -fsSL https://github.com/hackerschoice/gsocket/raw/master/deploy/deploy_server.sh)"
+#   bash -c "$(curl -fsSL https://gsocket.io/deploy/xs)"
+# ---or---
+#   LOG=results.log bash -c "$(curl -fsSL https://gsocket.io/deploy/xs)"
 
 [[ -z $PORT ]] && PORT="32803"
 DATA_DIR="gs-www-data"
@@ -79,7 +80,7 @@ do_sigtrap()
 {
     do_stop
     do_cleanup
-    echo -e "\nType ${CDC}rm -rf ${DATA_DIR}${CN} to clean all files."
+    echo -e "\nType ${CDC}rm -rf ${DATA_DIR} ${LOG}${CN} to clean all files."
     exit 0
 }
 
@@ -88,7 +89,7 @@ trap do_sigtrap SIGINT SIGPIPE SIGTERM SIGHUP
 check_prog()
 {
     command -v "$1" >/dev/null && return
-    ERREXIT 255 "Not found: $1."
+    ERREXIT 255 "Not found: $1. Please install ${CDC}${1}${CN}."
 }
 
 start()
@@ -183,7 +184,7 @@ tail -f www_err.log | while read -r str; do
     str="${str%% *}"
     str="${str//[^[:alnum:]]/}"  # sanitize
     [[ ${#str} -ne 22 ]] && continue
-    d=$(date -u)
+    d="$(date -u)"
     echo -e "[${CDG}${d}${CN}] ${CDC}gs-netcat -i -s '${CC}${str}${CDC}'${CN}"
     [[ -n $LOG ]] && echo -e "[${d}] gs-netcat -i -s '${str}'" >>"${LOG}"
 done
