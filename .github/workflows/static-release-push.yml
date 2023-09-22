@@ -24,7 +24,7 @@ jobs:
         run: |
           apk add --no-cache bash musl-dev linux-headers make automake autoconf openssl-dev openssl-libs-static upx
           ./bootstrap
-          ./configure --enable-static
+          ./configure --enable-static --host=mips64
           make clean all
           strip tools/gs-netcat
           mv tools/gs-netcat gs-netcat_linux-mips64
