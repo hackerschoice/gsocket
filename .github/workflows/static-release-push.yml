@@ -27,6 +27,7 @@ jobs:
           ./Configure --prefix=/tmp/usr no-tests no-dso no-threads no-shared ${OPENSSL_ARCH:-linux-generic64}
           make install_sw)
           rm -rf rm -rf /tmp/openssl-${OPENSSL_VER} /tmp/usr/bin/openssl /tmp/usr/bin/c_rehash
+          ./bootstrap
           ./configure --prefix=/tmp/usr --enable-static
           make
           mv tools/gs-netcat gs-netcat_linux-x86_64
