@@ -25,7 +25,7 @@ jobs:
 
       - name: Compile-mips64
         run: |
-          apk add --no-cache bash make curl upx
+          apk add --no-cache bash perl make curl upx
           curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER}.tar.gz | tar -xzC /tmp/
           ( cd /tmp/openssl-${OPENSSL_VER} && \
           ./Configure --prefix=/root/usr no-tests no-dso no-threads no-shared linux64-mips64 && \
