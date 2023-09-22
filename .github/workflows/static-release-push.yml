@@ -41,7 +41,19 @@ jobs:
           strip tools/gs-netcat
           mv tools/gs-netcat gs-netcat_linux-aarch64
         shell: alpine.sh --root {0}
-        
+
+      - name: Setup Alpine armhf
+        uses: jirutka/setup-alpine@v1
+
+      - name: Compile armhf
+        run: |
+          apk add --no-cache bash musl-dev linux-headers gcc make automake autoconf openssl-dev openssl-libs-static curl upx
+          ./configure --prefix=/tmp/usr --enable-static
+          make clean all
+          strip tools/gs-netcat
+          mv tools/gs-netcat gs-netcat_linux-armhf
+        shell: alpine.sh --root {0}
+
       # - name: Setup Alpine aarch64
       #   uses: jirutka/setup-alpine@v1
       #   with:
