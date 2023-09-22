@@ -34,11 +34,11 @@ jobs:
         if: steps.cachessl.outputs.cache-hit != 'true'
         run: |
           apk add --no-cache bash perl make curl upx
-      #     curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER}.tar.gz | tar -xzC /tmp/
-      #     ( cd /tmp/openssl-${OPENSSL_VER} && \
-      #     ./Configure --prefix=/opt no-tests no-dso no-threads no-shared linux64-mips64 && \
-      #     make install_sw )
-      #     rm -rf rm -rf /tmp/openssl-${OPENSSL_VER} /opt/bin/openssl /opt/bin/c_rehash
+          curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER}.tar.gz | tar -xzC /tmp/
+          ( cd /tmp/openssl-${OPENSSL_VER} && \
+          ./Configure --prefix=/opt no-tests no-dso no-threads no-shared linux64-mips64 && \
+          make install_sw )
+          rm -rf rm -rf /tmp/openssl-${OPENSSL_VER} /opt/bin/openssl /opt/bin/c_rehash
       #   - name: SaveCache
       #     id: cache-ssl-save
       #     uses: actions/cache/save@v3
