@@ -5,7 +5,6 @@ name: Static Post-Release Build
 #     types: [published]
 on: [workflow_dispatch]
 # TODO:
-# - use matrix?
 # - Can we check out first, bootstrap and then cache/upload/download into container?
 
 permissions:
@@ -68,8 +67,8 @@ jobs:
       - name: Generate OpenSSL
         if: steps.cachessl.outputs.cache-hit != 'true'
         run: |
-          curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER}.tar.gz | tar -xzC /tmp/
-          ( cd /tmp/openssl-${OPENSSL_VER} && \
+          curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER:-1.1.1k}.tar.gz | tar -xzC /tmp/
+          ( cd /tmp/openssl-${OPENSSL_VER:-1.1.1k} && \
           ./Configure --prefix=/opt no-tests no-dso no-threads no-shared ${{ matrix.ssl }} && \
           make install_sw )
           rm -rf rm -rf /tmp/openssl-${OPENSSL_VER} /opt/bin/openssl /opt/bin/c_rehash
@@ -89,14 +88,16 @@ jobs:
           make all
           strip tools/gs-netcat
           mv tools/gs-netcat gs-netcat_linux-${{ matrix.arch }}
+          (cd tools; tar cfz ../gsocket_linux-${{ matrix.arch }}.tar.gz gs-netcat gsocket blitz gs-mount gs-sftp gs_funcs gsocket_dso.so.0 gsocket_uchroot_dso.so.0)
       
       - name: Upload to release
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: gs-netcat_linux-${{ matrix.arch }}
+          file: gs-netcat_linux-*
+          file_glob: true
           overwrite: true
-          tag: 1.4.40
+          tag: v1.4.41
 
   # Build-Upload-Actions:
   #   runs-on: ubuntu-latest
@@ -148,18 +149,6 @@ jobs:
   #         mv tools/gs-netcat gs-netcat_linux-armhf
   #       shell: alpine.sh --root {0}
 
-  #     # - name: Setup Alpine aarch64
-  #     #   uses: jirutka/setup-alpine@v1
-  #     #   with:
-  #     #     arch: aarch64
-
-  #     # - name: Compile aarch64
-  #     #   run: |
-  #     #     apk add --no-cache bash musl-dev linux-headers gcc make
-  #     #     gcc -Wall -static -o zapper-linux-aarch64 zapper.c
-  #     #   shell: alpine.sh --root {0}
-
-  #     - name: Upload binaries to release
   #       uses: svenstaro/upload-release-action@v2
   #       with:
   #         repo_token: ${{ secrets.GITHUB_TOKEN }}
