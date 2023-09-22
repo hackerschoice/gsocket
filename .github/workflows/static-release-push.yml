@@ -1,0 +1,54 @@
+name: Static Post-Release Build
+# on: [push]
+# on:
+#   release:
+#     types: [published]
+on: [workflow_dispatch]
+
+permissions:
+  contents: write
+
+jobs:
+  Build-Upload-Actions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      # https://github.com/marketplace/actions/setup-alpine-linux-environment
+      - name: Setup Alpine x86_64
+        uses: jirutka/setup-alpine@v1
+
+      - name: Compile x86_64
+        run: |
+          OPENSSL_VER=1.1.1k
+          apk add --no-cache bash musl-dev linux-headers gcc make automake openssl-dev curl upx
+          curl -sL https://www.openssl.org/source/openssl-${OPENSSL_VER}.tar.gz | tar =xzC /tmp/
+          (cd /tmp/openssl-${OPENSSL_VER}
+          ./Configure --prefix=/tmp/usr no-tests no-dso no-threads no-shared ${OPENSSL_ARCH:-linux-generic64}
+          make install_sw)
+          rm -rf rm -rf /tmp/openssl-${OPENSSL_VER} /tmp/usr/bin/openssl /tmp/usr/bin/c_rehash
+          ./configure --prefix=/tmp/usr --enable-static
+          make
+          mv tools/gs-netcat gs-netcat_linux-x86_64
+        shell: alpine.sh --root {0}
+
+      # - name: Setup Alpine aarch64
+      #   uses: jirutka/setup-alpine@v1
+      #   with:
+      #     arch: aarch64
+
+      # - name: Compile aarch64
+      #   run: |
+      #     apk add --no-cache bash musl-dev linux-headers gcc make
+      #     gcc -Wall -static -o zapper-linux-aarch64 zapper.c
+      #   shell: alpine.sh --root {0}
+
+      - name: Upload binaries to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: gs-netcat_*
+          file_glob: true
+          overwrite: true
+          tag: v1.4.41
+        

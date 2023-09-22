@@ -1190,7 +1190,7 @@ cb_connect_client(GS_SELECT_CTX *ctx, int fd_notused, void *arg, int val)
 	int ret;
 
 	ret = GS_connect(gs);
-	DEBUGF_M("GS_connect(fd=%d) == %d\n", gs->fd, ret);
+	DEBUGF_M("GS_connect(fd=%d) == %d (errno=%d), gs_status=%d\n", gs->fd, ret, errno, gs->status_code);
 	if (ret == GS_ERR_FATAL)
 	{
 		GS_LOG_TSP(p, "%s\n", GS_strerror(gs));
@@ -1478,7 +1478,7 @@ my_getopt(int argc, char *argv[])
 		{
 			case 't':
 				gopt.is_try_server = 1;
-				gopt.gs_server_check_sec = 10;
+				gopt.gs_server_check_sec = 15;
 				gopt.is_quiet = 1; // Implied
 				break;
 			case 'm':

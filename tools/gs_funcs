@@ -357,7 +357,7 @@ sftp_server_start()
 		if [[ -n "${IS_UCHROOT}" ]]; then
 			ROOTDIR=$(mktemp -d -t thc-gs-sftp-XXXXXXXXXXXXXXX) 
 		fi
-		SFTP_SERVER_BIN=$(find_binary sftp-server${EXE} "${PREFIX}/lib" /opt/csw/libexec /usr/lib /usr/local/lib /usr/libexec /usr/libexec/openssh /usr/lib/ssh /usr/sbin)
+		SFTP_SERVER_BIN=$(find_binary "sftp-server${EXE}" "${PREFIX}/lib" /opt/csw/libexec /usr/lib /usr/local/lib /usr/libexec /usr/libexec/openssh /usr/lib/ssh /usr/sbin)
 		PRELOAD="LD_PRELOAD=${UCHROOT_BIN}"
 	fi
 	[[ -z "${SFTP_SERVER_BIN}" ]] && { echo >&2 "sftp-server binary not found."; exit 1; }

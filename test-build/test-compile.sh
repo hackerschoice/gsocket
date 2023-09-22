@@ -50,7 +50,6 @@ shellcheck "${TOPDIR}/deploy/deploy.sh"
 if [[ -z $GSOCKET_DOMAIN ]] && [[ -z $GSOCKET_HOST ]]; then
 	[[ -z $GSOCKET_IP ]] && GSOCKET_IP=192.168.1.16
 	#GSOCKET_PORT=7351
-	GSOCKET_IP=213.202.239.83
 	# GSOCKET_IP=
 fi
 

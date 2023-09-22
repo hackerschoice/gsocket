@@ -635,6 +635,9 @@ mk_shellname(const char *shell, char *shell_name, ssize_t len, const char **prgn
 	} else if (stat("/cygdrive/c/WINDOWS/system32/cmd.exe", &sb) == 0)
 		dfl_shell = "/cygdrive/c/WINDOWS/system32/cmd.exe";
 
+	if ((shell != NULL) && (shell[0] == '\0'))
+		shell = NULL;
+		
 	// Check if absolute 'shell' exists or name exists in /bin, /usr/bin
 	while (shell != NULL)
 	{
@@ -669,6 +672,8 @@ mk_shellname(const char *shell, char *shell_name, ssize_t len, const char **prgn
 	{
 		ptr = strrchr(shell, '/');
 		if ((ptr != NULL) && (strcmp(ptr, "/sh") == 0))
+			shell = NULL;
+		if (strstr(shell, "nologin") != NULL)
 			shell = NULL;
 	}
 
@@ -926,7 +931,7 @@ forkfd(int *fd)
 }
 
 // Child's process stderr goes to client via TCP. On (some) Cygwin/Windows
-// we need to slee() for the stderr buffer to flush (wtf).
+// we need to sleep() for the stderr buffer to flush (wtf).
 #define SLOWEXIT(a...)	do { \
 	fprintf(stderr, "ERROR: "); \
 	fprintf(stderr, a); \
@@ -1034,7 +1039,7 @@ pty_cmd(const char *cmd, pid_t *pidptr, int *err)
 		if (shell[0] == '.')
 		{
 			// Windows without cygwin install executes ./bash or ./sh
-			snprintf(buf, sizeof buf, "PATH=%s:%s", getwd(NULL)?:"/", GS_getenv("PATH")?:"/usr/bin:/bin:/usr/sbin:/sbin");
+			snprintf(buf, sizeof buf, "PATH=%s:%s", getcwdx()?:"/", GS_getenv("PATH")?:"/usr/bin:/bin:/usr/sbin:/sbin");
 		} else {
 			snprintf(buf, sizeof buf, "PATH=%s", GS_getenv("PATH")?:"/usr/bin:/bin:/usr/sbin:/sbin");
 		}
