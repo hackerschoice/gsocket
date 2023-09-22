@@ -43,8 +43,8 @@ jobs:
           make install_sw )
           rm -rf rm -rf /tmp/openssl-${OPENSSL_VER} /opt/bin/openssl /opt/bin/c_rehash
 
-      - name: SaveCache
-        if: steps.cachessl.outputs.cache-hit != 'true'
+      # - name: SaveCache
+      #   if: steps.cachessl.outputs.cache-hit != 'true'
         uses: actions/cache/save@v3
         with:
           path: /opt
