@@ -16,6 +16,9 @@ env:
 
 jobs:
   Cross-Compile:
+    strategy:
+      matrix:
+        arch: [mips64]
     runs-on: ubuntu-latest
     container:
       image: muslcc/x86_64:mips64-linux-musl
@@ -32,32 +35,32 @@ jobs:
         uses: actions/cache@v3
         with:
           path: /opt
-          key: mips64-ssl
+          key: ${{ matrix.arch }}-ssl
 
       - name: Generate OpenSSL
         if: steps.cachessl.outputs.cache-hit != 'true'
         run: |
           curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER}.tar.gz | tar -xzC /tmp/
           ( cd /tmp/openssl-${OPENSSL_VER} && \
-          ./Configure --prefix=/opt no-tests no-dso no-threads no-shared linux64-mips64 && \
+          ./Configure --prefix=/opt no-tests no-dso no-threads no-shared linux64-${{ matrix.arch }} && \
           make install_sw )
           rm -rf rm -rf /tmp/openssl-${OPENSSL_VER} /opt/bin/openssl /opt/bin/c_rehash
 
-      # - name: SaveCache
-      #   if: steps.cachessl.outputs.cache-hit != 'true'
+      - name: SaveCache
+        if: steps.cachessl.outputs.cache-hit != 'true'
         uses: actions/cache/save@v3
         with:
           path: /opt
-          key: mips64-ssl
+          key: ${{ matrix.arch }}-ssl
 
-      - name: Compile-mips64
+      - name: Compile-${{ matrix.arch }}
         run: |
           apk add --no-cache autoconf automake
           ./bootstrap
-          ./configure --prefix=/opt --enable-static --host=mips64
+          ./configure --prefix=/opt --enable-static --host=${{ matrix.arch }}
           make all
           strip tools/gs-netcat
-          mv tools/gs-netcat gs-netcat_linux-mips64
+          mv tools/gs-netcat gs-netcat_linux-${{ matrix.arch }}
 
   # Build-Upload-Actions:
   #   runs-on: ubuntu-latest
