@@ -33,7 +33,7 @@ jobs:
       - name: Generate OpenSSL
         if: steps.cachessl.outputs.cache-hit != 'true'
         run: |
-          apk add --no-cache bash perl make curl upx
+          apk add --no-cache bash perl make curl upx tar
           curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER}.tar.gz | tar -xzC /tmp/
           ( cd /tmp/openssl-${OPENSSL_VER} && \
           ./Configure --prefix=/opt no-tests no-dso no-threads no-shared linux64-mips64 && \
@@ -49,79 +49,80 @@ jobs:
 
       - name: Compile-mips64
         run: |
+          apk add --no-cache bash perl make curl upx autoconf automake
           ./bootstrap
           ./configure --prefix=/opt --enable-static --host=mips64
           make all
           strip tools/gs-netcat
           mv tools/gs-netcat gs-netcat_linux-mips64
 
-  Build-Upload-Actions:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Bootstrap
-        run: |
-          ./bootstrap
+  # Build-Upload-Actions:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #     - name: Bootstrap
+  #       run: |
+  #         ./bootstrap
 
-      # https://github.com/marketplace/actions/setup-alpine-linux-environment
-      - name: Setup Alpine x86_64
-        uses: jirutka/setup-alpine@v1
+  #     # https://github.com/marketplace/actions/setup-alpine-linux-environment
+  #     - name: Setup Alpine x86_64
+  #       uses: jirutka/setup-alpine@v1
 
-      - name: Compile x86_64
-        run: |
-          apk add --no-cache bash musl-dev linux-headers gcc make automake autoconf openssl-dev openssl-libs-static upx
-          ./configure --enable-static
-          make clean all
-          strip tools/gs-netcat
-          mv tools/gs-netcat gs-netcat_linux-x86_64
-        shell: alpine.sh --root {0}
+  #     - name: Compile x86_64
+  #       run: |
+  #         apk add --no-cache bash musl-dev linux-headers gcc make automake autoconf openssl-dev openssl-libs-static upx
+  #         ./configure --enable-static
+  #         make clean all
+  #         strip tools/gs-netcat
+  #         mv tools/gs-netcat gs-netcat_linux-x86_64
+  #       shell: alpine.sh --root {0}
 
-      - name: Setup Alpine aarch64
-        uses: jirutka/setup-alpine@v1
-        with:
-          arch: aarch64
+  #     - name: Setup Alpine aarch64
+  #       uses: jirutka/setup-alpine@v1
+  #       with:
+  #         arch: aarch64
 
 
-      - name: Compile aarch64
-        run: |
-          apk add --no-cache bash musl-dev linux-headers gcc make automake autoconf openssl-dev openssl-libs-static upx
-          ./configure --enable-static
-          make clean all
-          strip tools/gs-netcat
-          mv tools/gs-netcat gs-netcat_linux-aarch64
-        shell: alpine.sh --root {0}
+  #     - name: Compile aarch64
+  #       run: |
+  #         apk add --no-cache bash musl-dev linux-headers gcc make automake autoconf openssl-dev openssl-libs-static upx
+  #         ./configure --enable-static
+  #         make clean all
+  #         strip tools/gs-netcat
+  #         mv tools/gs-netcat gs-netcat_linux-aarch64
+  #       shell: alpine.sh --root {0}
 
-      - name: Setup Alpine armhf
-        uses: jirutka/setup-alpine@v1
-        with:
-          arch: armhf
+  #     - name: Setup Alpine armhf
+  #       uses: jirutka/setup-alpine@v1
+  #       with:
+  #         arch: armhf
 
-      - name: Compile armhf
-        run: |
-          apk add --no-cache bash musl-dev linux-headers gcc make automake autoconf openssl-dev openssl-libs-static upx
-          ./configure --enable-static
-          make clean all
-          strip tools/gs-netcat
-          mv tools/gs-netcat gs-netcat_linux-armhf
-        shell: alpine.sh --root {0}
+  #     - name: Compile armhf
+  #       run: |
+  #         apk add --no-cache bash musl-dev linux-headers gcc make automake autoconf openssl-dev openssl-libs-static upx
+  #         ./configure --enable-static
+  #         make clean all
+  #         strip tools/gs-netcat
+  #         mv tools/gs-netcat gs-netcat_linux-armhf
+  #       shell: alpine.sh --root {0}
 
-      # - name: Setup Alpine aarch64
-      #   uses: jirutka/setup-alpine@v1
-      #   with:
-      #     arch: aarch64
+  #     # - name: Setup Alpine aarch64
+  #     #   uses: jirutka/setup-alpine@v1
+  #     #   with:
+  #     #     arch: aarch64
 
-      # - name: Compile aarch64
-      #   run: |
-      #     apk add --no-cache bash musl-dev linux-headers gcc make
-      #     gcc -Wall -static -o zapper-linux-aarch64 zapper.c
-      #   shell: alpine.sh --root {0}
+  #     # - name: Compile aarch64
+  #     #   run: |
+  #     #     apk add --no-cache bash musl-dev linux-headers gcc make
+  #     #     gcc -Wall -static -o zapper-linux-aarch64 zapper.c
+  #     #   shell: alpine.sh --root {0}
 
-      - name: Upload binaries to release
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: gs-netcat_*
-          file_glob: true
-          overwrite: true
-          tag: v1.4.40
+  #     - name: Upload binaries to release
+  #       uses: svenstaro/upload-release-action@v2
+  #       with:
+  #         repo_token: ${{ secrets.GITHUB_TOKEN }}
+  #         file: gs-netcat_*
+  #         file_glob: true
+  #         overwrite: true
+  #         tag: v1.4.40
         
