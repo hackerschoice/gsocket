@@ -9,6 +9,23 @@ permissions:
   contents: write
 
 jobs:
+  Cross-Compile:
+    runs-on: ubuntu-latest
+    container:
+      image: muslcc/x86_64:mips64-linux-musl
+      options: --user root
+    steps:
+      - name: Check out
+        uses: actions/checkout@v3
+      - name: Compile-mips64
+        run: |
+          apk add --no-cache bash musl-dev linux-headers make automake autoconf openssl-dev openssl-libs-static upx
+          ./configure --enable-static
+          make clean all
+          strip tools/gs-netcat
+          mv tools/gs-netcat gs-netcat_linux-mips64
+
+
   Build-Upload-Actions:
     runs-on: ubuntu-latest
     steps:
@@ -24,7 +41,7 @@ jobs:
       - name: Compile x86_64
         run: |
           apk add --no-cache bash musl-dev linux-headers gcc make automake autoconf openssl-dev openssl-libs-static upx
-          ./configure --prefix=/tmp/usr --enable-static
+          ./configure --enable-static
           make clean all
           strip tools/gs-netcat
           mv tools/gs-netcat gs-netcat_linux-x86_64
@@ -39,7 +56,7 @@ jobs:
       - name: Compile aarch64
         run: |
           apk add --no-cache bash musl-dev linux-headers gcc make automake autoconf openssl-dev openssl-libs-static upx
-          ./configure --prefix=/tmp/usr --enable-static
+          ./configure --enable-static
           make clean all
           strip tools/gs-netcat
           mv tools/gs-netcat gs-netcat_linux-aarch64
@@ -53,7 +70,7 @@ jobs:
       - name: Compile armhf
         run: |
           apk add --no-cache bash musl-dev linux-headers gcc make automake autoconf openssl-dev openssl-libs-static upx
-          ./configure --prefix=/tmp/usr --enable-static
+          ./configure --enable-static
           make clean all
           strip tools/gs-netcat
           mv tools/gs-netcat gs-netcat_linux-armhf
