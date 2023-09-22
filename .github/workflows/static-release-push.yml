@@ -15,10 +15,11 @@ jobs:
       image: muslcc/x86_64:mips64-linux-musl
       options: --user root
     steps:
+      - uses: actions/checkout@v3
       - name: Check out
-        uses: actions/checkout@v3
         run: |
           ./bootstrap
+
       - name: Compile-mips64
         run: |
           apk add --no-cache bash musl-dev linux-headers make automake autoconf openssl-dev openssl-libs-static upx
