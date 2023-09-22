@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+        run: |
+          ./bootstrap
 
       # https://github.com/marketplace/actions/setup-alpine-linux-environment
       - name: Setup Alpine x86_64
@@ -20,16 +22,10 @@ jobs:
 
       - name: Compile x86_64
         run: |
-          OPENSSL_VER=1.1.1k
-          apk add --no-cache bash musl-dev linux-headers gcc make automake autoconf openssl-dev curl upx
-          curl -sL https://www.openssl.org/source/openssl-${OPENSSL_VER}.tar.gz | tar -xzC /tmp/
-          (cd /tmp/openssl-${OPENSSL_VER}
-          ./Configure --prefix=/tmp/usr no-tests no-dso no-threads no-shared ${OPENSSL_ARCH:-linux-generic64}
-          make install_sw)
-          rm -rf rm -rf /tmp/openssl-${OPENSSL_VER} /tmp/usr/bin/openssl /tmp/usr/bin/c_rehash
-          ./bootstrap
+          apk add --no-cache bash musl-dev linux-headers gcc make automake autoconf openssl-dev openssl3-libs-static curl upx
           ./configure --prefix=/tmp/usr --enable-static
           make
+          strip tools/gs-netcat
           mv tools/gs-netcat gs-netcat_linux-x86_64
         shell: alpine.sh --root {0}
 
