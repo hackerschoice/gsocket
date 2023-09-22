@@ -12,6 +12,7 @@ permissions:
 
 env:
   OPENSSL_VER: 1.1.1k
+  TAG: v1.4.41
 
 jobs:
   Cross-Compile:
@@ -90,14 +91,21 @@ jobs:
           mv tools/gs-netcat gs-netcat_linux-${{ matrix.arch }}
           (cd tools; tar cfz ../gsocket_linux-${{ matrix.arch }}.tar.gz gs-netcat gsocket blitz gs-mount gs-sftp gs_funcs gsocket_dso.so.0 gsocket_uchroot_dso.so.0)
       
-      - name: Upload to release
+      - name: Upload gs-netcat to release
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: gs-netcat_linux-*
-          file_glob: true
+          file: gs-netcat_linux-${{ matrix.arch }}
           overwrite: true
-          tag: v1.4.41
+          tag: ${{ env.TAG }}
+
+      - name: Upload gsocket to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: gsocket_linux-${{ matrix.arch }}
+          overwrite: true
+          tag: ${{ env.TAG }}
 
   # Build-Upload-Actions:
   #   runs-on: ubuntu-latest
