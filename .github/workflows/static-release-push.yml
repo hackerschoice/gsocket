@@ -88,8 +88,8 @@ jobs:
           ./configure --prefix=/opt --enable-static --host=${{ matrix.arch }}
           make all
           strip tools/gs-netcat
-          mv tools/gs-netcat gs-netcat_linux-${{ matrix.arch }}
           (cd tools; tar cfz ../gsocket_linux-${{ matrix.arch }}.tar.gz gs-netcat gsocket blitz gs-mount gs-sftp gs_funcs gsocket_dso.so.0 gsocket_uchroot_dso.so.0)
+          mv tools/gs-netcat gs-netcat_linux-${{ matrix.arch }}
       
       - name: Upload gs-netcat to release
         uses: svenstaro/upload-release-action@v2
