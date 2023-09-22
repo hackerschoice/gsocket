@@ -46,7 +46,7 @@ jobs:
             ssl: linux-generic32
           - arch: armv7l
             cc: armv7l-linux-musleabihf
-            ssl: inux-generic32
+            ssl: linux-generic32
     runs-on: ubuntu-latest
     container:
       image: muslcc/x86_64:${{ matrix.cc }}
@@ -89,6 +89,14 @@ jobs:
           make all
           strip tools/gs-netcat
           mv tools/gs-netcat gs-netcat_linux-${{ matrix.arch }}
+      
+      - name: Upload to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: gs-netcat_linux-${{ matrix.arch }}
+          overwrite: true
+          tag: 1.4.40
 
   # Build-Upload-Actions:
   #   runs-on: ubuntu-latest
