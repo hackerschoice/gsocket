@@ -28,11 +28,11 @@ jobs:
           apk add --no-cache bash perl make curl upx
           curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER}.tar.gz | tar -xzC /tmp/
           ( cd /tmp/openssl-${OPENSSL_VER} && \
-          ./Configure --prefix=/root/usr no-tests no-dso no-threads no-shared linux64-mips64 && \
+          ./Configure --prefix=/opt no-tests no-dso no-threads no-shared linux64-mips64 && \
           make install_sw )
-          rm -rf rm -rf /tmp/openssl-${OPENSSL_VER} /root/usr/bin/openssl /root/usr/bin/c_rehash && \   
+          rm -rf rm -rf /tmp/openssl-${OPENSSL_VER} /opt/bin/openssl /opt/bin/c_rehash
           ./bootstrap
-          ./configure --prefix=/tmp/usr --enable-static --host=mips64
+          ./configure --prefix=/opt --enable-static --host=mips64
           make all
           strip tools/gs-netcat
           mv tools/gs-netcat gs-netcat_linux-mips64
