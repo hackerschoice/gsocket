@@ -50,5 +50,5 @@ jobs:
           file: gs-netcat_*
           file_glob: true
           overwrite: true
-          tag: v1.4.41
+          tag: v1.4.40
         
