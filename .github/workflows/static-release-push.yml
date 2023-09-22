@@ -23,6 +23,10 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Add build dependencies
+        run: |
+          apk add --update --no-cache --no-progress bash perl make curl upx tar
+
       - name: Cache SSL
         id: cachessl
         uses: actions/cache@v3
@@ -33,7 +37,6 @@ jobs:
       - name: Generate OpenSSL
         if: steps.cachessl.outputs.cache-hit != 'true'
         run: |
-          apk add --no-cache bash perl make curl upx tar
           curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER}.tar.gz | tar -xzC /tmp/
           ( cd /tmp/openssl-${OPENSSL_VER} && \
           ./Configure --prefix=/opt no-tests no-dso no-threads no-shared linux64-mips64 && \
@@ -49,7 +52,7 @@ jobs:
 
       - name: Compile-mips64
         run: |
-          apk add --no-cache bash perl make curl upx autoconf automake
+          apk add --no-cache autoconf automake
           ./bootstrap
           ./configure --prefix=/opt --enable-static --host=mips64
           make all
