@@ -18,10 +18,17 @@ jobs:
   Cross-Compile:
     strategy:
       matrix:
-        arch: [mips64]
+        arch: [mips64 mips32]
+        include:
+          - arch: mips64
+            cc: mips64-linux-musl
+            ssl: linux64-mips64
+          - arch: mips32
+            cc: mips-linux-muslsf
+            ssl: linux-mips32
     runs-on: ubuntu-latest
     container:
-      image: muslcc/x86_64:mips64-linux-musl
+      image: muslcc/x86_64:${{ matrix.cc }}
       options: --user root
     steps:
       - uses: actions/checkout@v3
@@ -42,7 +49,7 @@ jobs:
         run: |
           curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER}.tar.gz | tar -xzC /tmp/
           ( cd /tmp/openssl-${OPENSSL_VER} && \
-          ./Configure --prefix=/opt no-tests no-dso no-threads no-shared linux64-${{ matrix.arch }} && \
+          ./Configure --prefix=/opt no-tests no-dso no-threads no-shared ${{ matrix.ssl }} && \
           make install_sw )
           rm -rf rm -rf /tmp/openssl-${OPENSSL_VER} /opt/bin/openssl /opt/bin/c_rehash
 
