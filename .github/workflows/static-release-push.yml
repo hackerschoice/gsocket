@@ -18,7 +18,7 @@ jobs:
   Cross-Compile:
     strategy:
       matrix:
-        arch: [mips64 mips32]
+        arch: [mips64, mips32]
         include:
           - arch: mips64
             cc: mips64-linux-musl
