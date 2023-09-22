@@ -22,7 +22,7 @@ jobs:
         run: |
           OPENSSL_VER=1.1.1k
           apk add --no-cache bash musl-dev linux-headers gcc make automake openssl-dev curl upx
-          curl -sL https://www.openssl.org/source/openssl-${OPENSSL_VER}.tar.gz | tar =xzC /tmp/
+          curl -sL https://www.openssl.org/source/openssl-${OPENSSL_VER}.tar.gz | tar -xzC /tmp/
           (cd /tmp/openssl-${OPENSSL_VER}
           ./Configure --prefix=/tmp/usr no-tests no-dso no-threads no-shared ${OPENSSL_ARCH:-linux-generic64}
           make install_sw)
