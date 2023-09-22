@@ -23,7 +23,7 @@ jobs:
 
       - name: Compile x86_64
         run: |
-          apk add --no-cache bash musl-dev linux-headers gcc make automake autoconf openssl-dev openssl-libs-static curl upx
+          apk add --no-cache bash musl-dev linux-headers gcc make automake autoconf openssl-dev openssl-libs-static upx
           ./configure --prefix=/tmp/usr --enable-static
           make clean all
           strip tools/gs-netcat
@@ -32,10 +32,13 @@ jobs:
 
       - name: Setup Alpine aarch64
         uses: jirutka/setup-alpine@v1
+        with:
+          arch: aarch64
+
 
       - name: Compile aarch64
         run: |
-          apk add --no-cache bash musl-dev linux-headers gcc make automake autoconf openssl-dev openssl-libs-static curl upx
+          apk add --no-cache bash musl-dev linux-headers gcc make automake autoconf openssl-dev openssl-libs-static upx
           ./configure --prefix=/tmp/usr --enable-static
           make clean all
           strip tools/gs-netcat
@@ -44,10 +47,12 @@ jobs:
 
       - name: Setup Alpine armhf
         uses: jirutka/setup-alpine@v1
+        with:
+          arch: armhf
 
       - name: Compile armhf
         run: |
-          apk add --no-cache bash musl-dev linux-headers gcc make automake autoconf openssl-dev openssl-libs-static curl upx
+          apk add --no-cache bash musl-dev linux-headers gcc make automake autoconf openssl-dev openssl-libs-static upx
           ./configure --prefix=/tmp/usr --enable-static
           make clean all
           strip tools/gs-netcat
