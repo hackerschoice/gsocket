@@ -11,6 +11,9 @@ on: [workflow_dispatch]
 permissions:
   contents: write
 
+env:
+  OPENSSL_VER: 1.1.1k
+
 jobs:
   Cross-Compile:
     runs-on: ubuntu-latest
@@ -22,10 +25,15 @@ jobs:
 
       - name: Compile-mips64
         run: |
-          apk add --no-cache bash musl-dev linux-headers make automake autoconf openssl-dev openssl-libs-static upx
+          apk add --no-cache bash make curl upx
+          curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER}.tar.gz | tar -xzC /tmp/
+          ( cd /tmp/openssl-${OPENSSL_VER} && \
+          ./Configure --prefix=/root/usr no-tests no-dso no-threads no-shared linux64-mips64 && \
+          make install_sw )
+          rm -rf rm -rf /tmp/openssl-${OPENSSL_VER} /root/usr/bin/openssl /root/usr/bin/c_rehash && \   
           ./bootstrap
-          ./configure --enable-static --host=mips64
-          make clean all
+          ./configure --prefix=/tmp/usr --enable-static --host=mips64
+          make all
           strip tools/gs-netcat
           mv tools/gs-netcat gs-netcat_linux-mips64
 
