@@ -16,7 +16,7 @@ env:
   TAG: v1.4.41
 
 jobs:
-
+  # Create release Tarballs
   Source:
     runs-on: ubuntu-latest
     steps:
@@ -90,12 +90,13 @@ jobs:
           export AUTOCONF_VERSION=2.71
           export AUTOMAKE_VERSION=1.16
           find /usr -name srp.h
+          find /usr | grep -E '(libssl|libcrypto)'
           ./bootstrap
-          ./configure --prefix=/opt --enable-static
+          ./configure --includedir=/usr/local/include/eopenssl30/ --prefix=/opt --enable-static
           make all
           strip tools/gs-netcat
 
-  Cross-Compile:
+  Linux-Cross-Compile:
     needs: OpenBSD
     strategy:
       matrix:
