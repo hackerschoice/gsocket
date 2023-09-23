@@ -42,7 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Compile-OSX
+      - name: Compile
         run: |
           brew install automake
           ./bootstrap
@@ -68,7 +68,29 @@ jobs:
           overwrite: true
           tag: ${{ env.TAG }}
 
+  OpenBSD:
+    runs-on: macos-12
+    steps:
+    - uses: actions/checkout@v3
+    - name: Compile
+      uses: vmactions/openbsd-vm@v0
+      with:
+        usesh: true
+        prepare: |
+          pkg_add curl
+        
+        run: |
+          pwd
+          ls -alh
+          uname -a
+          env
+          ./bootstrap
+          ./configure --prefix=/opt --enable-static
+          make all
+          strip tools/gs-netcat
+
   Cross-Compile:
+    needs: OpenBSD
     strategy:
       matrix:
         arch: [x86_64, aarch64, mips64, mips32, mipsel, i686, arm, armv6, armv7l]
