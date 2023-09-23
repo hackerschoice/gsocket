@@ -84,21 +84,17 @@ jobs:
           pkg_add openssl-3.0.8
           pkg_info -Q gcc
           pkg_info -Q gmake
-          pkg_add gcc
+          pkg_add gcc-11.2.0p3
           pkg_add gmake
         
         run: |
           uname -a
           echo after $PATH
           export AUTOCONF_VERSION=2.71
-          which automake
-          which autoconf
-          which openssl
+          export AUTOMAKE_VERSION=1.16
           which gcc
           autoconf --version
           automake --version
-          echo ret $?
-          pkg_info -Q curl
           pkg_info -Q gcc
           ./bootstrap
           ./configure --prefix=/opt --enable-static
