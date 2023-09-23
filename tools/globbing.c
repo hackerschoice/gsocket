@@ -7,11 +7,6 @@
  */
 
 #include "common.h"
-#ifdef HAVE_WORDEXP_H
-# include <wordexp.h>
-#else
-# include <glob.h>  // __OPENBSD__
-#endif
 #include <dirent.h>
 #include "utils.h"
 #include "globbing.h"
@@ -379,7 +374,7 @@ done:
 // __OPENBSD__
 int
 GS_GLOBBING(gsglobbing_cb_t func, const char *exp, uint32_t glob_id, void *arg_ptr, uint32_t arg_val) {
-	return -1;
+	return 0; // NOT FOUND
 }
 #endif
 

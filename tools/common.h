@@ -47,7 +47,9 @@
 #include <libgen.h>		/* basename() */
 #include <termios.h>
 #include <pwd.h>
-#include <wordexp.h>
+#ifdef HAVE_WORDEXP_H
+# include <wordexp.h>
+#endif
 #ifdef HAVE_UTMPX_H
 # include <utmpx.h>
 #endif
