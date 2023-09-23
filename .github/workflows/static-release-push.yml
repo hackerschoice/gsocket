@@ -77,7 +77,7 @@ jobs:
       with:
         usesh: true
         prepare: |
-          pkg_add curl autoconf automake
+          pkg_add curl autoconf automake openssl
         
         run: |
           pwd
