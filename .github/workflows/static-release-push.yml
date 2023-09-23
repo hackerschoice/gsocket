@@ -77,10 +77,11 @@ jobs:
       with:
         usesh: true
         prepare: |
+          pkg_info
           pkg_add curl
           pkg_add autoconf-2.71
           pkg_add automake-1.16.5
-          pkg_add openssl-3.1.3 
+          pkg_add openssl
         
         run: |
           pwd
@@ -88,9 +89,10 @@ jobs:
           uname -a
           env
           which automake
+          which autoconf
           pkg_add autoconf-2.71
           pkg_add automake-1.16.5
-          pkg_add openssl-3.1.3
+          pkg_add openssl
           ./bootstrap
           ./configure --prefix=/opt --enable-static
           make all
