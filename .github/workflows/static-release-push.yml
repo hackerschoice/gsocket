@@ -77,25 +77,19 @@ jobs:
       with:
         usesh: true
         prepare: |
-          pkg_info
           pkg_add curl
           pkg_add autoconf-2.71
           pkg_add automake-1.16.5
           pkg_add openssl-3.0.8
-          pkg_info -Q gcc
-          pkg_info -Q gmake
+          pkg_info -Q openssl
           pkg_add gcc-11.2.0p3
           pkg_add gmake
+          pkg_info
         
         run: |
-          uname -a
-          echo after $PATH
           export AUTOCONF_VERSION=2.71
           export AUTOMAKE_VERSION=1.16
-          which gcc
-          autoconf --version
-          automake --version
-          pkg_info -Q gcc
+          find /usr -name srp.h
           ./bootstrap
           ./configure --prefix=/opt --enable-static
           make all
