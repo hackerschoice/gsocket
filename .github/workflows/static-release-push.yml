@@ -21,13 +21,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+
       - name: dist
         run: |
           ./bootstrap
           ./configure
           make dist
 
-      -name: Upload dist
+      - name: Upload dist
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
