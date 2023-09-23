@@ -17,7 +17,8 @@ env:
 jobs:
   MacOS:
     runs-on: macos-13
-      - name: Compile OSX
+    steps:
+      - name: Compile-OSX
         run: |
           ./bootstrap
           ./configure --prefix=/opt --enable-static
