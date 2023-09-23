@@ -17,7 +17,7 @@ env:
 jobs:
   MacOS:
     runs-on: macos-13
-      - name: Compile-${{ matrix.arch }}
+      - name: Compile OSX
         run: |
           ./bootstrap
           ./configure --prefix=/opt --enable-static
