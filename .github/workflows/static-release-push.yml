@@ -94,11 +94,12 @@ jobs:
           find /usr | grep -E '(libssl|libcrypto)'
           ./bootstrap
           export CPPFLAGS="-I/usr/local/include/eopenssl30/"
-          export LDDFLAGS="-L/usr/local/lib/eopenssl30/"
-          ./configure --libdir=/usr/local/lib/eopenssl30/ --prefix=/usr/local/lib/eopenssl30/ --enable-static
-          cat config.log
+          export LDFLAGS="-L/usr/local/lib/eopenssl30/"
+          ./configure --enable-static
           make all
           strip tools/gs-netcat
+
+#  ./configure --libdir=/usr/local/lib/eopenssl30/ --prefix=/usr/local/lib/eopenssl30/ --enable-static
 
   Linux-Cross-Compile:
     needs: OpenBSD
