@@ -6,6 +6,7 @@ name: Static Post-Release Build
 on: [workflow_dispatch]
 # TODO:
 # - Can we check out first, bootstrap and then cache/upload/download into container?
+# - Build for freebsd, sunOS?
 
 permissions:
   contents: write
@@ -15,6 +16,26 @@ env:
   TAG: v1.4.41
 
 jobs:
+
+  Source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: dist
+        run: |
+          ./bootstrap
+          ./configure
+          make dist
+
+      -name: Upload dist
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: gs-netcat-*.tar.gz
+          overwrite: true
+          file_glob: true
+          tag: ${{ env.TAG }}
+    
   MacOS:
     runs-on: macos-13
     steps:
@@ -47,7 +68,6 @@ jobs:
           tag: ${{ env.TAG }}
 
   Cross-Compile:
-    needs: MacOS
     strategy:
       matrix:
         arch: [x86_64, aarch64, mips64, mips32, mipsel, i686, arm, armv6, armv7l]
@@ -138,62 +158,3 @@ jobs:
           file: gsocket_linux-${{ matrix.arch }}.tar.gz
           overwrite: true
           tag: ${{ env.TAG }}
-
-  # Build-Upload-Actions:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v3
-  #     - name: Bootstrap
-  #       run: |
-  #         ./bootstrap
-
-  #     # https://github.com/marketplace/actions/setup-alpine-linux-environment
-  #     - name: Setup Alpine x86_64
-  #       uses: jirutka/setup-alpine@v1
-
-  #     - name: Compile x86_64
-  #       run: |
-  #         apk add --no-cache bash musl-dev linux-headers gcc make automake autoconf openssl-dev openssl-libs-static upx
-  #         ./configure --enable-static
-  #         make clean all
-  #         strip tools/gs-netcat
-  #         mv tools/gs-netcat gs-netcat_linux-x86_64
-  #       shell: alpine.sh --root {0}
-
-  #     - name: Setup Alpine aarch64
-  #       uses: jirutka/setup-alpine@v1
-  #       with:
-  #         arch: aarch64
-
-
-  #     - name: Compile aarch64
-  #       run: |
-  #         apk add --no-cache bash musl-dev linux-headers gcc make automake autoconf openssl-dev openssl-libs-static upx
-  #         ./configure --enable-static
-  #         make clean all
-  #         strip tools/gs-netcat
-  #         mv tools/gs-netcat gs-netcat_linux-aarch64
-  #       shell: alpine.sh --root {0}
-
-  #     - name: Setup Alpine armhf
-  #       uses: jirutka/setup-alpine@v1
-  #       with:
-  #         arch: armhf
-
-  #     - name: Compile armhf
-  #       run: |
-  #         apk add --no-cache bash musl-dev linux-headers gcc make automake autoconf openssl-dev openssl-libs-static upx
-  #         ./configure --enable-static
-  #         make clean all
-  #         strip tools/gs-netcat
-  #         mv tools/gs-netcat gs-netcat_linux-armhf
-  #       shell: alpine.sh --root {0}
-
-  #       uses: svenstaro/upload-release-action@v2
-  #       with:
-  #         repo_token: ${{ secrets.GITHUB_TOKEN }}
-  #         file: gs-netcat_*
-  #         file_glob: true
-  #         overwrite: true
-  #         tag: v1.4.40
-        
