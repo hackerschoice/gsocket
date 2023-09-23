@@ -85,11 +85,14 @@ jobs:
         
         run: |
           uname -a
-          echo \$PATH
-          export PATH=/usr/local/bin:\$PATH
+          echo before $PATH
+          export PATH=/usr/local/bin:$PATH
+          echo after $PATH
           which automake
           which autoconf
           which openssl
+          autoconf --version
+          echo ret $?
           pkg_info -Q openssl
           ./bootstrap
           ./configure --prefix=/opt --enable-static
