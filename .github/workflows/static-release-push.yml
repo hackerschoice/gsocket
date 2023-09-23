@@ -92,6 +92,7 @@ jobs:
           which automake
           which autoconf
           which openssl
+          which gcc
           autoconf --version
           automake --version
           echo ret $?
