@@ -18,6 +18,8 @@ jobs:
   MacOS:
     runs-on: macos-13
     steps:
+      - uses: actions/checkout@v3
+
       - name: Compile-OSX
         run: |
           ./bootstrap
