@@ -81,17 +81,25 @@ jobs:
           pkg_add autoconf-2.71
           pkg_add automake-1.16.5
           pkg_add openssl-3.0.8
-          pkg_info -Q openssl
+          pkg_info -Q tar
           pkg_add gcc-11.2.0p3
           pkg_add gmake
+          pkg_add tar
           pkg_info
         
         run: |
+          curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER:-1.1.1k}.tar.gz | tar -xzC /tmp/
+          ( cd /tmp/openssl-${OPENSSL_VER:-1.1.1k} && \
+          ./Configure --prefix=/opt no-tests no-dso no-threads no-shared ${{ matrix.ssl }} && \
+          make install_sw )
+          rm -rf rm -rf /tmp/openssl-${OPENSSL_VER} /opt/bin/openssl /opt/bin/c_rehash
           export AUTOCONF_VERSION=2.71
           export AUTOMAKE_VERSION=1.16
           find /usr -name srp.h
           find /usr | grep -E '(libssl|libcrypto)'
           ./bootstrap
+          export CPPFLAGS="-I/usr/local/include/eopenssl30/"
+          export LDDFLAGS="-L/usr/local/lib/eopenssl30/"
           ./configure --includedir=/usr/local/include/eopenssl30/ --prefix=/opt --enable-static
           make all
           strip tools/gs-netcat
