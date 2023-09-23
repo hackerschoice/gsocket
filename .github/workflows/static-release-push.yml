@@ -88,11 +88,6 @@ jobs:
           pkg_info
         
         run: |
-          curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER:-1.1.1k}.tar.gz | tar -xzC /tmp/
-          ( cd /tmp/openssl-${OPENSSL_VER:-1.1.1k} && \
-          ./Configure --prefix=/opt no-tests no-dso no-threads no-shared ${{ matrix.ssl }} && \
-          make install_sw )
-          rm -rf rm -rf /tmp/openssl-${OPENSSL_VER} /opt/bin/openssl /opt/bin/c_rehash
           export AUTOCONF_VERSION=2.71
           export AUTOMAKE_VERSION=1.16
           find /usr -name srp.h
