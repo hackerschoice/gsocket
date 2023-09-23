@@ -85,12 +85,10 @@ jobs:
         
         run: |
           uname -a
-          PATH=/usr/local/bin:$PATH
+          export PATH=/usr/local/bin:$PATH
           which automake
           which autoconf
-          pkg_add autoconf-2.71
-          pkg_add automake-1.16.5
-          pkg_add openssl-3.0.8
+          which openssl
           ./bootstrap
           ./configure --prefix=/opt --enable-static
           make all
