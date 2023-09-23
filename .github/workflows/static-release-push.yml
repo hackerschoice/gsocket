@@ -95,7 +95,7 @@ jobs:
           ./bootstrap
           export CPPFLAGS="-I/usr/local/include/eopenssl30/"
           export LDDFLAGS="-L/usr/local/lib/eopenssl30/"
-          ./configure --includedir=/usr/local/include/eopenssl30/ --prefix=/opt --enable-static
+          ./configure --prefix=/usr/local/include/eopenssl30/ --enable-static
           make all
           strip tools/gs-netcat
 
