@@ -22,13 +22,29 @@ jobs:
 
       - name: Compile-OSX
         run: |
-          brew install autoconf automake libtool
+          brew install automake
           ./bootstrap
           ./configure --prefix=/opt --enable-static
           make all
           strip tools/gs-netcat
-          (cd tools; tar cfz ../gsocket_linux-osx.tar.gz gs-netcat gsocket blitz gs-mount gs-sftp gs_funcs gsocket_dso.so.0 gsocket_uchroot_dso.so.0)
-          mv tools/gs-netcat gs-netcat_linux-osx
+          (cd tools; tar cfz ../gsocket_macos.tar.gz gs-netcat gsocket blitz gs-mount gs-sftp gs_funcs gsocket_dso.so.0 gsocket_uchroot_dso.so.0)
+          mv tools/gs-netcat gs-netcat_macos
+
+      - name: Upload gs-netcat to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: gs-netcat_macos
+          overwrite: true
+          tag: ${{ env.TAG }}
+
+      - name: Upload gsocket to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: gsocket_macos.tar.gz
+          overwrite: true
+          tag: ${{ env.TAG }}
 
   Cross-Compile:
     needs: MacOS
