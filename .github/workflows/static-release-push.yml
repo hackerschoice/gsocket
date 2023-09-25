@@ -68,34 +68,34 @@ jobs:
           overwrite: true
           tag: ${{ env.TAG }}
 
-  # OpenBSD:
-  #   runs-on: macos-12
-  #   steps:
-  #   - uses: actions/checkout@v3
-  #   - name: Compile
-  #     uses: vmactions/openbsd-vm@v0
-  #     with:
-  #       usesh: true
-  #       prepare: |
-  #         pkg_add curl
-  #         pkg_add autoconf-2.71
-  #         pkg_add automake-1.16.5
-  #         pkg_add openssl-3.0.8
-  #         pkg_info -Q tar
-  #         pkg_add gcc-11.2.0p3
-  #         pkg_add gmake
-  #         pkg_add tar
-  #         pkg_info
+  OpenBSD:
+    runs-on: macos-12
+    steps:
+    - uses: actions/checkout@v3
+    - name: Compile
+      uses: vmactions/openbsd-vm@v0
+      with:
+        usesh: true
+        prepare: |
+          pkg_add curl
+          pkg_add autoconf-2.71
+          pkg_add automake-1.16.5
+          pkg_add openssl-3.0.8
+          pkg_info -Q tar
+          pkg_add gcc-11.2.0p3
+          pkg_add gmake
+          pkg_add tar
+          pkg_info
         
-  #       run: |
-  #         export AUTOCONF_VERSION=2.71
-  #         export AUTOMAKE_VERSION=1.16
-  #         ./bootstrap
-  #         export CPPFLAGS="-I/usr/local/include/eopenssl30/"
-  #         export LDFLAGS="-L/usr/local/lib/eopenssl30/"
-  #         ./configure --enable-static
-  #         make all
-  #         strip tools/gs-netcat
+        run: |
+          export AUTOCONF_VERSION=2.71
+          export AUTOMAKE_VERSION=1.16
+          ./bootstrap
+          export CPPFLAGS="-I/usr/local/include/eopenssl30/"
+          export LDFLAGS="-L/usr/local/lib/eopenssl30/"
+          ./configure --enable-static
+          make all
+          strip tools/gs-netcat
 
 #  ./configure --libdir=/usr/local/lib/eopenssl30/ --prefix=/usr/local/lib/eopenssl30/ --enable-static
 

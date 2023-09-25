@@ -1,4 +1,5 @@
 1.4.41 - 2023-09-22
+    * OpenBSD support
     * Transparent proxy detection
     * muslcc localtime() bug work around
 
