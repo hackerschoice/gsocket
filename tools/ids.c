@@ -25,23 +25,30 @@ static int is_udb_init;
 // Bloody __OPENBSD__, does not have utmpx.h
 #ifndef HAVE_UTMPX_H
 # if !defined(__OPENBSD__)
-#  error "Which forsaken OS (beside OpenBSD) does not have utmpx.h?"
+#  warning "Which forsaken OS (beside OpenBSD) does not have utmpx.h?"
 # endif
 # ifndef UT_NAMESIZE
-#  define UT_NAMESIZE      (8)
+#  define UT_NAMESIZE      (32)
+# endif
+# ifndef UT_LINESIZE
+#  define UT_LINESIZE       (8)
+# endif
+# ifndef UT_HOST
+#  define UT_HOST         (256)
 # endif
 # ifndef USER_PROCESS
-#  define USER_PROCESS     (0)
+#  define USER_PROCESS      (0)
 # endif
 struct utmpx {
 	int ut_type;
-	char ut_line[UT_NAMESIZE];
+	char ut_line[UT_LINESIZE];
 	char ut_user[UT_NAMESIZE];
-	char ut_host[UT_NAMESIZE];
+	char ut_host[UT_HOSTSIZE];
+	time_t ut_time;
 };
-void setutxent(void){ }
-void endutxent(void){ }
-void *getutxent(void){ return NULL; }
+void setutxent(void){ }               // DUMMY
+void endutxent(void){ }               // DUMMY
+void *getutxent(void){ return NULL; } // DUMMY
 #endif
 
 static int
