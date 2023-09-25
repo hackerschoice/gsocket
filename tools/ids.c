@@ -27,8 +27,12 @@ static int is_udb_init;
 # if !defined(__OPENBSD__)
 #  error "Which forsaken OS (beside OpenBSD) does not have utmpx.h?"
 # endif
-# define UT_NAMESIZE      (8)
-# define USER_PROCESS     (0)
+# ifndef UT_NAMESIZE
+#  define UT_NAMESIZE      (8)
+# endif
+# ifndef USER_PROCESS
+#  define USER_PROCESS     (0)
+# endif
 struct utmpx {
 	int ut_type;
 	char ut_line[UT_NAMESIZE];

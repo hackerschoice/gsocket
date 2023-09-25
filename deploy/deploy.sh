@@ -584,6 +584,8 @@ init_vars()
 			OSTYPE="FreeBSD"
 		elif [[ "$osname" == *Darwin* ]]; then
 			OSTYPE="darwin22.0"
+		elif [[ "$osname" == *OpenBSD* ]]; then
+			OSTYPE="openbsd7.3"
 		elif [[ "$osname" == *Linux* ]]; then
 			OSTYPE="linux-gnu"
 		fi
@@ -618,6 +620,8 @@ init_vars()
 			fi
 		elif [[ $OSTYPE == *FreeBSD* ]]; then
 				OSARCH="x86_64-freebsd"
+		elif [[ $OSTYPE == *OpenBSD* ]]; then
+				OSARCH="x86_64-openbsd"
 		elif [[ $OSTYPE == *cygwin* ]]; then
 			OSARCH="i686-cygwin"
 			[[ "$arch" == "x86_64" ]] && OSARCH="x86_64-cygwin"
