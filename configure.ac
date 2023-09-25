@@ -162,6 +162,7 @@ dnl AC_CHECK_LIB([net], [libnet_init], ,[AC_MSG_ERROR([libnet 1.1.x not found])]
 if test x"$STATIC" = xno; then
 	AC_CHECK_LIB(dl, dlopen)
 fi
+AC_CHECK_LIB(dl, dlopen, LDADD_LIBDL="-ldl")
 AC_CHECK_LIB(procstat, procstat_close)
 dnl 
 if test x"$STATIC_SSL" != xyes; then
@@ -210,6 +211,7 @@ AS_IF([test x$selftests = xtrue], AC_SUBST(PROGRAMS_TEST_LIB, "list-test${EXEEXT
 AS_IF([test x$selftests = xtrue], AC_SUBST(PROGRAMS_TEST_TOOLS, "packet-test${EXEEXT} readline-test${EXEEXT} console_display-test${EXEEXT} filetransfer-test${EXEEXT}"))
 
 AC_SUBST(LDADD_STATIC, "${LDADD_STATIC}")
+AC_SUBST(LDADD_LIBDL, "${LDADD_LIBDL}")
 AC_SUBST(CFLAGS_STATIC, "${CFLAGS_STATIC}")
 AC_SUBST(PERM_DSO, "${PERM_DSO}")
 AC_SUBST(SONAME_GSOCKET_DSO, "${SONAME_GSOCKET_DSO}")

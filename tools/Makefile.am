@@ -42,12 +42,12 @@ dist_bin_SCRIPTS = blitz gs-sftp gs-mount gsocket
 
 gsocket_uchroot_dso_so_0_SOURCES = gsocket_uchroot_dso.c
 gsocket_uchroot_dso_so_0_CFLAGS = -shared -fPIC
-gsocket_uchroot_dso_so_0_LDFLAGS = -ldl @SONAME_GSOCKET_UCHROOT_DSO@
+gsocket_uchroot_dso_so_0_LDFLAGS = @LDADD_LIBDL@ @SONAME_GSOCKET_UCHROOT_DSO@
 
 gsocket_dso_so_0_SOURCES = gsocket_dso.c gsocket_dso-lib.c
 gsocket_dso_so_0_CFLAGS = -shared -fPIC
 gsocket_dso_so_0_LDADD = @LDADD_STATIC@
-gsocket_dso_so_0_LDFLAGS = -ldl @SONAME_GSOCKET_DSO@
+gsocket_dso_so_0_LDFLAGS = @LDADD_LIBDL@ @SONAME_GSOCKET_DSO@
 
 install-exec-hook:
 	-rm -f $(DESTDIR)$(bindir)/gs_funcs # Old gs installed this here. Remove it now.

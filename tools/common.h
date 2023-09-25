@@ -49,6 +49,8 @@
 #include <pwd.h>
 #ifdef HAVE_WORDEXP_H
 # include <wordexp.h>
+#else
+# warning "wordexp.h not found. File Transfer may not work with globbing"
 #endif
 #ifdef HAVE_UTMPX_H
 # include <utmpx.h>

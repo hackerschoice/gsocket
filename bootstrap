@@ -2,18 +2,16 @@
 
 DIE=0
 
-(autoconf --version) < /dev/null > /dev/null 2>&1 || {
-    echo
-        echo "You must have autoconf installed."
+command -v autoconf >/dev/null || {
+    echo "You must have autoconf installed."
 	DIE=1
 }
 
 # libtool --version check not done...
 
-(automake --version) < /dev/null > /dev/null 2>&1 || {
-    echo
-        echo "You must have automake installed."
-        DIE=1
+command -v automake >/dev/null || {
+    echo "You must have automake installed."
+    DIE=1
 }
 
 if test "$DIE" -eq 1; then
@@ -26,24 +24,15 @@ rm -f configure Makefile Makefile.in tools/Makefile tools/Makesfile.in src/Makef
 mkdir config
 
 echo "aclocal -I ."
-aclocal -I . 
-if test $? -ne 0; then
-    exit 1
-fi
+aclocal -I . || exit
 
 # glibtoolize -c
 
 echo "autoheader"
-autoheader
-if test $? -ne 0; then
-    exit 1
-fi
+autoheader || exit
 echo "automake --foreign --add-missing -Wno-syntax"
-automake --foreign --copy --add-missing -Wno-syntax
-if test $? -ne 0; then
-    exit 1
-fi
+automake --foreign --copy --add-missing -Wno-syntax || exit
 echo "autoconf"
-autoconf
+autoconf || exit
 echo "BOOTSTRAP complete"
 

@@ -22,6 +22,24 @@ struct utmp_db_user
 GS_LIST udb;
 static int is_udb_init;
 
+// Bloody __OPENBSD__, does not have utmpx.h
+#ifndef HAVE_UTMPX_H
+# if !defined(__OPENBSD__)
+#  error "Which forsaken OS (beside OpenBSD) does not have utmpx.h?"
+# endif
+# define UT_NAMESIZE      (8)
+# define USER_PROCESS     (0)
+struct utmpx {
+	int ut_type;
+	char ut_line[UT_NAMESIZE];
+	char ut_user[UT_NAMESIZE];
+	char ut_host[UT_NAMESIZE];
+};
+void setutxent(void){ }
+void endutxent(void){ }
+void *getutxent(void){ return NULL; }
+#endif
+
 static int
 utmp_db_find(const char *needle, struct utmp_db_user **uret)
 {
