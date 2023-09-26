@@ -6,7 +6,8 @@ name: Static Post-Release Build
 on: [workflow_dispatch]
 # TODO:
 # - Can we check out first, bootstrap and then cache/upload/download into container?
-# - Build for freebsd, sunOS?
+# - Build for sunOS?
+# - Cache / Speedup VM builds (OpenBSD, FreeBSD, macOS)
 
 permissions:
   contents: write
@@ -69,22 +70,6 @@ jobs:
           overwrite: true
           file_glob: true
           tag: ${{ env.TAG }}
-
-      # - name: Upload gs-netcat to release
-      #   uses: svenstaro/upload-release-action@v2
-      #   with:
-      #     repo_token: ${{ secrets.GITHUB_TOKEN }}
-      #     file: gs-netcat_macOS
-      #     overwrite: true
-      #     tag: ${{ env.TAG }}
-
-      # - name: Upload gsocket to release
-      #   uses: svenstaro/upload-release-action@v2
-      #   with:
-      #     repo_token: ${{ secrets.GITHUB_TOKEN }}
-      #     file: gsocket_macOS.tar.gz
-      #     overwrite: true
-      #     tag: ${{ env.TAG }}
 
   FreeBSD:
     runs-on: macos-12
@@ -173,10 +158,7 @@ jobs:
           file_glob: true
           tag: ${{ env.TAG }}
 
-#  ./configure --libdir=/usr/local/lib/eopenssl30/ --prefix=/usr/local/lib/eopenssl30/ --enable-static
-
   Linux-Cross-Compile:
-    needs: OpenBSD
     strategy:
       matrix:
         arch: [x86_64, aarch64, mips64, mips32, mipsel, i686, arm, armv6, armv7l]
