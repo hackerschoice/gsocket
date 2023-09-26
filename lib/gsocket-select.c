@@ -64,6 +64,8 @@ gs_select_rw_save_state(GS_SELECT_CTX *ctx, int fd, char *idstr)
 void
 gs_select_rw_restore_state(GS_SELECT_CTX *ctx, int fd, char *idstr)
 {
+	if (fd < 0)
+		return;
 	if (ctx->is_rw_state_saved[fd] == 0)
 	{
 		// DEBUGF("RWFD was not saved. Nothing to restore (fd = %d, %s).\n", fd, idstr);
