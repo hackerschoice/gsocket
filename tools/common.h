@@ -6,6 +6,9 @@
 # include <config.h>
 #endif
 
+#ifdef HAVE_SYS_PARAM_H
+# include <sys/param.h>
+#endif
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/socket.h>

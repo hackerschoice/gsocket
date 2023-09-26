@@ -22,10 +22,10 @@ struct utmp_db_user
 GS_LIST udb;
 static int is_udb_init;
 
-// Bloody __OPENBSD__, does not have utmpx.h
+// Bloody __OpenBSD__, does not have utmpx.h
 #ifndef HAVE_UTMPX_H
-# if !defined(__OPENBSD__)
-#  warning "Which forsaken OS (beside OpenBSD) does not have utmpx.h?"
+# if !defined(__OpenBSD__)
+#  error "Which forsaken OS (beside OpenBSD) does not have utmpx.h?"
 # endif
 # ifndef UT_NAMESIZE
 #  define UT_NAMESIZE      (32)
@@ -33,12 +33,13 @@ static int is_udb_init;
 # ifndef UT_LINESIZE
 #  define UT_LINESIZE       (8)
 # endif
-# ifndef UT_HOST
-#  define UT_HOST         (256)
+# ifndef UT_HOSTSIZE
+#  define UT_HOSTSIZE     (256)
 # endif
 # ifndef USER_PROCESS
 #  define USER_PROCESS      (0)
 # endif
+// FIXME: Implement non utmpx support (only OpenBSD still uses good old utmp?)
 struct utmpx {
 	int ut_type;
 	char ut_line[UT_LINESIZE];

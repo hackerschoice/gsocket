@@ -566,6 +566,7 @@ init_vars()
 {
 	# Select binary
 	local arch
+	local osname
 	arch=$(uname -m)
 
 	if [[ -z "$HOME" ]]; then
@@ -618,11 +619,11 @@ init_vars()
 			else
 				OSARCH="x86_64-osx"
 			fi
-		elif [[ $OSTYPE == *FreeBSD* ]]; then
+		elif [[ ${OSTYPE,,} == *freebsd* ]]; then
 				OSARCH="x86_64-freebsd"
-		elif [[ $OSTYPE == *OpenBSD* ]]; then
+		elif [[ ${OSTYPE,,} == *openbsd* ]]; then
 				OSARCH="x86_64-openbsd"
-		elif [[ $OSTYPE == *cygwin* ]]; then
+		elif [[ ${OSTYPE,,} == *cygwin* ]]; then
 			OSARCH="i686-cygwin"
 			[[ "$arch" == "x86_64" ]] && OSARCH="x86_64-cygwin"
 		# elif [[ $OSTYPE == *gnu* ]] && [[ "$(uname -v)" == *Hurd* ]]; then
