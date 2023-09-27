@@ -34,7 +34,7 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: gsocket-*.tar.gz
-          overwrite: true
+          # overwrite: true
           file_glob: true
           tag: v${{ env.VER }}
     
