@@ -19,11 +19,14 @@ env:
 jobs:
   # Create release Tarballs
   FreeBSD:
+    strategy:
+      matrix:
+        os: [freebsd, openbsd]  
     runs-on: macos-12
     steps:
       - uses: actions/checkout@v3
       - name: Compile
-        uses: vmactions/freebsd-vm@v0
+        uses: vmactions/${{ matrix.os }}@v0
         with:
           usesh: true
           prepare: |
@@ -34,14 +37,14 @@ jobs:
         uses: actions/cache@v3
         with:
           path: /opt
-          key: FreeBSD-ssl
+          key: ${{ matrix.os }}-ssl
 
       - name: Generate OpenSSL
         if: steps.cachessl.outputs.cache-hit != 'true'
         run: |
           curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER:-1.1.1k}.tar.gz | tar -xzf - -C /tmp/
           ( cd /tmp/openssl-${OPENSSL_VER:-1.1.1k} && \
-          ./Configure --prefix=/opt no-tests no-dso no-threads no-shared BSD-generic64 && \
+          ./Configure --prefix=/opt no-tests no-dso no-threads no-shared no-hw BSD-generic64 -UHAVE_CRYPTODEV && \
           make install_sw )
           rm -rf rm -rf /tmp/openssl-${OPENSSL_VER:-1.1.1k} /opt/bin/openssl /opt/bin/c_rehash
 
@@ -50,7 +53,7 @@ jobs:
         uses: actions/cache/save@v3
         with:
           path: /opt
-          key: FreeBSD-ssl
+          key: ${{ matrix.os }}-ssl
 
           run: |
             ./bootstrap
@@ -58,9 +61,8 @@ jobs:
             make all
             tools/gs-netcat -h
             tools/gs-netcat -g
-            tools/gs-netcat -s asfkjlkjgadljsdfg -li
             strip tools/gs-netcat
-            mv tools/gs-netcat TEST-gs-netcat_freebsd-x86_64
+            mv tools/gs-netcat TEST-gs-netcat_${{ matrix.os }}-x86_64
 
       - name: Upload gs-netcat to release
         uses: svenstaro/upload-release-action@v2
