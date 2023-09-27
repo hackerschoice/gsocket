@@ -1,13 +1,5 @@
 name: fbsd test
-# on: [push]
-# on:
-#   release:
-#     types: [published]
 on: [workflow_dispatch]
-# TODO:
-# - Can we check out first, bootstrap and then cache/upload/download into container?
-# - Build for sunOS?
-# - Cache / Speedup VM builds (OpenBSD, FreeBSD, macOS)
 
 permissions:
   contents: write

@@ -13,7 +13,7 @@ permissions:
   contents: write
 
 env:
-  OPENSSL_VER: 1.1.1k
+  OPENSSL_VER: 1.1.1w
   VER: 1.4.41
 
 jobs:
@@ -71,24 +71,32 @@ jobs:
           file_glob: true
           tag: v${{ env.VER }}
 
+
   FreeBSD:
+    env:
+      OS: "freebsd"
     runs-on: macos-12
     steps:
       - uses: actions/checkout@v3
-      - name: Compile
+      - name: Starting the VM
         uses: vmactions/freebsd-vm@v0
         with:
           usesh: true
           prepare: |
-            pkg install -y curl automake autoconf gcc 
-          
+            pkg install -y curl automake autoconf gcc
+
           run: |
+            curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER:-1.1.1w}.tar.gz | tar -xzf - -C /tmp/
+            ( cd /tmp/openssl-${OPENSSL_VER:-1.1.1w} && \
+            ./Configure --prefix=/opt no-tests no-dso no-threads no-shared BSD-generic64 && \
+            make install_sw )
+            rm -rf rm -rf /tmp/openssl-${OPENSSL_VER:-1.1.1w} /opt/bin/openssl /opt/bin/c_rehash
             ./bootstrap
-            ./configure --enable-static
+            ./configure --enable-static --prefix=/opt
             make all
             strip tools/gs-netcat
-            (cd tools; tar cfz ../gsocket_freebsd-x86_x64.tar.gz gs-netcat gsocket blitz gs-mount gs-sftp gs_funcs gsocket_dso.so.0 gsocket_uchroot_dso.so.0)
-            mv tools/gs-netcat gs-netcat_freebsd-x86_64
+            (cd tools; tar cfz ../gsocket_${{ env.OS }}-x86_x64.tar.gz gs-netcat gsocket blitz gs-mount gs-sftp gs_funcs gsocket_dso.so.0 gsocket_uchroot_dso.so.0)
+            mv tools/gs-netcat gs-netcat_${{ env.OS }}-x86_64
 
       - name: Upload gs-netcat to release
         uses: svenstaro/upload-release-action@v2
@@ -110,10 +118,12 @@ jobs:
 
 # https://github.com/vmactions/openbsd-vm
   OpenBSD:
+    env:
+      OS: "openbsd"
     runs-on: macos-12
     steps:
       - uses: actions/checkout@v3
-      - name: Compile
+      - name: Starting the VM
         uses: vmactions/openbsd-vm@v0
         with:
           usesh: true
@@ -126,19 +136,50 @@ jobs:
             pkg_add gcc-11.2.0p3
             pkg_add gmake
             pkg_add tar
-            pkg_info
-          
+
           run: |
+            curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER:-1.1.1w}.tar.gz | tar -xzf - -C /tmp/
+            ( cd /tmp/openssl-${OPENSSL_VER:-1.1.1w} && \
+            ./Configure --prefix=/opt no-tests no-dso no-threads no-shared BSD-generic64 && \
+            make install_sw )
+            rm -rf rm -rf /tmp/openssl-${OPENSSL_VER:-1.1.1w} /opt/bin/openssl /opt/bin/c_rehash
             export AUTOCONF_VERSION=2.71
             export AUTOMAKE_VERSION=1.16
             ./bootstrap
-            export CPPFLAGS="-I/usr/local/include/eopenssl30/"
-            export LDFLAGS="-L/usr/local/lib/eopenssl30/"
-            ./configure --enable-static
+            ./configure --enable-static --prefix=/opt
             make all
             strip tools/gs-netcat
-            (cd tools; tar cfz ../gsocket_openbsd-x86_x64.tar.gz gs-netcat gsocket blitz gs-mount gs-sftp gs_funcs gsocket_dso.so.0 gsocket_uchroot_dso.so.0)
-            mv tools/gs-netcat gs-netcat_openbsd-x86_64
+            (cd tools; tar cfz ../gsocket_${{ env.OS }}-x86_x64.tar.gz gs-netcat gsocket blitz gs-mount gs-sftp gs_funcs gsocket_dso.so.0 gsocket_uchroot_dso.so.0)
+            mv tools/gs-netcat gs-netcat_${{ env.OS }}-x86_64
+
+    # runs-on: macos-12
+    # steps:
+    #   - uses: actions/checkout@v3
+    #   - name: Compile
+    #     uses: vmactions/openbsd-vm@v0
+    #     with:
+    #       usesh: true
+    #       prepare: |
+    #         pkg_add curl
+    #         pkg_add autoconf-2.71
+    #         pkg_add automake-1.16.5
+    #         pkg_add openssl-3.0.8
+    #         pkg_info -Q tar
+    #         pkg_add gcc-11.2.0p3
+    #         pkg_add gmake
+    #         pkg_add tar
+          
+    #       run: |
+    #         export AUTOCONF_VERSION=2.71
+    #         export AUTOMAKE_VERSION=1.16
+    #         ./bootstrap
+    #         export CPPFLAGS="-I/usr/local/include/eopenssl30/"
+    #         export LDFLAGS="-L/usr/local/lib/eopenssl30/"
+    #         ./configure --enable-static
+    #         make all
+    #         strip tools/gs-netcat
+    #         (cd tools; tar cfz ../gsocket_openbsd-x86_x64.tar.gz gs-netcat gsocket blitz gs-mount gs-sftp gs_funcs gsocket_dso.so.0 gsocket_uchroot_dso.so.0)
+    #         mv tools/gs-netcat gs-netcat_openbsd-x86_64
 
       - name: Upload gs-netcat to release
         uses: svenstaro/upload-release-action@v2
