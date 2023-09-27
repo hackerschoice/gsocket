@@ -18,145 +18,145 @@ env:
 
 jobs:
   # Create release Tarballs
-#   Source:
-#     runs-on: ubuntu-latest
-#     steps:
-#       - uses: actions/checkout@v3
+  Source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
 
-#       - name: dist
-#         run: |
-#           ./bootstrap
-#           ./configure
-#           make dist
+      - name: dist
+        run: |
+          ./bootstrap
+          ./configure
+          make dist
 
-#       - name: Upload dist
-#         uses: svenstaro/upload-release-action@v2
-#         with:
-#           repo_token: ${{ secrets.GITHUB_TOKEN }}
-#           file: gsocket-*.tar.gz
-#           overwrite: true
-#           file_glob: true
-#           tag: v${{ env.VER }}
+      - name: Upload dist
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: gsocket-*.tar.gz
+          overwrite: true
+          file_glob: true
+          tag: v${{ env.VER }}
     
-#   MacOS:
-#     runs-on: macos-13
-#     steps:
-#       - uses: actions/checkout@v3
+  MacOS:
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v3
 
-#       - name: Compile
-#         run: |
-#           brew install automake
-#           ./bootstrap
-#           ./configure --prefix=/opt --enable-static
-#           make all
-#           strip tools/gs-netcat
-#           (cd tools; tar cfz ../gsocket_macOS.tar.gz gs-netcat gsocket blitz gs-mount gs-sftp gs_funcs gsocket_dso.so.0 gsocket_uchroot_dso.so.0)
-#           mv tools/gs-netcat gs-netcat_macOS
+      - name: Compile
+        run: |
+          brew install automake
+          ./bootstrap
+          ./configure --prefix=/opt --enable-static
+          make all
+          strip tools/gs-netcat
+          (cd tools; tar cfz ../gsocket_macOS.tar.gz gs-netcat gsocket blitz gs-mount gs-sftp gs_funcs gsocket_dso.so.0 gsocket_uchroot_dso.so.0)
+          mv tools/gs-netcat gs-netcat_macOS
 
-#       - name: Upload gs-netcat to release
-#         uses: svenstaro/upload-release-action@v2
-#         with:
-#           repo_token: ${{ secrets.GITHUB_TOKEN }}
-#           file: gs-netcat_*
-#           overwrite: true
-#           file_glob: true
-#           tag: v${{ env.VER }}
+      - name: Upload gs-netcat to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: gs-netcat_*
+          overwrite: true
+          file_glob: true
+          tag: v${{ env.VER }}
 
-#       - name: Upload gsocket to release
-#         uses: svenstaro/upload-release-action@v2
-#         with:
-#           repo_token: ${{ secrets.GITHUB_TOKEN }}
-#           file: gsocket_*
-#           overwrite: true
-#           file_glob: true
-#           tag: v${{ env.VER }}
+      - name: Upload gsocket to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: gsocket_*
+          overwrite: true
+          file_glob: true
+          tag: v${{ env.VER }}
 
-#   FreeBSD:
-#     runs-on: macos-12
-#     steps:
-#       - uses: actions/checkout@v3
-#       - name: Compile
-#         uses: vmactions/freebsd-vm@v0
-#         with:
-#           usesh: true
-#           prepare: |
-#             pkg install -y curl automake autoconf gcc 
+  FreeBSD:
+    runs-on: macos-12
+    steps:
+      - uses: actions/checkout@v3
+      - name: Compile
+        uses: vmactions/freebsd-vm@v0
+        with:
+          usesh: true
+          prepare: |
+            pkg install -y curl automake autoconf gcc 
           
-#           run: |
-#             ./bootstrap
-#             ./configure --enable-static
-#             make all
-#             strip tools/gs-netcat
-#             (cd tools; tar cfz ../gsocket_freebsd-x86_x64.tar.gz gs-netcat gsocket blitz gs-mount gs-sftp gs_funcs gsocket_dso.so.0 gsocket_uchroot_dso.so.0)
-#             mv tools/gs-netcat gs-netcat_freebsd-x86_64
+          run: |
+            ./bootstrap
+            ./configure --enable-static
+            make all
+            strip tools/gs-netcat
+            (cd tools; tar cfz ../gsocket_freebsd-x86_x64.tar.gz gs-netcat gsocket blitz gs-mount gs-sftp gs_funcs gsocket_dso.so.0 gsocket_uchroot_dso.so.0)
+            mv tools/gs-netcat gs-netcat_freebsd-x86_64
 
-#       - name: Upload gs-netcat to release
-#         uses: svenstaro/upload-release-action@v2
-#         with:
-#           repo_token: ${{ secrets.GITHUB_TOKEN }}
-#           file: gs-netcat_*
-#           overwrite: true
-#           file_glob: true
-#           tag: v${{ env.VER }}
+      - name: Upload gs-netcat to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: gs-netcat_*
+          overwrite: true
+          file_glob: true
+          tag: v${{ env.VER }}
 
-#       - name: Upload gsocket to release
-#         uses: svenstaro/upload-release-action@v2
-#         with:
-#           repo_token: ${{ secrets.GITHUB_TOKEN }}
-#           file: gsocket_*
-#           overwrite: true
-#           file_glob: true
-#           tag: v${{ env.VER }}
+      - name: Upload gsocket to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: gsocket_*
+          overwrite: true
+          file_glob: true
+          tag: v${{ env.VER }}
 
-# # https://github.com/vmactions/openbsd-vm
-#   OpenBSD:
-#     runs-on: macos-12
-#     steps:
-#       - uses: actions/checkout@v3
-#       - name: Compile
-#         uses: vmactions/openbsd-vm@v0
-#         with:
-#           usesh: true
-#           prepare: |
-#             pkg_add curl
-#             pkg_add autoconf-2.71
-#             pkg_add automake-1.16.5
-#             pkg_add openssl-3.0.8
-#             pkg_info -Q tar
-#             pkg_add gcc-11.2.0p3
-#             pkg_add gmake
-#             pkg_add tar
-#             pkg_info
+# https://github.com/vmactions/openbsd-vm
+  OpenBSD:
+    runs-on: macos-12
+    steps:
+      - uses: actions/checkout@v3
+      - name: Compile
+        uses: vmactions/openbsd-vm@v0
+        with:
+          usesh: true
+          prepare: |
+            pkg_add curl
+            pkg_add autoconf-2.71
+            pkg_add automake-1.16.5
+            pkg_add openssl-3.0.8
+            pkg_info -Q tar
+            pkg_add gcc-11.2.0p3
+            pkg_add gmake
+            pkg_add tar
+            pkg_info
           
-#           run: |
-#             export AUTOCONF_VERSION=2.71
-#             export AUTOMAKE_VERSION=1.16
-#             ./bootstrap
-#             export CPPFLAGS="-I/usr/local/include/eopenssl30/"
-#             export LDFLAGS="-L/usr/local/lib/eopenssl30/"
-#             ./configure --enable-static
-#             make all
-#             strip tools/gs-netcat
-#             (cd tools; tar cfz ../gsocket_openbsd-x86_x64.tar.gz gs-netcat gsocket blitz gs-mount gs-sftp gs_funcs gsocket_dso.so.0 gsocket_uchroot_dso.so.0)
-#             mv tools/gs-netcat gs-netcat_openbsd-x86_64
+          run: |
+            export AUTOCONF_VERSION=2.71
+            export AUTOMAKE_VERSION=1.16
+            ./bootstrap
+            export CPPFLAGS="-I/usr/local/include/eopenssl30/"
+            export LDFLAGS="-L/usr/local/lib/eopenssl30/"
+            ./configure --enable-static
+            make all
+            strip tools/gs-netcat
+            (cd tools; tar cfz ../gsocket_openbsd-x86_x64.tar.gz gs-netcat gsocket blitz gs-mount gs-sftp gs_funcs gsocket_dso.so.0 gsocket_uchroot_dso.so.0)
+            mv tools/gs-netcat gs-netcat_openbsd-x86_64
 
-#       - name: Upload gs-netcat to release
-#         uses: svenstaro/upload-release-action@v2
-#         with:
-#           repo_token: ${{ secrets.GITHUB_TOKEN }}
-#           file: gs-netcat_*
-#           overwrite: true
-#           file_glob: true
-#           tag: v${{ env.VER }}
+      - name: Upload gs-netcat to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: gs-netcat_*
+          overwrite: true
+          file_glob: true
+          tag: v${{ env.VER }}
 
-#       - name: Upload gsocket to release
-#         uses: svenstaro/upload-release-action@v2
-#         with:
-#           repo_token: ${{ secrets.GITHUB_TOKEN }}
-#           file: gsocket_*
-#           overwrite: true
-#           file_glob: true
-#           tag: v${{ env.VER }}
+      - name: Upload gsocket to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: gsocket_*
+          overwrite: true
+          file_glob: true
+          tag: v${{ env.VER }}
 
   Linux-Cross-Compile:
     strategy:
