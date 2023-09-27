@@ -29,6 +29,7 @@ packages+=("mips64-alpine.tar.gz")
 packages+=("mipsel32-alpine.tar.gz")
 packages+=("x86_64-osx.tar.gz")
 packages+=("x86_64-freebsd.tar.gz")
+packages+=("x86_64-openbsd.tar.gz")
 
 [[ -t 1 ]] && {
 	CY="\033[1;33m" # yellow
