@@ -17,16 +17,15 @@ env:
   VER: 1.4.41
 
 jobs:
-  # Create release Tarballs
   BSD:
     strategy:
       matrix:
-          os: [freebsd, openbsd]
-          include:
-          - arch: freebsd
-            vm: vmactions/freebsd-vm@v0
-          - arch: openbsd
-            vm: vmactions/openbsd-vm@v0
+        os: [freebsd, openbsd]
+        include:
+        - arch: freebsd
+          vm: vmactions/freebsd-vm@v0
+        - arch: openbsd
+          vm: vmactions/openbsd-vm@v0
     runs-on: macos-12
     steps:
       - uses: actions/checkout@v3
