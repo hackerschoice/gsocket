@@ -13,7 +13,7 @@ permissions:
   contents: write
 
 env:
-  OPENSSL_VER: 1.1.1k
+  OPENSSL_VER: 1.1.1w
   VER: 1.4.41
 
 jobs:
