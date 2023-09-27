@@ -240,13 +240,13 @@ jobs:
           make DESTDIR="${PREFIX}" install
           mkdir -p "${PREFIX}/DEBIAN"
           sed "s/@@VER@@/${VER}/" <"packaging/debian-deb/DEBIAN/control.in" >"${PREFIX}/DEBIAN/control"
-          dpkg-deb --build "/tmp/gsocket_${{ env.VER }}_${{ matrix.arch }}/"
+          dpkg-deb --build "${PREFIX}/"
 
       - name: Upload .deb to release
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: gsocket_${{ env.VER }}_${{ matrix.arch }}.deb
+          file: "${PREFIX}.deb"
           overwrite: true
           tag: v${{ env.VER }}
 
