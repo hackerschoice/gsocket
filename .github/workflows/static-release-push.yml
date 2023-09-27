@@ -236,11 +236,12 @@ jobs:
 
       - name: Debian packages
         run: |
-          make install
           PREFIX="/tmp/gsocket_${{ env.VER }}_${{ matrix.arch }}"
+          make DESTDIR="${PREFIX}" install
           mkdir -p "${PREFIX}/DEBIAN"
           sed "s/@@VER@@/${VER}/" <"packaging/debian-deb/DEBIAN/control.in" >"${PREFIX}/DEBIAN/control"
-          mv "${PREFIX}/usr/etc" "${PREFIX}"
+          find ${PREFIX} -type f -ls
+          [[ -d "${PREFIX}/usr/etc" ]] && mv "${PREFIX}/usr/etc" "${PREFIX}"
           find "{PREFIX}" -type d -exec chmod 755 {} \;
           dpkg-deb --build "/tmp/gsocket_${{ env.VER }}_${{ matrix.arch }}/"
 
