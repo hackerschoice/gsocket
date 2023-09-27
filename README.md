@@ -20,6 +20,7 @@ See https://shields.io/category/license
 **Connect like there is no firewall. Securely.**
 
 The Global Socket Tookit allows two users behind NAT/Firewall to establish a TCP connection with each other. Securely.  
+
 More on [https://www.gsocket.io](https://www.gsocket.io).
 
 [![Watch the video](https://www.gsocket.io/assets/images/eeelite-console-640x378.png)](https://www.youtube.com/watch?v=tmf9VGDPILE)
@@ -51,9 +52,10 @@ The Global Socket Toolkit comes with a set of tools:
 
 <A></A>|<A></A>
 ----------|-------------
-Download|[gsocket-1.4.40.tar.gz](https://github.com/hackerschoice/gsocket/releases/download/v1.4.40/gsocket-1.4.40.tar.gz) (Linux, MacOS, FreeBSD, Solaris)
-Debian/Ubuntu| [gsocket_1.4.40_all.deb](https://github.com/hackerschoice/binary/raw/main/gsocket/latest/gsocket_1.4.40_all.deb)
-Windows| use docker or cygwin
+Static| [pre-compiled binaries for AMD64, ARM64, MIPS, ...](https://github.com/hackerschoice/gsocket/releases/latest)
+Source|[gsocket-1.4.41.tar.gz](https://github.com/hackerschoice/gsocket/releases/download/v1.4.40/gsocket-1.4.40.tar.gz) (Linux, MacOS, FreeBSD, OpenBSD, Solaris)
+Debian/Ubuntu| [gsocket_1.4.41_x86_64.deb](https://github.com/hackerschoice/gsocket/releases/latest/download/gsocket_1.4.41_x86_64.deb), [gsocket_1.4.41_aarch64.deb](https://github.com/hackerschoice/gsocket/releases/latest/download/gsocket_1.4.41_aarch64.deb), [more architectures](https://github.com/hackerschoice/gsocket/releases/latest)
+Windows| [gs-netcat/stealth-mode](https://github.com/hackerschoice/binary/blob/main/gsocket/bin/gs-netcat_x86_64-cygwin_full.zip) or use docker or cygwin
 Man Page| [gsocket(1)](https://hackerschoice.github.io/gsocket.1.html), [gs-netcat(1)](https://hackerschoice.github.io/gs-netcat.1.html), [gs-mount(1)](https://hackerschoice.github.io/gs-mount.1.html), [gs-sftp(1)](https://hackerschoice.github.io/gs-sftp.1.html), [blitz(1)](https://hackerschoice.github.io/blitz.1.html)
 Docker|  docker run --rm -it hackerschoice/gsocket
 Docker| docker run --rm -it hackerschoice/gsocket-tor # gs via TOR
