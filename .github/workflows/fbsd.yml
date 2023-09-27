@@ -26,7 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Compile
-        uses: vmactions/${{ matrix.os }}-vm@v0
+        uses: vmactions/freebsd-vm@v0
         with:
           usesh: true
           prepare: |
