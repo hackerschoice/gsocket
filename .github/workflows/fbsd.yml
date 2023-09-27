@@ -13,7 +13,7 @@ permissions:
   contents: write
 
 env:
-  OPENSSL_VER: 1.1.1w
+  OPENSSL_VER: 3.0.11
   VER: 1.4.41
 
 jobs:
@@ -25,7 +25,7 @@ jobs:
     runs-on: macos-12
     steps:
       - uses: actions/checkout@v3
-      - name: Compile
+      - name: Starting the VM
         uses: vmactions/freebsd-vm@v0
         with:
           usesh: true
