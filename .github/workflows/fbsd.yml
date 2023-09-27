@@ -28,10 +28,33 @@ jobs:
           usesh: true
           prepare: |
             pkg install -y curl automake autoconf gcc 
-          
+
+      - name: Cache SSL
+        id: cachessl
+        uses: actions/cache@v3
+        with:
+          path: /opt
+          key: FreeBSD-ssl
+
+      - name: Generate OpenSSL
+        if: steps.cachessl.outputs.cache-hit != 'true'
+        run: |
+          curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER:-1.1.1k}.tar.gz | tar -xzf - -C /tmp/
+          ( cd /tmp/openssl-${OPENSSL_VER:-1.1.1k} && \
+          ./Configure --prefix=/opt no-tests no-dso no-threads no-shared BSD-generic64 && \
+          make install_sw )
+          rm -rf rm -rf /tmp/openssl-${OPENSSL_VER:-1.1.1k} /opt/bin/openssl /opt/bin/c_rehash
+
+      - name: SaveCache
+        if: steps.cachessl.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v3
+        with:
+          path: /opt
+          key: FreeBSD-ssl
+
           run: |
             ./bootstrap
-            ./configure --enable-static
+            ./configure --enable-static --prefix=/opt
             make all
             tools/gs-netcat -h
             tools/gs-netcat -g
