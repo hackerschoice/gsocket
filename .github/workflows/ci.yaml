@@ -1,0 +1,35 @@
+name: CI
+
+
+on:
+  push:
+    branches:
+    - master
+  pull_request:
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Install dependencies
+      run: |
+        for TOOL in automake autoconf socat sshd sshfs; do
+          if ! command -v $TOOL >/dev/null; then
+            sudo apt update
+            sudo apt install -y \
+              automake autoconf openssh-server socat sshfs
+          fi
+        done
+    - name: Bootstrap
+      env:
+        CFLAGS: "-fdiagnostics-color=always"
+      run: |
+        ./bootstrap
+        ./configure --enable-tests
+    - name: Build
+      run: make -j$(nproc)
+    - name: Test
+      working-directory: tests
+      run: ./run_all_tests.sh || (cat *.log; exit 1)
