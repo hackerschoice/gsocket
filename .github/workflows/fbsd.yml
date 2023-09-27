@@ -1,4 +1,4 @@
-name: Static Post-Release Build
+name: fbsd test
 # on: [push]
 # on:
 #   release:
