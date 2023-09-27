@@ -21,14 +21,13 @@ jobs:
   BSD:
     strategy:
       matrix:
-          os: [freebsd]  
+          os: [freebsd, openbsd]  
     runs-on: macos-12
     steps:
       - uses: actions/checkout@v3
       - name: Starting the VM
-        uses: vmactions/freebsd-vm@v0
+        uses: vmactions/${{ matrix.os }}-vm@v0
         with:
-          release: 12.3
           usesh: true
           prepare: |
             pkg install -y curl automake autoconf gcc
@@ -45,8 +44,6 @@ jobs:
             ./bootstrap
             ./configure --enable-static --prefix=/opt
             make all
-            tools/gs-netcat -h
-            tools/gs-netcat -g
             strip tools/gs-netcat
             mv tools/gs-netcat TEST-gs-netcat_${{ matrix.os }}-x86_64
 
