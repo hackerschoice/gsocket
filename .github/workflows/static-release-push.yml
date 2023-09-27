@@ -199,7 +199,7 @@ jobs:
 
       - name: Add build dependencies
         run: |
-          apk add --update --no-cache --no-progress bash perl make curl upx tar
+          apk add --update --no-cache --no-progress bash perl make curl upx tar dpkg
 
       - name: Cache SSL
         id: cachessl
