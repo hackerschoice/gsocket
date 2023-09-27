@@ -31,17 +31,8 @@ jobs:
           release: 12.3
           usesh: true
           prepare: |
-            pkg install -y curl automake autoconf gcc opencryptoki
+            pkg install -y curl automake autoconf gcc
 
-        - name: Check Cache or OpenSSL
-          id: cachessl
-          uses: actions/cache@v3
-          with:
-            path: /opt
-            key: ${{ matrix.os }}-ssl
-
-        - name: Generate OpenSSL
-          if: steps.cachessl.outputs.cache-hit != 'true'
           run: |
             pkg search opencrypto
             id
@@ -51,16 +42,6 @@ jobs:
             ./Configure --prefix=/opt no-tests no-dso no-threads no-shared BSD-generic64 && \
             make install_sw )
             rm -rf rm -rf /tmp/openssl-${OPENSSL_VER:-1.1.1k} /opt/bin/openssl /opt/bin/c_rehash
-
-        - name: Save OpenSSL to Cache
-          if: steps.cachessl.outputs.cache-hit != 'true'
-          uses: actions/cache/save@v3
-          with:
-            path: /opt
-            key: ${{ matrix.os }}-ssl
-
-        - name: Compile gs-netcat
-          run: |
             ./bootstrap
             ./configure --enable-static --prefix=/opt
             make all
@@ -69,13 +50,13 @@ jobs:
             strip tools/gs-netcat
             mv tools/gs-netcat TEST-gs-netcat_${{ matrix.os }}-x86_64
 
-        - name: Upload gs-netcat to release
-          uses: svenstaro/upload-release-action@v2
-          with:
-            repo_token: ${{ secrets.GITHUB_TOKEN }}
-            file: TEST-gs-netcat_*
-            overwrite: true
-            file_glob: true
-            tag: v${{ env.VER }}
+      - name: Upload gs-netcat to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: TEST-gs-netcat_*
+          overwrite: true
+          file_glob: true
+          tag: v${{ env.VER }}
 
 
