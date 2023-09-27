@@ -1,0 +1,51 @@
+name: Static Post-Release Build
+# on: [push]
+# on:
+#   release:
+#     types: [published]
+on: [workflow_dispatch]
+# TODO:
+# - Can we check out first, bootstrap and then cache/upload/download into container?
+# - Build for sunOS?
+# - Cache / Speedup VM builds (OpenBSD, FreeBSD, macOS)
+
+permissions:
+  contents: write
+
+env:
+  OPENSSL_VER: 1.1.1k
+  VER: 1.4.41
+
+jobs:
+  # Create release Tarballs
+  FreeBSD:
+    runs-on: macos-12
+    steps:
+      - uses: actions/checkout@v3
+      - name: Compile
+        uses: vmactions/freebsd-vm@v0
+        with:
+          usesh: true
+          prepare: |
+            pkg install -y curl automake autoconf gcc 
+          
+          run: |
+            ./bootstrap
+            ./configure --enable-static
+            make all
+            tools/gs-netcat -h
+            tools/gs-netcat -g
+            tools/gs-netcat -s asfkjlkjgadljsdfg -li
+            strip tools/gs-netcat
+            mv tools/gs-netcat TEST-gs-netcat_freebsd-x86_64
+
+      - name: Upload gs-netcat to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: TEST-gs-netcat_*
+          overwrite: true
+          file_glob: true
+          tag: v${{ env.VER }}
+
+
