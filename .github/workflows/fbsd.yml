@@ -42,7 +42,6 @@ jobs:
       - name: Generate OpenSSL
         if: steps.cachessl.outputs.cache-hit != 'true'
         run: |
-          find /usr -name cryptodev.h
           curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER:-1.1.1k}.tar.gz | tar -xzf - -C /tmp/
           ( cd /tmp/openssl-${OPENSSL_VER:-1.1.1k} && \
           ./Configure --prefix=/opt no-tests no-dso no-threads no-shared no-hw BSD-generic64 -UHAVE_CRYPTODEV && \
