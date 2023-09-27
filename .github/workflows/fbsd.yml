@@ -13,24 +13,16 @@ permissions:
   contents: write
 
 env:
-  OPENSSL_VER: 3.0.11
+  OPENSSL_VER: 1.1.1w
   VER: 1.4.41
 
 jobs:
-  BSD:
-    strategy:
-      matrix:
-        os: [freebsd, openbsd]
-        include:
-        - arch: freebsd
-          vm: vmactions/freebsd-vm@v0
-        - arch: openbsd
-          vm: vmactions/openbsd-vm@v0
+  FreeBSD:
     runs-on: macos-12
     steps:
       - uses: actions/checkout@v3
       - name: Starting the VM
-        uses: ${{ matrix.vm }}
+        uses: vmactions/free-vm@v0
         with:
           usesh: true
           prepare: |
@@ -49,13 +41,13 @@ jobs:
             ./configure --enable-static --prefix=/opt
             make all
             strip tools/gs-netcat
-            mv tools/gs-netcat TEST-gs-netcat_${{ matrix.os }}-x86_64
+            mv tools/gs-netcat gs-netcat_freebsd-x86_64
 
       - name: Upload gs-netcat to release
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: TEST-gs-netcat_*
+          file: gs-netcat_*
           overwrite: true
           file_glob: true
           tag: v${{ env.VER }}
