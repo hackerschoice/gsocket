@@ -52,10 +52,10 @@ The Global Socket Toolkit comes with a set of tools:
 
 <A></A>|<A></A>
 ----------|-------------
-Static| [pre-compiled binaries for AMD64, ARM64, MIPS, ...](https://github.com/hackerschoice/gsocket/releases/latest)
-Source|[gsocket-1.4.41.tar.gz](https://github.com/hackerschoice/gsocket/releases/download/v1.4.40/gsocket-1.4.40.tar.gz) (Linux, MacOS, FreeBSD, OpenBSD, Solaris)
-Debian/Ubuntu| [gsocket_1.4.41_x86_64.deb](https://github.com/hackerschoice/gsocket/releases/latest/download/gsocket_1.4.41_x86_64.deb), [gsocket_1.4.41_aarch64.deb](https://github.com/hackerschoice/gsocket/releases/latest/download/gsocket_1.4.41_aarch64.deb), [more architectures](https://github.com/hackerschoice/gsocket/releases/latest)
-Windows| [gs-netcat/stealth-mode](https://github.com/hackerschoice/binary/blob/main/gsocket/bin/gs-netcat_x86_64-cygwin_full.zip) or use docker or cygwin
+Static| [pre-compiled static binaries for AMD64, ARM64, MIPS, ...](https://github.com/hackerschoice/gsocket/releases/latest)
+Source| [gsocket-1.4.41.tar.gz](https://github.com/hackerschoice/gsocket/releases/download/v1.4.40/gsocket-1.4.40.tar.gz) (Linux, MacOS, FreeBSD, OpenBSD, Solaris)
+.deb| [x86_64](https://github.com/hackerschoice/gsocket/releases/latest/download/gsocket_1.4.41_x86_64.deb), [aarch64](https://github.com/hackerschoice/gsocket/releases/latest/download/gsocket_1.4.41_aarch64.deb), ...[more architectures](https://github.com/hackerschoice/gsocket/releases/latest)
+Windows| [gs-netcat only](https://github.com/hackerschoice/binary/blob/main/gsocket/bin/gs-netcat_x86_64-cygwin_full.zip) or use docker or cygwin
 Man Page| [gsocket(1)](https://hackerschoice.github.io/gsocket.1.html), [gs-netcat(1)](https://hackerschoice.github.io/gs-netcat.1.html), [gs-mount(1)](https://hackerschoice.github.io/gs-mount.1.html), [gs-sftp(1)](https://hackerschoice.github.io/gs-sftp.1.html), [blitz(1)](https://hackerschoice.github.io/blitz.1.html)
 Docker|  docker run --rm -it hackerschoice/gsocket
 Docker| docker run --rm -it hackerschoice/gsocket-tor # gs via TOR
