@@ -21,7 +21,7 @@ jobs:
   FreeBSD:
     strategy:
       matrix:
-        os: [freebsd, openbsd]  
+          os: [freebsd, openbsd]  
     runs-on: macos-12
     steps:
       - uses: actions/checkout@v3
