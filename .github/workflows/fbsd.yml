@@ -28,11 +28,12 @@ jobs:
       - name: Starting the VM
         uses: vmactions/freebsd-vm@v0
         with:
+          release: 12.3
           usesh: true
           prepare: |
             pkg install -y curl automake autoconf gcc 
 
-      - name: Cache SSL
+      - name: Check Cache or OpenSSL
         id: cachessl
         uses: actions/cache@v3
         with:
@@ -42,27 +43,29 @@ jobs:
       - name: Generate OpenSSL
         if: steps.cachessl.outputs.cache-hit != 'true'
         run: |
+          uname -a
           curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER:-1.1.1k}.tar.gz | tar -xzf - -C /tmp/
           ( cd /tmp/openssl-${OPENSSL_VER:-1.1.1k} && \
           ./Configure --prefix=/opt no-tests no-dso no-threads no-shared no-hw BSD-generic64 -UHAVE_CRYPTODEV && \
           make install_sw )
           rm -rf rm -rf /tmp/openssl-${OPENSSL_VER:-1.1.1k} /opt/bin/openssl /opt/bin/c_rehash
 
-      - name: SaveCache
+      - name: Save OpenSSL to Cache
         if: steps.cachessl.outputs.cache-hit != 'true'
         uses: actions/cache/save@v3
         with:
           path: /opt
           key: ${{ matrix.os }}-ssl
 
-          run: |
-            ./bootstrap
-            ./configure --enable-static --prefix=/opt
-            make all
-            tools/gs-netcat -h
-            tools/gs-netcat -g
-            strip tools/gs-netcat
-            mv tools/gs-netcat TEST-gs-netcat_${{ matrix.os }}-x86_64
+      - name: Compile gs-netcat
+        run: |
+          ./bootstrap
+          ./configure --enable-static --prefix=/opt
+          make all
+          tools/gs-netcat -h
+          tools/gs-netcat -g
+          strip tools/gs-netcat
+          mv tools/gs-netcat TEST-gs-netcat_${{ matrix.os }}-x86_64
 
       - name: Upload gs-netcat to release
         uses: svenstaro/upload-release-action@v2
