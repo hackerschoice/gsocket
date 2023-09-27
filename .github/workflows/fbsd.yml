@@ -18,15 +18,19 @@ env:
 
 jobs:
   # Create release Tarballs
-  BSD:
-    strategy:
+  FreeBSD:
       matrix:
-          os: [freebsd, openbsd]  
+          os: [freebsd, openbsd]
+          include:
+          - arch: freebsd
+            vm: vmactions/freebsd-vm@v0
+          - arch: openbsd
+            vm: vmactions/openbsd-vm@v0
     runs-on: macos-12
     steps:
       - uses: actions/checkout@v3
       - name: Starting the VM
-        uses: vmactions/${{ matrix.os }}-vm@v0
+        uses: ${{ matrix.vm }}
         with:
           usesh: true
           prepare: |
