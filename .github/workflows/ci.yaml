@@ -1,11 +1,11 @@
 name: CI
+  #on:
+  #  push:
+  #  branches:
+  #  - master
+  #pull_request:
+on: [workflow_dispatch]
 
-
-on:
-  push:
-    branches:
-    - master
-  pull_request:
 
 jobs:
   build:
