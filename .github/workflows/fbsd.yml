@@ -18,7 +18,8 @@ env:
 
 jobs:
   # Create release Tarballs
-  FreeBSD:
+  BSD:
+    strategy:
       matrix:
           os: [freebsd, openbsd]
           include:
