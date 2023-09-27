@@ -240,8 +240,8 @@ jobs:
           make DESTDIR="${PREFIX}" install
           mkdir -p "${PREFIX}/DEBIAN"
           sed "s/@@VER@@/${VER}/" <"packaging/debian-deb/DEBIAN/control.in" >"${PREFIX}/DEBIAN/control"
-          find ${PREFIX} -type f
-          find "{PREFIX}" -type d -exec chmod 755 {} \;
+          find ${PREFIX} -type d -exec ls -ald {} \;
+          find "${PREFIX}" -type d -exec chmod 755 {} \;
           dpkg-deb --build "/tmp/gsocket_${{ env.VER }}_${{ matrix.arch }}/"
 
       - name: Upload .deb to release
