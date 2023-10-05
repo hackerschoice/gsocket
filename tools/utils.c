@@ -1024,7 +1024,7 @@ pty_cmd(const char *cmd, pid_t *pidptr, int *err)
 		if (GS_getenv("PS1") == NULL)
 		{
 			// Note: This only works for /bin/sh because bash resets this value.
-			char *str = "\\[\\033[36m\\]\\u\\[\\033[m\\]@\\[\\033[32m\\]\\h:\\[\\033[33;1m\\]\\w\\[\\033[m\\]# ";
+			char *str = "\\[\\033[36m\\]\\u\\[\\033[m\\]@\\[\\033[32m\\]\\h:\\[\\033[33;1m\\]\\w\\[\\033[m\\]$ ";
 			snprintf(buf, sizeof buf, "PS1=%s", str);
 			printf("=Hint           : PS1='%s'\n", str);
 			envp[envplen++] = strdup(buf);

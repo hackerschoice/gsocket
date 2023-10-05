@@ -7,7 +7,7 @@
 BASEDIR="$(cd "$(dirname "${0}")/../../" || exit; pwd)"
 source "${BASEDIR}/packaging/build_funcs"
 
-targets="x86_64-alpine i386-alpine aarch64-linux arm-linux x86_64-osx x86_64-cygwin i686-cygwin mips64-alpine mips32-alpine mipsel32-alpine x86_64-freebsd"
+targets="x86_64-alpine i386-alpine aarch64-linux arm-linux x86_64-osx x86_64-cygwin i686-cygwin mips64-alpine mips32-alpine mipsel32-alpine x86_64-freebsd x86_64-openbsd"
 # targets="x86_64-alpine x86_64-osx"
 
 PKG_DIR="gs-pkg"
