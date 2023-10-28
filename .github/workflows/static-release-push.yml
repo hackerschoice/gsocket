@@ -14,7 +14,7 @@ permissions:
 
 env:
   OPENSSL_VER: 1.1.1w
-  VER: 1.4.41
+  VER: 1.4.42dev
 
 jobs:
   # Create release Tarballs
