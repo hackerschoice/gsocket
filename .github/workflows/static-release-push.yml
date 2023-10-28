@@ -281,6 +281,8 @@ jobs:
           make DESTDIR="${PREFIX}" install
           mkdir -p "${PREFIX}/DEBIAN"
           sed "s/@@VER@@/${VER}/" <"packaging/debian-deb/DEBIAN/control.in" >"${PREFIX}/DEBIAN/control"
+          mv "${PREFIX}/opt" "${PREFIX}/usr"
+          mv "${PREFIX}/usr/etc" "${PREFIX}/etc"
           dpkg-deb --build "${PREFIX}/"
 
       - name: Upload .deb to release
