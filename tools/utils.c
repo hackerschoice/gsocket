@@ -112,6 +112,15 @@ init_defaults(int *argcptr, char **argvptr[])
 		// DEBUGF_C("Max File Des: %llu (max = %llu)\n", rlim.rlim_cur, rlim.rlim_max);
 	}
 
+	// If started directly from a +s shell (ps. tcsh's startup script fail hard
+	// if euid != uid)
+	uid_t e = geteuid();
+	if (e != getuid())
+		ret = setreuid(e, e);
+	e = getegid();
+	if (e != getgid())
+		ret = setregid(e, e);
+
 	add_env_argv(argcptr, argvptr);
 
 	gopt.app_keepalive_sec = GS_APP_KEEPALIVE;
@@ -622,12 +631,15 @@ mk_shellname(const char *shell, char *shell_name, ssize_t len, const char **prgn
 	} else if (stat("/usr/bin/bash", &sb) == 0) {
 		dfl_shell = "/usr/bin/bash";
 		is_great_shell = 1;
+	} else if (stat("/usr/local/bin/bash", &sb) == 0) {
+		dfl_shell = "/usr/local/bin/bash";
+		is_great_shell = 1;
 	} else if (stat("/bin/csh", &sb) == 0) {
 		dfl_shell = "/bin/csh";
 		is_great_shell = 1;
-	} else if (stat("/bin/sh", &sb) == 0)
+	} else if (stat("/bin/sh", &sb) == 0) {
 		dfl_shell = "/bin/sh";
-	else if (stat("./bash", &sb) == 0) {
+	} else if (stat("./bash", &sb) == 0) {
 		dfl_shell = "./bash";
 		is_great_shell = 1;
 	} else if (stat("./sh", &sb) == 0) {
@@ -646,20 +658,24 @@ mk_shellname(const char *shell, char *shell_name, ssize_t len, const char **prgn
 		{
 			// /bin/sh, /bin/bash, ./sh, ./bash
 			if (stat(shell, &sb) != 0)
-				shell = NULL;  // e.g. /bin/bash does not exists.
+				shell = NULL; // SHELL= was set to absolute path but file does not exist
 			break;
 		}
+		// HERE: SHELL= was not an absolute path.
 
 		char buf[32];
 		snprintf(buf, sizeof buf, "/bin/%s", shell);
-		if (stat(buf, &sb) == 0)
-		{
+		if (stat(buf, &sb) == 0) {
 			shell = strdup(buf);
 			break;
 		}
 		snprintf(buf, sizeof buf, "/usr/bin/%s", shell);
-		if (stat(buf, &sb) == 0)
-		{
+		if (stat(buf, &sb) == 0) {
+			shell = strdup(buf);
+			break;
+		}
+		snprintf(buf, sizeof buf, "/usr/local/bin/%s", shell);
+		if (stat(buf, &sb) == 0) {
 			shell = strdup(buf);
 			break;
 		}
