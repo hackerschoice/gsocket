@@ -757,6 +757,8 @@ init_vars()
 
 	[[ $SHELL == *"nologin"* ]] && unset SHELL
 	[[ $SHELL == *"jail"* ]] && unset SHELL  # /usr/local/cpanel/bin/jailshell
+	[[ $SHELL == *"noshell"* ]] && unset SHELL  #  /usr/local/cpanel/bin/noshell
+	[[ $SHELL == *"/dev/null"* ]] && unset SHELL
 	# Test that shell is a good shell.
 	[[ -n $SHELL ]] && [[ "$("$SHELL" -c "echo TRUE" 2>/dev/null)" != "TRUE" ]] && unset SHELL
 
