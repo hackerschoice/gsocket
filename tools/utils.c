@@ -277,7 +277,7 @@ init_vars(void)
 
 	gopt.is_stdin_a_tty = isatty(STDIN_FILENO);
 	// Interactive session but not a TTY: Assume user is piping commands into the shell.
-	if ((gopt.is_interactive && (!gopt.flags & GSC_FL_IS_SERVER) && !gopt.is_stdin_a_tty))
+	if ((gopt.is_interactive && !(gopt.flags & GSC_FL_IS_SERVER) && !gopt.is_stdin_a_tty))
 		gopt.is_stdin_ignore_eof = 1;
 
 	signal(SIGTERM, cb_sigterm);
