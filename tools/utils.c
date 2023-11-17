@@ -275,6 +275,11 @@ init_vars(void)
 
 	GS_LOG_V("=GS Address     : %s\n", GS_addr2hex(NULL, gopt.gs_addr.addr));
 
+	gopt.is_stdin_a_tty = isatty(STDIN_FILENO);
+	// Interactive session but not a TTY: Assume user is piping commands into the shell.
+	if ((gopt.is_interactive && (!gopt.flags & GSC_FL_IS_SERVER) && !gopt.is_stdin_a_tty))
+		gopt.is_stdin_ignore_eof = 1;
+
 	signal(SIGTERM, cb_sigterm);
 }
 
@@ -299,6 +304,9 @@ usage(const char *params)
 				break;
 			case 'r':
 				fprintf(stderr, "  -r           Receive-only. Terminate when no more data.\n");
+				break;
+			case 'I':
+				fprintf(stderr, "  -I           Ignore EOF on stdin.\n");
 				break;
 			case 's':
 				fprintf(stderr, "  -s <secret>  Secret (e.g. password).\n");
@@ -382,6 +390,9 @@ do_getopt(int argc, char *argv[])
 				break;
 			case 'r':
 				gopt.is_receive_only = 1;
+				break;
+			case 'I':
+				gopt.is_stdin_ignore_eof = 1;
 				break;
 			case 'i':
 				gopt.is_interactive = 1;
@@ -1039,12 +1050,12 @@ pty_cmd(const char *cmd, pid_t *pidptr, int *err)
 
 		// Sometimes the user has no home directory or there is no .bashrc.
 		// Do the best we can to set a nice prompt and give a hint to the user.
+		char *str = "\\[\\033[36m\\]\\u\\[\\033[m\\]@\\[\\033[32m\\]\\h:\\[\\033[33;1m\\]\\w\\[\\033[m\\]\\$ ";
+		snprintf(buf, sizeof buf, "PS1=%s", str);
+		printf("=Hint           : PS1='%s'\n", str);
 		if (GS_getenv("PS1") == NULL)
 		{
 			// Note: This only works for /bin/sh because bash resets this value.
-			char *str = "\\[\\033[36m\\]\\u\\[\\033[m\\]@\\[\\033[32m\\]\\h:\\[\\033[33;1m\\]\\w\\[\\033[m\\]$ ";
-			snprintf(buf, sizeof buf, "PS1=%s", str);
-			printf("=Hint           : PS1='%s'\n", str);
 			envp[envplen++] = strdup(buf);
 			envp[envplen++] = "PS2=> ";
 		}
@@ -1318,7 +1329,7 @@ fd_kernel_flush(int fd)
 void
 cmd_ping(struct _peer *p)
 {
-	DEBUGF("Sending PING\n");
+	DEBUGF("Sending PING (waiting-for-reply==%d)\n", p->is_want_ping);
 	if (p->is_want_ping != 0)
 		return;
 

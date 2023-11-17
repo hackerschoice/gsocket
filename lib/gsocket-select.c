@@ -252,10 +252,6 @@ GS_select(GS_SELECT_CTX *ctx)
 			ctx->emgr.is_return_to_caller = 0;
 			return 0;
 		}
-		// if (((ctx->hb_freq > 0) && GS_TV_TO_USEC(ctx->tv_now) > ctx->hb_next))
-		// {
-			// return 0;
-		// }
 	} /* while (1) */
 
 	ERREXIT("NOT REACHED\n");

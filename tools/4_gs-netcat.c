@@ -168,7 +168,7 @@ peer_free(GS_SELECT_CTX *ctx, struct _peer *p)
 
 	GS_SELECT_del_cb(ctx, fd);
 
-	DEBUGF_Y("free'ing peer on fd = %d\n", fd);
+	DEBUGF_Y("free'ing peer on fd = %d, size %zd\n", fd, sizeof *p);
 	memset(p, 0, sizeof *p);
 	XFREE(peers[fd]);
 	// FIXME: Eventually GS_shutdown() needs to return ECALLAGAIN and then do 2 things:
@@ -266,7 +266,7 @@ cbe_peer_timeout(void *ptr)
 	GS_LOG_TSP(p, "Idle Timeout.\n");
 	peer_free(p->gs->ctx->gselect_ctx, p);
 
-	return -1; // Event manager to free this event.
+	return -2; // Event manager done & already freed.
 }
 
 /* *********************** FD READ / WRITE ******************************/
@@ -402,7 +402,6 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 			}
 		} else {
 			p->wlen = read(fd, p->wbuf, p->w_max);
-			// DEBUGF("read(%d)=%zd\n", fd, p->wlen);
 		}
 
 		if (p->wlen == 0)
@@ -423,6 +422,9 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 			 * peer might still have data to send (which we can write).
 			 */
 			FD_CLR(fd, ctx->rfd);	// Stop reading from fd
+			if (gopt.is_stdin_ignore_eof)
+				return GS_SUCCESS; // Ignore EOF on STDIN
+
 			ret = GS_shutdown(gs);
 			/* Destroy peer if shutdown failed or we already received a EOF from peer */
 			if (ret != GS_ERR_FATAL)
@@ -599,12 +601,14 @@ cb_read_gs_error(GS_SELECT_CTX *ctx, struct _peer *p, ssize_t len)
 		p->is_received_gs_eof = 1;
 		if (gopt.is_receive_only)
 			peer_free(ctx, p);
-
-		// clients immediately exist if EOF from remote (-iC shell typing 'exit').
-		if ((gopt.is_interactive) && (!GS_is_server(p->gs)))
+		else if ((gopt.is_interactive) && (!GS_is_server(p->gs))) {
+			// clients immediately exits if EOF from remote (-iC shell typing 'exit').
 			peer_free(ctx, p);
+		}
 
-		shutdown(p->fd_out, SHUT_WR);
+		if (!p->is_app_forward)
+			shutdown(p->fd_out, SHUT_WR);
+		// For app (bash) do not close stdin yet. Might still have data. Idle timeout will catch this.
 	} else if (len < 0) { /* any ERROR (but EOF) */
 		DEBUGF_R("Fatal error=%zd in GS_read() (stdin-forward == %d)\n", len, p->is_stdin_forward);
 		GS_shutdown(p->gs);
@@ -1414,7 +1418,7 @@ my_usage(int code)
 "");
 #endif
 
-	usage("skrlSgvqwCTL");
+	usage("skrIlSgvqwCTL");
 #ifndef STEALTH
 	fprintf(stderr, ""
 "  -t           Check if peer is listening (do not connect)\n"

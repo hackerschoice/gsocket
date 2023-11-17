@@ -173,6 +173,8 @@ struct _gopt
 	int is_greetings;
 	int is_try_server;      // Check with GSRN is server is listening.
 	int gs_server_check_sec;
+	int is_stdin_a_tty;
+	int is_stdin_ignore_eof;
 	char *prg_name;         // argv[0]
 	uint64_t ts_ping_sent;  // TimeStamp ping sent
 	fd_set rfd, r;

@@ -129,7 +129,8 @@ GS_EVENT_execute(GS_EVENT_MGR *mgr)
 		if (ret != 0)
 		{
 			// CB wants this event to be deleted
-			GS_EVENT_del(event);
+			if (ret != -2)
+				GS_EVENT_del(event);
 			return 0;
 		}
 	} else {
