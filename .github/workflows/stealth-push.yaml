@@ -20,14 +20,12 @@ jobs:
           ./configure --prefix=/opt --enable-static  --enable-stealth
           make all
           strip tools/gs-netcat
-          mv tools/gs-netcat gs-netcat_mini-macOS-x86_64
+          mv tools/gs-netcat tools/gs-netcat_mini-macOS-x86_64
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
           name: gsnc
           path: tools/gs-netcat_mini-macOS-x86_64
-
-
 
 # # https://github.com/vmactions/openbsd-vm
   OpenBSD:
@@ -61,7 +59,7 @@ jobs:
             ./configure --enable-static --prefix=/opt --enable-stealth
             make all
             strip tools/gs-netcat
-            mv tools/gs-netcat gs-netcat_mini-${{ env.OS }}-x86_64
+            mv tools/gs-netcat tools/gs-netcat_mini-${{ env.OS }}-x86_64
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
@@ -90,7 +88,7 @@ jobs:
             ./configure --enable-static --prefix=/opt --enable-stealth
             make all
             strip tools/gs-netcat
-            mv tools/gs-netcat gs-netcat_mini-${{ env.OS }}-x86_64
+            mv tools/gs-netcat tools/gs-netcat_mini-${{ env.OS }}-x86_64
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
