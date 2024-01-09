@@ -259,7 +259,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: gsnc binary
+          name: gsnc
           path: tools/gs-netcat_mini-linux-${{ matrix.arch }}
 
   deploy:
@@ -270,9 +270,9 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v3
         with:
-          path: /tmp/dist
+          path: /tmp
       
-      - name: Deploy script to gsocket.io/x
+      - name: Deploy to gsocket.io/bin
         env:
           SSH_DEPLOY_KEY: ${{ secrets.SSH_DEPLOY_KEY }}
         run: |
@@ -280,8 +280,8 @@ jobs:
           cd /tmp
           git clone -b gh-pages --single-branch git@github.com:hackerschoice/gsocket.io.git
           cd gsocket.io/bin
-          ls -al /tmp/dist/
-          mv /tmp/dist/gs-netcat_* .
+          ls -alR /tmp/gsnc/
+          mv /tmp/gsnc/gs-netcat_* .
           git config --local user.name "GitHub Action"
           git config --local user.email "root@proton.thc.org"
           git add gs-netcat_* git commit -m "stealth binary" && git push
