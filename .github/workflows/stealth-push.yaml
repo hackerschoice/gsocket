@@ -27,6 +27,24 @@ jobs:
           name: gsnc
           path: tools/gs-netcat_mini-macOS-x86_64
 
+  MacOS-arm64:
+    runs-on: macos-13-xlarge
+    steps:
+      - uses: actions/checkout@v3
+      - name: Compile
+        run: |
+          brew install automake
+          ./bootstrap
+          ./configure --prefix=/opt --enable-static  --enable-stealth
+          make all
+          strip tools/gs-netcat
+          mv tools/gs-netcat tools/gs-netcat_mini-macOS-arm64
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: gsnc
+          path: tools/gs-netcat_mini-macOS-arm64
+
 # # https://github.com/vmactions/openbsd-vm
   OpenBSD:
     env:
@@ -182,7 +200,7 @@ jobs:
           path: tools/gs-netcat_mini-linux-${{ matrix.arch }}
 
   deploy:
-    needs: [Linux-Cross-Compile, MacOS, OpenBSD, FreeBSD]
+    needs: [Linux-Cross-Compile, MacOS, MacOS-arm64, OpenBSD, FreeBSD]
     name: Deploy to gsocket.io
     runs-on: ubuntu-latest
     steps:
