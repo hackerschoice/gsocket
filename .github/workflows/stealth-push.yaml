@@ -184,27 +184,27 @@ jobs:
           - arch: aarch64
             cc: aarch64-linux-musl
             ssl: linux-generic64
-          - arch: mips64
-            cc: mips64-linux-musl
-            ssl: linux64-mips64
-          - arch: mips32
-            cc: mips-linux-muslsf
-            ssl: linux-mips32
-          - arch: mipsel
-            cc: mipsel-linux-muslsf
-            ssl: linux-mips32
-          - arch: i686
-            cc: i686-linux-musl
-            ssl: linux-generic32
-          - arch: arm
-            cc: arm-linux-musleabi
-            ssl: linux-generic32
-          - arch: armv6
-            cc: armv6-linux-musleabi
-            ssl: linux-generic32
-          - arch: armv7l
-            cc: armv7l-linux-musleabihf
-            ssl: linux-generic32
+          # - arch: mips64
+          #   cc: mips64-linux-musl
+          #   ssl: linux64-mips64
+          # - arch: mips32
+          #   cc: mips-linux-muslsf
+          #   ssl: linux-mips32
+          # - arch: mipsel
+          #   cc: mipsel-linux-muslsf
+          #   ssl: linux-mips32
+          # - arch: i686
+          #   cc: i686-linux-musl
+          #   ssl: linux-generic32
+          # - arch: arm
+          #   cc: arm-linux-musleabi
+          #   ssl: linux-generic32
+          # - arch: armv6
+          #   cc: armv6-linux-musleabi
+          #   ssl: linux-generic32
+          # - arch: armv7l
+          #   cc: armv7l-linux-musleabihf
+          #   ssl: linux-generic32
     runs-on: ubuntu-latest
     container:
       image: muslcc/x86_64:${{ matrix.cc }}
@@ -257,7 +257,7 @@ jobs:
       #     tag: v${{ env.VER }}
 
       - name: Upload artifacts
-        uses: actions/upload-artifacts@v3
+        uses: actions/upload-artifact@v3
         with:
           name: gsnc binary
           path: tools/gs-netcat_mini-linux-${{ matrix.arch }}
