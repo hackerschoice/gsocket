@@ -28,7 +28,7 @@ jobs:
           path: tools/gs-netcat_mini-macOS-x86_64
 
   MacOS-arm64:
-    runs-on: macos-13-xlarge
+    runs-on: macos-latest-xlarge
     steps:
       - uses: actions/checkout@v2
       - name: Compile
