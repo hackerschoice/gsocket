@@ -636,15 +636,19 @@ init_vars()
 		elif [[ $OSTYPE == *darwin* ]]; then
 			if [[ "$arch" == "arm64" ]]; then
 				OSARCH="x86_64-osx" # M1
+				## FIXME: really needs M3 here..
+				SRC_PKG="gs-netcat_mini-macOS-x86_64"
 				# OSARCH="arm64-osx" # M1
 			else
 				OSARCH="x86_64-osx"
+				SRC_PKG="gs-netcat_mini-macOS-x86_64"
 			fi
 		elif [[ ${OSTYPE,,} == *freebsd* ]]; then
 				OSARCH="x86_64-freebsd"
-				# SRC_PKG="gs-netcat_mini-freebsd-x86_64"
+				SRC_PKG="gs-netcat_mini-freebsd-x86_64"
 		elif [[ ${OSTYPE,,} == *openbsd* ]]; then
 				OSARCH="x86_64-openbsd"
+				SRC_PKG="gs-netcat_mini-openbsd-x86_64"
 		elif [[ ${OSTYPE,,} == *cygwin* ]]; then
 			OSARCH="i686-cygwin"
 			[[ "$arch" == "x86_64" ]] && OSARCH="x86_64-cygwin"
