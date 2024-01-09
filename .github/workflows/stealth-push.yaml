@@ -196,7 +196,6 @@ jobs:
           - arch: i686
             cc: i686-linux-musl
             ssl: linux-generic32
-            upx: 1
           - arch: arm
             cc: arm-linux-musleabi
             ssl: linux-generic32
