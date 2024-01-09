@@ -1,0 +1,31 @@
+name: Auto Deploy to WWW
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - deploy/deploy.sh
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Deploy to WWW
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Deploy.sh https://gsocket.io
+      env:
+        SSH_DEPLOY_KEY: ${{ secrets.SSH_DEPLOY_KEY }}
+      run: |
+        cp deploy/deploy.sh /tmp/x
+        mkdir ~/.ssh && echo "$SSH_DEPLOY_KEY" >~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+        cd /tmp/
+        git clone -b gh-pages --single-branch git@github.com:hackerschoice/gsocket.io.git
+        cd gsocket.io
+        cmp -s /tmp/x x || {
+          cat /tmp/x >x
+          git config --local user.name "GitHub Action"
+          git config --local user.email "root@proton.thc.org"
+          git add x && git commit -m "deploy x" && git push
+        }
+  
