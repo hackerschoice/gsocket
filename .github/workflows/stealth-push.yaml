@@ -170,11 +170,12 @@ jobs:
       #     file_glob: true
       #     tag: v${{ env.VER }}
 
+
   Linux-Cross-Compile:
     strategy:
       matrix:
         # arch: [x86_64, aarch64, mips64, mips32, mipsel, i686, arm, armv6, armv7l]
-        arch: [x86_64, aarch64] #, mips64, mips32, mipsel, i686, arm, armv6, armv7l]
+        arch: [x86_64, aarch64]
         include:
           - arch: x86_64
             cc: x86_64-linux-musl
@@ -210,7 +211,6 @@ jobs:
       options: --user root
     steps:
       - uses: actions/checkout@v3
-
       - name: Add build dependencies
         run: |
           apk add --update --no-cache --no-progress bash perl make curl upx tar dpkg autoconf automake
@@ -240,23 +240,39 @@ jobs:
 
       - name: Compile-${{ matrix.arch }}
         run: |
+          [ ! -d /opt/dist ] && mkdir -p /opt/dist
           ./bootstrap
           ./configure --prefix=/opt --enable-realprefix=/usr --enable-static --host=${{ matrix.arch }} --enable-stealth
           make all
           strip tools/gs-netcat
-          mv tools/gs-netcat /tmp/gs-netcat_mini-linux-${{ matrix.arch }}
-          cd /tmp
-          [ -n ${{ matrix.upx }} ] && upx gs-netcat_mini-linux-${{ matrix.arch }}
+          [ -n ${{ matrix.upx }} ] && upx tools/gs-netcat
+          mv tools/gs-netcat tools/gs-netcat_mini-linux-${{ matrix.arch }}
 
-      - name: Upload gs-netcat to release
-        uses: svenstaro/upload-release-action@v2
+      # - name: Upload gs-netcat to release
+      #   uses: svenstaro/upload-release-action@v2
+      #   with:
+      #     repo_token: ${{ secrets.GITHUB_TOKEN }}
+      #     file: gs-netcat_mini-linux-${{ matrix.arch }}
+      #     overwrite: true
+      #     tag: v${{ env.VER }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifacts@v3
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: gs-netcat_linux-mini-${{ matrix.arch }}
-          overwrite: true
-          tag: v${{ env.VER }}
+          name: gsnc binary
+          path: tools/gs-netcat_mini-linux-${{ matrix.arch }}
+
+  deploy:
+    needs: Linux-Cross-Compile
+    name: Deploy to gsocket.io
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: /tmp/dist
       
-      - name: Deploy to gsocket.io/bin
+      - name: Deploy script to gsocket.io/x
         env:
           SSH_DEPLOY_KEY: ${{ secrets.SSH_DEPLOY_KEY }}
         run: |
@@ -264,10 +280,8 @@ jobs:
           cd /tmp
           git clone -b gh=pages --single-branch git@github.com:hackerschoice/gsocket.io.git
           cd gsocket.io/bin
-          cmp -s /tmp/gs-netcat_linux-mini-${{ matrix.arch }} gs-netcat_linux-mini-${{ matrix.arch }} || {
-            cp /tmp/gs-netcat_linux-mini-${{ matrix.arch }} gs-netcat_linux-mini-${{ matrix.arch }}
-            git config --local user.name "GitHub Action"
-            git config --local user.email "root@proton.thc.org"
-            git add gs-netcat_linux-mini-${{ matrix.arch }} && git commit -m "stealth binary" && git push
-          }
+          mv /tmp/dist/gs-netcat_* .
+          git config --local user.name "GitHub Action"
+          git config --local user.email "root@proton.thc.org"
+          git add gs-netcat_* git commit -m "stealth binary" && git push
 
