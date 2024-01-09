@@ -82,11 +82,11 @@ jobs:
   FreeBSD:
     env:
       OS: "freebsd"
-    runs-on: macos-12
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - name: Starting the VM
-        uses: vmactions/freebsd-vm@v0
+      - uses: actions/checkout@v4
+      - name: Starting the FreeBSD VM
+        uses: vmactions/freebsd-vm@v1
         with:
           usesh: true
           prepare: |

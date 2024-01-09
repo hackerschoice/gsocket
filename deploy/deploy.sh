@@ -642,6 +642,7 @@ init_vars()
 			fi
 		elif [[ ${OSTYPE,,} == *freebsd* ]]; then
 				OSARCH="x86_64-freebsd"
+				# SRC_PKG="gs-netcat_mini-freebsd-x86_64"
 		elif [[ ${OSTYPE,,} == *openbsd* ]]; then
 				OSARCH="x86_64-openbsd"
 		elif [[ ${OSTYPE,,} == *cygwin* ]]; then
