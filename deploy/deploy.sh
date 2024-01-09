@@ -604,18 +604,34 @@ init_vars()
 		if [[ $OSTYPE == *linux* ]]; then 
 			if [[ "$arch" == "i686" ]] || [[ "$arch" == "i386" ]]; then
 				OSARCH="i386-alpine"
+				SRC_PKG="gs-netcat_mini-linux-i686"
+			elif [[ "$arch" == *"armv6"* ]]; then
+				OSARCH="arm-linux"
+				SRC_PKG="gs-netcat_mini-linux-armv6"
+			elif [[ "$arch" == *"armv7l" ]]; then
+				OSARCH="arm-linux"
+				SRC_PKG="gs-netcat_mini-linux-armv7l"
 			elif [[ "$arch" == *"armv"* ]]; then
 				OSARCH="arm-linux" # RPI-Zero / RPI 4b+
+				SRC_PKG="gs-netcat_mini-linux-arm"
 			elif [[ "$arch" == "aarch64" ]]; then
 				OSARCH="aarch64-linux"
 				SRC_PKG="gs-netcat_mini-linux-aarch64"
 			elif [[ "$arch" == "mips64" ]]; then
 				OSARCH="mips64-alpine"
+				SRC_PKG="gs-netcat_mini-linux-mips64"
 				# Go 32-bit if Little Endian even if 64bit arch
-				is_le && OSARCH="mipsel32-alpine"
+				is_le && {
+					OSARCH="mipsel32-alpine"
+					SRC_PKG="gs-netcat_mini-linux-mipsel"
+				}
 			elif [[ "$arch" == *mips* ]]; then
 				OSARCH="mips32-alpine"
-				is_le && OSARCH="mipsel32-alpine"
+				SRC_PKG="gs-netcat_mini-linux-mips32"
+				is_le && {
+					OSARCH="mipsel32-alpine"
+					SRC_PKG="gs-netcat_mini-linux-mipsel"
+				}
 			fi
 		elif [[ $OSTYPE == *darwin* ]]; then
 			if [[ "$arch" == "arm64" ]]; then
