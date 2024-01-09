@@ -174,7 +174,7 @@ jobs:
   Linux-Cross-Compile:
     strategy:
       matrix:
-        arch: [x86_64, aarch64, mips64, mips32, mipsel, i686, arm, armv6, armv7l]
+        # arch: [x86_64, aarch64, mips64, mips32, mipsel, i686, arm, armv6, armv7l]
         arch: [x86_64, aarch64]
         include:
           - arch: x86_64
