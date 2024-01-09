@@ -174,7 +174,7 @@ jobs:
   Linux-Cross-Compile:
     strategy:
       matrix:
-        # arch: [x86_64, aarch64, mips64, mips32, mipsel, i686, arm, armv6, armv7l]
+        arch: [x86_64, aarch64, mips64, mips32, mipsel, i686, arm, armv6, armv7l]
         arch: [x86_64, aarch64]
         include:
           - arch: x86_64
@@ -244,17 +244,10 @@ jobs:
           ./bootstrap
           ./configure --prefix=/opt --enable-realprefix=/usr --enable-static --host=${{ matrix.arch }} --enable-stealth
           make all
+          echo "UPX='${{ matrix.upx }}'"
           strip tools/gs-netcat
           [ -n ${{ matrix.upx }} ] && upx tools/gs-netcat
           mv tools/gs-netcat tools/gs-netcat_mini-linux-${{ matrix.arch }}
-
-      # - name: Upload gs-netcat to release
-      #   uses: svenstaro/upload-release-action@v2
-      #   with:
-      #     repo_token: ${{ secrets.GITHUB_TOKEN }}
-      #     file: gs-netcat_mini-linux-${{ matrix.arch }}
-      #     overwrite: true
-      #     tag: v${{ env.VER }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
