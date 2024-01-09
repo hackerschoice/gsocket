@@ -246,7 +246,9 @@ jobs:
           make all
           echo "UPX='${{ matrix.upx }}'"
           strip tools/gs-netcat
-          [ -n ${{ matrix.upx }} ] && upx tools/gs-netcat
+          if [ "${{ matrix.upx }}" != '' ]; then
+            upx tools/gs-netcat
+          fi
           mv tools/gs-netcat tools/gs-netcat_mini-linux-${{ matrix.arch }}
 
       - name: Upload artifacts
