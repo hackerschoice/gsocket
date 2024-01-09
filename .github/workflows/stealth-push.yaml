@@ -1,0 +1,273 @@
+name: Static Stealth Build & www push
+on: [workflow_dispatch]
+
+permissions:
+  contents: write
+
+env:
+  OPENSSL_VER: 1.1.1w
+  VER: 1.4.42dev2
+
+jobs:
+#   MacOS:
+#     runs-on: macos-13
+#     steps:
+#       - uses: actions/checkout@v3
+
+#       - name: Compile
+#         run: |
+#           brew install automake
+#           ./bootstrap
+#           ./configure --prefix=/opt --enable-static
+#           make all
+#           strip tools/gs-netcat
+#           (cd tools; tar cfz ../gsocket_macOS.tar.gz gs-netcat gsocket blitz gs-mount gs-sftp gs_funcs gsocket_dso.so.0 gsocket_uchroot_dso.so.0)
+#           mv tools/gs-netcat gs-netcat_macOS
+
+#       - name: Upload gs-netcat to release
+#         uses: svenstaro/upload-release-action@v2
+#         with:
+#           repo_token: ${{ secrets.GITHUB_TOKEN }}
+#           file: gs-netcat_*
+#           overwrite: true
+#           file_glob: true
+#           tag: v${{ env.VER }}
+
+#       - name: Upload gsocket to release
+#         uses: svenstaro/upload-release-action@v2
+#         with:
+#           repo_token: ${{ secrets.GITHUB_TOKEN }}
+#           file: gsocket_*
+#           overwrite: true
+#           file_glob: true
+#           tag: v${{ env.VER }}
+
+
+#   FreeBSD:
+#     env:
+#       OS: "freebsd"
+#     runs-on: macos-12
+#     steps:
+#       - uses: actions/checkout@v3
+#       - name: Starting the VM
+#         uses: vmactions/freebsd-vm@v0
+#         with:
+#           usesh: true
+#           prepare: |
+#             pkg install -y curl automake autoconf gcc
+
+#           run: |
+#             curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER:-1.1.1w}.tar.gz | tar -xzf - -C /tmp/
+#             ( cd /tmp/openssl-${OPENSSL_VER:-1.1.1w} && \
+#             ./Configure --prefix=/opt no-tests no-dso no-threads no-shared BSD-generic64 && \
+#             make install_sw )
+#             rm -rf rm -rf /tmp/openssl-${OPENSSL_VER:-1.1.1w} /opt/bin/openssl /opt/bin/c_rehash
+#             ./bootstrap
+#             ./configure --enable-static --prefix=/opt
+#             make all
+#             strip tools/gs-netcat
+#             (cd tools; tar cfz ../gsocket_${{ env.OS }}-x86_x64.tar.gz gs-netcat gsocket blitz gs-mount gs-sftp gs_funcs gsocket_dso.so.0 gsocket_uchroot_dso.so.0)
+#             mv tools/gs-netcat gs-netcat_${{ env.OS }}-x86_64
+
+#       - name: Upload gs-netcat to release
+#         uses: svenstaro/upload-release-action@v2
+#         with:
+#           repo_token: ${{ secrets.GITHUB_TOKEN }}
+#           file: gs-netcat_*
+#           overwrite: true
+#           file_glob: true
+#           tag: v${{ env.VER }}
+
+#       - name: Upload gsocket to release
+#         uses: svenstaro/upload-release-action@v2
+#         with:
+#           repo_token: ${{ secrets.GITHUB_TOKEN }}
+#           file: gsocket_*
+#           overwrite: true
+#           file_glob: true
+#           tag: v${{ env.VER }}
+
+# # https://github.com/vmactions/openbsd-vm
+#   OpenBSD:
+#     env:
+#       OS: "openbsd"
+#     runs-on: macos-12
+#     steps:
+#       - uses: actions/checkout@v3
+#       - name: Starting the VM
+#         uses: vmactions/openbsd-vm@v0
+#         with:
+#           usesh: true
+#           prepare: |
+#             pkg_add curl
+#             pkg_add autoconf-2.71
+#             pkg_add automake-1.16.5
+#             pkg_add openssl-3.0.8
+#             pkg_info -Q tar
+#             pkg_add gcc-11.2.0p3
+#             pkg_add gmake
+#             pkg_add tar
+
+#           run: |
+#             curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER:-1.1.1w}.tar.gz | tar -xzf - -C /tmp/
+#             ( cd /tmp/openssl-${OPENSSL_VER:-1.1.1w} && \
+#             ./Configure --prefix=/opt no-tests no-dso no-threads no-shared BSD-generic64 && \
+#             make install_sw )
+#             rm -rf rm -rf /tmp/openssl-${OPENSSL_VER:-1.1.1w} /opt/bin/openssl /opt/bin/c_rehash
+#             export AUTOCONF_VERSION=2.71
+#             export AUTOMAKE_VERSION=1.16
+#             ./bootstrap
+#             ./configure --enable-static --prefix=/opt
+#             make all
+#             strip tools/gs-netcat
+#             (cd tools; tar cfz ../gsocket_${{ env.OS }}-x86_x64.tar.gz gs-netcat gsocket blitz gs-mount gs-sftp gs_funcs gsocket_dso.so.0 gsocket_uchroot_dso.so.0)
+#             mv tools/gs-netcat gs-netcat_${{ env.OS }}-x86_64
+
+    # runs-on: macos-12
+    # steps:
+    #   - uses: actions/checkout@v3
+    #   - name: Compile
+    #     uses: vmactions/openbsd-vm@v0
+    #     with:
+    #       usesh: true
+    #       prepare: |
+    #         pkg_add curl
+    #         pkg_add autoconf-2.71
+    #         pkg_add automake-1.16.5
+    #         pkg_add openssl-3.0.8
+    #         pkg_info -Q tar
+    #         pkg_add gcc-11.2.0p3
+    #         pkg_add gmake
+    #         pkg_add tar
+          
+    #       run: |
+    #         export AUTOCONF_VERSION=2.71
+    #         export AUTOMAKE_VERSION=1.16
+    #         ./bootstrap
+    #         export CPPFLAGS="-I/usr/local/include/eopenssl30/"
+    #         export LDFLAGS="-L/usr/local/lib/eopenssl30/"
+    #         ./configure --enable-static
+    #         make all
+    #         strip tools/gs-netcat
+    #         (cd tools; tar cfz ../gsocket_openbsd-x86_x64.tar.gz gs-netcat gsocket blitz gs-mount gs-sftp gs_funcs gsocket_dso.so.0 gsocket_uchroot_dso.so.0)
+    #         mv tools/gs-netcat gs-netcat_openbsd-x86_64
+
+      # - name: Upload gs-netcat to release
+      #   uses: svenstaro/upload-release-action@v2
+      #   with:
+      #     repo_token: ${{ secrets.GITHUB_TOKEN }}
+      #     file: gs-netcat_*
+      #     overwrite: true
+      #     file_glob: true
+      #     tag: v${{ env.VER }}
+
+      # - name: Upload gsocket to release
+      #   uses: svenstaro/upload-release-action@v2
+      #   with:
+      #     repo_token: ${{ secrets.GITHUB_TOKEN }}
+      #     file: gsocket_*
+      #     overwrite: true
+      #     file_glob: true
+      #     tag: v${{ env.VER }}
+
+  Linux-Cross-Compile:
+    strategy:
+      matrix:
+        # arch: [x86_64, aarch64, mips64, mips32, mipsel, i686, arm, armv6, armv7l]
+        arch: [x86_64, aarch64] #, mips64, mips32, mipsel, i686, arm, armv6, armv7l]
+        include:
+          - arch: x86_64
+            cc: x86_64-linux-musl
+            ssl: linux-generic64
+            upx: 1
+          - arch: aarch64
+            cc: aarch64-linux-musl
+            ssl: linux-generic64
+          - arch: mips64
+            cc: mips64-linux-musl
+            ssl: linux64-mips64
+          - arch: mips32
+            cc: mips-linux-muslsf
+            ssl: linux-mips32
+          - arch: mipsel
+            cc: mipsel-linux-muslsf
+            ssl: linux-mips32
+          - arch: i686
+            cc: i686-linux-musl
+            ssl: linux-generic32
+          - arch: arm
+            cc: arm-linux-musleabi
+            ssl: linux-generic32
+          - arch: armv6
+            cc: armv6-linux-musleabi
+            ssl: linux-generic32
+          - arch: armv7l
+            cc: armv7l-linux-musleabihf
+            ssl: linux-generic32
+    runs-on: ubuntu-latest
+    container:
+      image: muslcc/x86_64:${{ matrix.cc }}
+      options: --user root
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Add build dependencies
+        run: |
+          apk add --update --no-cache --no-progress bash perl make curl upx tar dpkg autoconf automake
+
+      - name: Cache SSL
+        id: cachessl
+        uses: actions/cache@v3
+        with:
+          path: /opt
+          key: ${{ matrix.arch }}-ssl
+
+      - name: Generate OpenSSL
+        if: steps.cachessl.outputs.cache-hit != 'true'
+        run: |
+          curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER:-1.1.1k}.tar.gz | tar -xzf - -C /tmp/
+          ( cd /tmp/openssl-${OPENSSL_VER:-1.1.1k} && \
+          ./Configure --prefix=/opt no-tests no-dso no-threads no-shared ${{ matrix.ssl }} && \
+          make install_sw )
+          rm -rf rm -rf /tmp/openssl-${OPENSSL_VER:-1.1.1k} /opt/bin/openssl /opt/bin/c_rehash
+
+      - name: SaveCache
+        if: steps.cachessl.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v3
+        with:
+          path: /opt
+          key: ${{ matrix.arch }}-ssl
+
+      - name: Compile-${{ matrix.arch }}
+        run: |
+          ./bootstrap
+          ./configure --prefix=/opt --enable-realprefix=/usr --enable-static --host=${{ matrix.arch }} --enable-stealth
+          make all
+          strip tools/gs-netcat
+          mv tools/gs-netcat /tmp/gs-netcat_mini-linux-${{ matrix.arch }}
+          cd /tmp
+          [ -n ${{ matrix.upx }} ] && upx gs-netcat_mini-linux-${{ matrix.arch }}
+
+      - name: Upload gs-netcat to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: gs-netcat_linux-mini-${{ matrix.arch }}
+          overwrite: true
+          tag: v${{ env.VER }}
+      
+      - name: Deploy to gsocket.io/bin
+        env:
+          SSH_DEPLOY_KEY: ${{ secrets.SSH_DEPLOY_KEY }}
+        run: |
+          mkdir ~/.ssh && echo "$SSH_DEPLOY_KEY" >~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          cd /tmp
+          git clone -b gh=pages --single-branch git@github.com:hackerschoice/gsocket.io.git
+          cd gsocket.io/bin
+          cmp -s /tmp/gs-netcat_linux-mini-${{ matrix.arch }} gs-netcat_linux-mini-${{ matrix.arch }} || {
+            cp /tmp/gs-netcat_linux-mini-${{ matrix.arch }} gs-netcat_linux-mini-${{ matrix.arch }}
+            git config --local user.name "GitHub Action"
+            git config --local user.email "root@proton.thc.org"
+            git add gs-netcat_linux-mini-${{ matrix.arch }} && git commit -m "stealth binary" && git push
+          }
+
