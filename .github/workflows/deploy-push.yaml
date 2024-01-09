@@ -1,4 +1,4 @@
-name: Auto Deploy to WWW
+name: Auto upload deploy.sh to gsocket.io/x
 on:
   push:
     branches:
