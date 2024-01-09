@@ -270,7 +270,7 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v3
         with:
-          name: /tmp/dist
+          path: /tmp/dist
       
       - name: Deploy script to gsocket.io/x
         env:
