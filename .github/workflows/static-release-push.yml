@@ -75,11 +75,11 @@ jobs:
   FreeBSD:
     env:
       OS: "freebsd"
-    runs-on: macos-12
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - name: Starting the VM
-        uses: vmactions/freebsd-vm@v0
+        uses: vmactions/freebsd-vm@v1
         with:
           usesh: true
           prepare: |
@@ -120,11 +120,11 @@ jobs:
   OpenBSD:
     env:
       OS: "openbsd"
-    runs-on: macos-12
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - name: Starting the VM
-        uses: vmactions/openbsd-vm@v0
+        uses: vmactions/openbsd-vm@v1
         with:
           usesh: true
           prepare: |
@@ -152,11 +152,11 @@ jobs:
             (cd tools; tar cfz ../gsocket_${{ env.OS }}-x86_x64.tar.gz gs-netcat gsocket blitz gs-mount gs-sftp gs_funcs gsocket_dso.so.0 gsocket_uchroot_dso.so.0)
             mv tools/gs-netcat gs-netcat_${{ env.OS }}-x86_64
 
-    # runs-on: macos-12
+    # runs-on: ubuntu-latest
     # steps:
     #   - uses: actions/checkout@v3
     #   - name: Compile
-    #     uses: vmactions/openbsd-vm@v0
+    #     uses: vmactions/openbsd-vm@v1
     #     with:
     #       usesh: true
     #       prepare: |
