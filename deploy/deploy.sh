@@ -809,12 +809,13 @@ init_vars()
 	if [[ "$DL_CMD" == "$DL_CRL" ]]; then
 		IS_USE_CURL=1
 		### Note: need -S (--show-errors) to process 404 for CF webhooks.
-		DL=("curl" "-fsSL" "--connect-timeout" "7" "-m30" "--retry" "3")
+		DL=("curl" "-fsSL" "--connect-timeout" "7" "-m900" "--retry" "3")
 		[[ -n $GS_DEBUG ]] && DL+=("-v")
 		[[ -n $GS_NOCERTCHECK ]] && DL+=("-k")
 	elif [[ "$DL_CMD" == "$DL_WGT" ]]; then
 		IS_USE_WGET=1
 		### Note: Dont use -q: Need errors to process 404 for CF webhooks
+		# Read-timeout is 900 seconds by default.
 		DL=("wget" "-O-" "--connect-timeout=7" "--dns-timeout=7")
 		[[ -n $GS_NOCERTCHECK ]] && DL+=("--no-check-certificate")
 
