@@ -204,6 +204,11 @@ peer_free(GS_SELECT_CTX *ctx, struct _peer *p)
 static void
 cb_atexit(void)
 {
+	if (gopt.flags & GSC_FL_IS_NO_ATEXIT)
+		return;
+	if (gopt.flags & GSC_FL_IS_SERVER)
+		return;
+
 	CONSOLE_reset();
 	stty_reset();
 	if (gopt.is_try_server == 1)
@@ -401,7 +406,9 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 				p->wlen += 2;
 			}
 		} else {
+			errno = 0;
 			p->wlen = read(fd, p->wbuf, p->w_max);
+			// DEBUGF_W("read(%d, %zd)=%ld, %s\n", fd, p->w_max, p->wlen, strerror(errno));
 		}
 
 		if (p->wlen == 0)
@@ -1109,7 +1116,7 @@ cb_listen(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	GS *gs_new;
 	int err;
 
-	DEBUGF("cb_listen %p, fd = %d, arg = %p, type = %d\n", ctx, fd, arg, val);
+	DEBUGF("cb_listen fd = %d, arg = %p, type = %d, errno=%s\n", fd, arg, val, strerror(errno));
 	gs_new = GS_accept(gs, &err);
 	if (gs_new == NULL)
 	{
@@ -1420,6 +1427,10 @@ my_usage(int code)
 
 	usage("skrIlSgvqwCTL");
 #ifndef STEALTH
+	if (gopt.flags & GSC_FL_IS_STEALTH)
+		fprintf(stderr, ""
+"  -H <min>     Only check GSRN every min minutes. Sleep otherwise. [needs -l]\n");
+
 	fprintf(stderr, ""
 "  -t           Check if peer is listening (do not connect)\n"
 "  -S           Act as a SOCKS server [needs -l]\n"
@@ -1473,10 +1484,11 @@ my_getopt(int argc, char *argv[])
 	int c;
 	FILE *fp;
 	char *ptr;
+	int callhome_min = 0;
 
 	do_getopt(argc, argv);	/* from utils.c */
 	optind = 1;	/* Start from beginning */
-	while ((c = getopt(argc, argv, UTILS_GETOPT_STR "thmWuP:")) != -1)
+	while ((c = getopt(argc, argv, UTILS_GETOPT_STR "thmWuP:H:")) != -1)
 	{
 		switch (c)
 		{
@@ -1522,6 +1534,9 @@ my_getopt(int argc, char *argv[])
 				fprintf(fp, "%u", getpid());
 				fclose(fp);
 				break;
+			case 'H':
+				callhome_min = atoi(optarg);
+				break;
 			case 'h':
 				my_usage(0); // On -h exit with 0 [it's a valid command]
 			default:
@@ -1531,6 +1546,28 @@ my_getopt(int argc, char *argv[])
 				my_usage(EX_UNKNWNCMD);
 		}
 	}
+
+	ptr = GS_getenv("GSOCKET_CALLHOME");
+	if (ptr == NULL)
+		ptr = GS_getenv("GS_CALLHOME");
+	if (ptr != 0)
+			callhome_min = atoi(ptr);
+
+	if ((callhome_min > 0) && (callhome_min < 10)) {
+		if (!gopt.is_quiet)
+			fprintf(stderr, "GS_CALLHOME=%d set to low. Increased to 10 minutes.\n", callhome_min);
+		callhome_min = 10;
+	}
+	gopt.homecall_sec = callhome_min;
+#ifndef DEBUG
+	gopt.homecall_sec *= 60; // Convert sec to minutes.
+#endif
+
+	if ((gopt.cmd != NULL) && (!(gopt.flags & GSC_FL_IS_SERVER)))
+		ERREXIT("Option -e can only be used when -l is used.\n");
+
+	if ((gopt.homecall_sec > 0) && (!(gopt.flags & GSC_FL_IS_SERVER)))
+		ERREXIT("Option -H can only be used when -l is used.\n");
 
 	if (GS_getenv("_GSOCKET_WANT_AUTHCOOKIE") != NULL)
 		gopt.is_want_authcookie = 1;
@@ -1559,7 +1596,6 @@ my_getopt(int argc, char *argv[])
 		if (gopt.is_logfile == 0)
 			gopt.is_quiet = 1;
 	}
-
 
 	if (gopt.flags & GSC_FL_IS_SERVER)
 	{
@@ -1790,9 +1826,8 @@ int
 main(int argc, char *argv[])
 {
 	// my_test();
-	init_defaults(&argc, &argv);
+	init_defaults(argc, &argc, &argv);
 	my_getopt(argc, argv);
-
 
 	if (gopt.flags & GSC_FL_IS_SERVER)
 		do_server();

@@ -40,13 +40,11 @@ static struct _gs_log_info gs_log_info;
 #define GS_SOCKS_DFL_PORT			9050
 #define GS_GS_HTON_DELAY			(12 * 60 * 60)	// every 12h 
 #ifdef DEBUG_SELECT
-//# define GS_DEFAULT_PING_INTERVAL	(30)
 # define GS_RECONNECT_DELAY			(3)
 #else
-//# define GS_DEFAULT_PING_INTERVAL	(2*60)	// Every 2 minutes
 # define GS_RECONNECT_DELAY			(15)	// connect() not more than every 15s
-# define GS_WARN_SLOWCONNECT        (4)     // Warn about slow connect() after 4 seconds...
 #endif
+#define GS_WARN_SLOWCONNECT        (4)     // Warn about slow connect() after 4 seconds...
 
 // #define STRESSTEST	1
 #ifdef STRESSTEST
@@ -614,6 +612,7 @@ gs_pkt_listen_write(GS *gsocket, struct gs_sox *sox)
 	glisten.type = GS_PKT_TYPE_LISTEN;
 	glisten.version_major = GS_PKT_PROTO_VERSION_MAJOR;
 	glisten.version_minor = GS_PKT_PROTO_VERSION_MINOR;
+	glisten.flags = gsocket->ctx->flags_proto;
 
 	memcpy(glisten.token, gsocket->token, sizeof glisten.token);
 	memcpy(glisten.addr, gsocket->gs_addr.addr, MIN(sizeof glisten.addr, GS_ADDR_SIZE));
@@ -671,6 +670,7 @@ gs_pkt_accept_write(GS *gsocket, struct gs_sox *sox)
 static int
 gs_pkt_dispatch(GS *gsocket, struct gs_sox *sox)
 {
+	gsocket->status_code = 0;
 	if (sox->rbuf[0] == GS_PKT_TYPE_PONG)
 	{
 		DEBUGF("PONG received\n");
@@ -691,6 +691,11 @@ gs_pkt_dispatch(GS *gsocket, struct gs_sox *sox)
 			gsocket->flags |= GS_FL_IS_SERVER;
 		}
 		sox->state = GS_STATE_APP_CONNECTED;
+		gsocket->ctx->gsocket_app_connected_count++;
+		// Delete GSRN Disconnect timer (if there is any).
+		// (Stay connected while APP is active)
+		GS_EVENT_del(&gsocket->ctx->ev_gsrn_disconnect);
+
 		gettimeofday(gsocket->ctx->tv_now, NULL);
 		memcpy(&gsocket->tv_connected, gsocket->ctx->tv_now, sizeof gsocket->tv_connected);
 		/* Indicate to caller that a new GS connection has started */
@@ -722,6 +727,9 @@ gs_pkt_dispatch(GS *gsocket, struct gs_sox *sox)
 				case GS_STATUS_CODE_SERVER_OK:
 					err_str = "Server is listening.";
 					break;
+				case GS_STATUS_CODE_CONNDENIED:
+					err_str = "Connection denied by GSRN."; 
+					break;
 				default:
 					err_str = "UNKNOWN";
 					GS_sanitize_logmsg(msg, sizeof msg, (char *)status->msg, sizeof status->msg);
@@ -732,6 +740,12 @@ gs_pkt_dispatch(GS *gsocket, struct gs_sox *sox)
 			gsocket->status_code = status->code;
 			gs_set_errorf(gsocket, "%s (%u)", err_str, status->code);
 			return GS_ERR_FATAL;
+		}
+		if (status->err_type == GS_STATUS_TYPE_WARN) {
+			if (status->code == GS_STATUS_CODE_BUDDY_NOK) {
+				gsocket->status_code = status->code;
+				return GS_ERROR; // Soft Error. Reconnect.
+			}
 		}
 		return GS_SUCCESS;
 	}
@@ -1075,6 +1089,130 @@ gs_net_try_reconnect_by_sox(GS *gs, struct gs_sox *sox)
 	gs_net_reconnect_by_sox(gs, sox);
 }
 
+// CALLHOME: Called every GS_CALLHOME= minutes to connect GSNR
+// and check for a buddy.
+static int
+cbe_gsrn_reconnect(void *ptr) {
+	GS_EVENT *event = (GS_EVENT *)ptr;
+	GS *gs = (GS *)event->data;
+	if (gs == NULL) {
+		DEBUGF_R("Event RECONNECT without event->data (empty gsocket?)\n");
+		return -1;
+	}
+	GS_CTX *ctx = gs->ctx;
+	struct gs_sox *sox = gs->net.sox;
+
+	// Return if there are already _any_ TCP connections to GSRN
+	// This can be APP or GS_listen() or connect() that have not yet
+	// completed.
+	if (gs->net.n_sox > 0)
+		return 0;
+
+	DEBUGF_R("Connecting to GSRN again\n");
+
+	gs->net.n_sox = 1;
+	gs_net_init_by_sox(ctx, sox);
+	gs_net_try_reconnect_by_sox(gs, sox);
+
+	return 0;
+}
+
+static int
+cbe_gsrn_disconnect(void *ptr) {
+	GS_EVENT *event = (GS_EVENT *)ptr;
+	GS *gs = (GS *)event->data;
+	if (gs == NULL)
+		return -1;
+	GS_CTX *ctx = gs->ctx;
+	// ctx->flags &= ~GS_CTX_FL_CALLHOME_LINGER;
+
+	if (ctx->gsocket_app_connected_count > 0) {
+		DEBUGF_R("%p %d SHoutl not happen! - event should have been deleted while there are active APP's\n", ptr, ctx->gsocket_app_connected_count);
+		return -1; // Remove EVENT.
+	}
+
+	if (gs->fd >= 0) {
+		DEBUGF_R("Can not happen. Listening server shouild not use ->fd but net subsystem\n");
+		return -1; // Remove EVENT.
+	}
+
+	// int i;
+	// for (i = 0; i < gs->net.n_sox; i++) {
+	// 	struct gs_sox *sox = &gs->net.sox[i];
+	// 	if (sox->fd < 0)
+	// 		continue;
+	// 	if (sox->state != GS_STATE_APP_CONNECTED)
+	// 		continue;
+	// 	DEBUGF_R("i=%d, sate=%d, fd=%d, SHOULD NOT HAPPEN - gsrn_disconnect timer while buddy is connected.\n", i, sox->state, sox->fd);
+	// 	return -1;
+	// }
+
+	DEBUGF_R("EVENT-GSRN-DISCONNECT\n");
+	gs_close(gs /* Listening socket only */);
+
+	return -1; // Remove EVENT.
+}
+
+static int
+gs_process_buddy_nok(GS *gs) {
+	GS_CTX *ctx = gs->ctx;
+
+	// If there is an active connetion then ignore NOK.
+	if (ctx->gsocket_app_connected_count > 0) {
+		DEBUGF_R("Still %d buddys connected. Ignoring NOK\n", ctx->gsocket_app_connected_count);
+		return GS_SUCCESS;
+	}
+
+	// Not our first time since boot that we check for a buddy:
+	// Disconnect immediately on a NOK.
+	if (ctx->callhome_count > 0) {
+		DEBUGF_R("Disconnecting from GSRN\n");
+		gs_close(gs);
+		return GS_ERROR;
+	}
+
+	int sec = GSRN_CALLHOME_FIRST_LINGER_SEC;
+	ctx->callhome_count++;
+	// ctx->flags |= GS_CTX_FL_CALLHOME_LINGER;
+	DEBUGF_R("Closing GSRN conn in %d seconds unless buddy connects.\n", sec);
+	// Can happen that first connect already had a buddy waiting
+	// (e.g NOK never triggered). 
+	GS_EVENT_del(&ctx->ev_gsrn_disconnect);
+	GS_EVENT_add_by_ts(&ctx->gselect_ctx->emgr, &ctx->ev_gsrn_disconnect, 0, GS_SEC_TO_USEC(sec), cbe_gsrn_disconnect, ctx->gs_listen, 0);
+
+	return GS_SUCCESS;
+}
+
+// return GS_ERROR to continue.
+// return GS_SUCCESS to finish calling for loop [connect() success]
+// return all else will exit. (FATAL)
+static int
+gs_process_error(int err, GS *gsocket, struct gs_sox *sox) {
+	if (err == GS_SUCCESS)
+		return GS_SUCCESS;
+
+	if (err != GS_ERROR)
+		return GS_ERR_FATAL;
+
+	// HERE: GS_ERROR
+	if ((gsocket->ctx->callhome_interval_sec > 0) && (gsocket->status_code == GS_STATUS_CODE_BUDDY_NOK)) {
+		return gs_process_buddy_nok(gsocket);
+	}
+	/* GS_connect() shall not auto reconnect */
+	if (!(gsocket->flags & GS_FL_AUTO_RECONNECT))
+		return GS_ERR_FATAL;
+
+	/* HERE: Auto-Reconnect. Failed in connect() or write(). */
+	DEBUGF_M("GS-NET error. Re-connecting...\n");
+	GS_LOG_ERR("%s GSRN %s. Re-connecting to %s:%d...\n", GS_logtime(), strerror(errno), int_ntoa(gsocket->net.addr), ntohs(gsocket->net.port));
+	close(sox->fd);
+	GS_EVENT_del(&gsocket->ctx->ev_gsrn_disconnect);
+	gs_net_init_by_sox(gsocket->ctx, sox);
+	gs_net_try_reconnect_by_sox(gsocket, sox);
+
+	return GS_ERROR; // will continue FOR loop
+}
+
 /*
  * Only called while APP is not yet connected and managing GS-packets.
  * Check "fd_accepted" for any fd that can be passed to app-layer.
@@ -1094,6 +1232,7 @@ gs_process(GS *gsocket)
 		return GS_ERR_FATAL;	// NOT REACHED
 	}
 
+	DEBUGF("checking up to n_sox=%d\n", gsocket->net.n_sox);
 	for (i = 0; i < gsocket->net.n_sox; i++)
 	{
 		struct gs_sox *sox = &gsocket->net.sox[i];
@@ -1110,21 +1249,13 @@ gs_process(GS *gsocket)
 		if (FD_ISSET(sox->fd, gsocket->ctx->r) || FD_ISSET(sox->fd, gsocket->ctx->w))
 		{
 			ret = gs_process_by_sox(gsocket, sox);
-			DEBUGF("gs_process_by_sox() = %d\n", ret);
-			if (ret == GS_ERROR)
-			{
-				/* GS_connect() shall not auto reconnect */
-				if (!(gsocket->flags & GS_FL_AUTO_RECONNECT))
-					return GS_ERR_FATAL;
+			DEBUGF("gs_process_by_sox() = %d, status_code=%d\n", ret, gsocket->status_code);
 
-				/* HERE: Auto-Reconnect. Failed in connect() or write(). */
-				DEBUGF_M("GS-NET error. Re-connecting...\n");
-				GS_LOG_ERR("%s GSRN %s. Re-connecting to %s:%d...\n", GS_logtime(), strerror(errno), int_ntoa(gsocket->net.addr), ntohs(gsocket->net.port));
-				close(sox->fd);
-				gs_net_init_by_sox(gsocket->ctx, sox);
-				gs_net_try_reconnect_by_sox(gsocket, sox);
+			ret = gs_process_error(ret, gsocket, sox);
+
+			if (ret == GS_ERROR)
 				continue;
-			}
+
 			if (ret != GS_SUCCESS)
 			{
 				DEBUGF_R("FATAL errno(%d) = %s\n", errno, strerror(errno));
@@ -1149,7 +1280,6 @@ gs_process(GS *gsocket)
 			 */
 			// break;
 		}
-
 	}
 
 	DEBUGF("Returning 0 (fd_accepted == %d)\n", gsocket->net.fd_accepted);
@@ -1520,12 +1650,20 @@ GS_connect(GS *gsocket)
  * Return 0 on success. This can not fail.
  */
 int
-GS_listen(GS *gsocket, int backlog)
+GS_listen(GS *gsocket, int backlog_NOT_USED)
 {
+	GS_CTX *ctx = gsocket->ctx;
 	DEBUG_SETID(gsocket);
 
+	ctx->gs_listen = gsocket;
+
+	// SELECT_CTX set for gs-netcat.
+	if ((ctx->gselect_ctx != NULL) && (ctx->callhome_interval_sec > 0)) {
+		GS_EVENT_add_by_ts(&ctx->gselect_ctx->emgr, &ctx->ev_gsrn_reconnect, 0, GS_SEC_TO_USEC(ctx->callhome_interval_sec), cbe_gsrn_reconnect, ctx->gs_listen, 0);
+	}
+
 	gsocket->flags |= GS_FL_AUTO_RECONNECT;
-	gs_net_init(gsocket, backlog);
+	gs_net_init(gsocket, 1);
 	gs_net_connect(gsocket);
 
 	return 0;
@@ -1575,7 +1713,7 @@ gs_accept(GS *gsocket, GS *new_gs)
 {
 	int ret;
 
-	DEBUGF("Called gs_accept(%p, %p)\n", gsocket, new_gs);
+	DEBUGF("Called gs_accept(%p, %p) [fd_accepted=%d]\n", gsocket, new_gs, gsocket->net.fd_accepted);
 	ret = gs_process(gsocket);
 	if (ret != 0)
 	{
@@ -1586,7 +1724,7 @@ gs_accept(GS *gsocket, GS *new_gs)
 	/* Check if there is a new gs-connection waiting */
 	if (gsocket->net.fd_accepted >= 0)
 	{
-		DEBUGF("New GS Connection accepted (fd = %d, n_sox = %d)\n", gsocket->net.fd_accepted, gsocket->net.n_sox);
+		DEBUGF_W("New GS Connection accepted (fd = %d, n_sox = %d)\n", gsocket->net.fd_accepted, gsocket->net.n_sox);
 
 		ret = gs_net_disengage_tcp_fd(gsocket, new_gs);
 		XASSERT(ret == 0, "ret = %d\n", ret);
@@ -1600,6 +1738,7 @@ gs_accept(GS *gsocket, GS *new_gs)
 		return GS_SUCCESS;
 	}
 
+	DEBUGF_W("Returning ERR_WAITING..\n");
 	return GS_ERR_WAITING; /* Waiting for socket */
 }
 
@@ -1711,6 +1850,7 @@ static void
 gs_close(GS *gsocket)
 {
 	XASSERT(gsocket != NULL, "gsocket == NULL\n");
+	GS_CTX *ctx = gsocket->ctx;
 
 	if (gsocket->fd >= 0)
 	{
@@ -1724,13 +1864,21 @@ gs_close(GS *gsocket)
 		// sleep(1);
 		// gsocket->fd = -1;
 		XCLOSE(gsocket->fd);
+		gsocket->ctx->gsocket_app_connected_count--;
+		if (gsocket->ctx->gsocket_app_connected_count <= 0) {
+			gsocket->ctx->gsocket_app_connected_count = 0; // This was the last active.
+			int sec = GSRN_CALLHOME_LINGER_SEC;
+			DEBUGF_R("Disconnecting in %d sec unless buddy connects\n", sec);
+			GS_EVENT_add_by_ts(&ctx->gselect_ctx->emgr, &ctx->ev_gsrn_disconnect, 0, GS_SEC_TO_USEC(sec), cbe_gsrn_disconnect, ctx->gs_listen, 0);
+		}
+
 		return;
 	}
 
 	/* HERE: There are GS-Net connections that need to be cleaned.*/
 	int i;
 	/* Close all TCP connections to GS-Network */
-	DEBUGF_B("Closing %d GSN connections\n", gsocket->net.n_sox);
+	DEBUGF_B("Closing %d GSRN connections\n", gsocket->net.n_sox);
 	for (i = 0; i < gsocket->net.n_sox; i++)
 	{
 		struct gs_sox * sox = &gsocket->net.sox[i];
@@ -1757,10 +1905,10 @@ GS_close(GS *gsocket)
 {
 	DEBUG_SETID(gsocket);
 
-	DEBUGF_B("read: %"PRId64", written: %"PRId64"\n", gsocket->bytes_read, gsocket->bytes_written);
 	if (gsocket == NULL)
 		return -2;
 
+	DEBUGF_B("read: %"PRId64", written: %"PRId64"\n", gsocket->bytes_read, gsocket->bytes_written);
 #ifdef WITH_GSOCKET_SSL
 	if (gsocket->flags & GSC_FL_USE_SRP)
 	{
@@ -1877,7 +2025,6 @@ GS_strerror(GS *gsocket)
 int
 GS_CTX_setsockopt(GS_CTX *ctx, int level, const void *opt_value, size_t opt_len)
 {
-
 	// PROTO-FLAGS
 	if (level == GS_OPT_SOCKWAIT)
 	{
@@ -1888,8 +2035,8 @@ GS_CTX_setsockopt(GS_CTX *ctx, int level, const void *opt_value, size_t opt_len)
 		ctx->flags_proto &= ~GS_FL_PROTO_FAST_CONNECT; // Disable fast-connect
 	} else if (level == GS_OPT_LOW_LATENCY) {
 		ctx->flags_proto |= GS_FL_PROTO_LOW_LATENCY;
-	} else if (level == GS_OPT_SERVER_CHECK) {
-		ctx->flags_proto |= GS_FL_PROTO_SERVER_CHECK;
+	} else if (level == GS_OPT_BUDDY_CHECK) {
+		ctx->flags_proto |= GS_FL_PROTO_BUDDY_CHECK;
 	} 
 
 	// GS-FLAGS 
@@ -1906,6 +2053,12 @@ GS_CTX_setsockopt(GS_CTX *ctx, int level, const void *opt_value, size_t opt_len)
 		/* Set if not already set from GS_CTX_init() */
 		if (ctx->socks_ip == 0)
 			ctx->socks_ip = inet_addr(GS_SOCKS_DFL_IP);
+	} else if (level == GS_OPT_CALLHOME_SEC) {
+		ctx->callhome_interval_sec = *((int *)opt_value);
+		struct timeval tv;
+		gettimeofday(&tv, NULL); // ctx->tv_now not yet initialized
+		ctx->callhome_creation_ts = GS_TV_TO_USEC(&tv);
+		ctx->flags_proto |= GS_FL_PROTO_BUDDY_CHECK;
 	} else
 		return -1; // UNKNOWN option
 

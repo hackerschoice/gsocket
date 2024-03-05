@@ -175,6 +175,8 @@ struct _gopt
 	int gs_server_check_sec;
 	int is_stdin_a_tty;
 	int is_stdin_ignore_eof;
+	int argc;
+	int homecall_sec;          // Only connect every alive_sec to GSRN
 	char *prg_name;         // argv[0]
 	uint64_t ts_ping_sent;  // TimeStamp ping sent
 	fd_set rfd, r;
@@ -198,6 +200,13 @@ struct _gopt
 	int n_users;             // Number of unique logged in users (from utmp)
 	int app_keepalive_sec;   // Interval for app-keepalive
 };
+
+#define GSC_FL_IS_SERVER		(0x01)
+#define GSC_FL_IS_STEALTH       (0x02)
+#define GSC_FL_IS_NO_ATEXIT     (0x04)
+#define GSC_FL_OPT_IS_G         (0x08)
+#define GSC_FL_OPT_IS_SEC       (0x10)
+// #define GSC_FL_OPT_IS_SOX       (0x20)
 
 #ifdef DEBUG
 #define GS_APP_KEEPALIVE        10 // If no activty send app-layer ping (-i needed)
@@ -235,7 +244,6 @@ struct _socks
 #define GSNC_STATE_CONNECTING               (0x04)
 #define GSNC_STATE_CONNECTED                (0x05)
 
-
 /* gs-netcat peers */
 struct _peer
 {
@@ -271,9 +279,6 @@ struct _peer
 	GS_BUF udp_buf;         // UDP un-stacker (for -u)
 	GS_EVENT event_peer_timeout;
 };
-
-#define GSC_FL_IS_SERVER		(0x01)
-
 
 extern struct _gopt gopt; // declared in utils.c
 
