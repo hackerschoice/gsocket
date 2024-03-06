@@ -137,7 +137,7 @@ struct _gopt
 	FILE *log_fp;
 	FILE *err_fp;
 	int verbosity;        // verbosity level (-v => 1, -vv => 2 etc)
-	int flags;
+	uint32_t flags;
 	int verboselevel;
 	const char *sec_str;
 	const char *sec_file;
@@ -152,10 +152,7 @@ struct _gopt
 	int is_use_tor;
 	int is_socks_server;	/* -S flag */
 	int is_multi_peer;		/* -p / -S / -d [client & server] */
-	int is_daemon;
-	int is_watchdog;        // Never die but die if stdin closes
 	int is_logfile;
-	int is_quiet;
 	int is_win_resized;     // window size changed (signal)
 	int is_console;		    // console is being displayed
 	int is_pong_pending;    // Server: Answer to PING waiting to be send
@@ -201,12 +198,15 @@ struct _gopt
 	int app_keepalive_sec;   // Interval for app-keepalive
 };
 
-#define GSC_FL_IS_SERVER		(0x01)
+#define GSC_FL_IS_SERVER	(0x01)
 #define GSC_FL_IS_STEALTH       (0x02)
 #define GSC_FL_IS_NO_ATEXIT     (0x04)
-#define GSC_FL_OPT_IS_G         (0x08)
-#define GSC_FL_OPT_IS_SEC       (0x10)
-// #define GSC_FL_OPT_IS_SOX       (0x20)
+#define GSC_FL_OPT_G            (0x08)
+#define GSC_FL_OPT_SEC          (0x10)
+#define GSC_FL_OPT_TOR          (0x20)
+#define GSC_FL_OPT_DAEMON       (0x40)
+#define GSC_FL_OPT_WATCHDOG     (0x80)
+#define GSC_FL_OPT_QUIET        (0x100)
 
 #ifdef DEBUG
 #define GS_APP_KEEPALIVE        10 // If no activty send app-layer ping (-i needed)

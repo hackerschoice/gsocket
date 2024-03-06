@@ -214,7 +214,7 @@ cb_atexit(void)
 	if (gopt.is_try_server == 1)
 		printf("%s %s NET-ERROR\n", gopt.sec_str, GS_addr2hex(NULL, gopt.gs_addr.addr));
 
-	if ((gopt.is_interactive) && (!gopt.is_quiet))
+	if ((gopt.is_interactive) && (!(gopt.flags & GSC_FL_OPT_QUIET)))
 		fprintf(stderr, "\n[Bye]\n"); // stdout must be clean for pipe & gs-netcat
 }
 
@@ -1471,7 +1471,7 @@ cb_sigalarm(int sig)
 static void
 try_quiet(void)
 {
-	if (gopt.is_quiet == 0)
+	if (!(gopt.flags & GSC_FL_OPT_QUIET))
 		return;
 
 	gopt.log_fp = NULL;
@@ -1495,17 +1495,17 @@ my_getopt(int argc, char *argv[])
 			case 't':
 				gopt.is_try_server = 1;
 				gopt.gs_server_check_sec = 15;
-				gopt.is_quiet = 1; // Implied
+				gopt.flags |= GSC_FL_OPT_QUIET; // Implied
 				break;
 			case 'm':
 				printf("%s", man_str);
 				exit(0);
 				break;	// NOT REACHED
 			case 'D':
-				gopt.is_daemon = 1;
+				gopt.flags |= GSC_FL_OPT_DAEMON;
 				break;
 			case 'W':
-				gopt.is_watchdog = 1;
+				gopt.flags |= GSC_FL_OPT_WATCHDOG;
 				break;
 			case 'p':
 				gopt.port = htons(atoi(optarg));
@@ -1551,7 +1551,7 @@ my_getopt(int argc, char *argv[])
 		callhome_min = atoi(ptr);
 
 	if ((callhome_min > 0) && (callhome_min < 10)) {
-		if (!gopt.is_quiet)
+		if (!(gopt.flags & GSC_FL_OPT_QUIET))
 			fprintf(stderr, "GS_CALLHOME=%d set to low. Increased to 10 minutes.\n", callhome_min);
 		callhome_min = 10;
 	}
@@ -1594,10 +1594,10 @@ my_getopt(int argc, char *argv[])
 		signal(SIGALRM, cb_sigalarm);
 	}
 
-	if (gopt.is_daemon)
+	if (gopt.flags & GSC_FL_OPT_DAEMON)
 	{
 		if (gopt.is_logfile == 0)
-			gopt.is_quiet = 1;
+			gopt.flags |= GSC_FL_OPT_QUIET;
 	}
 
 	if (gopt.flags & GSC_FL_IS_SERVER)
@@ -1636,7 +1636,7 @@ my_getopt(int argc, char *argv[])
 		}
 	}
 
-	if ((gopt.is_internal) && (gopt.is_watchdog))
+	if ((gopt.is_internal) && (gopt.flags & GSC_FL_OPT_WATCHDOG))
 	{
 		try_quiet();
 		gs_watchdog();
@@ -1650,7 +1650,7 @@ my_getopt(int argc, char *argv[])
 	 * Do this before gs_create() so that any error in DNS resolving
 	 * is re-tried by watchdog.
 	 */
-	if (gopt.is_daemon)
+	if (gopt.flags & GSC_FL_OPT_DAEMON)
 	{
 		if (gopt.token_str == NULL)
 		{

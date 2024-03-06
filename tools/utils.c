@@ -203,14 +203,14 @@ init_vars(void)
 {
 	GS_library_init(gopt.err_fp, /* Debug Output */ gopt.err_fp, cb_gs_log);
 
-	if (gopt.flags & GSC_FL_OPT_IS_G) {
+	if (gopt.flags & GSC_FL_OPT_G) {
 		gopt.sec_str = GS_gen_secret();
 		if (gopt.argc <= 2) {
 			printf("%s\n", gopt.sec_str);
 			fflush(stdout);
 			exit(0);
 		}
-		if ((gopt.flags & GSC_FL_OPT_IS_SEC) && (!gopt.is_quiet))
+		if ((gopt.flags & GSC_FL_OPT_SEC) && (!(gopt.flags & GSC_FL_OPT_QUIET)))
 			fprintf(stderr, "WARNING: -s is ignored because -g is specified.\n");
 	}
 
@@ -275,7 +275,7 @@ init_vars(void)
 	if (gs_args != NULL)
 		GS_LOG_V("=Extra arguments: '%s'\n", gs_args);
 
-	if ((gopt.is_quiet) && (!is_sec_by_prompt))
+	if ((gopt.flags & GSC_FL_OPT_QUIET) && (!is_sec_by_prompt))
 		gopt.is_greetings = 0;
 
 	gopt.sec_str = GS_user_secret(&gopt.gs_ctx, gopt.sec_file, gopt.sec_str);
@@ -398,10 +398,11 @@ do_getopt(int argc, char *argv[])
 				gopt.err_fp = gopt.log_fp;
 				break;
 			case 'T':
+				gopt.flags |= GSC_FL_OPT_TOR;
 				gopt.is_use_tor = 1;
 				break;
 			case 'q':
-				gopt.is_quiet = 1;
+				gopt.flagds |= GSC_FL_OPT_QUIET;
 				break;
 			case 'r':
 				gopt.is_receive_only = 1;
@@ -433,7 +434,7 @@ do_getopt(int argc, char *argv[])
 				gopt.flags |= GSC_FL_IS_SERVER;
 				break;
 			case 's':
-				gopt.flags |= GSC_FL_OPT_IS_SEC;
+				gopt.flags |= GSC_FL_OPT_SEC;
 				gopt.sec_str = strdup(optarg);
 				zap_arg(optarg);
 				break;
@@ -442,7 +443,7 @@ do_getopt(int argc, char *argv[])
 				zap_arg(optarg);
 				break;
 			case 'g':		/* Generate a secret */
-				gopt.flags |= GSC_FL_OPT_IS_G;
+				gopt.flags |= GSC_FL_OPT_G;
 				break;
 #ifndef STEALTH
 			case '3':
