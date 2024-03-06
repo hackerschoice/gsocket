@@ -220,12 +220,10 @@ GS_CTX_init(GS_CTX *ctx, fd_set *rfd, fd_set *wfd, fd_set *r, fd_set *w, struct 
 
 	ctx->socks_port = htons(GS_SOCKS_DFL_PORT);
 	char *ptr;
-	ptr = GS_getenv("GSOCKET_SOCKS_IP");
-	if ((ptr != NULL) && (*ptr != '\0'))
+	if ((ptr = GS_GETENV2("SOCKS_IP")) != NULL)
 		ctx->socks_ip = inet_addr(ptr);
 
-	ptr = GS_getenv("GSOCKET_SOCKS_PORT");
-	if (ptr != NULL)
+	if ((ptr = GS_GETENV2("SOCKS_PORT")) != NULL)
 		ctx->socks_port = htons(atoi(ptr));
 
 	ctx->gs_flags |= GSC_FL_USE_SRP;		// Encryption by default
@@ -341,31 +339,21 @@ GS_new(GS_CTX *ctx, GS_ADDR *addr)
 	gsocket->ctx = ctx;
 	gsocket->fd = -1;
 
-	uint16_t gs_port;
-	ptr = GS_getenv("GSOCKET_PORT");
-	if (ptr == NULL)
-		ptr = GS_getenv("GS_PORT");
-	if (ptr != NULL)
+	uint16_t gs_port = htons(GSRN_DEFAULT_PORT);
+	if ((ptr = GS_GETENV2("PORT")) != NULL)
 		gs_port = htons(atoi(ptr));
-	else
-		gs_port = htons(GSRN_DEFAULT_PORT);
 
 	ctx->gs_port = gs_port;	// Socks5 needs to know
 	gsocket->net.port = gs_port;
 
-	ptr = GS_getenv("GSOCKET_IP");
-	if (ptr != NULL)
-	{
+	if ((ptr = GS_GETENV2("IP")) != NULL)
 		gsocket->net.addr = inet_addr(ptr);
-	}
 
 	if ((ctx->socks_ip != 0) || (gsocket->net.addr == 0))
 	{
 		/* HERE: Use Socks5 -or- GSOCKET_IP not available */
 		char buf[256];
-		hostname = GS_getenv("GSOCKET_HOST");
-		if (hostname == NULL)
-			hostname = GS_getenv("GS_HOST");
+		hostname = GS_GETENV2("HOST");
 		if (hostname == NULL)
 		{
 			if (gsocket->net.addr != 0)
@@ -377,12 +365,7 @@ GS_new(GS_CTX *ctx, GS_ADDR *addr)
 				uint8_t hostname_id;
 				hostname_id = GS_ADDR_get_hostname_id(addr->addr);
 				// Connect to [a-z].gsocket.io depending on GS-address
-				const char *domain;
-				domain = GS_getenv("GSOCKET_DOMAIN");
-				if (domain == NULL)
-					domain = GS_NET_DEFAULT_HOST;
-
-				snprintf(buf, sizeof buf, "%c.%s", 'a' + hostname_id, domain);
+				snprintf(buf, sizeof buf, "%c.%s", 'a' + hostname_id, GS_GETENV2("DOMAIN")?:GS_NET_DEFAULT_HOST);
 				hostname = buf;
 			}
 		}

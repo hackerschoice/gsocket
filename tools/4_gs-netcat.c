@@ -1547,11 +1547,8 @@ my_getopt(int argc, char *argv[])
 		}
 	}
 
-	ptr = GS_getenv("GSOCKET_CALLHOME");
-	if (ptr == NULL)
-		ptr = GS_getenv("GS_CALLHOME");
-	if (ptr != 0)
-			callhome_min = atoi(ptr);
+	if ((ptr = GS_GETENV2("CALLHOME")) != NULL)
+		callhome_min = atoi(ptr);
 
 	if ((callhome_min > 0) && (callhome_min < 10)) {
 		if (!gopt.is_quiet)

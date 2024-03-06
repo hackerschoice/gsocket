@@ -14,9 +14,8 @@ extern char **environ;
 static void
 add_env_argv(int *argcptr, char **argvptr[])
 {
-	char *str_orig = GS_getenv("GSOCKET_ARGS");
-	if (str_orig == NULL)
-		str_orig = GS_getenv("GS_ARGS");
+
+	char *str_orig = GS_GETENV2("ARGS");
 	char *str = NULL;
 	char *next;
 	char **newargv = NULL;
@@ -128,7 +127,7 @@ init_defaults(int argc, int *argcptr, char **argvptr[])
 
 	gopt.app_keepalive_sec = GS_APP_KEEPALIVE;
 
-	if (GS_getenv("GS_STEALTH") != NULL)
+	if (GS_GETENV2("STEALTH") != NULL)
 		gopt.flags |= GSC_FL_IS_STEALTH;
 }
 
@@ -251,12 +250,10 @@ init_vars(void)
 	// Prevent startup messages if gs-netcat is started as sub-system from
 	// gs-sftp or gs-mount
 	gopt.is_greetings = 1;
-	if (GS_getenv("GSOCKET_NO_GREETINGS") != NULL)
+	if (GS_GETENV2("NO_GREETINGS") != NULL)
 		gopt.is_greetings = 0;
 
-	char *gs_args = GS_getenv("GSOCKET_ARGS");
-	if (gs_args == NULL)
-		gs_args = GS_getenv("GS_ARGS");
+	char *gs_args = GS_GETENV2("ARGS");
 
 	int is_sec_by_prompt = 0;
 	if ((gopt.sec_file == NULL) && (gopt.sec_str == NULL))
