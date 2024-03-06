@@ -59,6 +59,15 @@
 // Wait before allowing same listening address with different auth-token
 #define GSRN_TOKEN_LINGER_SEC       (7)
 
+// Disconnect from GSRN LINGER_SEC after last buddy disconnects.
+#define GSRN_CALLHOME_LINGER_SEC           (10)
+#ifdef DEBUG
+# define GSRN_CALLHOME_FIRST_LINGER_SEC    (12)
+#else
+// First connection after startup: Linger a bit longer.
+# define GSRN_CALLHOME_FIRST_LINGER_SEC    (120)
+#endif
+
 /* ###########################
  * ### PROTOCOL DEFINITION ###
  * ###########################
@@ -139,7 +148,7 @@ struct _gs_connect
 // Inform GSRN that client prefers low-latency (interactive shell)
 #define GS_FL_PROTO_LOW_LATENCY         (0x08)
 // Check if GS-ADDRESS is listening/waiting
-#define GS_FL_PROTO_SERVER_CHECK        (0x10)
+#define GS_FL_PROTO_BUDDY_CHECK         (0x10)
 
 /*
  * all2GN
@@ -201,6 +210,7 @@ struct _gs_status
 #define GS_STATUS_CODE_PROTOERROR   (0x05)  // Protocol error
 #define GS_STATUS_CODE_SERVER_OK    (0x06)  // Server exists
 #define GS_STATUS_CODE_NETERROR     (0x07)  // TCP error (likely ECONNREFUSED)
+#define GS_STATUS_CODE_BUDDY_NOK    (0x08)  // Buddy _not_ available.
 #define GS_STATUS_CODE_NEEDUPDATE   (0x2A)  // oct=42; Needs updating of client.
 
 /*
@@ -251,7 +261,8 @@ typedef struct
 	fd_set *wfd;
 	fd_set *r;
 	fd_set *w;
-	int gsocket_success_count;	/* Successfull connection counter */
+	int gsocket_success_count;	// Success connection counter
+	int gsocket_app_connected_count;
 	GS_SELECT_CTX *gselect_ctx;
 	/* Listening CB and values */
 	gselect_cb_t func_listen;
@@ -269,6 +280,13 @@ typedef struct
 	uint32_t socks_ip;			// NBO. Use Socks5
 	uint16_t socks_port;		// Socks5
 	uint16_t gs_port;			// GSOCKET_PORT
+
+	uint32_t callhome_interval_sec;
+	uint64_t callhome_creation_ts;
+	int callhome_count;         // Number of attempted CH calls.
+	GS_EVENT ev_gsrn_disconnect;
+	GS_EVENT ev_gsrn_reconnect;
+	void *gs_listen;
 } GS_CTX;
 
 
@@ -313,7 +331,7 @@ struct gs_net
 	int fd_accepted;
 	char *hostname;			/* xxx.gs.thc.org */
 	uint64_t tv_connect;			// Time connect() was called
-	uint64_t tv_gs_hton;			// Time hostname was resolved last.			
+	uint64_t tv_gs_hton;			// Time hostname was resolved last.
 	int is_connect_error_warned;	// 'Re-connecting...' warning issued
 };
 
@@ -434,7 +452,8 @@ int GS_CTX_setsockopt(GS_CTX *ctx, int level, const void *opt_value, size_t opt_
 #define GS_OPT_USE_SOCKS			(0x20)	// Use TOR (Socks5)
 #define GS_OPT_SINGLESHOT			(0x40)
 #define GS_OPT_LOW_LATENCY          (0x80)
-#define GS_OPT_SERVER_CHECK         (0x100)
+#define GS_OPT_BUDDY_CHECK          (0x100)
+#define GS_OPT_CALLHOME_SEC         (0x200)
 
 ssize_t GS_write(GS *gsocket, const void *buf, size_t num);
 ssize_t GS_read(GS *gsocket, void *buf, size_t num);
