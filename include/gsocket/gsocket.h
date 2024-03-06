@@ -423,6 +423,7 @@ char *GS_bin2b58(char *b58, size_t *b58sz, uint8_t *src, size_t binsz);
 char *GS_addr2hex(char *dst, const void *src);
 char *GS_token2hex(char *dst, const void *src);
 char *GS_getenv(const char *name);
+#define GS_GETENV2(a)  (GS_getenv("GSOCKET_" a)?:GS_getenv("GS_" a))
 
 int GS_CTX_setsockopt(GS_CTX *ctx, int level, const void *opt_value, size_t opt_len);
 
