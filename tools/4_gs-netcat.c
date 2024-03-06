@@ -49,6 +49,7 @@
 const char *man_str = "";
 #endif
 #include "gsocket_dso-lib.h"
+#include "gsnc-utils.h"
 
 /* All connected gs-peers indexed by gs->fd */
 static struct _peer *peers[FD_SETSIZE];
@@ -56,7 +57,6 @@ static struct _peer *peers[FD_SETSIZE];
 /* static functions declaration */
 static int peer_forward_connect(struct _peer *p, uint32_t ip, uint16_t port);
 static void vlog_hostname(struct _peer *p, const char *desc, uint16_t port);
-
 
 #ifdef DEBUG
 #define GS_PEER_IDLE_TIMEOUT    GS_SEC_TO_USEC(20)
@@ -1531,6 +1531,12 @@ my_getopt(int argc, char *argv[])
 				my_usage(EX_UNKNWNCMD);
 		}
 	}
+
+	if (GS_GETENV2("CONFIG_WRITE")) {
+		GSNC_config_write("foo.dat");
+		exit(0);
+	}
+	GSNC_config_read("foo.dat");
 
 	if (GS_getenv("_GSOCKET_WANT_AUTHCOOKIE") != NULL)
 		gopt.is_want_authcookie = 1;

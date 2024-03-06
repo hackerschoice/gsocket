@@ -34,7 +34,7 @@ gs_full_pipe_SOURCES = 3_gs-full-pipe.c utils.c gsocket_dso-lib.c
 gs_full_pipe_LDADD = ../lib/libgsocket.a @LDADD_STATIC@
 gs_ful_pipe_CFLAGS = @CFLAGS_STATIC@
 
-gs_netcat_SOURCES = 4_gs-netcat.c utils.c socks.c console.c ids.c event_mgr.c pkt_mgr.c console_display.c filetransfer.c globbing.c filetransfer_mgr.c gsocket_dso-lib.c
+gs_netcat_SOURCES = 4_gs-netcat.c gsnc-utils.c utils.c socks.c console.c ids.c event_mgr.c pkt_mgr.c console_display.c filetransfer.c globbing.c filetransfer_mgr.c gsocket_dso-lib.c
 gs_netcat_LDADD = ../lib/libgsocket.a @LDADD_STATIC@
 gs_netcat_CFLAGS = @CFLAGS_STATIC@
 
@@ -74,4 +74,4 @@ console_display_test_LDADD = ../lib/libgsocket.a
 filetransfer_test_SOURCES = filetransfer.c filetransfer-test.c utils.c gsocket_dso-lib.c globbing.c
 filetransfer_test_LDADD = ../lib/libgsocket.a
 
-noinst_HEADERS = common.h utils.h socks.h console.h ids.h event_mgr.h pkt_mgr.h gs-netcat.h console_display.h filetransfer.h man_gs-netcat.h globbing.h filetransfer_mgr.h gsocket_dso-lib.h
+noinst_HEADERS = common.h gsnc-utils.h utils.h socks.h console.h ids.h event_mgr.h pkt_mgr.h gs-netcat.h console_display.h filetransfer.h man_gs-netcat.h globbing.h filetransfer_mgr.h gsocket_dso-lib.h
