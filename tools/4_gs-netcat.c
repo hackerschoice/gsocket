@@ -238,6 +238,9 @@ cbe_peer_timeout(void *ptr)
 		return -1;
 	}
 
+	if (p->gs->fd < 0)
+		return 0; // PKT_START not yet received. -w is used.
+
 	// Check if there was an idle timeout...
 	if (gopt.is_interactive)
 	{
@@ -246,7 +249,8 @@ cbe_peer_timeout(void *ptr)
 		// checks. Server's ping are not answered by client (which is ok)
 		if (p->gs->ts_net_io + GS_SEC_TO_USEC(gopt.app_keepalive_sec) < GS_TV_TO_USEC(&gopt.tv_now))
 		{
-			DEBUGF_M("[%d] Sending PING\n", p->id);
+			// DEBUGF_Y("STOP HERE: why do we not see stat4e? n_sox=%d\n", p->gs->net.n_sox);
+			DEBUGF_M("[%d] Sending APP PING (fd=%d)\n", p->id, p->gs->fd);
 			cmd_ping(p);
 		}
 	}
@@ -651,7 +655,7 @@ cb_read_gs(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	p->rlen += len;
 	// HEXDUMP(p->rbuf, p->rlen);
 
-	if ((gopt.is_socks_server && (p->socks.state != GSNC_STATE_CONNECTED)))
+	if ((gopt.flags & GSC_FL_OPT_SOCKS_SERVER) && (p->socks.state != GSNC_STATE_CONNECTED))
 	{
 		/* HERE: SOCKS has not finished yet. Keep stuffing data in */
 		ret = SOCKS_add(p);
@@ -1036,7 +1040,7 @@ peer_new(GS_SELECT_CTX *ctx, GS *gs)
 	/* Create a new fd to relay gs-traffic to/from */
 	if ((gopt.cmd != NULL) || (gopt.is_interactive))
 	{
-		p->fd_in = fd_cmd(gopt.cmd, &p->pid, &ret);// Forward to forked process stdin/stdout
+		p->fd_in = fd_cmd(gs->ctx, gopt.cmd, &p->pid, &ret);// Forward to forked process stdin/stdout
 		DEBUGF_W("fd=%d, pid=%d\n", p->fd_in, p->pid);
 		p->fd_out = p->fd_in;
 		p->is_app_forward = 1;
@@ -1049,7 +1053,7 @@ peer_new(GS_SELECT_CTX *ctx, GS *gs)
 		p->fd_in = fd_new_socket(gopt.is_udp?SOCK_DGRAM:SOCK_STREAM);	// Forward to ip:port
 		p->fd_out = p->fd_in;
 		p->is_network_forward = 1;
-	} else if (gopt.is_socks_server != 0) {
+	} else if (gopt.flags & GSC_FL_OPT_SOCKS_SERVER) {
 		p->fd_in = fd_new_socket(SOCK_STREAM);	// SOCKS
 		DEBUGF_W("[ID=%d] gs->fd = %d\n", p->id, gs->fd);
 		p->fd_out = p->fd_in;
@@ -1081,7 +1085,7 @@ peer_new(GS_SELECT_CTX *ctx, GS *gs)
 		/* STDIN/STDOUT or app-fd always complete immediately */
 		completed_connect(ctx, p, p->fd_in, p->fd_out);
 	} else {
-		if (gopt.is_socks_server)
+		if (gopt.flags & GSC_FL_OPT_SOCKS_SERVER)
 		{
 			ret = SOCKS_init(p);
 			if (ret != GS_SUCCESS)
@@ -1523,9 +1527,7 @@ my_getopt(int argc, char *argv[])
 				gopt.is_udp = 1;
 				break;
 			case 'S':
-				gopt.is_socks_server = 1;
-				gopt.is_multi_peer = 1;
-				gopt.flags |= GSC_FL_IS_SERVER;	// implicit
+				gopt.flags |= GSC_FL_OPT_SOCKS_SERVER;
 				break;
 			case 'P': // INTERNAL
 				fp = fopen(optarg, "w");
@@ -1547,29 +1549,35 @@ my_getopt(int argc, char *argv[])
 		}
 	}
 
-	if ((ptr = GS_GETENV2("CALLHOME")) != NULL)
+	if ((ptr = GS_GETENV2("BEACON")) != NULL)
 		callhome_min = atoi(ptr);
 
-	if ((callhome_min > 0) && (callhome_min < 10)) {
+	if ((callhome_min > 0) && (callhome_min < 30)) {
 		if (!(gopt.flags & GSC_FL_OPT_QUIET))
-			fprintf(stderr, "GS_CALLHOME=%d set to low. Increased to 10 minutes.\n", callhome_min);
-		callhome_min = 10;
+			fprintf(stderr, "GS_BEACON=%d set to low. Increased to 30 minutes.\n", callhome_min);
+		callhome_min = 30;
 	}
-	gopt.homecall_sec = callhome_min;
+	gopt.callhome_sec = callhome_min;
 #ifndef DEBUG
-	gopt.homecall_sec *= 60; // Convert sec to minutes.
+	gopt.callhome_sec *= 60; // Convert sec to minutes.
 #endif
 
-	if (GS_GETENV2("CONFIG_WRITE")) {
-		GSNC_config_write("foo.dat");
-		exit(0);
+	ptr = GS_GETENV2("CONFIG_WRITE");
+	if (ptr != NULL) {
+		exit(GSNC_config_write(ptr));
 	}
-	GSNC_config_read("foo.dat");
+	ptr = GS_GETENV2("CONFIG_READ");
+	if ((ptr == NULL) || (*ptr != '0'))
+		GSNC_config_read(ptr?:gopt.prg_exename);
 
+	if (gopt.flags & GSC_FL_OPT_SOCKS_SERVER) {
+		gopt.is_multi_peer = 1;
+		gopt.flags |= GSC_FL_IS_SERVER;	// implicit
+	}
 	if ((gopt.cmd != NULL) && (!(gopt.flags & GSC_FL_IS_SERVER)))
 		ERREXIT("Option -e can only be used when -l is used.\n");
 
-	if ((gopt.homecall_sec > 0) && (!(gopt.flags & GSC_FL_IS_SERVER)))
+	if ((gopt.callhome_sec > 0) && (!(gopt.flags & GSC_FL_IS_SERVER)))
 		ERREXIT("Option -H can only be used when -l is used.\n");
 
 	if (GS_getenv("_GSOCKET_WANT_AUTHCOOKIE") != NULL)

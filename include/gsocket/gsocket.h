@@ -13,7 +13,7 @@
 #endif
 
 #define GS_ADDR_SIZE				(16)	/* 128 bit */
-#define GS_MAX_SOX_BACKLOG			(5)		/* Relevant for GS_listen() only */
+#define GS_MAX_SOX_BACKLOG			(1)		/* Relevant for GS_listen() only */
 #define GS_TOKEN_SIZE 				(16)	/* 128 bit */
 
 #define GS_TV_TO_USEC(tv)		((uint64_t)(tv)->tv_sec * 1000000 + (tv)->tv_usec)
@@ -149,6 +149,7 @@ struct _gs_connect
 #define GS_FL_PROTO_LOW_LATENCY         (0x08)
 // Check if GS-ADDRESS is listening/waiting
 #define GS_FL_PROTO_BUDDY_CHECK         (0x10)
+#define GS_FL_PROTO_CONN_CLOSE          (0x20)
 
 /*
  * all2GN
@@ -250,6 +251,10 @@ enum gs_flags_t {
 	GS_FL_SINGLE_SHOT			= 0x200  // single GS_listen(). (for stdin/stdout)
 };
 
+enum gs_net_flags_t {
+	GS_NET_FL_WAITING_SERVER_CLOSE
+};
+
 /*
  * - GS-Network host/port
  * - Handle TCP sockets (non-blocking)
@@ -287,6 +292,10 @@ typedef struct
 	GS_EVENT ev_gsrn_disconnect;
 	GS_EVENT ev_gsrn_reconnect;
 	void *gs_listen;
+	char *gs_host;
+	char *gs_shell;
+	char *gs_domain;
+	char *gs_workdir;
 } GS_CTX;
 
 
@@ -296,6 +305,8 @@ enum sox_state_t {
 	GS_STATE_SYS_RECONNECT,	// Re-connecting to GS-NET
 	GS_STATE_PKT_LISTEN,	// listen_write() did not complete
 	GS_STATE_PKT_PING,		// ping_write() did not complete
+	// APP_CONNECTED only used internally. gs-netcat checks gs->fd instead (which is
+	// set in gs_instantiate.
 	GS_STATE_APP_CONNECTED,	// Application is connected. Passingthrough of data (no pkt any longer)
 	GS_STATE_PKT_CONNECT,
 	GS_STATE_PKT_ACCEPT,
@@ -333,6 +344,7 @@ struct gs_net
 	uint64_t tv_connect;			// Time connect() was called
 	uint64_t tv_gs_hton;			// Time hostname was resolved last.
 	int is_connect_error_warned;	// 'Re-connecting...' warning issued
+	enum gs_net_flags_t flags;
 };
 
 
@@ -454,6 +466,11 @@ int GS_CTX_setsockopt(GS_CTX *ctx, int level, const void *opt_value, size_t opt_
 #define GS_OPT_LOW_LATENCY          (0x80)
 #define GS_OPT_BUDDY_CHECK          (0x100)
 #define GS_OPT_CALLHOME_SEC         (0x200)
+#define GS_OPT_GS_PORT              (0x400)
+#define GS_OPT_GS_HOST              (0x800)
+#define GS_OPT_GS_SHELL             (0x1000)
+#define GS_OPT_GS_DOMAIN            (0x2000)
+#define GS_OPT_GS_WORKDIR           (0x4000)
 
 ssize_t GS_write(GS *gsocket, const void *buf, size_t num);
 ssize_t GS_read(GS *gsocket, void *buf, size_t num);

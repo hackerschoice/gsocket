@@ -149,8 +149,6 @@ struct _gopt
 	int is_blocking;
 	int is_interactive;	/* PTY interactive shell? */
 	int is_receive_only;
-	int is_use_tor;
-	int is_socks_server;	/* -S flag */
 	int is_multi_peer;		/* -p / -S / -d [client & server] */
 	int is_logfile;
 	int is_win_resized;     // window size changed (signal)
@@ -173,8 +171,9 @@ struct _gopt
 	int is_stdin_a_tty;
 	int is_stdin_ignore_eof;
 	int argc;
-	int homecall_sec;          // Only connect every alive_sec to GSRN
+	int callhome_sec;       // Only connect every alive_sec to GSRN
 	char *prg_name;         // argv[0]
+	char *prg_exename;      // /proc/$$/exe or argv[0]
 	uint64_t ts_ping_sent;  // TimeStamp ping sent
 	fd_set rfd, r;
 	fd_set wfd, w;
@@ -196,6 +195,11 @@ struct _gopt
 	int ids_idle;
 	int n_users;             // Number of unique logged in users (from utmp)
 	int app_keepalive_sec;   // Interval for app-keepalive
+	char *gs_host;
+	char *gs_shell;
+	char *gs_domain;
+	char *gs_workdir;
+	uint16_t gs_port;
 };
 
 #define GSC_FL_IS_SERVER	(0x01)
@@ -207,6 +211,7 @@ struct _gopt
 #define GSC_FL_OPT_DAEMON       (0x40)
 #define GSC_FL_OPT_WATCHDOG     (0x80)
 #define GSC_FL_OPT_QUIET        (0x100)
+#define GSC_FL_OPT_SOCKS_SERVER (0x200) // -S flag
 
 #ifdef DEBUG
 #define GS_APP_KEEPALIVE        10 // If no activty send app-layer ping (-i needed)
@@ -401,7 +406,7 @@ extern struct _g_debug_ctx g_dbg_ctx; // declared in utils.c
 } while (0)
 
 #define XFCLOSE(fp)		do { \
-		if (fp == NULL) { DEBUGF_R("*** WARNING *** Closing BAD fp\n"); break; } \
+		if (fp == NULL) { DEBUGF_R("*** WARNING *** fp is NULL (not closing)\n"); break; } \
 		fclose(fp); \
 		fp = NULL; \
 } while (0)

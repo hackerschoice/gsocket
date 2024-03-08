@@ -8,7 +8,7 @@ void init_vars(void);
 GS *gs_create(void);
 void do_getopt(int argc, char *argv[]);
 void usage(const char *params);
-int fd_cmd(const char *cmd, pid_t *pidptr, int *err);
+int fd_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err);
 #define GS_FD_CMD_ERR_NOPTY     (0x01)
 int fd_new_socket(int type);
 int fd_net_listen(int fd, uint16_t *port, int type);

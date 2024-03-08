@@ -59,8 +59,9 @@ static int gs_pkt_connect_socks(GS *gsocket, struct gs_sox *sox);
 static void gs_close(GS *gsocket);
 static void gs_listen_add_gs_select_by_sox(GS_SELECT_CTX *ctx, gselect_cb_t func, int fd, void *arg, int val);
 static void gs_net_try_reconnect_by_sox(GS *gs, struct gs_sox *sox);
-static void gs_net_init_by_sox(GS_CTX *ctx, struct gs_sox *sox);
+static void gs_net_init_by_sox(GS *gs, struct gs_sox *sox);
 static int gs_net_connect_new_socket(GS *gs, struct gs_sox *sox);
+static void sox_close(GS *gs, struct gs_sox *sox);
 
 #ifndef int_ntoa
 const char *
@@ -342,6 +343,8 @@ GS_new(GS_CTX *ctx, GS_ADDR *addr)
 	uint16_t gs_port = htons(GSRN_DEFAULT_PORT);
 	if ((ptr = GS_GETENV2("PORT")) != NULL)
 		gs_port = htons(atoi(ptr));
+	else if (ctx->gs_port != 0)
+		gs_port = ctx->gs_port;
 
 	ctx->gs_port = gs_port;	// Socks5 needs to know
 	gsocket->net.port = gs_port;
@@ -355,6 +358,8 @@ GS_new(GS_CTX *ctx, GS_ADDR *addr)
 		char buf[256];
 		hostname = GS_GETENV2("HOST");
 		if (hostname == NULL)
+			hostname = ctx->gs_host;
+		if (hostname == NULL)
 		{
 			if (gsocket->net.addr != 0)
 			{
@@ -365,7 +370,10 @@ GS_new(GS_CTX *ctx, GS_ADDR *addr)
 				uint8_t hostname_id;
 				hostname_id = GS_ADDR_get_hostname_id(addr->addr);
 				// Connect to [a-z].gsocket.io depending on GS-address
-				snprintf(buf, sizeof buf, "%c.%s", 'a' + hostname_id, GS_GETENV2("DOMAIN")?:GS_NET_DEFAULT_HOST);
+				char *domain = GS_GETENV2("DOMAIN");
+				if (domain == NULL)
+					domain = ctx->gs_domain;
+				snprintf(buf, sizeof buf, "%c.%s", 'a' + hostname_id, domain?:GS_NET_DEFAULT_HOST);
 				hostname = buf;
 			}
 		}
@@ -416,8 +424,13 @@ gs_net_connect_complete(GS *gs, struct gs_sox *sox)
 
 	if (gs->flags & GS_FL_IS_CLIENT)
 		gs_pkt_connect_write(gs, sox);
-	else
+	else {
+		DEBUGF_Y("Peer count = %d\n", gs->ctx->gsocket_app_connected_count);
+		if ((gs->ctx->callhome_interval_sec > 0) && (gs->ctx->callhome_count > 0) && (gs->ctx->gsocket_app_connected_count == 0))
+			gs->ctx->flags_proto |= GS_FL_PROTO_CONN_CLOSE;
 		gs_pkt_listen_write(gs, sox);
+		gs->ctx->flags_proto &= ~GS_FL_PROTO_CONN_CLOSE;
+	}
 
 	if (gs->net.conn_count >= gs->net.n_sox)
 		gs->flags |= GS_FL_TCP_CONNECTED;	// All TCP (APP) are now connected
@@ -553,6 +566,7 @@ gs_pkt_ping_write(GS *gsocket, struct gs_sox *sox)
 {
 	int ret;
 
+	errno = 0;
 	DEBUGF("### PKT PING write(fd = %d)\n", sox->fd);
 	// Might be 0 if SSL has not completed yet
 	if (sox->fd < 0)
@@ -667,7 +681,7 @@ gs_pkt_dispatch(GS *gsocket, struct gs_sox *sox)
 		 * layer.
 		 */
 		struct _gs_start *start = (struct _gs_start *)sox->rbuf;
-		DEBUGF("START received. (flags = 0x%2.2x)\n", start->flags);
+		DEBUGF("START received. (flags=0x%2.2x sox=%p)\n", start->flags, sox);
 		if (start->flags & GS_FL_PROTO_START_SERVER)
 		{
 			DEBUGF_Y("This is SERVER\n");
@@ -743,10 +757,12 @@ gs_pkt_dispatch(GS *gsocket, struct gs_sox *sox)
  * (treat EOF as GS_ERROR (and eventually reconnect if this is a listening socket)
  */
 static ssize_t
-sox_read(struct gs_sox *sox, size_t len)
+sox_read(GS *gs, struct gs_sox *sox, size_t len)
 {
 	ssize_t ret;
 
+	gs->status_code = 0;
+	errno = 0;
 	ret = read(sox->fd, sox->rbuf + sox->rlen, len);
 	if (ret == 0)	/* EOF */
 	{
@@ -788,7 +804,7 @@ sox_read(struct gs_sox *sox, size_t len)
  * Return GS_ERR_FATAL on non-recoverable errors (never?)
  */
 static ssize_t
-sox_read_min(struct gs_sox *sox, size_t min)
+sox_read_min(GS *gs, struct gs_sox *sox, size_t min)
 {
 	size_t len_rem;
 	int ret;
@@ -796,7 +812,7 @@ sox_read_min(struct gs_sox *sox, size_t min)
 	XASSERT(sox->rlen < min, "Data in buffer is %zu but only needing %zu\n", sox->rlen, min);
 
 	len_rem = min - sox->rlen;
-	ret = sox_read(sox, len_rem);
+	ret = sox_read(gs, sox, len_rem);
 	if (ret == GS_ERROR)
 		return GS_ERROR;
 	if (ret == GS_ERR_FATAL)
@@ -817,7 +833,7 @@ gs_read_pkt(GS *gs, struct gs_sox *sox)
 	/* Read GS MSG header (first octet) */
 	if (sox->rlen == 0)
 	{
-		ret = sox_read(sox, 1);
+		ret = sox_read(gs, sox, 1);
 		if (ret != 1)
 			return GS_ERROR;
 	}
@@ -838,7 +854,7 @@ gs_read_pkt(GS *gs, struct gs_sox *sox)
 			DEBUGF_R("Packet type=%d not valid (for client)\n", sox->rbuf[0]);
 	}
 
-	ret = sox_read_min(sox, len_pkt);
+	ret = sox_read_min(gs, sox, len_pkt);
 	if (ret == GS_ERR_WAITING)
 		return GS_SUCCESS;	// Not enough data yet
 	if (ret != len_pkt)
@@ -876,7 +892,7 @@ gs_read_socks(GS *gs, struct gs_sox *sox)
 
 	size_t len_pkt = sizeof (struct _socks5_pkt);
 
-	ret = sox_read_min(sox, len_pkt);
+	ret = sox_read_min(gs, sox, len_pkt);
 	if (ret == GS_ERR_WAITING)
 		return GS_SUCCESS;
 	if (ret != len_pkt)
@@ -950,7 +966,7 @@ gs_process_by_sox(GS *gsocket, struct gs_sox *sox)
 	} /* gs_ctx->w was set */
 
 	/* HERE: rfd is set - ready to read */
-	DEBUGF_M("rfd is set (state == %d)\n", sox->state);
+	// DEBUGF_M("rfd is set (state == %d)\n", sox->state);
 	if (sox->flags & GS_SOX_FL_AWAITING_SOCKS)
 	{
 		ret = gs_read_socks(gsocket, sox);
@@ -973,14 +989,14 @@ GS_heartbeat(GS *gsocket)
 	if (gsocket == NULL)
 		return;
 	if (gsocket->fd >= 0)
-		return;
+		return; // PKT_START already received.
 
 	/* Check if it is time to send a PING to keep the connection alive */
 	for (i = 0; i < gsocket->net.n_sox; i++)
 	{
 		struct gs_sox *sox = &gsocket->net.sox[i];
 
-		XASSERT(sox->state != GS_STATE_APP_CONNECTED, "fd = %d but APP already CONNECTED state\n", gsocket->fd);
+		XASSERT(sox->state != GS_STATE_APP_CONNECTED, "sox->fd = %d but APP already CONNECTED state\n", sox->fd);
 
 		// Skip if busy with connect() systemcall.
 		if (sox->state == GS_STATE_SYS_CONNECT)
@@ -1082,7 +1098,7 @@ cbe_gsrn_reconnect(void *ptr) {
 		DEBUGF_R("Event RECONNECT without event->data (empty gsocket?)\n");
 		return -1;
 	}
-	GS_CTX *ctx = gs->ctx;
+	// GS_CTX *ctx = gs->ctx;
 	struct gs_sox *sox = gs->net.sox;
 
 	// Return if there are already _any_ TCP connections to GSRN
@@ -1094,7 +1110,6 @@ cbe_gsrn_reconnect(void *ptr) {
 	DEBUGF_R("Connecting to GSRN again\n");
 
 	gs->net.n_sox = 1;
-	gs_net_init_by_sox(ctx, sox);
 	gs_net_try_reconnect_by_sox(gs, sox);
 
 	return 0;
@@ -1105,40 +1120,41 @@ cbe_gsrn_disconnect(void *ptr) {
 	GS_EVENT *event = (GS_EVENT *)ptr;
 	GS *gs = (GS *)event->data;
 	if (gs == NULL)
-		return -1;
+		goto err;
 	GS_CTX *ctx = gs->ctx;
-	// ctx->flags &= ~GS_CTX_FL_CALLHOME_LINGER;
 
 	if (ctx->gsocket_app_connected_count > 0) {
-		DEBUGF_R("%p %d SHoutl not happen! - event should have been deleted while there are active APP's\n", ptr, ctx->gsocket_app_connected_count);
-		return -1; // Remove EVENT.
+		DEBUGF_R("%p %d Should not happen! - event should have been deleted while there are active APP's\n", ptr, ctx->gsocket_app_connected_count);
+		goto err;
 	}
 
 	if (gs->fd >= 0) {
-		DEBUGF_R("Can not happen. Listening server shouild not use ->fd but net subsystem\n");
-		return -1; // Remove EVENT.
+		DEBUGF_R("Can not happen. Listening server shouild not use ->fd but net[x].sox\n");
+		goto err;
 	}
 
-	// int i;
-	// for (i = 0; i < gs->net.n_sox; i++) {
-	// 	struct gs_sox *sox = &gs->net.sox[i];
-	// 	if (sox->fd < 0)
-	// 		continue;
-	// 	if (sox->state != GS_STATE_APP_CONNECTED)
-	// 		continue;
-	// 	DEBUGF_R("i=%d, sate=%d, fd=%d, SHOULD NOT HAPPEN - gsrn_disconnect timer while buddy is connected.\n", i, sox->state, sox->fd);
-	// 	return -1;
-	// }
+	if (ctx->callhome_interval_sec <= 0) {
+		DEBUGF_R("GSRN-Disconnect/LISTEN event even that CALLHOME is not set\n");
+		goto err;
+	}
 
 	DEBUGF_R("EVENT-GSRN-DISCONNECT\n");
 	gs_close(gs /* Listening socket only */);
 
 	return -1; // Remove EVENT.
+err:
+	return -1; // Remove EVENT.
 }
 
+// SERVER (GS_listen())
 static int
 gs_process_buddy_nok(GS *gs) {
 	GS_CTX *ctx = gs->ctx;
+
+	if (ctx->callhome_interval_sec <= 0) {
+		DEBUGF_R("Stray NOK even that we always like to stay connected\n");
+		return GS_SUCCESS;
+	}
 
 	// If there is an active connetion then ignore NOK.
 	if (ctx->gsocket_app_connected_count > 0) {
@@ -1147,16 +1163,21 @@ gs_process_buddy_nok(GS *gs) {
 	}
 
 	// Not our first time since boot that we check for a buddy:
-	// Disconnect immediately on a NOK.
+	// Disconnect immediately (5 sec) on a NOK.
 	if (ctx->callhome_count > 0) {
-		DEBUGF_R("Disconnecting from GSRN\n");
-		gs_close(gs);
-		return GS_ERROR;
+		int sec = 5;
+		DEBUGF_R("Disconnecting from GSRN in %d seconds\n", sec);
+		// time to force-close() client side in case we never receive the server's FIN
+		gs->net.flags |= GS_NET_FL_WAITING_SERVER_CLOSE;
+		GS_EVENT_del(&ctx->ev_gsrn_disconnect);
+		GS_EVENT_add_by_ts(&ctx->gselect_ctx->emgr, &ctx->ev_gsrn_disconnect, 0, GS_SEC_TO_USEC(sec), cbe_gsrn_disconnect, ctx->gs_listen, 0);
+		// gs_close(gs);
+		// return GS_ERROR;
+		return GS_SUCCESS;
 	}
 
 	int sec = GSRN_CALLHOME_FIRST_LINGER_SEC;
 	ctx->callhome_count++;
-	// ctx->flags |= GS_CTX_FL_CALLHOME_LINGER;
 	DEBUGF_R("Closing GSRN conn in %d seconds unless buddy connects.\n", sec);
 	// Can happen that first connect already had a buddy waiting
 	// (e.g NOK never triggered). 
@@ -1185,12 +1206,21 @@ gs_process_error(int err, GS *gsocket, struct gs_sox *sox) {
 	if (!(gsocket->flags & GS_FL_AUTO_RECONNECT))
 		return GS_ERR_FATAL;
 
+	if (gsocket->net.flags & GS_NET_FL_WAITING_SERVER_CLOSE) {
+		GS_EVENT_del(&gsocket->ctx->ev_gsrn_disconnect);
+		gs_close(gsocket);
+		return GS_ERROR;
+	}
+
 	/* HERE: Auto-Reconnect. Failed in connect() or write(). */
-	DEBUGF_M("GS-NET error. Re-connecting...\n");
 	GS_LOG_ERR("%s GSRN %s. Re-connecting to %s:%d...\n", GS_logtime(), strerror(errno), int_ntoa(gsocket->net.addr), ntohs(gsocket->net.port));
-	close(sox->fd);
 	GS_EVENT_del(&gsocket->ctx->ev_gsrn_disconnect);
-	gs_net_init_by_sox(gsocket->ctx, sox);
+
+	sox_close(gsocket, sox);
+
+	// GS_SELECT_del_cb(gsocket->ctx->gselect_ctx, sox->fd);
+	// close(sox->fd);
+	// gs_net_init_by_sox(gsocket, sox);
 	gs_net_try_reconnect_by_sox(gsocket, sox);
 
 	return GS_ERROR; // will continue FOR loop
@@ -1215,7 +1245,6 @@ gs_process(GS *gsocket)
 		return GS_ERR_FATAL;	// NOT REACHED
 	}
 
-	DEBUGF("checking up to n_sox=%d\n", gsocket->net.n_sox);
 	for (i = 0; i < gsocket->net.n_sox; i++)
 	{
 		struct gs_sox *sox = &gsocket->net.sox[i];
@@ -1421,10 +1450,13 @@ gs_net_connect(GS *gsocket)
 }
 
 static void
-gs_net_init_by_sox(GS_CTX *ctx, struct gs_sox *sox)
+gs_net_init_by_sox(GS *gs, struct gs_sox *sox)
 {
-	XFD_CLR(sox->fd, ctx->wfd);
-	XFD_CLR(sox->fd, ctx->rfd);
+	gs->net.flags &= ~GS_NET_FL_WAITING_SERVER_CLOSE;
+	if (sox->fd >= 0) {
+		XFD_CLR(sox->fd, gs->ctx->wfd);
+		XFD_CLR(sox->fd, gs->ctx->rfd);
+	}
 	memset(sox, 0, sizeof *sox);
 	sox->fd = -1;
 }
@@ -1438,7 +1470,7 @@ gs_net_init(GS *gsocket, int backlog)
 	gsocket->net.n_sox = backlog;
 	for (i = 0; i < gsocket->net.n_sox; i++)
 	{
-		gs_net_init_by_sox(gsocket->ctx, &gsocket->net.sox[i]);
+		gs_net_init_by_sox(gsocket, &gsocket->net.sox[i]);
 	}
 }
 
@@ -1696,7 +1728,7 @@ gs_accept(GS *gsocket, GS *new_gs)
 {
 	int ret;
 
-	DEBUGF("Called gs_accept(%p, %p) [fd_accepted=%d]\n", gsocket, new_gs, gsocket->net.fd_accepted);
+	// DEBUGF("Called gs_accept(%p, %p) [fd_accepted=%d]\n", gsocket, new_gs, gsocket->net.fd_accepted);
 	ret = gs_process(gsocket);
 	if (ret != 0)
 	{
@@ -1721,7 +1753,6 @@ gs_accept(GS *gsocket, GS *new_gs)
 		return GS_SUCCESS;
 	}
 
-	DEBUGF_W("Returning ERR_WAITING..\n");
 	return GS_ERR_WAITING; /* Waiting for socket */
 }
 
@@ -1826,6 +1857,19 @@ GS_accept(GS *gsocket, int *err)
 	return new_gs;
 }
 
+static void
+sox_close(GS *gs, struct gs_sox *sox) {
+	GS_CTX *ctx = gs->ctx;
+
+	if (sox->fd < 0)
+		return;
+
+	DEBUGF_B("Closing I/O socket (sox->fd = %d)\n", sox->fd);
+	GS_SELECT_del_cb(ctx->gselect_ctx, sox->fd);
+	close(sox->fd);
+	gs_net_init_by_sox(gs, sox);
+}
+
 /*
  * as GS_close() but without call to free().
  */
@@ -1837,19 +1881,19 @@ gs_close(GS *gsocket)
 
 	if (gsocket->fd >= 0)
 	{
-		DEBUGF_B("Closing I/O socket (fd = %d)\n", gsocket->fd);
-		FD_CLR(gsocket->fd, gsocket->ctx->rfd);
-		FD_CLR(gsocket->fd, gsocket->ctx->wfd);
-		FD_CLR(gsocket->fd, gsocket->ctx->r);
-		FD_CLR(gsocket->fd, gsocket->ctx->w);
+		// DEBUGF_B("Closing I/O socket (fd = %d)\n", gsocket->fd);
+		FD_CLR(gsocket->fd, ctx->rfd);
+		FD_CLR(gsocket->fd, ctx->wfd);
+		FD_CLR(gsocket->fd, ctx->r);
+		FD_CLR(gsocket->fd, ctx->w);
 		/* HERE: This was not listening socket */
 		// shutdown(gsocket->fd, SHUT_WR);
 		// sleep(1);
 		// gsocket->fd = -1;
 		XCLOSE(gsocket->fd);
-		gsocket->ctx->gsocket_app_connected_count--;
-		if (gsocket->ctx->gsocket_app_connected_count <= 0) {
-			gsocket->ctx->gsocket_app_connected_count = 0; // This was the last active.
+		ctx->gsocket_app_connected_count--;
+		if ((ctx->callhome_interval_sec > 0) && (ctx->gsocket_app_connected_count <= 0)) {
+			ctx->gsocket_app_connected_count = 0; // This was the last active.
 			int sec = GSRN_CALLHOME_LINGER_SEC;
 			DEBUGF_R("Disconnecting in %d sec unless buddy connects\n", sec);
 			GS_EVENT_add_by_ts(&ctx->gselect_ctx->emgr, &ctx->ev_gsrn_disconnect, 0, GS_SEC_TO_USEC(sec), cbe_gsrn_disconnect, ctx->gs_listen, 0);
@@ -1861,19 +1905,10 @@ gs_close(GS *gsocket)
 	/* HERE: There are GS-Net connections that need to be cleaned.*/
 	int i;
 	/* Close all TCP connections to GS-Network */
-	DEBUGF_B("Closing %d GSRN connections\n", gsocket->net.n_sox);
+	DEBUGF_B("Closing %d listening GSRN connections\n", gsocket->net.n_sox);
 	for (i = 0; i < gsocket->net.n_sox; i++)
-	{
-		struct gs_sox * sox = &gsocket->net.sox[i];
-		if (sox->fd < 0)
-			continue;
-		DEBUGF_B("Closing I/O socket (sox->fd = %d)\n", sox->fd);
-		FD_CLR(sox->fd, gsocket->ctx->rfd);
-		FD_CLR(sox->fd, gsocket->ctx->wfd);
-		FD_CLR(sox->fd, gsocket->ctx->r);
-		FD_CLR(sox->fd, gsocket->ctx->w);
-		XCLOSE(sox->fd);
-	}
+		sox_close(gsocket, &gsocket->net.sox[i]);
+
 	gsocket->net.n_sox = 0;
 
 	return;
@@ -1891,13 +1926,13 @@ GS_close(GS *gsocket)
 	if (gsocket == NULL)
 		return -2;
 
-	DEBUGF_B("read: %"PRId64", written: %"PRId64"\n", gsocket->bytes_read, gsocket->bytes_written);
+	// DEBUGF_B("read: %"PRId64", written: %"PRId64"\n", gsocket->bytes_read, gsocket->bytes_written);
 #ifdef WITH_GSOCKET_SSL
 	if (gsocket->flags & GSC_FL_USE_SRP)
 	{
 		if (gsocket->ssl != NULL)
 		{
-			DEBUGF_G("Calling SSL_free()\n");
+			// DEBUGF_G("Calling SSL_free()\n");
 			SSL_free(gsocket->ssl);
 			gsocket->ssl = NULL;
 		} else {
@@ -2038,10 +2073,26 @@ GS_CTX_setsockopt(GS_CTX *ctx, int level, const void *opt_value, size_t opt_len)
 			ctx->socks_ip = inet_addr(GS_SOCKS_DFL_IP);
 	} else if (level == GS_OPT_CALLHOME_SEC) {
 		ctx->callhome_interval_sec = *((int *)opt_value);
-		struct timeval tv;
-		gettimeofday(&tv, NULL); // ctx->tv_now not yet initialized
-		ctx->callhome_creation_ts = GS_TV_TO_USEC(&tv);
-		ctx->flags_proto |= GS_FL_PROTO_BUDDY_CHECK;
+		if (ctx->callhome_interval_sec > 0) {
+			struct timeval tv;
+			gettimeofday(&tv, NULL); // ctx->tv_now not yet initialized
+			ctx->callhome_creation_ts = GS_TV_TO_USEC(&tv);
+			ctx->flags_proto |= GS_FL_PROTO_BUDDY_CHECK;
+		}
+	} else if (level == GS_OPT_GS_PORT) {
+		ctx->gs_port = htons(*((int *)opt_value));
+	} else if (level == GS_OPT_GS_HOST) {
+		if (opt_value)
+			ctx->gs_host = strdup(opt_value);
+	} else if (level == GS_OPT_GS_SHELL) {
+		if (opt_value)
+			ctx->gs_shell = strdup(opt_value);
+	} else if (level == GS_OPT_GS_DOMAIN) {
+		if (opt_value)
+			ctx->gs_domain = strdup(opt_value);
+	} else if (level == GS_OPT_GS_WORKDIR) {
+		if (opt_value)
+			ctx->gs_workdir = strdup(opt_value);
 	} else
 		return -1; // UNKNOWN option
 
@@ -2102,6 +2153,7 @@ GS_read(GS *gsocket, void *buf, size_t count)
 		}
 #endif
 	} else {
+		gsocket->status_code = 0;
 		len = read(gsocket->fd, buf, count);
 		// DEBUGF_M("read(fd=%d) = %zd, errno = %d\n", gsocket->fd, len, errno);
 

