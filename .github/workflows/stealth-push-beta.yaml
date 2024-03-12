@@ -1,4 +1,4 @@
-name: Static Stealth Build & www push
+name: BETA Static Stealth Build & www push
 on: [workflow_dispatch]
 
 permissions:
