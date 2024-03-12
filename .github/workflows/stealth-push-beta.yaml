@@ -28,23 +28,25 @@ jobs:
           name: gsnc
           path: tools/gs-netcat_mini-macOS-x86_64
 
-  MacOS-arm64:
-    runs-on: macos-latest-xlarge
-    steps:
-      - uses: actions/checkout@v2
-      - name: Compile
-        run: |
-          brew install automake
-          ./bootstrap
-          ./configure --prefix=/opt --enable-static  --enable-stealth
-          make all
-          strip tools/gs-netcat
-          mv tools/gs-netcat tools/gs-netcat_mini-macOS-arm64
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: gsnc
-          path: tools/gs-netcat_mini-macOS-arm64
+  # 2024-01-09, throws errors: Job is about to start running on the hosted runner: GitHub Actions 5 (hosted)
+  # The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings.
+  # MacOS-arm64:
+  #   runs-on: macos-latest-xlarge
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - name: Compile
+  #       run: |
+  #         brew install automake
+  #         ./bootstrap
+  #         ./configure --prefix=/opt --enable-static  --enable-stealth
+  #         make all
+  #         strip tools/gs-netcat
+  #         mv tools/gs-netcat tools/gs-netcat_mini-macOS-arm64
+  #     - name: Upload artifacts
+  #       uses: actions/upload-artifact@v3
+  #       with:
+  #         name: gsnc
+  #         path: tools/gs-netcat_mini-macOS-arm64
 
 # # https://github.com/vmactions/openbsd-vm
   OpenBSD:
@@ -201,7 +203,7 @@ jobs:
           path: tools/gs-netcat_mini-linux-${{ matrix.arch }}
 
   deploy:
-    needs: [Linux-Cross-Compile, MacOS, MacOS-arm64, OpenBSD, FreeBSD]
+    needs: [Linux-Cross-Compile, MacOS, OpenBSD, FreeBSD]
     name: Deploy to gsocket.io
     runs-on: ubuntu-latest
     steps:

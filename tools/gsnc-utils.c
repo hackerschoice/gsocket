@@ -118,9 +118,14 @@ GSNC_config_write(const char *fn) {
     if ((fp != NULL) && (is_fix_ts != 0)) {
         // FIX timestamp:
         struct timespec ts[2];
-        // futimens(fileno(fp), &sb.st_atimespec);  # OSX
+#ifdef __APPLE__
+        memcpy(&ts[0], &sb.st_atimespec, sizeof ts[0]);
+        memcpy(&ts[1], &sb.st_mtimespec, sizeof ts[1]);
+#else
         memcpy(&ts[0], &sb.st_atim, sizeof ts[0]);
         memcpy(&ts[1], &sb.st_mtim, sizeof ts[1]);
+#endif    
+        // futimens(fileno(fp), &sb.st_atimespec);  # OSX
         futimens(fileno(fp), ts);
     }
 
