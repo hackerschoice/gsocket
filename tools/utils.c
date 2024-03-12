@@ -4,6 +4,7 @@
 #include "common.h"
 #include "utils.h"
 #include "console.h"
+#include "gsnc-utils.h"
 
 extern char **environ;
 
@@ -76,46 +77,50 @@ add_env_argv(int *argcptr, char **argvptr[])
 #define PROC_SELF_EXE_FBSD "/proc/curproc/file"
 
 void
-init_defaults(int argc, int *argcptr, char **argvptr[])
-{
+init_defaults1(char *argv0) {
+	if (GS_GETENV2("STEALTH") != NULL)
+		gopt.flags |= GSC_FL_IS_STEALTH;
 #ifdef DEBUG
 	gopt.is_built_debug = 1;
 #endif
+	gopt.prg_name = NULL;
+
+	// Find my own binary.
+	// FIXME-2024: On non-unix this may fail if argv[0] was changed.
+	// Currently this does not matter because we only use it for GSNC_config
+	struct stat sb;
+	char *ptr = NULL;
+	if (stat(PROC_SELF_EXE, &sb) == 0)
+		ptr = PROC_SELF_EXE;
+	if ((ptr == NULL) && (stat(PROC_SELF_EXE_FBSD, &sb) == 0))
+		ptr = PROC_SELF_EXE_FBSD;
+	if ((ptr == NULL) && (stat(argv0, &sb) == 0))
+		ptr = argv0;
+	if (ptr != NULL)
+		gopt.prg_exename = strdup(ptr);
+
+	gopt.prg_name = argv0;
+	if ((gopt.prg_name != NULL) && (gopt.prg_name[0] == '/'))
+	{
+		char *ptr;
+		ptr = strrchr(gopt.prg_name, '/');
+		if (ptr != NULL)
+			gopt.prg_name = ptr + 1;
+	}
+	if (gopt.prg_name != NULL)
+		gopt.prg_name = strdup(gopt.prg_name);
+}
+
+void
+init_defaults2(int argc, int *argcptr, char **argvptr[])
+{
 	gopt.log_fp = stderr;
 	gopt.err_fp = stderr;
 	gopt.argc = argc;
 	signal(SIGPIPE, SIG_IGN);
 	signal(SIGCHLD, SIG_IGN);	// no defunct childs please
-	gopt.prg_name = NULL;
-	if (argvptr != NULL)
-	{
-        // Find my own binary.
-		// FIXME-2024: On non-unix this may fail if argv[0] was changed.
-		// Currently this does not matter because we only use it for GSNC_config
-		struct stat sb;
-		char *ptr = NULL;
-		if (stat(PROC_SELF_EXE, &sb) == 0)
-			ptr = PROC_SELF_EXE;
-		if ((ptr == NULL) && (stat(PROC_SELF_EXE_FBSD, &sb) == 0))
-			ptr = PROC_SELF_EXE_FBSD;
-		if ((ptr == NULL) && (stat(*argvptr[0], &sb) == 0))
-			ptr = *argvptr[0];
-		if (ptr != NULL)
-			gopt.prg_exename = strdup(ptr);
 
-		gopt.prg_name = *argvptr[0];
-		if ((gopt.prg_name != NULL) && (gopt.prg_name[0] == '/'))
-		{
-			char *ptr;
-			ptr = strrchr(gopt.prg_name, '/');
-			if (ptr != NULL)
-				gopt.prg_name = ptr + 1;
-		}
-		if (gopt.prg_name != NULL)
-			gopt.prg_name = strdup(gopt.prg_name);
-	}
-
-	/* MacOS process limit is 256 which makes Socks-Proxie yield...*/
+	/* MacOS process limit is 256 which makes Socks-Proxy yield...*/
 	struct rlimit rlim;
 	memset(&rlim, 0, sizeof rlim);
 	int ret;
@@ -142,9 +147,12 @@ init_defaults(int argc, int *argcptr, char **argvptr[])
 		gopt.argc = *argcptr;
 
 	gopt.app_keepalive_sec = GS_APP_KEEPALIVE;
+}
 
-	if (GS_GETENV2("STEALTH") != NULL)
-		gopt.flags |= GSC_FL_IS_STEALTH;
+void
+init_defaults(int argc, int *argcptr, char **argvptr[]) {
+	init_defaults1(*argvptr[0]);
+	init_defaults2(argc, argcptr, argvptr);
 }
 
 GS *
@@ -162,6 +170,7 @@ gs_create(void)
 static void
 cb_sigterm(int sig)
 {
+	sv_sigforward(sig);
 	exit(EX_SIGTERM);	// will call cb_atexit()
 }
 
@@ -409,6 +418,7 @@ do_getopt(int argc, char *argv[])
 		{
 			case 'v':
 				gopt.verbosity += 1;
+				gopt.flags &= ~GSC_FL_OPT_QUIET;
 				break;
 			case 'L':
 				gopt.is_logfile = 1;
@@ -421,7 +431,8 @@ do_getopt(int argc, char *argv[])
 				gopt.flags |= GSC_FL_OPT_TOR;
 				break;
 			case 'q':
-				gopt.flags |= GSC_FL_OPT_QUIET;
+				if (gopt.verbosity <= 0)
+					gopt.flags |= GSC_FL_OPT_QUIET;
 				break;
 			case 'r':
 				gopt.is_receive_only = 1;
@@ -974,7 +985,7 @@ forkfd(int *fd)
 
 	if (pid == 0)
 	{
-		// Put this child into its group.
+		// Put this child into its own group.
 		// Otherwise keypress 'Ctrl-C' on the server would not
 		// send SIGINT to the server but to the forked child() (bash).
 		setsid();
@@ -1035,6 +1046,9 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 	}
 
 	// Make pid==1 the shell's parent to obfuscate `ps -eF f` view
+#if 0
+	// DISABLED: This causes bash to report "cannot set terminal process group (-1): Inappropriate ioctl for device"
+	// even that it succeeds.
 	if (gopt.flags & GSC_FL_IS_STEALTH) {
 		// Race condition: parent's exit() may cause a SIGHUP before child
 		// had a change to call setsid(). Ignore SIGHUP until then:
@@ -1050,6 +1064,7 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 		setsid();
 		signal(SIGHUP, SIG_DFL);
 	}
+#endif
 
 	/* Our own forkpty() (solaris 10) returns the actual slave TTY.
  	 * We can not open /dev/st on solaris10 and use the fd that
@@ -1115,7 +1130,9 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 	// Do the best we can to set a nice prompt and give a hint to the user.
 	char *str = "\\[\\033[36m\\]\\u\\[\\033[m\\]@\\[\\033[32m\\]\\h:\\[\\033[33;1m\\]\\w\\[\\033[m\\]\\$ ";
 	snprintf(buf, sizeof buf, "PS1=%s", str);
-	printf("=Hint           : PS1='%s'\n", str);
+	printf("\
+=Tip            : PS1='%s'\n\
+=Tip            : Press "CDC"Ctrl-e c"CN" for elite console\n", str);
 	if (GS_getenv("PS1") == NULL) {
 		// Note: This only works for /bin/sh because some bash reset this value.
 		envp[envplen++] = strdup(buf);

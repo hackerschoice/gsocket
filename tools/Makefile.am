@@ -22,15 +22,15 @@ dist_gs_funcs_DATA = gs_funcs
 # and static libs (which wont work because those are DSO's on OSX).
 # So we must use noinst_PROGRAMS and an install-hook
 
-gs_helloworld_SOURCES = 1_gs-helloworld.c utils.c gsocket_dso-lib.c
+gs_helloworld_SOURCES = 1_gs-helloworld.c gsnc-utils.c utils.c gsocket_dso-lib.c
 gs_helloworld_LDADD = ../lib/libgsocket.a @LDADD_STATIC@
 gs_helloworld_CFLAGS = @CFLAGS_STATIC@
 
-gs_pipe_SOURCES = 2_gs-pipe.c utils.c gsocket_dso-lib.c
+gs_pipe_SOURCES = 2_gs-pipe.c gsnc-utils.c utils.c gsocket_dso-lib.c
 gs_pipe_LDADD = ../lib/libgsocket.a @LDADD_STATIC@
 gs_pipe_CFLAGS = @CFLAGS_STATIC@
 
-gs_full_pipe_SOURCES = 3_gs-full-pipe.c utils.c gsocket_dso-lib.c
+gs_full_pipe_SOURCES = 3_gs-full-pipe.c gsnc-utils.c utils.c gsocket_dso-lib.c
 gs_full_pipe_LDADD = ../lib/libgsocket.a @LDADD_STATIC@
 gs_ful_pipe_CFLAGS = @CFLAGS_STATIC@
 

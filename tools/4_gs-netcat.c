@@ -1489,6 +1489,10 @@ my_getopt(int argc, char *argv[])
 	FILE *fp;
 	char *ptr;
 	int callhome_min = 0;
+	int is_config_check = 0;
+
+	if (GS_GETENV2("CONFIG_CHECK"))
+		is_config_check = 1;
 
 	do_getopt(argc, argv);	/* from utils.c */
 	optind = 1;	/* Start from beginning */
@@ -1540,7 +1544,8 @@ my_getopt(int argc, char *argv[])
 				callhome_min = atoi(optarg);
 				break;
 			case 'h':
-				my_usage(0); // On -h exit with 0 [it's a valid command]
+				if (!is_config_check)
+					my_usage(0); // On -h exit with 0 [it's a valid command]
 			default:
 				break;
 			case 'A':	// Disable -A for gs-netcat. Use gs-full-pipe instead
@@ -1567,8 +1572,15 @@ my_getopt(int argc, char *argv[])
 		exit(GSNC_config_write(ptr));
 	}
 	ptr = GS_GETENV2("CONFIG_READ");
-	if ((ptr == NULL) || (*ptr != '0'))
-		GSNC_config_read(ptr?:gopt.prg_exename);
+	if ((ptr == NULL) || (*ptr != '0')) {
+		c = GSNC_config_read(ptr?:gopt.prg_exename);
+		if (is_config_check) {
+			if (c != 0)
+				exit(c);
+			printf("%s\n", gopt.sec_str);
+			exit(c);
+		}
+	}
 
 	if (gopt.flags & GSC_FL_OPT_SOCKS_SERVER) {
 		gopt.is_multi_peer = 1;
@@ -1837,7 +1849,9 @@ int
 main(int argc, char *argv[])
 {
 	// my_test();
-	init_defaults(argc, &argc, &argv);
+	init_defaults1(argv[0]);
+	init_supervise(&argc, argv);
+	init_defaults2(argc, &argc, &argv);
 	my_getopt(argc, argv);
 
 	if (gopt.flags & GSC_FL_IS_SERVER)

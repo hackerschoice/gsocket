@@ -167,7 +167,7 @@ thc_init(const char *fname)
 	char *ptr = gs_getenv("GS_HIJACK_PORTS");
 	GS_portrange_new(&hijack_ports, ptr?ptr:"1-65535");
 
-	g_secret = gs_getenv("GSOCKET_SECRET");
+	g_secret = GS_GETENV2("SECRET");
 }
 
 static struct _fd_info *
