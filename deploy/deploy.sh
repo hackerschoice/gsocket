@@ -69,10 +69,9 @@
 #       - Guess what...
 
 # Global Defines
-BRANCH="/beta"
-# BRANCH=""
-URL_BASE_CDN="https://cdn.gsocket.io${BRANCH_DIR}"
-URL_BASE_X="https://gsocket.io${BRANCH_DIR}"
+[[ -n $GS_BRANCH ]] && GS_BRANCH="/${GS_BRANCH}"
+URL_BASE_CDN="https://cdn.gsocket.io${GS_BRANCH}"
+URL_BASE_X="https://gsocket.io${GS_BRANCH}"
 [[ -n $GS_URL_BASE ]] && {
 	URL_BASE_CDN="${GS_URL_BASE}"
 	URL_BASE_X="${GS_URL_BASE}"
