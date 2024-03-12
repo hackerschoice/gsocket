@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  DSTDIR: ${{ github.ref == 'refs/heads/master' && '/' || 'beta/' }}
+  DSTDIR: ${{ github.ref == 'refs/heads/master' && '/' || '/beta' }}
 
 jobs:
   build:
