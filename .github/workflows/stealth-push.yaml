@@ -7,6 +7,7 @@ permissions:
 env:
   OPENSSL_VER: 1.1.1w
   VER: 1.4.42dev2
+  BINDIR: ${{ github.ref == 'refs/heads/master' && 'bin' || 'beta/bin' }}
 
 jobs:
   MacOS:
@@ -28,10 +29,11 @@ jobs:
           path: tools/gs-netcat_mini-macOS-x86_64
 
   # 2024-01-09, throws errors: Job is about to start running on the hosted runner: GitHub Actions 5 (hosted)
+  # The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings.
   # MacOS-arm64:
   #   runs-on: macos-latest-xlarge
   #   steps:
-  #     - uses: actions/checkout@v2
+  #     - uses: actions/checkout@v3
   #     - name: Compile
   #       run: |
   #         brew install automake
@@ -168,11 +170,11 @@ jobs:
       - name: Generate OpenSSL
         if: steps.cachessl.outputs.cache-hit != 'true'
         run: |
-          curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER:-1.1.1k}.tar.gz | tar -xzf - -C /tmp/
-          ( cd /tmp/openssl-${OPENSSL_VER:-1.1.1k} && \
+          curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER:-1.1.1w}.tar.gz | tar -xzf - -C /tmp/
+          ( cd /tmp/openssl-${OPENSSL_VER:-1.1.1w} && \
           ./Configure --prefix=/opt no-tests no-dso no-threads no-shared ${{ matrix.ssl }} && \
           make install_sw )
-          rm -rf rm -rf /tmp/openssl-${OPENSSL_VER:-1.1.1k} /opt/bin/openssl /opt/bin/c_rehash
+          rm -rf rm -rf /tmp/openssl-${OPENSSL_VER:-1.1.1w} /opt/bin/openssl /opt/bin/c_rehash
 
       - name: SaveCache
         if: steps.cachessl.outputs.cache-hit != 'true'
@@ -201,7 +203,7 @@ jobs:
           path: tools/gs-netcat_mini-linux-${{ matrix.arch }}
 
   deploy:
-    needs: [Linux-Cross-Compile, MacOS, MacOS-arm64, OpenBSD, FreeBSD]
+    needs: [Linux-Cross-Compile, MacOS, OpenBSD, FreeBSD]
     name: Deploy to gsocket.io
     runs-on: ubuntu-latest
     steps:
@@ -218,7 +220,7 @@ jobs:
           cd /tmp
           git clone -b gh-pages --single-branch git@github.com:hackerschoice/gsocket.io.git
           ls -alR /tmp/gsnc/
-          cd gsocket.io/bin
+          cd gsocket.io/${BINDIR:-/dev/null}
           mv /tmp/gsnc/gs-netcat_* .
           git config --local user.name "GitHub Action"
           git config --local user.email "root@proton.thc.org"

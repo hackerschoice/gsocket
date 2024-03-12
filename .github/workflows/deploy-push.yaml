@@ -7,6 +7,9 @@ on:
       - deploy/deploy.sh
   workflow_dispatch:
 
+env:
+  DSTDIR: ${{ github.ref == 'refs/heads/master' && '/' || 'beta/' }}
+
 jobs:
   build:
     name: Deploy to WWW
@@ -21,7 +24,7 @@ jobs:
         mkdir ~/.ssh && echo "$SSH_DEPLOY_KEY" >~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
         cd /tmp/
         git clone -b gh-pages --single-branch git@github.com:hackerschoice/gsocket.io.git
-        cd gsocket.io
+        cd gsocket.io${DSTDIR:?}
         cmp -s /tmp/x x || {
           cat /tmp/x >x
           git config --local user.name "GitHub Action"

