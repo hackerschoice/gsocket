@@ -14,6 +14,7 @@ autom4te.cache/
 **/*.swp
 **/*.so
 **/*.dylib
+**/.deps
 config.h
 config.log
 config.status
@@ -30,6 +31,8 @@ gsocket-*
 packaging/gsnc-deploy-bin/*
 tests/*
 man/*.html
+libtool
+install
 patches/
 test/
 tools/sftp-server.sh
@@ -37,3 +40,15 @@ tools/gs-helloworld
 tools/gs-pipe
 tools/gs-full-pipe
 tools/gs-netcat
+tools/filetransfer-test
+tools/gsocket.conf
+lib/list-test
+packaging/build/
+packaging/debian-deb/build/
+packaging/deploy-all/deploy-all.sh
+packaging/build_funcs
+packaging/docker/build_all.sh
+test-build/compile.conf
+man/make-man2html.sh
+tools/run_gs_tests.sh
+tools/ssh/
