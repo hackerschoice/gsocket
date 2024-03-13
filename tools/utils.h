@@ -44,6 +44,6 @@ void gs_watchdog(void);
 /* hack to set rows/columns */
 #define GS_STTY_INIT_HACK	"stty rows %d columns %d\r"
 
-#define UTILS_GETOPT_STR	"3:vigqwACTrIlSDL:a:s:k:p:d:e:"
+#define UTILS_GETOPT_STR	"3:vigqwACTrIlSDL:a:s:k:p:d:e:P:B:"
 
 #endif /* !__GSNC_UTILS_H__ */

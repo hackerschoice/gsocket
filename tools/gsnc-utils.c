@@ -144,8 +144,9 @@ GSNC_config_read(const char *fn) {
 
     if (fn == NULL)
         return -1;
+    errno = 0;
     fp = fopen(fn, "rb");
-    DEBUGF("fp=%p, %s\n", fp, strerror(errno));
+    DEBUGF("fn=%s fp=%p, %s\n", fn, fp, strerror(errno));
 
     if (fp == NULL)
         return -1;

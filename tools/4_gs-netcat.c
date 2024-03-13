@@ -1433,7 +1433,7 @@ my_usage(int code)
 #ifndef STEALTH
 	if (gopt.flags & GSC_FL_IS_STEALTH)
 		fprintf(stderr, ""
-"  -H <min>     Only check GSRN every min minutes. Sleep otherwise. [needs -l]\n");
+"  -B <min>     Only check GSRN every min minutes. Sleep otherwise. [needs -l]\n");
 
 	fprintf(stderr, ""
 "  -t           Check if peer is listening (do not connect)\n"
@@ -1496,7 +1496,9 @@ my_getopt(int argc, char *argv[])
 
 	do_getopt(argc, argv);	/* from utils.c */
 	optind = 1;	/* Start from beginning */
-	while ((c = getopt(argc, argv, UTILS_GETOPT_STR "thmWuP:H:")) != -1)
+	// Note: Options with value must be added to UTILS_GETOPT_STR or otherwise
+	// do_getopt will stop processing when encountering P: for example.
+	while ((c = getopt(argc, argv, UTILS_GETOPT_STR "thmWu")) != -1)
 	{
 		switch (c)
 		{
@@ -1540,7 +1542,7 @@ my_getopt(int argc, char *argv[])
 				fprintf(fp, "%u", getpid());
 				fclose(fp);
 				break;
-			case 'H':
+			case 'B':
 				callhome_min = atoi(optarg);
 				break;
 			case 'h':
@@ -1588,9 +1590,6 @@ my_getopt(int argc, char *argv[])
 	}
 	if ((gopt.cmd != NULL) && (!(gopt.flags & GSC_FL_IS_SERVER)))
 		ERREXIT("Option -e can only be used when -l is used.\n");
-
-	if ((gopt.callhome_sec > 0) && (!(gopt.flags & GSC_FL_IS_SERVER)))
-		ERREXIT("Option -H can only be used when -l is used.\n");
 
 	if (GS_getenv("_GSOCKET_WANT_AUTHCOOKIE") != NULL)
 		gopt.is_want_authcookie = 1;

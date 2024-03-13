@@ -69,12 +69,18 @@
 #       - Guess what...
 
 # Global Defines
-[[ -n $GS_BRANCH ]] && GS_BRANCH="/${GS_BRANCH}"
-URL_BASE_CDN="https://cdn.gsocket.io${GS_BRANCH}"
-URL_BASE_X="https://gsocket.io${GS_BRANCH}"
+### DISABLE ME:
+[[ -z $GS_BRANCH ]] && GS_BRANCH="beta"
+
+URL_BASE_CDN="https://cdn.gsocket.io"
+URL_BASE_X="https://gsocket.io"
 [[ -n $GS_URL_BASE ]] && {
 	URL_BASE_CDN="${GS_URL_BASE}"
 	URL_BASE_X="${GS_URL_BASE}"
+}
+[[ -n $GS_BRANCH ]] && {
+	URL_BASE_CDN+="/${GS_BRANCH}"
+	URL_BASE_X+="/${GS_BRANCH}"
 }
 URL_BIN="${URL_BASE_CDN}/bin"       # mini & stripped version
 URL_BIN_FULL="${URL_BASE_CDN}/full" # full version (with -h working)
@@ -1809,6 +1815,8 @@ init_vars
 [[ -n "$GS_UNDO" ]] || [[ -n "$GS_CLEAN" ]] || [[ -n "$GS_UNINSTALL" ]] && uninstall
 
 init_setup
+[[ -n $GS_BRANCH ]] && WARN "Using branch ${CDY}$GS_BRANCH${CN}"
+
 # User supplied install-secret: X=MySecret bash -c "$(curl -fsSL https://gsocket.io/x)"
 [[ -n "$X" ]] && GS_SECRET_X="$X"
 

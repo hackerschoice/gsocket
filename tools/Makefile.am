@@ -62,16 +62,16 @@ uninstall-hook:
 	-rm -f $(DESTDIR)$(libdir)/gsocket_uchroot_dso.so.0$(EXEEXT)
 	-rm -f $(DESTDIR)$(libdir)/gsocket_uchroot_dso.so$(EXEEXT)
 
-packet_test_SOURCES = packet-test.c utils.c gsocket_dso-lib.c
+packet_test_SOURCES = packet-test.c gsnc-utils.c utils.c gsocket_dso-lib.c
 packet_test_LDADD = ../lib/libgsocket.a
 
-readline_test_SOURCES = readline-test.c utils.c gsocket_dso-lib.c
+readline_test_SOURCES = readline-test.c gsnc-utils.c utils.c gsocket_dso-lib.c
 readline_test_LDADD = ../lib/libgsocket.a
 
-console_display_test_SOURCES = console_display.c console_display-test.c utils.c gsocket_dso-lib.c
+console_display_test_SOURCES = console_display.c console_display-test.c gsnc-utils.c utils.c gsocket_dso-lib.c
 console_display_test_LDADD = ../lib/libgsocket.a
 
-filetransfer_test_SOURCES = filetransfer.c filetransfer-test.c utils.c gsocket_dso-lib.c globbing.c
+filetransfer_test_SOURCES = filetransfer.c filetransfer-test.c gsnc-utils.c utils.c gsocket_dso-lib.c globbing.c
 filetransfer_test_LDADD = ../lib/libgsocket.a
 
 noinst_HEADERS = common.h gsnc-utils.h utils.h socks.h console.h ids.h event_mgr.h pkt_mgr.h gs-netcat.h console_display.h filetransfer.h man_gs-netcat.h globbing.h filetransfer_mgr.h gsocket_dso-lib.h
