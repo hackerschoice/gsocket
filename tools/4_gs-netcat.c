@@ -1559,29 +1559,44 @@ my_getopt(int argc, char *argv[])
 	if ((ptr = GS_GETENV2("BEACON")) != NULL)
 		callhome_min = atoi(ptr);
 
-	if ((callhome_min > 0) && (callhome_min < 30)) {
+	if ((callhome_min > 0) && (callhome_min < 10)) {
 		if (!(gopt.flags & GSC_FL_OPT_QUIET))
 			fprintf(stderr, "GS_BEACON=%d set to low. Increased to 30 minutes.\n", callhome_min);
 		callhome_min = 30;
 	}
 	gopt.callhome_sec = callhome_min;
 #ifndef DEBUG
-	gopt.callhome_sec *= 60; // Convert sec to minutes.
+	gopt.callhome_sec *= 60; // Convert minutes to seconds
 #endif
 
 	ptr = GS_GETENV2("CONFIG_WRITE");
 	if (ptr != NULL) {
 		exit(GSNC_config_write(ptr));
 	}
-	ptr = GS_GETENV2("CONFIG_READ");
-	if ((ptr == NULL) || (*ptr != '0')) {
-		c = GSNC_config_read(ptr?:gopt.prg_exename);
-		if (is_config_check) {
-			if (c != 0)
-				exit(c);
-			printf("%s\n", gopt.sec_str);
+	c = GSNC_config_read(gopt.prg_exename);
+	if (is_config_check) {
+		if (c != 0) {
+			printf("GS_CONFIG_NOT_FOUND=1\n");
 			exit(c);
 		}
+		printf("GS_CONFIG_SECRET='%s'\n\
+GS_CONFIG_PROC_HIDDENNAME='%s'\n\
+GS_CONFIG_HOST=%s\n\
+", gopt.sec_str, gopt.proc_hiddenname?:"", gopt.gs_host?:"");
+		callhome_min = gopt.callhome_sec;
+#ifndef DEBUG
+		callhome_min = callhome_min / 60;
+#endif
+		if (callhome_min)
+			printf("GS_CONFIG_BEACON=%d\n", callhome_min);
+		else
+			printf("GS_CONFIG_BEACON=\n");
+		if (gopt.gs_port > 0)
+			printf("GS_CONFIG_PORT=%d\n", gopt.gs_port);
+		else
+			printf("GS_CONFIG_PORT=\n");
+		
+		exit(c);
 	}
 
 	if (gopt.flags & GSC_FL_OPT_SOCKS_SERVER) {
@@ -1848,7 +1863,7 @@ int
 main(int argc, char *argv[])
 {
 	// my_test();
-	init_defaults1(argv[0]);
+	init_defaults1(argv);
 	init_supervise(&argc, argv);
 	init_defaults2(argc, &argc, &argv);
 	my_getopt(argc, argv);

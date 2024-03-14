@@ -252,7 +252,7 @@ enum gs_flags_t {
 };
 
 enum gs_net_flags_t {
-	GS_NET_FL_WAITING_SERVER_CLOSE
+	GS_NET_FL_WAITING_SERVER_CLOSE    = 0x01
 };
 
 /*

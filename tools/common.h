@@ -190,6 +190,7 @@ struct _gopt
 	int callhome_sec;       // Only connect every alive_sec to GSRN
 	char *prg_name;         // argv[0]
 	char *prg_exename;      // /proc/$$/exe or argv[0]
+	char *proc_hiddenname;   // argv[0]
 	uint64_t ts_ping_sent;  // TimeStamp ping sent
 	fd_set rfd, r;
 	fd_set wfd, w;

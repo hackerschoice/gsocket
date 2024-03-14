@@ -90,6 +90,11 @@ GSNC_config_write(const char *fn) {
 
     snprintf(c.sec_str, sizeof c.sec_str, "%s", gopt.sec_str);
 
+    // if (gopt.prg_exename)
+    //     snprintf(c.prg_exename, sizeof c.prg_exename, "%s", gopt.prg_exename);
+    if ((ptr = GS_GETENV2("PROC_HIDDENNAME")) != NULL)
+        snprintf(c.proc_hiddenname, sizeof c.proc_hiddenname, "%s", ptr);
+
     if ((ptr = GS_GETENV2("HOST")) != NULL)
         snprintf(c.host, sizeof c.host, "%s", ptr);
 
@@ -105,7 +110,10 @@ GSNC_config_write(const char *fn) {
     if ((ptr = GS_getenv("WORKDIR")) != NULL)
         snprintf(c.workdir, sizeof c.workdir, "%s", ptr);
 
-    c.callhome_sec = gopt.callhome_sec;
+    c.callhome_min = gopt.callhome_sec;
+#ifndef DEBUG
+    c.callhome_min = gopt.callhome_sec / 60;
+#endif
     c.flags |= (gopt.flags & GSC_FL_OPT_TOR);
     c.flags |= (gopt.flags & GSC_FL_OPT_DAEMON);
     c.flags |= (gopt.flags & GSC_FL_OPT_WATCHDOG);
@@ -141,6 +149,13 @@ GSNC_config_read(const char *fn) {
     FILE *fp;
     struct gsnc_config c;
     int ret = -1;
+    char *ptr;
+
+	ptr = GS_GETENV2("CONFIG_READ");
+    if ((ptr != NULL) && (*ptr == '0'))
+        return -1; // GS_CONFIG_READ=0, force _not_ reading.
+
+    fn = ptr?:fn;
 
     if (fn == NULL)
         return -1;
@@ -163,9 +178,14 @@ GSNC_config_read(const char *fn) {
         gopt.gs_domain = strdup(c.domain);
     if (c.workdir[0] != '\0')
         gopt.gs_workdir = strdup(c.workdir);
+    if (c.proc_hiddenname[0] != '\0')
+        gopt.proc_hiddenname = strdup(c.proc_hiddenname);
 
     gopt.gs_port = c.port;
-    gopt.callhome_sec = c.callhome_sec;
+    gopt.callhome_sec = c.callhome_min;
+#ifndef DEBUG
+    gopt.callhome_sec = c.callhome_min * 60;
+#endif
     gopt.flags |= (c.flags & GSC_FL_OPT_TOR);
     gopt.flags |= (c.flags & GSC_FL_OPT_DAEMON);
     gopt.flags |= (c.flags & GSC_FL_OPT_WATCHDOG);
