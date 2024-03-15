@@ -131,9 +131,7 @@ GS_select(GS_SELECT_CTX *ctx)
 {
 	int n;
 	struct timeval tv;
-	// int ret;
 	int i;
-
 
 	while (1)
 	{
@@ -165,15 +163,15 @@ GS_select(GS_SELECT_CTX *ctx)
 		 */
 		if (ctx->rdata_pending_count > 0)
 			continue;
-
-		memcpy(ctx->r, ctx->rfd, sizeof *ctx->r);
-		memcpy(ctx->w, ctx->wfd, sizeof *ctx->w);
 		
 		uint64_t wait;
 		wait = GS_EVENT_execute(&ctx->emgr);
-
-		gettimeofday(ctx->tv_now, NULL);
 		GS_USEC_TO_TV(&tv, wait);
+
+		// GS_EVENT() may have changed rfs/wfd and max_fd
+		max_fd = ctx->max_fd;
+		memcpy(ctx->r, ctx->rfd, sizeof *ctx->r);
+		memcpy(ctx->w, ctx->wfd, sizeof *ctx->w);
 
 		gs_fds_out_rwfd(ctx);
 		n = select(max_fd + 1, ctx->r, ctx->w, NULL, &tv);
@@ -261,7 +259,7 @@ GS_select(GS_SELECT_CTX *ctx)
 void
 GS_SELECT_del_cb(GS_SELECT_CTX *ctx, int fd)
 {
-	int new_max_fd = 0;
+	int new_max_fd = -1;
 
 	DEBUGF_B("Removing CB for fd = %d\n", fd);
 	ctx->mgr_r[fd].func = NULL;
@@ -287,7 +285,6 @@ GS_SELECT_del_cb(GS_SELECT_CTX *ctx, int fd)
 
 	for (i = 0; i <= ctx->max_fd; i++)
 	{
-		
 		if ((ctx->mgr_r[i].func == NULL) && (ctx->mgr_w[i].func == NULL))
 		{
 			continue;

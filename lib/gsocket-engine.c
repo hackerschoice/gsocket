@@ -18,7 +18,7 @@
 #include "gs-externs.h"
 
 #ifdef DEBUG
-// # define DEBUG_SELECT	(1)
+//# define DEBUG_SELECT	(1)
 #endif
 
 #ifdef DEBUG

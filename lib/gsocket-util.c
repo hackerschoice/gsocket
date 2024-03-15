@@ -551,6 +551,7 @@ GS_daemonize(FILE *logfp, int code_force_exit)
 			return;
 		}
 		/* HERE: Parent. We are the watchdog. */
+		gettimeofday(&last, NULL);	// When last restarted.
 		int wstatus;
 		wait(&wstatus);	// Wait for child to termiante and then restart child
 		if (WIFEXITED(wstatus) && (WEXITSTATUS(wstatus) == code_force_exit))
@@ -573,19 +574,16 @@ GS_daemonize(FILE *logfp, int code_force_exit)
 		/* No not spawn to often. */
 		gettimeofday(&now, NULL);
 		int diff = now.tv_sec - last.tv_sec;
-		int n = 60;
-		if (diff > 60)
-		{
+		int n = 3 * 60;
+		if (diff > 10 * 60) {
 			n_force_exit = 0;
-			n = 1;	// Immediately restart if this is first restart or child ran for >60sec
-		}
-		if (n_force_exit == 1)
+			n = 5;	// Immediately restart if this is first restart or child ran for >60sec
+		} else if (n_force_exit == 1) {
 			n = GSRN_TOKEN_LINGER_SEC + 3; // If BAD-AUTH then only wait long enough for GSRN to drop auth token (7 seconds)
+		}
 
 		xfprintf(gs_errfp, "%s ***DIED*** (wstatus=%d/). Restarting in %d second%s.\n", GS_logtime(), wstatus, n, n>1?"s":"");
 		sleep(n);
-
-		gettimeofday(&last, NULL);	// When last restarted.
 	}
 
 	exit(255);	// NOT REACHED
