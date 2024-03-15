@@ -1195,7 +1195,6 @@ bin2config() {
 	[[ ! -f "${exe}" ]] && return
 	[[ ! -f "${bin}" ]] && return
 
-	GS_STEALTH=1 GS_CONFIG_READ="${bin:?}" GS_CONFIG_CHECK=1 "${exe:?}" -h 2>/dev/null | grep ^GS_CONFIG_
 	eval "$(GS_STEALTH=1 GS_CONFIG_READ="${bin:?}" GS_CONFIG_CHECK=1 "${exe:?}" -h 2>/dev/null | grep ^GS_CONFIG_)"
 }
 
