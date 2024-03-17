@@ -89,7 +89,6 @@ try_changeargv0(char *argv[]) {
 		return;
 	}
 
-
 	if ((argv == NULL) || (argv[0] == NULL)) {
 		DEBUGF("argv not valid\n");
 		return;
