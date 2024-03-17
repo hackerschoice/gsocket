@@ -1381,9 +1381,6 @@ install_system_systemd()
 	[[ -n "$IS_INSTALLED" ]] && {
 		xrm "${DSTBIN}"
 		unset DSTBIN
-		# FIXME: better to call bin2config and load whatever we wrote but this
-		# is quicker:
-		[[ "${GS_BEACON:-1}" -le 10 ]] && GS_BEACON=30
 		return 0
 	}
 
@@ -1735,7 +1732,10 @@ show_install_config() {
 	}
 
 	str="always connected ${CN}${CF}[GS_BEACON=30 to change]"
-	[[ -n $GS_BEACON ]] && str="every $GS_BEACON minutes"
+	[[ -n $GS_BEACON ]] && {
+		[[ $GS_BEACON -lt 10 ]] && GS_BEACON=30
+		str="every $GS_BEACON minutes"
+	}
 	echo -e "Beacon  : ${CDG}${str}${CN}"
 }
 
