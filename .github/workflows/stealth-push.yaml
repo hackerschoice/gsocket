@@ -163,7 +163,6 @@ jobs:
           - arch: powerpc64le
             cc: powerpc64le-linux-musl # Little Endian, 64bit
             ssl: linux-generic64
-
     runs-on: ubuntu-latest
     container:
       image: muslcc/x86_64:${{ matrix.cc }}

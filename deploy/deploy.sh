@@ -699,18 +699,18 @@ init_vars()
 				}
 			elif [[ "$arch" == *"ppc"* ]]; then
 				if is_64bit; then
-					OSARCH="ppc64-linux"
-					SRC_PKG="gs-netcat_mini-linux-ppc64"
+					OSARCH="powerpc64-linux"
+					SRC_PKG="gs-netcat_mini-linux-powerpc64"
 					is_le && {
-						OSARCH="ppc64le-linux"
-						SRC_PKG="gs-netcat_mini-linux-ppc64le"
+						OSARCH="powerpc64le-linux"
+						SRC_PKG="gs-netcat_mini-linux-powerpc64le"
 					}
 				else
-					OS_ARCH="ppc32-linux"
-					SRC_PKG="gs-netcat_mini-linux-ppc32"
+					OSARCH="powerpc-linux"
+					SRC_PKG="gs-netcat_mini-linux-powerpc"
 					is_le && {
-						OSARCH="ppc32le-linux"
-						SRC_PKG="gs-netcat_mini-linux-ppc32le"
+						OSARCH="powerpcle-linux"
+						SRC_PKG="gs-netcat_mini-linux-powerpcle"
 					}
 				fi
 			fi
