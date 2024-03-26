@@ -241,7 +241,7 @@ jobs:
             cc: powerpcle-linux-muslsf # Little Endian, 32bit
             ssl: linux-ppc
           - arch: ppc64le
-            cc: powerpc64le-linux-muslsf # Little Endian, 64bit
+            cc: powerpc64le-linux-musl # Little Endian, 64bit
             ssl: linux-generic64
     runs-on: ubuntu-latest
     container:
