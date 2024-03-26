@@ -264,11 +264,11 @@ jobs:
       - name: Generate OpenSSL
         if: steps.cachessl.outputs.cache-hit != 'true'
         run: |
-          curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER:-1.1.1k}.tar.gz | tar -xzf - -C /tmp/
-          ( cd /tmp/openssl-${OPENSSL_VER:-1.1.1k} && \
+          curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER:-1.1.1w}.tar.gz | tar -xzf - -C /tmp/
+          ( cd /tmp/openssl-${OPENSSL_VER:-1.1.1w} && \
           ./Configure --prefix=/opt no-tests no-dso no-threads no-shared ${{ matrix.ssl }} && \
           make install_sw )
-          rm -rf rm -rf /tmp/openssl-${OPENSSL_VER:-1.1.1k} /opt/bin/openssl /opt/bin/c_rehash
+          rm -rf rm -rf /tmp/openssl-${OPENSSL_VER:-1.1.1w} /opt/bin/openssl /opt/bin/c_rehash
 
       - name: SaveCache
         if: steps.cachessl.outputs.cache-hit != 'true'

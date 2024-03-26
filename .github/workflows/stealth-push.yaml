@@ -153,14 +153,13 @@ jobs:
             ssl: linux-generic32
           - arch: powerpc
             cc: powerpc-linux-muslsf  # Big Endian, 32bit
-            # ssl: linux-ppc
             ssl: linux-generic32
           - arch: powerpc64
             cc: powerpc64-linux-musl  # Big Endian, 64bit
             ssl: linux-generic64
           - arch: powerpcle
             cc: powerpcle-linux-muslsf # Little Endian, 32bit
-            ssl: linux-ppc
+            ssl: linux-generic32
           - arch: powerpc64le
             cc: powerpc64le-linux-musl # Little Endian, 64bit
             ssl: linux-generic64
