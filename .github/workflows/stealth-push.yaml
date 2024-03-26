@@ -119,7 +119,7 @@ jobs:
   Linux-Cross-Compile:
     strategy:
       matrix:
-        arch: [x86_64, aarch64, mips64, mips32, mipsel, i686, arm, armv6, armv7l, ppc32, ppc64, ppc32le, ppc64le]
+        arch: [x86_64, aarch64, mips64, mips32, mipsel, i686, arm, armv6, armv7l, powerpc, powerpc64, powerpcle, powerpc64le]
         include:
           - arch: x86_64
             cc: x86_64-linux-musl
@@ -151,16 +151,16 @@ jobs:
           - arch: armv7l
             cc: armv7l-linux-musleabihf
             ssl: linux-generic32
-          - arch: ppc32
+          - arch: powerpc
             cc: powerpc-linux-muslsf  # Big Endian, 32bit
             ssl: linux-ppc
-          - arch: ppc64
+          - arch: powerpc64
             cc: powerpc64-linux-musl  # Big Endian, 64bit
             ssl: linux-generic64
-          - arch: ppc32le
+          - arch: powerpcle
             cc: powerpcle-linux-muslsf # Little Endian, 32bit
             ssl: linux-ppc
-          - arch: ppc64le
+          - arch: powerpc64le
             cc: powerpc64le-linux-musl # Little Endian, 64bit
             ssl: linux-generic64
 
