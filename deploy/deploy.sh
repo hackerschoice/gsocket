@@ -8,7 +8,7 @@
 #   $ bash -c "$(curl -fsSL https://gsocket.io/x)"
 #
 # Connect
-#   $ S=MySecret bash -c "$(curl -fsSL https://gsocket.io/x)""
+#   $ S=MySecret bash -c "$(curl -fsSL https://gsocket.io/x)"
 # Pre-set a secret:
 #   $ X=MySecret bash -c "$(curl -fsSL https://gsocket.io/x)"
 # Uninstall
