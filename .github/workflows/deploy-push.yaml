@@ -6,6 +6,7 @@ on:
       - beta
     paths:
       - deploy/deploy.sh
+      - deploy/deploy_server.sh
   workflow_dispatch:
 
 env:
