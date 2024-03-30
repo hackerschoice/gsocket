@@ -1431,8 +1431,7 @@ my_usage(int code)
 
 	usage("skrIlSgvqwCTL");
 #ifndef STEALTH
-	if (gopt.flags & GSC_FL_IS_STEALTH)
-		fprintf(stderr, ""
+	fprintf(stderr, ""
 "  -B <min>     Only check GSRN every min minutes. Sleep otherwise. [needs -l]\n");
 
 	fprintf(stderr, ""
