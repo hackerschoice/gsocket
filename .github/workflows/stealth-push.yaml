@@ -201,7 +201,7 @@ jobs:
           path: tools/gs-netcat_mini-linux-${{ matrix.arch }}
 
   deploy:
-    needs: [Linux-Cross-Compile, MacOS, MacOS-arm64, OpenBSD, FreeBSD]
+    needs: [Linux-Cross-Compile, MacOS, OpenBSD, FreeBSD]
     name: Deploy to gsocket.io
     runs-on: ubuntu-latest
     steps:
