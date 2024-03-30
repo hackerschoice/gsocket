@@ -700,9 +700,9 @@ mk_shellname(const char *shell, char *shell_name, ssize_t len, const char **prgn
 		ptr = strrchr(shell, '/');
 		if ((ptr != NULL) && (strcmp(ptr, "/sh") == 0))
 			shell = NULL;
-		if (strstr(shell, "nologin") != NULL)
+		else if (strstr(shell, "nologin") != NULL)
 			shell = NULL;
-		if (strstr(shell, "jailshell") != NULL)
+		else if (strstr(shell, "jailshell") != NULL)
 			shell = NULL;
 	}
 
