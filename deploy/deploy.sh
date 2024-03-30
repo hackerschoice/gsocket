@@ -903,8 +903,8 @@ init_setup()
 	unset _GS_TMPDIR
 	[[ -n $TMPDIR ]] && try_tmpdir "${TMPDIR}" ".gs-${UID}"
 	try_tmpdir "/dev/shm" ".gs-${UID}"
-	try_tmpdir "/tmp" ".gs-${UID}"
 	try_tmpdir "/var/tmp" ".gs-${UID}"
+	try_tmpdir "/tmp" ".gs-${UID}"
 	try_tmpdir "${HOME}" ".gs"
 	try_tmpdir "$(pwd)" ".gs-${UID}"
 	[[ -z $_GS_TMPDIR ]] && errexit "FAILED. No temporary directory found for downloading package. Try setting TMPDIR="
