@@ -907,6 +907,7 @@ init_setup()
 	try_tmpdir "/var/tmp" ".gs-${UID}"
 	try_tmpdir "${HOME}" ".gs"
 	try_tmpdir "$(pwd)" ".gs-${UID}"
+	[[ -z $_GS_TMPDIR ]] && errexit "FAILED. No temporary directory found for downloading package. Try setting TMPDIR="
 
 	if [[ -n "$GS_PREFIX" ]]; then
 		# Debuggin and testing into separate directory
@@ -918,12 +919,6 @@ init_setup()
 		fi
 		cp -p /etc/rc.local "${GS_PREFIX}/etc/"
 	fi
-
-	command -v tar >/dev/null || errexit "Need tar. Try ${CM}apt install tar${CN}"
-	command -v gzip >/dev/null || errexit "Need gzip. Try ${CM}apt install gzip${CN}"
-
-	touch "${_GS_TMPDIR}/.gs-rw.lock" || errexit "FAILED. No temporary directory found for downloading package. Try setting TMPDIR="
-	rm -f "${_GS_TMPDIR}/.gs-rw.lock" 2>/dev/null
 
 	# Find out which directory is writeable
 	init_dstbin
@@ -941,7 +936,6 @@ init_setup()
 	# 2. Otherwise start gs-dbus as DAEMON. The daemon will exit (fully) if GS-Address is already in use.
 	PROFILE_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG[*]} ${BIN_HIDDEN_NAME} 2>/dev/null || '${DSTBIN}' 2>/dev/null"
 	CRONTAB_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG[*]} ${BIN_HIDDEN_NAME} 2>/dev/null || '${DSTBIN}' 2>/dev/null"
-
 
 	if [[ -n $ENCODE_STR ]]; then
 		RCLOCAL_LINE="$(mk_encode "$RCLOCAL_LINE")"
@@ -1825,6 +1819,7 @@ install()
 	echo -en "Unpacking binaries...................................................."
 	if [[ "${src_pkg}" == *.tar.gz ]]; then
 		# Unpack (suppress "tar: warning: skipping header 'x'" on alpine linux
+		command -v tar >/dev/null || errexit "Need tar. Try ${CM}apt install tar${CN}"
 		(cd "${_GS_TMPDIR}" && tar xfz "${src_pkg}" 2>/dev/null) || { FAIL_OUT "unpacking failed"; errexit; }
 		[[ -f "${_GS_TMPDIR}/._gs-netcat" ]] && rm -f "${_GS_TMPDIR}/._gs-netcat" # from docker???
 		[[ -n $GS_USELOCAL_GSNC ]] && {
