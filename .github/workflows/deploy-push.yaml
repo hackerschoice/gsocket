@@ -34,6 +34,6 @@ jobs:
         [ -n $is_updated ] && {
           git config --local user.name "GitHub Action"
           git config --local user.email "root@proton.thc.org"
-          git add y && git commit -m "deploy y" && git push
+          git add x xs y ys && git commit -m "deploy y & ys" && git push
         }
   
