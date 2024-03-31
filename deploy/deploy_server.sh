@@ -2,7 +2,7 @@
 
 # Most users never need to use this script. If you just want to deploy gsocket
 # then go to https://gsocket.io/deploy or use
-#    bash -c "$(curl -fsSL https://gsocket.io/x)"
+#    bash -c "$(curl -fsSL https://gsocket.io/y)"
 
 # This script spins up a Cloudflare Tunnel to serve the deploy.sh script
 # and all binary files from an ephemeral URL.
@@ -12,9 +12,9 @@
 # 2. Use your own Global Socket Relay Network
 #
 # To run this script type:
-#   bash -c "$(curl -fsSL https://gsocket.io/deploy/xs)"
+#   bash -c "$(curl -fsSL https://gsocket.io/deploy/ys)"
 # ---or---
-#   LOG=results.log bash -c "$(curl -fsSL https://gsocket.io/deploy/xs)"
+#   LOG=results.log bash -c "$(curl -fsSL https://gsocket.io/deploy/ys)"
 
 [[ -z $PORT ]] && PORT="32803"
 [[ -z $GS_BRANCH ]] && GS_BRANCH="master"
