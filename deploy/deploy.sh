@@ -356,7 +356,9 @@ _ts_add()
 
 # Return 0 if not yet marked. Error if already marked.
 _ts_add_pdir() {
-	local pdir="$(dirname "${1:?}")"
+	local pdir
+
+	pdir="$(dirname "${1:?}")"
 	ts_is_marked "$pdir" && return 200
 
 	_ts_add "$pdir" "<NOT BY ADD_PDIR>"

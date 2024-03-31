@@ -2,7 +2,7 @@
  * EXAMPLE: 'Netcat' tool to forward TCP traffic via Global Sockets
  *
  *
- * Exampel 1: Simple TCP forwarding
+ * Example 1: Simple TCP forwarding
  **********************************
  * Server (behind NAT):
  * $ ./gs-netcat -l 192.168.6.7 22
@@ -23,7 +23,7 @@
  * Client:
  * $ ./gs-netcat
  *
- * Effectivly this is a 'reverse shell': The client can connect
+ * Effectively this is a 'reverse shell': The client can connect
  * to a shell on the server from any location and when both systems
  * (Server and Client) are behind NAT.
  *
@@ -502,7 +502,7 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 	return GS_SUCCESS;
 }
 
-// Convert STREAM to DRGRAM. [ 16 bit lenght | payload ]
+// Convert STREAM to DRGRAM. [ 16 bit length | payload ]
 // Return NULL if not enough data
 // Keep calling this function until NULL is returned.
 static uint8_t *
