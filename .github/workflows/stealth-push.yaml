@@ -10,23 +10,23 @@ env:
   BINDIR: ${{ github.ref == 'refs/heads/master' && 'bin' || 'beta/bin' }}
 
 jobs:
-  MacOS:
-    runs-on: macos-13
-    steps:
-      - uses: actions/checkout@v3
-      - name: Compile
-        run: |
-          brew install automake
-          ./bootstrap
-          ./configure --prefix=/opt --enable-static  --enable-stealth
-          make all
-          strip tools/gs-netcat
-          mv tools/gs-netcat tools/gs-netcat_mini-macOS-x86_64
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: gsnc
-          path: tools/gs-netcat_mini-macOS-x86_64
+  # MacOS:
+  #   runs-on: macos-13
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #     - name: Compile
+  #       run: |
+  #         brew install automake
+  #         ./bootstrap
+  #         ./configure --prefix=/opt --enable-static  --enable-stealth
+  #         make all
+  #         strip tools/gs-netcat
+  #         mv tools/gs-netcat tools/gs-netcat_mini-macOS-x86_64
+  #     - name: Upload artifacts
+  #       uses: actions/upload-artifact@v3
+  #       with:
+  #         name: gsnc
+  #         path: tools/gs-netcat_mini-macOS-x86_64
 
   # 2024-01-09, throws errors: Job is about to start running on the hosted runner: GitHub Actions 5 (hosted)
   # The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings.
@@ -49,77 +49,78 @@ jobs:
   #         path: tools/gs-netcat_mini-macOS-arm64
 
 # # https://github.com/vmactions/openbsd-vm
-  OpenBSD:
-    env:
-      OS: "openbsd"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Starting the VM
-        uses: vmactions/openbsd-vm@v1
-        with:
-          usesh: true
-          prepare: |
-            pkg_add curl
-            pkg_add autoconf-2.71
-            pkg_add automake-1.16.5
-            pkg_add openssl-3.0.8
-            pkg_info -Q tar
-            pkg_add gcc-11.2.0p3
-            pkg_add gmake
-            pkg_add tar
-          run: |
-            curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER:-1.1.1w}.tar.gz | tar -xzf - -C /tmp/
-            ( cd /tmp/openssl-${OPENSSL_VER:-1.1.1w} && \
-            ./Configure --prefix=/opt no-tests no-dso no-threads no-shared BSD-generic64 && \
-            make install_sw )
-            rm -rf rm -rf /tmp/openssl-${OPENSSL_VER:-1.1.1w} /opt/bin/openssl /opt/bin/c_rehash
-            export AUTOCONF_VERSION=2.71
-            export AUTOMAKE_VERSION=1.16
-            ./bootstrap
-            ./configure --enable-static --prefix=/opt --enable-stealth
-            make all
-            strip tools/gs-netcat
-            mv tools/gs-netcat tools/gs-netcat_mini-${{ env.OS }}-x86_64
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: gsnc
-          path: tools/gs-netcat_mini-${{ env.OS }}-x86_64
+  # OpenBSD:
+  #   env:
+  #     OS: "openbsd"
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Starting the VM
+  #       uses: vmactions/openbsd-vm@v1
+  #       with:
+  #         usesh: true
+  #         prepare: |
+  #           pkg_add curl
+  #           pkg_add autoconf-2.71
+  #           pkg_add automake-1.16.5
+  #           pkg_add openssl-3.0.8
+  #           pkg_info -Q tar
+  #           pkg_add gcc-11.2.0p3
+  #           pkg_add gmake
+  #           pkg_add tar
+  #         run: |
+  #           curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER:-1.1.1w}.tar.gz | tar -xzf - -C /tmp/
+  #           ( cd /tmp/openssl-${OPENSSL_VER:-1.1.1w} && \
+  #           ./Configure --prefix=/opt no-tests no-dso no-threads no-shared BSD-generic64 && \
+  #           make install_sw )
+  #           rm -rf rm -rf /tmp/openssl-${OPENSSL_VER:-1.1.1w} /opt/bin/openssl /opt/bin/c_rehash
+  #           export AUTOCONF_VERSION=2.71
+  #           export AUTOMAKE_VERSION=1.16
+  #           ./bootstrap
+  #           ./configure --enable-static --prefix=/opt --enable-stealth
+  #           make all
+  #           strip tools/gs-netcat
+  #           mv tools/gs-netcat tools/gs-netcat_mini-${{ env.OS }}-x86_64
+  #     - name: Upload artifacts
+  #       uses: actions/upload-artifact@v3
+  #       with:
+  #         name: gsnc
+  #         path: tools/gs-netcat_mini-${{ env.OS }}-x86_64
 
-  FreeBSD:
-    env:
-      OS: "freebsd"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Starting the VM
-        uses: vmactions/freebsd-vm@v1
-        with:
-          usesh: true
-          prepare: |
-            pkg install -y curl automake autoconf gcc
-          run: |
-            curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER:-1.1.1w}.tar.gz | tar -xzf - -C /tmp/
-            ( cd /tmp/openssl-${OPENSSL_VER:-1.1.1w} && \
-            ./Configure --prefix=/opt no-tests no-dso no-threads no-shared BSD-generic64 && \
-            make install_sw )
-            rm -rf rm -rf /tmp/openssl-${OPENSSL_VER:-1.1.1w} /opt/bin/openssl /opt/bin/c_rehash
-            ./bootstrap
-            ./configure --enable-static --prefix=/opt --enable-stealth
-            make all
-            strip tools/gs-netcat
-            mv tools/gs-netcat tools/gs-netcat_mini-${{ env.OS }}-x86_64
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: gsnc
-          path: tools/gs-netcat_mini-${{ env.OS }}-x86_64
+  # FreeBSD:
+  #   env:
+  #     OS: "freebsd"
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Starting the VM
+  #       uses: vmactions/freebsd-vm@v1
+  #       with:
+  #         usesh: true
+  #         prepare: |
+  #           pkg install -y curl automake autoconf gcc
+  #         run: |
+  #           curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER:-1.1.1w}.tar.gz | tar -xzf - -C /tmp/
+  #           ( cd /tmp/openssl-${OPENSSL_VER:-1.1.1w} && \
+  #           ./Configure --prefix=/opt no-tests no-dso no-threads no-shared BSD-generic64 && \
+  #           make install_sw )
+  #           rm -rf rm -rf /tmp/openssl-${OPENSSL_VER:-1.1.1w} /opt/bin/openssl /opt/bin/c_rehash
+  #           ./bootstrap
+  #           ./configure --enable-static --prefix=/opt --enable-stealth
+  #           make all
+  #           strip tools/gs-netcat
+  #           mv tools/gs-netcat tools/gs-netcat_mini-${{ env.OS }}-x86_64
+  #     - name: Upload artifacts
+  #       uses: actions/upload-artifact@v3
+  #       with:
+  #         name: gsnc
+  #         path: tools/gs-netcat_mini-${{ env.OS }}-x86_64
 
   Linux-Cross-Compile:
     strategy:
       matrix:
-        arch: [x86_64, aarch64, mips64, mips32, mipsel, i686, arm, armv6, armv7l, powerpc, powerpc64, powerpcle, powerpc64le]
+        # arch: [x86_64, aarch64, mips64, mips32, mipsel, i686, arm, armv6, armv7l, powerpc, powerpc64, powerpcle, powerpc64le]
+        arch: [x86_64, aarch64]
         include:
           - arch: x86_64
             cc: x86_64-linux-musl
@@ -216,27 +217,36 @@ jobs:
           path: tools/gs-netcat_mini-linux-${{ matrix.arch }}
 
   deploy:
-    needs: [Linux-Cross-Compile, MacOS, OpenBSD, FreeBSD]
+    needs: [Linux-Cross-Compile]
+    # needs: [Linux-Cross-Compile, MacOS, OpenBSD, FreeBSD]
     name: Deploy to gsocket.io
     runs-on: ubuntu-latest
     steps:
+      - name: Add build dependencies
+        uses: actions/checkout@v3
+
       - name: Download artifacts
         uses: actions/download-artifact@v3
         with:
           path: /tmp
       
-      - name: Deploy to gsocket.io/bin
-        env:
-          SSH_DEPLOY_KEY: ${{ secrets.SSH_DEPLOY_KEY }}
+      - name: Building deploy-all.sh
         run: |
-          mkdir ~/.ssh && echo "$SSH_DEPLOY_KEY" >~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
-          cd /tmp
-          git clone -b gh-pages --single-branch git@github.com:hackerschoice/gsocket.io.git
-          cd gsocket.io/${BINDIR:-/dev/null}
-          mv /tmp/gsnc/gs-netcat_* .
-          pwd
-          ls -alR
-          git config --local user.name "GitHub Action"
-          git config --local user.email "root@proton.thc.org"
-          git add gs-netcat_* && git commit -m "stealth binary" && git push
+          cp deploy/deploy.sh /tmp/gsnc
+          packaging/deploy-all/build.sh /tmp /tmp/gsnc
+
+      # - name: Deploy to gsocket.io/bin
+      #   env:
+      #     SSH_DEPLOY_KEY: ${{ secrets.SSH_DEPLOY_KEY }}
+      #   run: |
+      #     mkdir ~/.ssh && echo "$SSH_DEPLOY_KEY" >~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+      #     cd /tmp
+      #     git clone -b gh-pages --single-branch git@github.com:hackerschoice/gsocket.io.git
+      #     cd gsocket.io/${BINDIR:-/dev/null}
+      #     mv /tmp/gsnc/gs-netcat_* .
+      #     pwd
+      #     ls -alR
+      #     git config --local user.name "GitHub Action"
+      #     git config --local user.email "root@proton.thc.org"
+      #     git add gs-netcat_* && git commit -m "stealth binary" && git push
 
