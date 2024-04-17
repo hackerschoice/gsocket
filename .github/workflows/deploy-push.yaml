@@ -34,8 +34,8 @@ jobs:
     - name: Building deploy-all.sh
       run: |
         cmp -s /tmp/yx "/tmp/gsocket.io${DSTDIR:?}/y" || {
-          cp "${GITHUB_WORKSPACE:?}/deploy/deploy.sh" "gsocket.io${DSTDIR}/bin/deploy.sh"
-          "${GITHUB_WORKSPACE:?}/packaging/deploy-all/build.sh" /tmp/deploy-all.sh "gsocket.io${DSTDIR:?}/bin"
+          cp "${GITHUB_WORKSPACE:?}/deploy/deploy.sh" "/tmp/gsocket.io${DSTDIR}/bin/deploy.sh"
+          "${GITHUB_WORKSPACE:?}/packaging/deploy-all/build.sh" /tmp/deploy-all.sh "/tmp/gsocket.io${DSTDIR:?}/bin"
           rm -f "gsocket.io${DSTDIR}/bin/deploy.sh"
         }
 
