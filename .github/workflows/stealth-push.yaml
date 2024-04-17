@@ -27,8 +27,6 @@ jobs:
           name: gsnc
           path: tools/gs-netcat_mini-macOS-x86_64
 
-  # 2024-01-09, throws errors: Job is about to start running on the hosted runner: GitHub Actions 5 (hosted)
-  # The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings.
   MacOS-arm64:
     runs-on: macos-14
     steps:

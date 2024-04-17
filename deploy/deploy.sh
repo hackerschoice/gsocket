@@ -727,7 +727,7 @@ init_vars()
 			if [[ "$arch" == "arm64" ]]; then
 				OSARCH="x86_64-osx" # M1
 				## FIXME: really needs M3 here..
-				SRC_PKG="gs-netcat_mini-macOS-x86_64"
+				SRC_PKG="gs-netcat_mini-macOS-arm64"
 				# OSARCH="arm64-osx" # M1
 			else
 				OSARCH="x86_64-osx"
