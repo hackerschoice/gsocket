@@ -1,5 +1,7 @@
 1.4.42 - 2024-01-15
-    * deploy: change ppid to 1
+    * Fix when fd==0 was a network socket but not tracked.
+    * stat64() armhf fix
+    * deploy enhancements (PPID==1, self-config, callhome)
 
 1.4.41 - 2023-09-22
     * OpenBSD support

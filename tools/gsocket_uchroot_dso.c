@@ -500,8 +500,9 @@ thc_stat(const char *fname, const char *path, void *buf)
 	return thc_funcintfv(fname, path, buf, 1);
 }
 
-#if !defined(IS_SOL11) && !defined(__FreeBSD__) && !defined(stat64) && !defined(__APPLE__)
+#if !defined(IS_SOL11) && !defined(__FreeBSD__) && !defined(stat64) && !defined(__APPLE__) && !defined(_LARGEFILE_SOURCE)
 // Not Sol11, Not FBSD and stat64 is not a define itself (as it is on alpine Linux)
+// LARGEFILE_SOURCE on armhf: stat() is remapped to stat64() (?)
 int stat64(const char *path, struct stat64 *buf) {return thc_stat(__func__, path, buf); }
 #endif
 
@@ -519,7 +520,7 @@ thc_lstat(const char *fname, const char *path, void *buf)
 }
 
 #ifndef __CYGWIN__
-#if !defined(IS_SOL11) && !defined(__FreeBSD__) && !defined(stat64) && !defined(__APPLE__)
+#if !defined(IS_SOL11) && !defined(__FreeBSD__) && !defined(stat64) && !defined(__APPLE__) && !defined(_LARGEFILE_SOURCE)
 int lstat64(const char *path, struct stat64 *buf) {return thc_lstat(__func__, path, buf); }
 #endif
 
