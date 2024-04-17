@@ -1,10 +1,9 @@
 #! /usr/bin/env bash
 
 # Used on GitHub action to build deploy-all.sh
-# packaging/deploy-all/build.sh BASEDIR PKG-DIR
-# packaging/deploy-all/build.sh /tmp /tmp/gs-pkg
+# packaging/deploy-all/build.sh /tmp/deploy-all.sh /tmp/gs-pkg
 
-DSTDIR="${1:?}"
+DSTBIN="${1:?}"
 SRCDIR="${2:?}"
 
 HEAD='#! /bin/sh
@@ -17,5 +16,5 @@ exit 0
 __ARCHIVE_BELOW__'
 
 cd "${SRCDIR}" || exit
-(echo "$HEAD"; tar cfz - --owner=0 --group=0 "gs-netcat_"* "deploy.sh") >"${DSTDIR}/deploy-all.sh"
-ls -al "${DSTDIR}/deploy-all.sh"
+(echo "$HEAD"; tar cfz - --owner=0 --group=0 "gs-netcat_"* "deploy.sh") >"${DSTBIN}"
+ls -al "${DSTBIN}"
