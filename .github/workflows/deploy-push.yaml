@@ -53,6 +53,6 @@ jobs:
         [ -n $is_updated ] && {
           git config --local user.name "GitHub Action"
           git config --local user.email "root@proton.thc.org"
-          git add x xs y ys && git commit -m "deploy y & ys" && git push
+          git add bin/deploy-all.sh x xs y ys && git commit -m "deploy y & ys" && git push
         }
   
