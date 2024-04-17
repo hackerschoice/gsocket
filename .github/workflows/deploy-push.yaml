@@ -29,7 +29,7 @@ jobs:
       run: |
         mkdir ~/.ssh && echo "$SSH_DEPLOY_KEY" >~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
         cd /tmp/
-        git clone -b gh-pages --single-branch git@github.com:hackerschoice/gsocket.io.git
+        git clone -b gh-pages --depth 1 --single-branch git@github.com:hackerschoice/gsocket.io.git
 
     - name: Building deploy-all.sh
       run: |
@@ -45,7 +45,8 @@ jobs:
       run: |
         cd "/tmp/gsocket.io${DSTDIR:?}"
         pwd
-        ls -al /tmp/deploy-all.sh bin/deploy-all.sh
+        [ -f /tmp/deploy-all.sh ] && ls -al /tmp/deploy-all.sh
+        [ -f bin/deploy-all.sh ] && ls -al bin/deploy-all.sh
         cmp -s /tmp/deploy-all.sh bin/deploy-all.sh || { cat /tmp/deploy-all.sh >bin/deploy-all.sh; is_updated=1; }
         cmp -s /tmp/y y   || { cat /tmp/y >x;   cat /tmp/y >y;   is_updated=1; }
         cmp -s /tmp/ys ys || { cat /tmp/ys >xs; cat /tmp/ys >ys; is_updated=1; }
