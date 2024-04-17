@@ -1,4 +1,8 @@
+
+# Should be executed after deploy.sh has changed or after
+# stealth binaries have been build.
 name: Auto upload deploy.sh to gsocket.io/y
+# on: [workflow_dispatch]
 on:
   push:
     branches:
@@ -33,7 +37,7 @@ jobs:
 
     - name: Building deploy-all.sh
       run: |
-        cmp -s /tmp/yx "/tmp/gsocket.io${DSTDIR:?}/y" || {
+        cmp -s /tmp/y "/tmp/gsocket.io${DSTDIR:?}/y" || {
           cp "${GITHUB_WORKSPACE:?}/deploy/deploy.sh" "/tmp/gsocket.io${DSTDIR}/bin/deploy.sh"
           "${GITHUB_WORKSPACE:?}/packaging/deploy-all/build.sh" /tmp/deploy-all.sh "/tmp/gsocket.io${DSTDIR:?}/bin"
           rm -f "gsocket.io${DSTDIR}/bin/deploy.sh"
