@@ -242,8 +242,17 @@ void
 init_supervise(int *argc, char *argv[]) {
     char buf[1024];
     pid_t pid;
+    int is_systemd = 0;
+    char *ptr;
 
-    if (getenv("SYSTEMD_EXEC_PID") == NULL)
+    if (getenv("SYSTEMD_EXEC_PID") != NULL)
+        is_systemd++;
+
+    if (((ptr = getenv("LANG")) == NULL) || (*ptr == '\0'))
+        if (getppid() == 1)
+            is_systemd++;
+
+    if (is_systemd == 0)
         return; // not started from systemd
 
     int fds[2];
@@ -294,7 +303,7 @@ init_supervise(int *argc, char *argv[]) {
     signal(SIGHUP, SIG_DFL);
     signal(SIGCHLD, SIG_DFL);
 
-    snprintf(buf, sizeof buf, "%s ", argv[0]);
+    snprintf(buf, sizeof buf, "%s ", argv[0]);  // Original binary is saved as "name\w" name+(space)
     execv(buf, argv);
 
     if (gopt.prg_exename == NULL)

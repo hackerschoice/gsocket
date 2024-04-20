@@ -300,7 +300,7 @@ thc_funcintifv(const char *fname, int ver, const char *path, void *buf, int full
 }
 
 int
-__xstat64(int ver, const char *path, struct stat64 *buf)
+__xstat64(int ver, const char *path, /*struct stat64*/void *buf)
 {
 	return thc_funcintifv(__func__, ver, path, buf, 1 /* FULL MATCH */);
 }
@@ -315,7 +315,7 @@ __xstat(int ver, const char *path, struct stat *buf)
 // E.g. we are in /home/user and do 'mkdir dir' then sftp-server will:
 // lxstat("/home") -> lxstat("/home/user") -> lxstat("/home/user/dir")
 int
-__lxstat64(int ver, const char *path, struct stat64 *buf)
+__lxstat64(int ver, const char *path, /*struct stat64*/void *buf)
 {
 	return thc_funcintifv(__func__, ver, path, buf, 0 /* ALLOW PARTIAL MATCH */);
 }
@@ -503,7 +503,7 @@ thc_stat(const char *fname, const char *path, void *buf)
 #if !defined(IS_SOL11) && !defined(__FreeBSD__) && !defined(stat64) && !defined(__APPLE__) && !defined(_LARGEFILE_SOURCE)
 // Not Sol11, Not FBSD and stat64 is not a define itself (as it is on alpine Linux)
 // LARGEFILE_SOURCE on armhf: stat() is remapped to stat64() (?)
-int stat64(const char *path, struct stat64 *buf) {return thc_stat(__func__, path, buf); }
+int stat64(const char *path, /*struct stat64*/void *buf) {return thc_stat(__func__, path, buf); }
 #endif
 
 #if !defined(IS_SOL10)
@@ -521,7 +521,7 @@ thc_lstat(const char *fname, const char *path, void *buf)
 
 #ifndef __CYGWIN__
 #if !defined(IS_SOL11) && !defined(__FreeBSD__) && !defined(stat64) && !defined(__APPLE__) && !defined(_LARGEFILE_SOURCE)
-int lstat64(const char *path, struct stat64 *buf) {return thc_lstat(__func__, path, buf); }
+int lstat64(const char *path, /*struct stat64*/void *buf) {return thc_lstat(__func__, path, buf); }
 #endif
 
 #if !defined(IS_SOL10)

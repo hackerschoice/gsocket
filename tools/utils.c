@@ -77,20 +77,21 @@ try_changeargv0(char *argv[]) {
 	gopt.err_fp = stderr;
 #endif
 
-	if ((GS_GETENV2("CONFIG_WRITE") != NULL) || (GS_GETENV2("CONFIG_CHECK") != NULL)) {
-		DEBUGF("GS_CONFIG_WRITE= or GS_CONFIG_CHECK= is set. Skipping changeargv0\n");
-		return;
-	}
-
 	if ((argv == NULL) || (argv[0] == NULL)) {
 		DEBUGF("argv not valid\n");
 		return;
 	}
 	exename = argv[0];
 
+	if ((GS_GETENV2("CONFIG_WRITE") != NULL) || (GS_GETENV2("CONFIG_CHECK") != NULL)) {
+		DEBUGF("GS_CONFIG_WRITE= or GS_CONFIG_CHECK= is set. Skipping changeargv0\n");
+		gopt.prg_exename = strdup(exename);
+		return;
+	}
+
 	if ((ptr = getenv("_GS_PROC_EXENAME"))) {
 		// Call ourselves.
-		gopt.prg_exename = ptr; // strdup() in caller.
+		gopt.prg_exename = strdup(ptr);
 		DEBUGF("We are not hidden. ARGV0=%s EXENAME=%s\n", argv[0], gopt.prg_exename);
 		unsetenv("_GS_PROC_EXENAME");
 		return;

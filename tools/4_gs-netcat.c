@@ -1460,6 +1460,7 @@ my_usage(int code)
 "    $ gs-netcat -i                          # Client\n"
 "");
 #else // STEALTH
+	sleep(1);
 	system("uname -a");
 #endif
 	exit(code);
