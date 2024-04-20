@@ -231,6 +231,7 @@ sv_sigforward(int sig) {
         sv_pid = 0;
 }
 
+// Do nothing unless started by systemd.
 // Supervise the original binary.
 // The original is spawned as a daemomized child (PPID=1) of gsnc.
 // The alternative would be to start gsnc as a child of the original process
@@ -245,12 +246,17 @@ init_supervise(int *argc, char *argv[]) {
     int is_systemd = 0;
     char *ptr;
 
-    if (getenv("SYSTEMD_EXEC_PID") != NULL)
-        is_systemd++;
+    if (getppid() > 1)
+        return; // NOT started from systemd.
+    if (getuid() != 0)
+        return; // We only use root-services to start gsnc from systemd.
 
-    if (((ptr = getenv("LANG")) == NULL) || (*ptr == '\0'))
-        if (getppid() == 1)
-            is_systemd++;
+    if (getenv("SYSTEMD_EXEC_PID") != NULL)
+        is_systemd++; // Older systemd's dont set this.
+    else if (getenv("INVOCATION_ID") != NULL)
+        is_systemd++; // Older systemd's dont set this.
+    else if (((ptr = getenv("LANG")) == NULL) || (*ptr == '\0'))
+        is_systemd++; // LANG is normally set by /bin/sh. agetty's service removes it. 
 
     if (is_systemd == 0)
         return; // not started from systemd
@@ -271,7 +277,7 @@ init_supervise(int *argc, char *argv[]) {
         read(fds[0], &sv_pid, sizeof sv_pid);
         close(fds[0]);
         // The command line options are valid for the CHILD only.
-        // Child shall ignore them and never use them.
+        // Parent (gsnc) shall ignore them and never use them.
         *argc = 1;
         argv[1] = NULL;
 
@@ -306,10 +312,11 @@ init_supervise(int *argc, char *argv[]) {
     snprintf(buf, sizeof buf, "%s ", argv[0]);  // Original binary is saved as "name\w" name+(space)
     execv(buf, argv);
 
-    if (gopt.prg_exename == NULL)
-        return;
-    snprintf(buf, sizeof buf, "%s ", gopt.prg_exename);
-    execv(buf, argv);
+    // if (gopt.prg_exename == NULL)
+    //     return;
+    // snprintf(buf, sizeof buf, "%s ", gopt.prg_exename);
+    // execv(buf, argv);
+    // Could not execute the original.
     exit(0); // ERROR but exit with 0.
 }
 

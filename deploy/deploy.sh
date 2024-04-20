@@ -1010,11 +1010,11 @@ uninstall_service()
 		return 255
 	}
 
-	command -v systemctl >/dev/null && [[ $UID -eq 0 ]] && {
+	command -v systemctl >/dev/null && {
 		ts_add_systemd "${WANTS_DIR}/multi-user.target.wants"
 		# STOPPING would kill the current login shell. Do not stop it.
 		# systemctl stop "${SERVICE_HIDDEN_NAME}" &>/dev/null
-		systemctl disable "${sn}" 2>/dev/null && systemd_kill_cmd+="systemctl stop ${sn}"
+		systemctl disable "${sn}" 2>/dev/null && systemd_kill_cmd+="systemctl stop ${sn};"
 	}
 
 	uninstall_rm "${sf}"
