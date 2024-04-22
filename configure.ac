@@ -147,7 +147,6 @@ if test x"${STATIC}" = xyes; then
 		STATIC_SSL="yes"
 		;;
 	*)
-		STATIC_SSL="yes"
 		CFLAGS_STATIC="-static "
 		;;
 	esac
