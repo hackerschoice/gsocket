@@ -183,14 +183,14 @@ jobs:
           curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER:-1.1.1w}.tar.gz | tar -xzf - -C /tmp/
           ( cd /tmp/openssl-${OPENSSL_VER:-1.1.1w} && \
           ./Configure --prefix=/opt no-tests no-dso no-threads no-shared \
-            no-zlib no-bf no-cast no-dh no-md2 no-mdc2 no-rc2 no-rc4 no-rc5 \
+            `#no-zlib no-bf no-cast no-dh no-md2 no-mdc2 no-rc2 no-rc4 no-rc5 \
             no-idea no-md4 no-rmd160 no-dsa no-ssl no-ssl2 -no-tls1_3 \
             no-camellia no-seed no-afalgeng no-autoerrinit no-autoload-config \
             no-capieng no-cms no-comp no-ct no-dgram no-engine no-err no-filenames no-gost \
             no-ocsp no-hw-padlock no-pic no-srtp no-ssl-trace no-ui-console \
-            no-ssl3-method no-tls1-method no-tls1_1-method no-dtls1-method no-dtls1_2-method \
+            no-ssl3-method no-tls1-method no-tls1_1-method no-dtls1-method no-dtls1_2-method `\
             `#no-tls1_2-method # SRP needs this` \
-            no-deprecated \
+            `#no-deprecated` \
             ${{ matrix.ssl }} && \
           make install_sw )
           rm -rf rm -rf /tmp/openssl-${OPENSSL_VER:-1.1.1w} /opt/bin/openssl /opt/bin/c_rehash

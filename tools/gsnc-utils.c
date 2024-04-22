@@ -246,7 +246,6 @@ init_supervise(int *argc, char *argv[]) {
     char buf[1024];
     pid_t pid;
     int is_systemd = 0;
-    char *ptr;
     int is_tty;
 
     if (getppid() > 1)
