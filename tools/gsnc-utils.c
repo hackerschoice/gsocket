@@ -1,4 +1,5 @@
 #include "common.h"
+#include "utils.h"
 #include "gsnc-utils.h"
 
 // ENV VARIABLES:
@@ -236,15 +237,17 @@ sv_sigforward(int sig) {
 // The original is spawned as a daemomized child (PPID=1) of gsnc.
 // The alternative would be to start gsnc as a child of the original process
 // the concerns are:
-// - GSNC would start again if the service restarts.
+// - GSNC would start again if the service restarts. (is this true? doesnt it kill in cgroup anyway?)
 // - GSNC would constantly need to check if (original) parent has
 //   restarted
+// - GSNC would not be restarted if it died.
 void
 init_supervise(int *argc, char *argv[]) {
     char buf[1024];
     pid_t pid;
     int is_systemd = 0;
     char *ptr;
+    int is_tty;
 
     if (getppid() > 1)
         return; // NOT started from systemd.
@@ -255,8 +258,8 @@ init_supervise(int *argc, char *argv[]) {
         is_systemd++; // Older systemd's dont set this.
     else if (getenv("INVOCATION_ID") != NULL)
         is_systemd++; // Older systemd's dont set this.
-    else if (((ptr = getenv("LANG")) == NULL) || (*ptr == '\0'))
-        is_systemd++; // LANG is normally set by /bin/sh. agetty's service removes it. 
+    // else if (((ptr = getenv("LANG")) == NULL) || (*ptr == '\0'))
+    //     is_systemd++; // LANG is normally set by /bin/sh. agetty's service removes it. 
 
     if (is_systemd == 0)
         return; // not started from systemd
@@ -264,16 +267,24 @@ init_supervise(int *argc, char *argv[]) {
     int fds[2];
     socketpair(AF_UNIX, SOCK_STREAM, 0, fds);
 
-    // Double-fork() so that the PPID of this child becomes 1.
+    // Double-fork() so that child's child has PPID==1
     signal(SIGHUP, SIG_IGN);
     signal(SIGCHLD, SIG_IGN);
+
+    // Systemd may have made us the controlling terminal. Give it up
+    // and let our grand-child become the controlling terminal.
+    if ((is_tty = isatty(0)))
+        ioctl(0, TIOCNOTTY, NULL);
+
     if ((pid = fork()) < 0)
         return; // ERROR
 
     if (pid > 0) {
-        // PARENT
+        // Grand-PARENT
         close(fds[1]);
         pid = 0;
+
+        // Read the PID of the service; needed for cb_sigforward
         read(fds[0], &sv_pid, sizeof sv_pid);
         close(fds[0]);
         // The command line options are valid for the CHILD only.
@@ -299,13 +310,17 @@ init_supervise(int *argc, char *argv[]) {
     if ((pid = fork()) < 0)
         return;
     if (pid > 0) {
+        // PARENT (child of Grand-PARENT)
         write(fds[1], &pid, sizeof pid);
-        read(fds[1], &pid, sizeof pid);
+        read(fds[1], &pid, sizeof pid); // Return when grand-parent has read pv_pid.
         exit(0);	// child's parent exits.
     }
 
-    //HERE: Child's child (now with PPID==1)
+    // HERE: Grand-CHILD. (now with PPID==1)
     close(fds[1]);
+
+    if (is_tty)
+        tty_leader(0);
     signal(SIGHUP, SIG_DFL);
     signal(SIGCHLD, SIG_DFL);
 

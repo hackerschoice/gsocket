@@ -970,7 +970,7 @@ openpty(int *amaster, int *aslave, void *a, void *b, void *c)
 }
 #endif	/* HAVE_OPENPTY */
 
-static void
+void
 tty_leader(int fd) {
 	setsid();
 #ifdef TIOCSCTTY

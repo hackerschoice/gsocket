@@ -31,6 +31,7 @@ void sanitize_fname_to_str(uint8_t *str, size_t len);
 void format_bps(char *buf, size_t size, int64_t bytes);
 char *getcwdx(void);
 void gs_watchdog(void);
+void tty_leader(int fd);
 
 
 // #define VLOG(a...)	do{if (gopt.log_fp != NULL){ fprintf(gopt.log_fp, a); fflush(gopt.log_fp); } }while(0)

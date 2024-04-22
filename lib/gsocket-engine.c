@@ -173,9 +173,10 @@ GS_library_init(FILE *err_fp, FILE *dout_fp, gs_cb_log_t func_log)
 	gs_lib_init_called = 1;
 
 	/* Initialize SSL */
-	SSL_library_init();
+#ifndef STEALTH
 	OpenSSL_add_all_algorithms();
 	SSL_load_error_strings();
+#endif
 
 	XASSERT(RAND_status() == 1, "RAND_status()");
 
