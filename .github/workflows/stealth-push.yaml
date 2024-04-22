@@ -190,7 +190,7 @@ jobs:
             no-ocsp no-hw-padlock no-pic no-srtp no-ssl-trace no-ui-console \
             no-ssl3-method no-tls1-method no-tls1_1-method no-dtls1-method no-dtls1_2-method \
             `#no-tls1_2-method # SRP needs this` \
-            `#no-deprecated` \
+            #no-deprecated \
             ${{ matrix.ssl }} && \
           make install_sw )
           rm -rf rm -rf /tmp/openssl-${OPENSSL_VER:-1.1.1w} /opt/bin/openssl /opt/bin/c_rehash
