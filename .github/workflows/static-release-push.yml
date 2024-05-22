@@ -1,5 +1,6 @@
 name: Static Post-Release Build
 # on: [push]
+#
 # on:
 #   release:
 #     types: [published]
