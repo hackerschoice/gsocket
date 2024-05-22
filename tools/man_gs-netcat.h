@@ -286,5 +286,5 @@ BUGS\n\
      whatever circumstances, please notify me (skyper@thc.org) and tell me how\n\
      you think it should behave.\n\
 \n\
-macOS 13.2			October 8, 2020 		    macOS 13.2\n\
+macOS 14.5			October 8, 2020 		    macOS 14.5\n\
 ";
