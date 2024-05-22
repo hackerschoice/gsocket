@@ -150,13 +150,11 @@ GSNC_config_read(const char *fn) {
     FILE *fp;
     struct gsnc_config c;
     int ret = -1;
-    char *ptr;
 
-	ptr = GS_GETENV2("CONFIG_READ");
-    if ((ptr != NULL) && (*ptr == '0'))
-        return -1; // GS_CONFIG_READ=0, force _not_ reading.
+    if (!(gopt.flags & GSC_FL_WANT_CONFIG_READ))
+        return -1;
 
-    fn = ptr?:fn;
+    fn = GS_GETENV2("CONFIG_READ")?:fn;
 
     if (fn == NULL)
         return -1;

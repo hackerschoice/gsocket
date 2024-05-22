@@ -139,6 +139,9 @@ init_defaults1(char *argv[]) {
 		if (*ptr == '0')
 			gopt.flags &= ~GSC_FL_IS_STEALTH;
 	}
+	ptr = GS_GETENV2("CONFIG_READ");
+    if ((ptr == NULL) || (*ptr != '0'))
+		gopt.flags |= GSC_FL_WANT_CONFIG_READ;
 
 	try_changeargv0(argv);
 
@@ -720,6 +723,7 @@ static const char *
 mk_shellname(const char *shell, char *shell_name, ssize_t len, const char **prgname)
 {
 	char *dfl_shell = NULL;
+	char *shell_orig = shell;
 	char *ptr;
 	struct stat sb;
 	int is_great_shell = 0;
@@ -781,30 +785,56 @@ mk_shellname(const char *shell, char *shell_name, ssize_t len, const char **prgn
 		shell = NULL;
 	}
 
-	// Check if 'shell' is just 'sh' and a better shell exists.
-	if ((shell != NULL) && (is_great_shell == 1))
-	{
+	// HERE: shell is an absolute path or NULL
+
+	// Check that it's a known shell (bash, fish, zsh, sh, csh, tcsh)
+	// but favour bash if exists (is_great_shell == 1).
+	// If no default_shell exists on this system then go with what user
+	// provided (could be /bin/false :/).
+	while (shell != NULL) {
 		ptr = strrchr(shell, '/');
-		if ((ptr != NULL) && (strcmp(ptr, "/sh") == 0))
-			shell = NULL;
-		else if (strstr(shell, "nologin") != NULL)
-			shell = NULL;
-		else if (strstr(shell, "jailshell") != NULL)
-			shell = NULL;
+		if (ptr == NULL)
+			break; // CAN NOT HAPPEN.
+		ptr++;
+
+		size_t sz = strlen(ptr);
+		while (shell) {
+			// Check for known-good shell
+			if (sz == 4) {
+				if (strcmp(ptr, "bash") == 0)
+					break;
+				if (strcmp(ptr, "fish") == 0)
+					break;
+				if (strcmp(ptr, "tcsh") == 0)
+					break;
+			} else if (sz == 3) {
+				if (strcmp(ptr, "zsh") == 0)
+					break;
+				if (strcmp(ptr, "csh") == 0)
+					break;
+			}
+
+			// Not a known-good shell.
+			// Use default shell (if available). Otherwise shell remains whatever used supplied via SHELL=.
+			if (dfl_shell != NULL)
+				shell = dfl_shell;
+		}
+		break;
 	}
 
 	if (shell == NULL)
-	{
-		if (dfl_shell == NULL)
-			return NULL;
 		shell = dfl_shell;
-	}
 
-	ptr = strrchr(shell, '/');
-	if (ptr == NULL)
+	// BAIL if no shell found at all, not /bin/sh and not even user supplied SHELL=.
+	if (shell == NULL)
 		return NULL;
 
-	ptr += 1;
+	ptr = strrchr(shell, '/');
+	if (ptr != NULL)
+		ptr++
+	else
+		ptr = shell; // CAN NOT HAPPEN.
+
 	*prgname = NULL;
 
 	if (gopt.flags & GSC_FL_IS_STEALTH) {
@@ -1186,8 +1216,9 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 	char *str = "\\[\\033[36m\\]\\u\\[\\033[m\\]@\\[\\033[32m\\]\\h:\\[\\033[33;1m\\]\\w\\[\\033[m\\]\\$ ";
 	snprintf(buf, sizeof buf, "PS1=%s", str);
 	printf("\
-=Tip            : PS1='%s'\n\
-=Tip            : Press "CDC"Ctrl-e c"CN" for elite console\n", str);
+=Tip            : Press "CDM"Ctrl-e c"CN" for elite console\n\
+=Tip            : "CDC"PS1='%s'"CN"\n\
+=TIP            : "CDC"export LANG=C.UTF-8;locale -a 2>/dev/null|grep -Fqim1 C.UTF-8||export LANG=C"CN, str);
 	if (GS_getenv("PS1") == NULL) {
 		// Note: This only works for /bin/sh because some bash reset this value.
 		envp[envplen++] = strdup(buf);
@@ -1210,23 +1241,29 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 	snprintf(buf, sizeof buf, "MAIL=/var/mail/%.50s", user);
 	envp[envplen++] = strdup(buf);
 
-	/* Start with a clean environemnt (like OpenSSH does).
-		* STY = Confuses screen if gs-netcat is started from within screen (OSX)
-		* GSOCKET_ARGS = Otherwise any further gs-netcat command would
-		*    execute with same (hidden) commands as the current shell.
-		* HISTFILE= does not work on oh-my-zsh (it sets it again)
-		* FIXME: See OpenSSH/session.c:
-		* 1. Read /etc/default/login
-		* 2. Retrieve TZ, TERM, DISPLAY, LANG, LC from client.
-		* 3. Add ~/.ssh/environment
-		*/
+	// Start with a clean environemnt (like OpenSSH does).
+	// STY = Confuses screen if gs-netcat is started from within screen (OSX)
+	// GSOCKET_ARGS = Otherwise any further gs-netcat command would
+	//    execute with same (hidden) commands as the current shell.
+	// HISTFILE= does not work on oh-my-zsh (it sets it again)
+	// FIXME: See OpenSSH/session.c:
+	// 1. Read /etc/default/login
+	// 2. Retrieve TZ, TERM, DISPLAY, LANG, LC from client.
+	// 3. Add ~/.ssh/environment
+	
 	envp[envplen++] = "TERM=xterm-256color";
 	envp[envplen++] = "HISTFILE=/dev/null";
 	envp[envplen++] = "LESSHISTFILE=-";
 	envp[envplen++] = "REDISCLI_HISTFILE=/dev/null";
 	envp[envplen++] = "MYSQL_HISTFILE=/dev/null";
 	envp[envplen++] = "T=\t~$:?";
-	envp[envplen++] = "LANG=C.UTF-8";
+	// Cant use C.UTF-8 here because it screws up `systemctl status` output
+	envp[envplen++] = "LANG=en_US.UTF-8";
+	envp[envplen++] = "GS_CONFIG_READ=0";
+	if (gopt.prg_exename != NULL) {
+		snprintf(buf, sizeof buf, "GS=%s", gopt.prg_exename);
+		env[envplen++] = strdup(buf);
+	}
 
 	if (cmd != NULL) {
 		execle("/bin/sh", cmd, "-c", cmd, NULL, envp);

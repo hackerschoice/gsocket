@@ -1936,7 +1936,7 @@ gs_start()
 
 	[[ -z $IS_NEED_START ]] && return
 
-	(cd "$HOME"; "$DSTBIN") || errexit
+	(cd "$HOME"; unset GS_CONFIG_READ; "$DSTBIN") || errexit
 	IS_GS_RUNNING=1
 }
 

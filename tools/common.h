@@ -229,6 +229,7 @@ struct _gopt
 #define GSC_FL_OPT_WATCHDOG     (0x80)
 #define GSC_FL_OPT_QUIET        (0x100)
 #define GSC_FL_OPT_SOCKS_SERVER (0x200) // -S flag
+#define GSC_FL_WANT_CONFIG_READ (0x400) // Anything but GS_CONFIG_READ=0
 
 #ifdef DEBUG
 #define GS_APP_KEEPALIVE        10 // If no activty send app-layer ping (-i needed)
