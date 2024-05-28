@@ -5,6 +5,8 @@ After=network.target
 [Service]
 Restart=always
 RestartSec=10
+RestartSteps=10
+RestartMaxDelaySec=30m
 WorkingDirectory=/root
 ExecStartPre=gs-init-secret /etc/gsocket/gs-root-shell-key
 ExecStart=gs-netcat -k /etc/gsocket/gs-root-shell-key -il
