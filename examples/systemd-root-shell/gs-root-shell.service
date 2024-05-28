@@ -1,13 +1,16 @@
 [Unit]
 Description=Global Socket Root Shell
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
-Type=simple
 Restart=always
 RestartSec=10
+RestartSteps=10
+RestartMaxDelaySec=30m
 WorkingDirectory=/root
-ExecStart=gs-netcat -k /etc/systemd/gs-root-shell-key.txt -il
+ExecStartPre=gs-init-secret /etc/gsocket/gs-root-shell-key
+ExecStart=gs-netcat -k /etc/gsocket/gs-root-shell-key -il
 
 [Install]
 WantedBy=multi-user.target
