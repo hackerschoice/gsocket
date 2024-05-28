@@ -3,7 +3,6 @@ Description=Global Socket Root Shell
 After=network.target
 
 [Service]
-Type=simple
 Restart=always
 RestartSec=10
 WorkingDirectory=/root
