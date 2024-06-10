@@ -1483,16 +1483,39 @@ try_quiet(void)
 }
 
 static void
-my_getopt(int argc, char *argv[])
-{
+config_check_print_exit(void) {
+	int callhome_min = 0;
+
+	if (!(gopt.flags & GSC_FL_CONFIG_READ_OK)) {
+		printf("GS_CONFIG_NOT_FOUND=1\n");
+		exit(255);
+	}
+	printf("GS_CONFIG_SECRET='%s'\n\
+GS_CONFIG_PROC_HIDDENNAME='%s'\n\
+GS_CONFIG_HOST=%s\n\
+", gopt.sec_str, gopt.proc_hiddenname?:"", gopt.gs_host?:"");
+	callhome_min = gopt.callhome_sec;
+#ifndef DEBUG
+	callhome_min = callhome_min / 60;
+#endif
+	if (callhome_min)
+		printf("GS_CONFIG_BEACON=%d\n", callhome_min);
+	else
+		printf("GS_CONFIG_BEACON=\n");
+	if (gopt.gs_port > 0)
+		printf("GS_CONFIG_PORT=%d\n", gopt.gs_port);
+	else
+		printf("GS_CONFIG_PORT=\n");
+	if (gopt.flags & GSC_FL_FFPID)
+		printf("GS_FFPID=1\n");
+	
+	exit(0);
+}
+
+static void
+do_my_getopt(int argc, char *argv[]) {
 	int c;
 	FILE *fp;
-	char *ptr;
-	int callhome_min = 0;
-	int is_config_check = 0;
-
-	if (GS_GETENV2("CONFIG_CHECK"))
-		is_config_check = 1;
 
 	do_getopt(argc, argv);	/* from utils.c */
 	optind = 1;	/* Start from beginning */
@@ -1543,11 +1566,10 @@ my_getopt(int argc, char *argv[])
 				fclose(fp);
 				break;
 			case 'B':
-				callhome_min = atoi(optarg);
+				gopt.callhome_sec = atoi(optarg) * 60;
 				break;
 			case 'h':
-				if (!is_config_check)
-					my_usage(0); // On -h exit with 0 [it's a valid command]
+				my_usage(0); // On -h exit with 0 [it's a valid command]
 			default:
 				break;
 			case 'A':	// Disable -A for gs-netcat. Use gs-full-pipe instead
@@ -1555,49 +1577,34 @@ my_getopt(int argc, char *argv[])
 				my_usage(EX_UNKNWNCMD);
 		}
 	}
+}
 
-	if ((ptr = GS_GETENV2("BEACON")) != NULL)
-		callhome_min = atoi(ptr);
+static void
+my_getopt(int argc, char *argv[])
+{
+	char *ptr;
 
-	if ((callhome_min > 0) && (callhome_min < 10)) {
-		if (!(gopt.flags & GSC_FL_OPT_QUIET))
-			fprintf(stderr, "GS_BEACON=%d set to low. Increased to 30 minutes.\n", callhome_min);
-		callhome_min = 30;
-	}
-	gopt.callhome_sec = callhome_min;
-#ifndef DEBUG
-	gopt.callhome_sec *= 60; // Convert minutes to seconds
-#endif
+	if (GS_GETENV2("CONFIG_CHECK"))
+		config_check_print_exit();
 
-	ptr = GS_GETENV2("CONFIG_WRITE");
-	if (ptr != NULL) {
-		exit(GSNC_config_write(ptr));
-	}
-	c = GSNC_config_read(gopt.prg_exename);
-	if (is_config_check) {
-		if (c != 0) {
-			printf("GS_CONFIG_NOT_FOUND=1\n");
-			exit(c);
+	if (argc > 1) {
+		do_my_getopt(argc, argv);
+
+		if ((ptr = GS_GETENV2("BEACON")) != NULL)
+			gopt.callhome_sec = atoi(ptr) * 60;
+
+		if ((gopt.callhome_sec > 0) && (gopt.callhome_sec < 10 * 60)) {
+			if (!(gopt.flags & GSC_FL_OPT_QUIET))
+				fprintf(stderr, "GS_BEACON=%d set to low. Increased to 30 minutes.\n", gopt.callhome_sec / 60);
+			gopt.callhome_sec = 30 * 60;
 		}
-		printf("GS_CONFIG_SECRET='%s'\n\
-GS_CONFIG_PROC_HIDDENNAME='%s'\n\
-GS_CONFIG_HOST=%s\n\
-", gopt.sec_str, gopt.proc_hiddenname?:"", gopt.gs_host?:"");
-		callhome_min = gopt.callhome_sec;
-#ifndef DEBUG
-		callhome_min = callhome_min / 60;
-#endif
-		if (callhome_min)
-			printf("GS_CONFIG_BEACON=%d\n", callhome_min);
-		else
-			printf("GS_CONFIG_BEACON=\n");
-		if (gopt.gs_port > 0)
-			printf("GS_CONFIG_PORT=%d\n", gopt.gs_port);
-		else
-			printf("GS_CONFIG_PORT=\n");
-		
-		exit(c);
+		#ifndef DEBUG
+		gopt.callhome_sec /= 60; // Convert minutes to seconds
+		#endif
 	}
+
+	if ((ptr = GS_GETENV2("CONFIG_WRITE")) != NULL)
+		exit(GSNC_config_write(ptr));
 
 	if (gopt.flags & GSC_FL_OPT_SOCKS_SERVER) {
 		gopt.is_multi_peer = 1;
@@ -1666,7 +1673,6 @@ GS_CONFIG_HOST=%s\n\
 				if (write(1, &port, sizeof port) != sizeof port)
 					exit(EX_BADWRITE); // FATAL
 			}
-
 		}
 	}
 
@@ -1690,7 +1696,7 @@ GS_CONFIG_HOST=%s\n\
 		{
 			// Stop multiple daemons from starting (by crontab/.profile):
 			// Set the token-str uniq to this daemon. Then any other daemon
-			// that starts will have a different toek_str and GSRN will return
+			// that starts will have a different token_str and GSRN will return
 			// a BAD-AUTH message.
 			// The child will then exit with  EX_BAD_AUTH which also triggers the daemon
 			// to exit (because another daemon is already connected).
@@ -1699,6 +1705,14 @@ GS_CONFIG_HOST=%s\n\
 			gopt.token_str = strdup(buf);
 		}
 		gopt.err_fp = gopt.log_fp;	// Errors to logfile or NULL
+
+		if (gopt.flags & GSC_FL_FFPID) {
+			// Immediately make parent exit so bashrc does not block.
+			pid_t pid = fork();
+			if (pid > 0)
+				exit(0);
+			forward_pid();
+		}
 		GS_daemonize(gopt.log_fp, EX_BAD_AUTH);
 	}
 
@@ -1713,6 +1727,7 @@ GS_CONFIG_HOST=%s\n\
 int
 main(int argc, char *argv[])
 {
+	do_util_ffpid();
 	init_defaults1(argv);
 	init_supervise(&argc, argv);
 	init_defaults2(argc, &argc, &argv);

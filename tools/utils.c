@@ -83,17 +83,23 @@ try_changeargv0(char *argv[]) {
 	}
 	exename = argv[0];
 
-	if ((GS_GETENV2("CONFIG_WRITE") != NULL) || (GS_GETENV2("CONFIG_CHECK") != NULL)) {
-		DEBUGF("GS_CONFIG_WRITE= or GS_CONFIG_CHECK= is set. Skipping changeargv0\n");
+	if (GS_GETENV2("CONFIG_CHECK")) {
+		gopt.flags |= GSC_FL_CONFIG_CHECK;
+		GSNC_config_read(NULL /* default to GS_CONFIG_READ=*/);
+		return;
+	}
+
+	if (GS_GETENV2("CONFIG_WRITE") != NULL) {
 		gopt.prg_exename = strdup(exename);
 		return;
 	}
 
 	if ((ptr = getenv("_GS_PROC_EXENAME"))) {
-		// Call ourselves.
+		// Called ourselves.
 		gopt.prg_exename = strdup(ptr);
-		DEBUGF("We are not hidden. ARGV0=%s EXENAME=%s\n", argv[0], gopt.prg_exename);
+		DEBUGF("How hidden as ARGV0=%s [EXENAME=%s]\n", argv[0], gopt.prg_exename);
 		unsetenv("_GS_PROC_EXENAME");
+		GSNC_config_read(gopt.prg_exename);
 		return;
 	}
 
@@ -104,7 +110,6 @@ try_changeargv0(char *argv[]) {
 	}
 	exename = ptr;
 
-	// HERE: Switch to argv0 to different name.
 	// Load config
 	if (GSNC_config_read(exename) != 0) {
 		DEBUGF("GSNC_config_read() failed\n");
@@ -116,6 +121,7 @@ try_changeargv0(char *argv[]) {
 		return;
 	}
 
+	// HERE: Switch to argv0 to different name.
 	setenv("_GS_PROC_EXENAME", exename, 1);
 	argv[0] = gopt.proc_hiddenname;
 	execv(exename, argv);
@@ -131,18 +137,18 @@ init_defaults1(char *argv[]) {
 	gopt.is_built_debug = 1;
 #endif
 #ifdef STEALTH
-		gopt.flags |= GSC_FL_IS_STEALTH;
+	gopt.flags |= GSC_FL_IS_STEALTH;
 #endif
 	if ((ptr = GS_GETENV2("STEALTH")) != NULL) {
 		gopt.flags |= GSC_FL_IS_STEALTH;
-		// export GS_STEALTH=0 to disable stealth.
+		// Set GS_STEALTH=0 to disable stealth.
 		if (*ptr == '0')
 			gopt.flags &= ~GSC_FL_IS_STEALTH;
 	}
 	ptr = GS_GETENV2("CONFIG_READ");
     if ((ptr == NULL) || (*ptr != '0'))
 		gopt.flags |= GSC_FL_WANT_CONFIG_READ;
-
+	
 	try_changeargv0(argv);
 
 	gopt.prg_name = argv0;
@@ -723,27 +729,20 @@ static const char *
 mk_shellname(const char *shell, char *shell_name, ssize_t len, const char **prgname)
 {
 	char *dfl_shell = NULL;
-	char *shell_orig = shell;
-	char *ptr;
+	const char *ptr;
 	struct stat sb;
-	int is_great_shell = 0;
 	if (stat("/bin/bash", &sb) == 0) {
 		dfl_shell = "/bin/bash";
-		is_great_shell = 1;
 	} else if (stat("/usr/bin/bash", &sb) == 0) {
 		dfl_shell = "/usr/bin/bash";
-		is_great_shell = 1;
 	} else if (stat("/usr/local/bin/bash", &sb) == 0) {
 		dfl_shell = "/usr/local/bin/bash";
-		is_great_shell = 1;
 	} else if (stat("/bin/csh", &sb) == 0) {
 		dfl_shell = "/bin/csh";
-		is_great_shell = 1;
 	} else if (stat("/bin/sh", &sb) == 0) {
 		dfl_shell = "/bin/sh";
 	} else if (stat("./bash", &sb) == 0) {
 		dfl_shell = "./bash";
-		is_great_shell = 1;
 	} else if (stat("./sh", &sb) == 0) {
 		dfl_shell = "./sh";
 	} else if (stat("/cygdrive/c/WINDOWS/system32/cmd.exe", &sb) == 0)
@@ -831,7 +830,7 @@ mk_shellname(const char *shell, char *shell_name, ssize_t len, const char **prgn
 
 	ptr = strrchr(shell, '/');
 	if (ptr != NULL)
-		ptr++
+		ptr++;
 	else
 		ptr = shell; // CAN NOT HAPPEN.
 
@@ -1262,7 +1261,7 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 	envp[envplen++] = "GS_CONFIG_READ=0";
 	if (gopt.prg_exename != NULL) {
 		snprintf(buf, sizeof buf, "GS=%s", gopt.prg_exename);
-		env[envplen++] = strdup(buf);
+		envp[envplen++] = strdup(buf);
 	}
 
 	if (cmd != NULL) {

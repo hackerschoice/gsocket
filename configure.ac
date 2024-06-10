@@ -1,6 +1,6 @@
 dnl Process this File with autoconf to produce a configure script.
 AC_PREREQ([2.69])
-AC_INIT([gsocket],[1.4.42dev4])
+AC_INIT([gsocket],[1.4.42beta2])
 AC_CONFIG_AUX_DIR(config)
 AC_CANONICAL_TARGET
 
@@ -115,7 +115,7 @@ esac
 
 dnl Checks for header files.
 AC_HEADER_SYS_WAIT
-AC_CHECK_HEADERS(sys/time.h sys/endian.h sys/param.h unistd.h fnmatch.h string.h utmp.h utmpx.h pty.h openssl/srp.h util.h libutil.h netinet/in_systm.h sys/loadavg.h libproc.h wordexp.h)
+AC_CHECK_HEADERS(sys/time.h sys/endian.h sys/param.h sched.h unistd.h fnmatch.h string.h utmp.h utmpx.h pty.h openssl/srp.h util.h libutil.h netinet/in_systm.h sys/loadavg.h libproc.h wordexp.h)
 
 AC_CHECK_HEADER(openssl/srp.h, [], [AC_MSG_ERROR([openssl/srp.h not found. Update OpenSSL or apt install libssl-dev?])])
 

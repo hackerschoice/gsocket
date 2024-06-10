@@ -6,6 +6,10 @@
 # include <config.h>
 #endif
 
+#ifdef HAVE_SCHED_H
+#define _GNU_SOURCE
+# include <sched.h>
+#endif
 #ifdef HAVE_SYS_PARAM_H
 # include <sys/param.h>
 #endif
@@ -15,6 +19,7 @@
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <sys/resource.h>
+#include <sys/wait.h>
 #ifdef HAVE_SYS_LOADAVG_H
 # include <sys/loadavg.h> // Solaris11
 #endif
@@ -219,17 +224,20 @@ struct _gopt
 	uint16_t gs_port;
 };
 
-#define GSC_FL_IS_SERVER	(0x01)
-#define GSC_FL_IS_STEALTH       (0x02)
-#define GSC_FL_IS_NO_ATEXIT     (0x04)
-#define GSC_FL_OPT_G            (0x08)
-#define GSC_FL_OPT_SEC          (0x10)
-#define GSC_FL_OPT_TOR          (0x20)
-#define GSC_FL_OPT_DAEMON       (0x40)
-#define GSC_FL_OPT_WATCHDOG     (0x80)
-#define GSC_FL_OPT_QUIET        (0x100)
-#define GSC_FL_OPT_SOCKS_SERVER (0x200) // -S flag
-#define GSC_FL_WANT_CONFIG_READ (0x400) // Anything but GS_CONFIG_READ=0
+#define GSC_FL_IS_SERVER	         (0x01)
+#define GSC_FL_IS_STEALTH            (0x02)
+#define GSC_FL_IS_NO_ATEXIT          (0x04)
+#define GSC_FL_OPT_G                 (0x08)
+#define GSC_FL_OPT_SEC               (0x10)
+#define GSC_FL_OPT_TOR               (0x20)
+#define GSC_FL_OPT_DAEMON            (0x40)
+#define GSC_FL_OPT_WATCHDOG          (0x80)
+#define GSC_FL_OPT_QUIET            (0x100)
+#define GSC_FL_OPT_SOCKS_SERVER     (0x200) // -S flag
+#define GSC_FL_WANT_CONFIG_READ     (0x400) // Anything but GS_CONFIG_READ=0
+#define GSC_FL_CONFIG_CHECK         (0x800)
+#define GSC_FL_FFPID               (0x1000) // Fast Forward PID
+#define GSC_FL_CONFIG_READ_OK      (0x2000)
 
 #ifdef DEBUG
 #define GS_APP_KEEPALIVE        10 // If no activty send app-layer ping (-i needed)
