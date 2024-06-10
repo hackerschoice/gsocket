@@ -213,7 +213,12 @@ err:
     return ret;
 }
 
-#ifndef HAVE_SCHED_H
+
+#if defined(HAVE_SCHED_H) && defined(__LINUX__)
+# define WITH_FFPID  (1)
+#endif
+
+#ifndef WITH_FFPID
 static void forward_pid_worker(int worker) { return; }
 #else
 static void
@@ -259,7 +264,7 @@ forward_pid() {
     int i;
     pid_t pid_rv = getpid();
 
-#ifndef HAVE_SCHED_H
+#ifndef WITH_FFPID
     return pid_rv;
 #endif
     if (pid_rv < 1000)
