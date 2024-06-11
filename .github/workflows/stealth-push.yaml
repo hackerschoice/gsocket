@@ -216,13 +216,10 @@ jobs:
 
   deploy:
     # needs: [Linux-Cross-Compile, MacOS, OpenBSD, FreeBSD]
-    # needs: [Linux-Cross-Compile, MacOS, FreeBSD]
+    needs: [Linux-Cross-Compile, MacOS, FreeBSD]
     name: Deploy to gsocket.io
     runs-on: ubuntu-latest
     steps:
-      - name: Waiting for builds to complete
-        uses: willgarcia/workflow-wait-action@v0.1.0
-
       - name: Add build dependencies
         uses: actions/checkout@v3
 
