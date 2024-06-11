@@ -1589,19 +1589,19 @@ my_getopt(int argc, char *argv[])
 
 	if (argc > 1) {
 		do_my_getopt(argc, argv);
-
-		if ((ptr = GS_GETENV2("BEACON")) != NULL)
-			gopt.callhome_sec = atoi(ptr) * 60;
-
-		if ((gopt.callhome_sec > 0) && (gopt.callhome_sec < 10 * 60)) {
-			if (!(gopt.flags & GSC_FL_OPT_QUIET))
-				fprintf(stderr, "GS_BEACON=%d set to low. Increased to 30 minutes.\n", gopt.callhome_sec / 60);
-			gopt.callhome_sec = 30 * 60;
-		}
-		#ifndef DEBUG
-		gopt.callhome_sec /= 60; // Convert minutes to seconds
-		#endif
 	}
+
+	if ((ptr = GS_GETENV2("BEACON")) != NULL)
+		gopt.callhome_sec = atoi(ptr) * 60;
+
+	if ((gopt.callhome_sec > 0) && (gopt.callhome_sec < 10 * 60)) {
+		if (!(gopt.flags & GSC_FL_OPT_QUIET))
+			fprintf(stderr, "GS_BEACON=%d set to low. Increased to 30 minutes.\n", gopt.callhome_sec / 60);
+		gopt.callhome_sec = 30 * 60;
+	}
+	#ifdef DEBUG
+	gopt.callhome_sec /= 60; // Convert minutes to seconds
+	#endif
 
 	if ((ptr = GS_GETENV2("CONFIG_WRITE")) != NULL)
 		exit(GSNC_config_write(ptr));
