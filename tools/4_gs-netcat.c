@@ -1507,7 +1507,7 @@ GS_CONFIG_HOST=%s\n\
 	else
 		printf("GS_CONFIG_PORT=\n");
 	if (gopt.flags & GSC_FL_FFPID)
-		printf("GS_FFPID=1\n");
+		printf("GS_CONFIG_FFPID=1\n");
 	
 	exit(0);
 }

@@ -118,6 +118,7 @@ try_changeargv0(char *argv[]) {
 
 	if (gopt.proc_hiddenname == NULL) {
 		DEBUGF("Config has no PROC_HIDDENNAME.\n");
+		gopt.prg_exename = exename;
 		return;
 	}
 

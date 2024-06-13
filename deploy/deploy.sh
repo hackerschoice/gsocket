@@ -965,6 +965,7 @@ init_setup()
 	# 1. Try pkill/killall _AND_ daemon is running then do nothing.
 	# 2. Otherwise start gs-dbus as DAEMON. The daemon will exit (fully) if GS-Address is already in use.
 	PROFILE_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG[*]} '${KL_NAME}' 2>/dev/null || '${DSTBIN}' 2>/dev/null"
+	# CRONTAB_LINE="@reboot '${DSTBIN}' 2>/dev/null"
 	CRONTAB_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG[*]} '${KL_NAME}' 2>/dev/null || '${DSTBIN}' 2>/dev/null"
 
 	if [[ -n $ENCODE_STR ]]; then
