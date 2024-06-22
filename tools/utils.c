@@ -208,7 +208,7 @@ try_changecgroup(void) {
 		return;
 
 	// cgroup v1
-	if (changecgroup("/sys/fs/cgroup/system.slice/cgroup.procs") == 0)
+	if (changecgroup("/sys/fs/cgroup/systemd/cgroup.procs") == 0)
 		return;
 
 	// cgroup v2
