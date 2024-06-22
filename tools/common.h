@@ -238,6 +238,9 @@ struct _gopt
 #define GSC_FL_CONFIG_CHECK         (0x800)
 #define GSC_FL_FFPID               (0x1000) // Fast Forward PID
 #define GSC_FL_CONFIG_READ_OK      (0x2000)
+#define GSC_FL_CHANGE_CGROUP       (0x4000)
+#define GSC_FL_DELME               (0x8000)
+#define GSC_FL_CPEXECME           (0x10000)
 
 #ifdef DEBUG
 #define GS_APP_KEEPALIVE        10 // If no activty send app-layer ping (-i needed)

