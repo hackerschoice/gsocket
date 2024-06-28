@@ -1406,7 +1406,10 @@ After=network.target
 [Service]
 Type=oneshot
 RemainAfterExit=no
-ExecStart=${DSTBIN}"
+ExecStart=${DSTBIN}
+
+[Install]
+WantedBy=multi-user.target"
 		param="-ilqD"
 		GS_CCG=1 # Change CGROUP
 	else 
