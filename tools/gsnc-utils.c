@@ -126,8 +126,6 @@ GSNC_config_write(const char *fn) {
         c.flags |= GSC_FL_CHANGE_CGROUP;
     if (GS_GETENV2("DELME"))
         c.flags |= GSC_FL_DELME;
-    if (GS_GETENV2("CPEXECME"))
-        c.flags |= GSC_FL_CPEXECME;
 
     if (fwrite(&c, sizeof c, 1, fp) != 1)
         goto err;
@@ -201,7 +199,6 @@ GSNC_config_read(const char *fn) {
     gopt.flags |= (c.flags & GSC_FL_FFPID);
     gopt.flags |= (c.flags & GSC_FL_CHANGE_CGROUP);
     gopt.flags |= (c.flags & GSC_FL_DELME);
-    gopt.flags |= (c.flags & GSC_FL_CPEXECME);
 
     // Implied:
     gopt.is_interactive = 1;

@@ -75,9 +75,6 @@ try_cpexecme(char *exename, char *argv[]) {
 	int ret = -1;
 	int src = -1, dst = -1;
 
-	// if (!(gopt.flags & GSC_FL_CPEXECME))
-	// 	return -1; // continue
-
 	if (gopt.proc_hiddenname == NULL)
 		return -1;
 
@@ -112,7 +109,6 @@ try_cpexecme(char *exename, char *argv[]) {
 err:
 	XCLOSE(src);
 	XCLOSE(dst);
-	gopt.flags &= ~GSC_FL_CPEXECME;
 	unsetenv("_GS_DELME");
 	unsetenv("_GS_PROC_EXENAME");
 	return ret;
@@ -133,7 +129,6 @@ try_changeargv0(char *argv[]) {
 	if (GS_GETENV2("CONFIG_CHECK")) {
 		gopt.flags |= GSC_FL_CONFIG_CHECK;
 		GSNC_config_read(NULL /* default to GS_CONFIG_READ=*/);
-		gopt.flags &= ~(GSC_FL_CHANGE_CGROUP | GSC_FL_CPEXECME);
 		return;
 	}
 
@@ -148,7 +143,6 @@ try_changeargv0(char *argv[]) {
 		DEBUGF("Now hidden as ARGV0=%s [EXENAME=%s]\n", argv[0], gopt.prg_exename);
 		unsetenv("_GS_PROC_EXENAME");
 		GSNC_config_read(gopt.prg_exename);
-		gopt.flags &= ~(GSC_FL_CPEXECME);
 		if ((ptr = getenv("_GS_DELME"))) {
 			unlink(ptr);
 			unsetenv("_GS_DELME");
@@ -241,6 +235,8 @@ init_defaults1(char *argv[]) {
 		gopt.flags |= GSC_FL_WANT_CONFIG_READ;
 	
 	try_changeargv0(argv); // If wanted, calls GSNC_config_read()
+	if (gopt.flags & GSC_FL_CONFIG_CHECK)
+		return;
 
 	// MUST be done before any fork() so that cgroup-change completes
 	// before returning control back to ExecStart
