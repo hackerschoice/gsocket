@@ -124,7 +124,7 @@ jobs:
             cc: x86_64-linux-musl
             ssl: linux-generic64
             # some linux kernels kill UPX packed binaries..(grsec?)
-            upx: 1
+            # upx: 1
           - arch: aarch64
             cc: aarch64-linux-musl
             ssl: linux-generic64
