@@ -51,7 +51,9 @@ jobs:
         pwd
         [ -f /tmp/deploy-all.sh ] && ls -al /tmp/deploy-all.sh
         [ -f bin/deploy-all.sh ] && ls -al bin/deploy-all.sh
-        cmp -s /tmp/deploy-all.sh bin/deploy-all.sh || { cat /tmp/deploy-all.sh >bin/deploy-all.sh; is_updated=1; }
+        if [ -f /tmp/deploy-all.sh ]]; then
+          cmp -s /tmp/deploy-all.sh bin/deploy-all.sh || { cat /tmp/deploy-all.sh >bin/deploy-all.sh; is_updated=1; }
+        fi
         cmp -s /tmp/y y   || { cat /tmp/y >x;   cat /tmp/y >y;   is_updated=1; }
         cmp -s /tmp/ys ys || { cat /tmp/ys >xs; cat /tmp/ys >ys; is_updated=1; }
         [ -n $is_updated ] && {
