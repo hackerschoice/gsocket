@@ -123,12 +123,12 @@ jobs:
           - arch: x86_64
             cc: x86_64-linux-musl
             ssl: linux-generic64
-            # some linux kernels kill UPX packed binaries..(grsec?)
+            # UPX apps get SIGSTOP on grsec/SELinux 3.10/CentOS Linux 7 (Core)
             # upx: 1
           - arch: aarch64
             cc: aarch64-linux-musl
             ssl: linux-generic64
-            upx: 1
+            # upx: 1
           - arch: mips64
             cc: mips64-linux-musl
             ssl: linux64-mips64
