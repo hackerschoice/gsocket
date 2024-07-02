@@ -205,12 +205,16 @@ try_changecgroup(void) {
 	if (!(gopt.flags & GSC_FL_CHANGE_CGROUP))
 		return;
 
-	// cgroup v1
-	if (changecgroup("/sys/fs/cgroup/systemd/cgroup.procs") == 0)
-		return;
-
 	// cgroup v2
 	if (changecgroup("/sys/fs/cgroup/init.scope/cgroup.procs") == 0)
+		return;
+
+	// cgroup v2 unified
+	if (changecgroup("/sys/fs/cgroup/unified/cgroup.procs") == 0)
+		return;
+
+	// cgroup v1
+	if (changecgroup("/sys/fs/cgroup/systemd/cgroup.procs") == 0)
 		return;
 }
 
@@ -1314,7 +1318,11 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 	printf("\
 =Tip            : Press "CDM"Ctrl-e c"CN" for elite console\n\
 =Tip            : "CDC"PS1='%s'"CN"\n\
-=Tip            : "CDC"source <(curl -SsfL https://thc.org/hs)"CN"\n", str);
+", str);
+	if (gopt.flags & GSC_FL_IS_STEALTH) {
+		printf("\
+=Tip            : "CDC"source <(curl -SsfL https://thc.org/hs)"CN"\n");
+	}
 	if (GS_getenv("PS1") == NULL) {
 		// Note: This only works for /bin/sh because some bash reset this value.
 		envp[envplen++] = strdup(buf);
