@@ -258,12 +258,6 @@ init_defaults1(char *argv[]) {
 
 	// 1. CCG MUST be done before any fork() so that cgroup-change completes
 	// before returning control back to ExecStart
-	// 2. Odd musl bug: 'systemctl start supervise' works fine but when
-	// started during boot then systemd will not detect the change of cgroup
-	// unless we sleep for 5 seconds (doh!).
-	// Observed on debian 11 (bullseye), ubuntu-20 and ubuntu-22.
-	// if ((try_changecgroup() == 0) && (GS_GETENV2("NO_CCGWAIT") == NULL))
-		// sleep(5);
 	try_changecgroup();
 
 	// delete my own binary. (GS_DELME=1)
