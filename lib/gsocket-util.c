@@ -566,7 +566,7 @@ GS_daemonize(FILE *logfp, int code_force_exit)
 			n_force_exit += 1;
 
 			// Kill the daemon / watchdog.
-			if (n_force_exit >= 2)
+			if (n_force_exit >= 3)
 				exit(0);
 		} else {
 			n_force_exit = 0;
@@ -574,12 +574,16 @@ GS_daemonize(FILE *logfp, int code_force_exit)
 		/* No not spawn to often. */
 		gettimeofday(&now, NULL);
 		int diff = now.tv_sec - last.tv_sec;
-		int n = 3 * 60;
+		int n = 3 * 60; // Wait 3 minutes by default.
 		if (diff > 10 * 60) {
 			n_force_exit = 0;
-			n = 5;	// Immediately restart if this is first restart or child ran for >60sec
+			n = 5;	// Immediately restart if this is first restart or child ran for >10min
 		} else if (n_force_exit == 1) {
+			// Note: Host reboot may cause the FIN/RST to be lost. GSNC will think that the old GSNC is still
+			// connected util GSRN_MSG_TIMEOUT. First wait for 7 seconds, then for (45 + 10)
 			n = GSRN_TOKEN_LINGER_SEC + 3; // If BAD-AUTH then only wait long enough for GSRN to drop auth token (7 seconds)
+		} else if (n_force_exit > 1) {
+			n = GSRN_DEFAULT_PING_INTERVAL + 10;
 		}
 
 		xfprintf(gs_errfp, "%s ***DIED*** (wstatus=%d/). Restarting in %d second%s.\n", GS_logtime(), wstatus, n, n>1?"s":"");

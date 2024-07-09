@@ -220,6 +220,18 @@ try_changecgroup(void) {
 	return -1;
 }
 
+// Test if changing cgroup is working (maybe cgroup is not mounted?)
+// This is needed for systemd's Type=oneshot with RemainAfterExit=no
+void
+do_util_test_changecgroup(void) {
+	if (GS_GETENV2("UTIL_TEST_CCG") == NULL)
+        return;
+	
+	if (try_changecgroup() == 0)
+		exit(0);
+	exit(255);
+}
+
 void
 init_defaults1(char *argv[]) {
 	char *argv0 = argv[0];
@@ -244,10 +256,15 @@ init_defaults1(char *argv[]) {
 	if (gopt.flags & GSC_FL_CONFIG_CHECK)
 		return;
 
-	// MUST be done before any fork() so that cgroup-change completes
+	// 1. CCG MUST be done before any fork() so that cgroup-change completes
 	// before returning control back to ExecStart
-	if (try_changecgroup() == 0)
-		sleep(5);
+	// 2. Odd musl bug: 'systemctl start supervise' works fine but when
+	// started during boot then systemd will not detect the change of cgroup
+	// unless we sleep for 5 seconds (doh!).
+	// Observed on debian 11 (bullseye), ubuntu-20 and ubuntu-22.
+	// if ((try_changecgroup() == 0) && (GS_GETENV2("NO_CCGWAIT") == NULL))
+		// sleep(5);
+	try_changecgroup();
 
 	// delete my own binary. (GS_DELME=1)
 	if ((gopt.flags & GSC_FL_DELME) && (gopt.prg_exename != NULL)) {

@@ -1729,7 +1729,8 @@ my_getopt(int argc, char *argv[])
 int
 main(int argc, char *argv[])
 {
-	do_util_ffpid(); // will exit() when done.
+	do_util_ffpid(); // will exit().
+	do_util_test_changecgroup(); // will exit()
 	init_defaults1(argv);
 	init_supervise(&argc, argv);
 	init_defaults2(argc, &argc, &argv);

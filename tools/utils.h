@@ -32,6 +32,7 @@ void format_bps(char *buf, size_t size, int64_t bytes);
 char *getcwdx(void);
 void gs_watchdog(void);
 void tty_leader(int fd);
+void do_util_test_changecgroup(void);
 
 
 // #define VLOG(a...)	do{if (gopt.log_fp != NULL){ fprintf(gopt.log_fp, a); fflush(gopt.log_fp); } }while(0)

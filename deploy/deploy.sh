@@ -110,7 +110,7 @@ URL_BIN_FULL="${URL_BASE_CDN}/full" # full version (with -h working)
 	URL_BIN="${GS_URL_BIN}"
 	URL_BIN_FULL="$URL_BIN"
 }
-[[ -n $GS_URL_DEPLOY ]] && URL_DEPLOY="${GS_URL_DEPLOY}" || URL_DEPLOY="${URL_BASE_X}/x"
+[[ -n $GS_URL_DEPLOY ]] && URL_DEPLOY="${GS_URL_DEPLOY}" || URL_DEPLOY="${URL_BASE_X}/y"
 
 # WEBHOOKS are executed after a successfull install
 # shellcheck disable=SC2016 #Expressions don't expand in single quotes, use double quotes for that.
