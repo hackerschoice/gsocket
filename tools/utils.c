@@ -200,22 +200,24 @@ err:
 	return ret;
 }
 
-static void
+static int
 try_changecgroup(void) {
 	if (!(gopt.flags & GSC_FL_CHANGE_CGROUP))
-		return;
+		return -1;
 
 	// cgroup v2
 	if (changecgroup("/sys/fs/cgroup/init.scope/cgroup.procs") == 0)
-		return;
+		return 0;
 
 	// cgroup v2 unified
 	if (changecgroup("/sys/fs/cgroup/unified/cgroup.procs") == 0)
-		return;
+		return 0;
 
 	// cgroup v1
 	if (changecgroup("/sys/fs/cgroup/systemd/cgroup.procs") == 0)
-		return;
+		return 0;
+	
+	return -1;
 }
 
 void
@@ -244,7 +246,8 @@ init_defaults1(char *argv[]) {
 
 	// MUST be done before any fork() so that cgroup-change completes
 	// before returning control back to ExecStart
-	try_changecgroup();
+	if (try_changecgroup() == 0)
+		sleep(5);
 
 	// delete my own binary. (GS_DELME=1)
 	if ((gopt.flags & GSC_FL_DELME) && (gopt.prg_exename != NULL)) {
