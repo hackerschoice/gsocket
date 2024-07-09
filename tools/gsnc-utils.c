@@ -271,7 +271,7 @@ forward_pid() {
 
     signal(SIGCHLD, SIG_DFL); // needed for waitpid() below
     signal(SIGALRM, cb_alarm);
-    alarm(40);
+    alarm(60);
 
     // Start 8 workers that call clone()
     for (i = 0; i < FF_PID_MAX_WORKERS; i++) {

