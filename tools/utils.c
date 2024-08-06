@@ -1403,7 +1403,12 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 
 	// For PTY Terminals the -il is not needed
 	execle(shell, prg_name, NULL, envp);
-	SLOWEXIT("execlp(%s) failed: %s\n", shell, strerror(errno));
+	fprintf(stderr, "ERROR: execle(%s) failed: %s\n", shell, strerror(errno));
+	execlp("/bin/sh", "-sh", NULL);
+	fprintf(stderr, "ERROR: execle(/bin/sh) failed: %s\n", strerror(errno));
+	fprintf(stderr, "Type 'Ctrl-e c' to start Elite Console.");
+	while (1)
+		sleep(100);
 
 	return -1; // NOT REACHED
 }
