@@ -124,7 +124,7 @@ jobs:
             cc: x86_64-linux-musl
             ssl: linux-generic64
             # UPX apps get SIGSTOP on grsec/SELinux 3.10/CentOS Linux 7 (Core)
-            # upx: 1
+            upx: 1
           - arch: aarch64
             cc: aarch64-linux-musl
             ssl: linux-generic64
@@ -205,6 +205,9 @@ jobs:
           strip tools/gs-netcat
           if [ "${{ matrix.upx }}" != '' ]; then
             upx tools/gs-netcat
+            perl -i -0777 -pe 's/^(.{64})(.{0,256})UPX!.{4}/$1$2\0\0\0\0\0\0\0\0/s' tools/gs-netcat
+            perl -i -0777 -pe 's/^(.{64})(.{0,256})\x7fELF/$1$2\0\0\0\0/s' tools/gs-netcat
+            # bbe -b 64:256 -e 'y/UPX/AAA/' gs-pl -o foo
           fi
           mv tools/gs-netcat tools/gs-netcat_mini-linux-${{ matrix.arch }}
 
