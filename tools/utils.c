@@ -1399,17 +1399,19 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 		if (strcmp(shell_name, "-csh") == 0)
 			execle(shell, prg_name, NULL, envp); // csh (fbsd) without any arguments
 		execle(shell, prg_name, args, NULL, envp); // No PTY. Need '-il'.
+	} else {
+		// For PTY Terminals the -il is not needed
+		execle(shell, prg_name, NULL, envp);
+		fprintf(stderr, "ERROR: execle(%s) failed: %s\n", shell, strerror(errno));
+		execlp("/bin/sh", "-sh", NULL);
+		fprintf(stderr, "ERROR: execle(/bin/sh) failed: %s\n", strerror(errno));
 	}
 
-	// For PTY Terminals the -il is not needed
-	execle(shell, prg_name, NULL, envp);
-	fprintf(stderr, "ERROR: execle(%s) failed: %s\n", shell, strerror(errno));
-	execlp("/bin/sh", "-sh", NULL);
-	fprintf(stderr, "ERROR: execle(/bin/sh) failed: %s\n", strerror(errno));
-	fprintf(stderr, "Type 'Ctrl-e c' to start Elite Console.");
+	fprintf(stderr, "Type 'Ctrl-e c' to start Elite Console.\n");
 	while (1)
 		sleep(100);
 
+	exit(255); // NOT REACHED
 	return -1; // NOT REACHED
 }
 
