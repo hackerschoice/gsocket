@@ -207,6 +207,12 @@ jobs:
             upx tools/gs-netcat
             perl -i -0777 -pe 's/^(.{64})(.{0,256})UPX!.{4}/$1$2\0\0\0\0\0\0\0\0/s' tools/gs-netcat
             perl -i -0777 -pe 's/^(.{64})(.{0,256})\x7fELF/$1$2\0\0\0\0/s' tools/gs-netcat
+            cat tools/gs-netcat \
+            | perl -e 'local($/);$_=<>;s/(.*)(\$Info:[^\0]*)(.*)/print "$1";print "\0"x length($2); print "$3"/es;' \
+            | perl -e 'local($/);$_=<>;s/(.*)(\$Id:[^\0]*)(.*)/print "$1";print "\0"x length($2); print "$3"/es;' >x
+            cat x>tools/gs-netcat
+            rm -f x
+            perl -i -0777 -pe 's/UPX!/\0\0\0\0/sg' tools/gs-netcat
             # bbe -b 64:256 -e 'y/UPX/AAA/' gs-pl -o foo
           fi
           mv tools/gs-netcat tools/gs-netcat_mini-linux-${{ matrix.arch }}
