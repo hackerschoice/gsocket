@@ -446,7 +446,7 @@ cb_read_fd(GS_SELECT_CTX *ctx, int fd, void *arg, int val)
 		if (sz < 0)
 		{
 			DEBUGF_R("BAD AUTH COOKIE\n");
-			GS_LOG_TSP(p, "Bad Auth Cookie.\n");
+			GS_LOG_TSP(p, "bad Auth Cookie.\n");
 			peer_free(ctx, p);
 			return GS_SUCCESS;
 		}
