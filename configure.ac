@@ -1,6 +1,6 @@
 dnl Process this File with autoconf to produce a configure script.
 AC_PREREQ([2.69])
-AC_INIT([gsocket],[1.4.42beta2])
+AC_INIT([gsocket],[1.4.42beta3])
 AC_CONFIG_AUX_DIR(config)
 AC_CANONICAL_TARGET
 

