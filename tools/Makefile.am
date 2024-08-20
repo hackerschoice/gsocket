@@ -38,7 +38,7 @@ gs_netcat_SOURCES = 4_gs-netcat.c utils.c socks.c console.c ids.c event_mgr.c pk
 gs_netcat_LDADD = ../lib/libgsocket.a @LDADD_STATIC@
 gs_netcat_CFLAGS = @CFLAGS_STATIC@
 
-dist_bin_SCRIPTS = blitz gs-sftp gs-mount gsocket
+dist_bin_SCRIPTS = blitz gs-sftp gs-mount gsocket gs-init-secret
 
 gsocket_uchroot_dso_so_0_SOURCES = gsocket_uchroot_dso.c
 gsocket_uchroot_dso_so_0_CFLAGS = -shared -fPIC
