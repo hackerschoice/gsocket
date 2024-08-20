@@ -5,7 +5,7 @@ permissions:
   contents: write
 
 env:
-  OPENSSL_VER: 1.1.1k
+  OPENSSL_VER: 1.1.1w
   BINDIR: ${{ github.ref == 'refs/heads/master' && 'bin' || 'beta/bin' }}
   # OPENSSL_OPTS: no-tests no-dso no-threads no-shared
   OPENSSL_OPTS: no-tests no-dso no-threads no-shared no-zlib no-bf no-cast no-dh no-md2 no-mdc2 no-rc2 no-rc4 no-rc5 no-idea no-md4 no-rmd160 no-dsa no-ssl no-ssl2 -no-tls1_3 no-camellia no-seed no-afalgeng no-autoerrinit no-autoload-config no-capieng no-cms no-comp no-ct no-dgram no-engine no-err no-filenames no-gost no-ocsp no-hw-padlock no-pic no-srtp no-ssl-trace no-ui-console no-ssl3-method no-tls1-method no-tls1_1-method no-dtls1-method no-dtls1_2-method no-deprecated
@@ -102,8 +102,10 @@ jobs:
             pkg install -y curl automake autoconf gcc
           run: |
             curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER:-1.1.1w}.tar.gz | tar -xzf - -C /tmp/
-            ( cd /tmp/openssl-${OPENSSL_VER:-1.1.1w} && \
-            ./Configure --prefix=/opt ${OPENSSL_OPTS_FBSD} BSD-generic64 && \
+            echo "OPTS1=${OPENSSL_OPTS_FBSD} OPTS2=${{ env.OPENSSL_OPTS_FBSD }}"
+
+            ( echo "xOPTS1=${OPENSSL_OPTS_FBSD} xOPTS2=${{ env.OPENSSL_OPTS_FBSD }}"; cd /tmp/openssl-${OPENSSL_VER:-1.1.1w} && \
+            ./Configure --prefix=/opt no-tests no-dso no-threads no-shared BSD-generic64 && \
             make install_sw )
             rm -rf rm -rf /tmp/openssl-${OPENSSL_VER:-1.1.1w} /opt/bin/openssl /opt/bin/c_rehash
             ./bootstrap
@@ -111,7 +113,6 @@ jobs:
             make -C lib libgsocket.a && make -C tools gs-netcat
             strip tools/gs-netcat
             md5sum tools/gs-netcat
-            md5 tools/gs-netcat
             tools/gs-netcat -g
             mv tools/gs-netcat tools/gs-netcat_mini-${{ env.OS }}-x86_64
       - name: Upload artifacts
