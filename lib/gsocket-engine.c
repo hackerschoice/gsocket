@@ -171,6 +171,10 @@ GS_library_init(FILE *err_fp, FILE *dout_fp, gs_cb_log_t func_log)
 	if (gs_lib_init_called != 0)
 		return;
 	gs_lib_init_called = 1;
+	gs_errfp = err_fp;
+#ifdef DEBUG
+	gs_dout = dout_fp;
+#endif
 
 	/* Initialize SSL */
 #ifndef STEALTH
@@ -186,11 +190,7 @@ GS_library_init(FILE *err_fp, FILE *dout_fp, gs_cb_log_t func_log)
 		XASSERT(gs_log_info.msg != NULL, "calloc: %s\n", strerror(errno));
 	}
 
-	gs_errfp = err_fp;
 	gs_func_log = func_log;
-#ifdef DEBUG
-	gs_dout = dout_fp;
-#endif
 }
 
 int
