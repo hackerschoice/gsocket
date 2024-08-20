@@ -118,11 +118,11 @@ jobs:
             pkg install -y curl automake autoconf gcc
 
           run: |
-            curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER:-1.1.1w}.tar.gz | tar -xzf - -C /tmp/
-            ( cd /tmp/openssl-${OPENSSL_VER:-1.1.1w} && \
+            curl -SsfL https://www.openssl.org/source/openssl-${{ env.OPENSSL_VER }}.tar.gz | tar -xzf - -C /tmp/
+            ( cd /tmp/openssl-${{ env.OPENSSL_VER }} && \
             ./Configure --prefix=/opt no-tests no-dso no-threads no-shared BSD-generic64 && \
             make install_sw )
-            rm -rf rm -rf /tmp/openssl-${OPENSSL_VER:-1.1.1w} /opt/bin/openssl /opt/bin/c_rehash
+            rm -rf rm -rf /tmp/openssl-${{ env.OPENSSL_VER }} /opt/bin/openssl /opt/bin/c_rehash
             ./bootstrap
             ./configure --enable-static --prefix=/opt
             make all
@@ -170,11 +170,11 @@ jobs:
             pkg_add tar
 
           run: |
-            curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER:-1.1.1w}.tar.gz | tar -xzf - -C /tmp/
-            ( cd /tmp/openssl-${OPENSSL_VER:-1.1.1w} && \
+            curl -SsfL https://www.openssl.org/source/openssl-${{ env.OPENSSL_VER }}.tar.gz | tar -xzf - -C /tmp/
+            ( cd /tmp/openssl-${{ env.OPENSSL_VER }} && \
             ./Configure --prefix=/opt no-tests no-dso no-threads no-shared BSD-generic64 && \
             make install_sw )
-            rm -rf rm -rf /tmp/openssl-${OPENSSL_VER:-1.1.1w} /opt/bin/openssl /opt/bin/c_rehash
+            rm -rf rm -rf /tmp/openssl-${{ env.OPENSSL_VER }} /opt/bin/openssl /opt/bin/c_rehash
             export AUTOCONF_VERSION=2.71
             export AUTOMAKE_VERSION=1.16
             ./bootstrap
@@ -267,11 +267,11 @@ jobs:
       - name: Generate OpenSSL
         if: steps.cachessl.outputs.cache-hit != 'true'
         run: |
-          curl -SsfL https://www.openssl.org/source/openssl-${OPENSSL_VER:-1.1.1w}.tar.gz | tar -xzf - -C /tmp/
-          ( cd /tmp/openssl-${OPENSSL_VER:-1.1.1w} && \
+          curl -SsfL https://www.openssl.org/source/openssl-${{ env.OPENSSL_VER }}.tar.gz | tar -xzf - -C /tmp/
+          ( cd /tmp/openssl-${{ env.OPENSSL_VER }} && \
           ./Configure --prefix=/opt no-tests no-dso no-threads no-shared ${{ matrix.ssl }} && \
           make install_sw )
-          rm -rf rm -rf /tmp/openssl-${OPENSSL_VER:-1.1.1w} /opt/bin/openssl /opt/bin/c_rehash
+          rm -rf rm -rf /tmp/openssl-${{ env.OPENSSL_VER }} /opt/bin/openssl /opt/bin/c_rehash
 
       - name: SaveCache
         if: steps.cachessl.outputs.cache-hit != 'true'
