@@ -9,7 +9,7 @@ env:
   BINDIR: ${{ github.ref == 'refs/heads/master' && 'bin' || 'beta/bin' }}
   # OPENSSL_OPTS: no-tests no-dso no-threads no-shared
   OPENSSL_OPTS: no-tests no-dso no-threads no-shared no-zlib no-bf no-cast no-dh no-md2 no-mdc2 no-rc2 no-rc4 no-rc5 no-idea no-md4 no-rmd160 no-dsa no-ssl no-ssl2 -no-tls1_3 no-camellia no-seed no-afalgeng no-autoerrinit no-autoload-config no-capieng no-cms no-comp no-ct no-dgram no-engine no-err no-filenames no-gost no-ocsp no-hw-padlock no-pic no-srtp no-ssl-trace no-ui-console no-ssl3-method no-tls1-method no-tls1_1-method no-dtls1-method no-dtls1_2-method no-deprecated
-  OPENSSL_OPTS_FBSD: no-tests no-dso no-threads no-shared no-zlib no-bf no-cast
+  OPENSSL_OPTS_FBSD: no-tests no-dso no-threads no-shared 
   #no-dh no-md2 no-mdc2 no-rc2 no-rc4 no-rc5 no-idea no-md4 no-rmd160 no-dsa no-ssl no-ssl2 -no-tls1_3 no-camellia no-afalgeng no-autoerrinit no-autoload-config no-capieng no-cms no-comp no-ct no-dgram no-engine no-err no-filenames no-gost no-ocsp no-hw-padlock no-pic no-srtp no-ssl-trace no-ui-console no-ssl3-method no-tls1-method no-tls1_1-method no-dtls1-method no-dtls1_2-method no-deprecated
 
 jobs:
@@ -81,7 +81,6 @@ jobs:
             ./configure --enable-static --prefix=/opt --enable-stealth
             make all
             strip tools/gs-netcat
-            md5sum tools/gs-netcat
             mv tools/gs-netcat tools/gs-netcat_mini-${{ env.OS }}-x86_64
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
@@ -111,6 +110,7 @@ jobs:
             ./configure --enable-static --prefix=/opt --enable-stealth
             make -C lib libgsocket.a && make -C tools gs-netcat
             strip tools/gs-netcat
+            md5sum tools/gs-netcat
             mv tools/gs-netcat tools/gs-netcat_mini-${{ env.OS }}-x86_64
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
