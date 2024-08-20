@@ -112,6 +112,7 @@ jobs:
             strip tools/gs-netcat
             md5sum tools/gs-netcat
             md5 tools/gs-netcat
+            tools/gs-netcat -g
             mv tools/gs-netcat tools/gs-netcat_mini-${{ env.OS }}-x86_64
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
