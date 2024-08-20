@@ -816,7 +816,7 @@ init_vars()
 		KL_CMD="pkill"
 		KL_CMD_TERM="pkill -x"
 		KL_NAME="${BIN_HIDDEN_NAME_RX}"
-		KL_CMD_RUNCHK_UARG=("-x" "-0" "-U${UID}")
+		KL_CMD_RUNCHK_UARG=("-0" "-x" "-U${UID}")
 	elif command -v killall >/dev/null; then
 		KL_CMD="killall"
 		KL_CMD_TERM="killall"
