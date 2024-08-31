@@ -318,7 +318,7 @@ try_changeargv0(int argc, char *argv[]) {
 		DEBUGF("GSNC_config_read() failed\n");
 		// MUST exit if GS_CONFIG_READ=0 is set or otherwise
 		// uname -a is started for every gsnc login
-		if ((!(gopt.flags & GSC_FL_WANT_CONFIG_READ)) && (getenv("GSNC") != NULL))
+		if ((!(gopt.flags & GSC_FL_WANT_CONFIG_READ)) && (getenv("GSNC") != NULL) && (getenv("GS_TEST_DSTBIN") == NULL))
 			exit(0);
 		return;
 	}

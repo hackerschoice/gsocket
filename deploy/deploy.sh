@@ -1818,7 +1818,7 @@ test_dstbin()
 
 	# Try to execute the binary
 	unset ERR_LOG
-	GS_OUT=$(GS_CONFIG_READ=0 "${DSTBIN_EXEC_ARR[@]}" -g 2>/dev/null)
+	GS_OUT=$(GS_TEST_DSTBIN=1 GS_CONFIG_READ=0 "${DSTBIN_EXEC_ARR[@]}" -g 2>/dev/null)
 	[[ -z "$GS_OUT" ]] && {
 		# 126 - Exec format error
 		FAIL_OUT
