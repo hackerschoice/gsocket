@@ -715,6 +715,7 @@ init_vars()
 		fi
 	}
 
+	unset GSNC
 	unset OSARCH
 	unset SRC_PKG
 	# User supplied OSARCH
@@ -953,7 +954,6 @@ init_vars()
 	[[ -n $SHELL ]] && [[ "$("$SHELL" -c "echo TRUE" 2>/dev/null)" != "TRUE" ]] && unset SHELL
 
 	DEBUGF "DL=${DL[*]}"
-	# DEBUGF "OLD_PIDS='$OLD_PIDS'"
 	DEBUGF "SRC_PKG=$SRC_PKG"
 }
 
@@ -1818,7 +1818,7 @@ test_dstbin()
 
 	# Try to execute the binary
 	unset ERR_LOG
-	GS_OUT=$(GS_TEST_DSTBIN=1 GS_CONFIG_READ=0 "${DSTBIN_EXEC_ARR[@]}" -g 2>/dev/null)
+	GS_OUT=$(GS_CONFIG_READ=0 "${DSTBIN_EXEC_ARR[@]}" -g 2>/dev/null)
 	[[ -z "$GS_OUT" ]] && {
 		# 126 - Exec format error
 		FAIL_OUT
@@ -2124,7 +2124,7 @@ gs_start()
 
 	[[ -z $IS_NEED_START ]] && return
 
-	(cd "$HOME"; GS_CONFIG_READ="" "${DSTBIN_EXEC_ARR[@]}") || errexit
+	(cd "$HOME"; unset -v GS_CONFIG_READ; "${DSTBIN_EXEC_ARR[@]}") || errexit
 	IS_GS_RUNNING=1
 }
 
