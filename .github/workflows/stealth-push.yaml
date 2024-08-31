@@ -187,7 +187,6 @@ jobs:
         run: |
           curl -SsfL https://www.openssl.org/source/openssl-${{ env.OPENSSL_VER }}.tar.gz | tar -xzf - -C /tmp/
           ( cd /tmp/openssl-${{ env.OPENSSL_VER }} && \
-          ${{ matrix.ssl }}
           ./Configure --prefix=/opt ${{ env.OPENSSL_OPTS }} ${{ matrix.ssl }} && \
           make install_sw )
           rm -rf rm -rf /tmp/openssl-${{ env.OPENSSL_VER }} /opt/bin/openssl /opt/bin/c_rehash
