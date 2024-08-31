@@ -254,9 +254,7 @@ try_changeargv0(int argc, char *argv[]) {
 	char *exename;
 	char *ptr;
 	char *ldso = NULL;
-#ifdef DEBUG
 	gopt.err_fp = stderr;
-#endif
 
 	if ((argv == NULL) || (argv[0] == NULL))
 		return;

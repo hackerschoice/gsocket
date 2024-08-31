@@ -2124,7 +2124,7 @@ gs_start()
 
 	[[ -z $IS_NEED_START ]] && return
 
-	(cd "$HOME"; GS_CONFIG_READ= "${DSTBIN_EXEC_ARR[@]}") || errexit
+	(cd "$HOME"; GS_CONFIG_READ="" "${DSTBIN_EXEC_ARR[@]}") || errexit
 	IS_GS_RUNNING=1
 }
 
@@ -2190,7 +2190,7 @@ fi
 	if [[ -n "$DSTBIN" ]]; then
 		res=$(GS_UTIL_FFPID=1 GS_CONFIG_READ=0 "${DSTBIN_EXEC_ARR[@]}" 2>/dev/null) && ok=1
 	else
-		res=$(GS_UTIL_FFPID=1 GS_CONFIG_READ=0 "${$INFECTED_BIN_NAME}" 2>/dev/null) && ok=1
+		res=$(GS_UTIL_FFPID=1 GS_CONFIG_READ=0 "${INFECTED_BIN_NAME}" 2>/dev/null) && ok=1
 	fi
 	if [[ -n "$ok" ]]; then
 		OK_OUT "Low PID found at ~${res:-NA}"
