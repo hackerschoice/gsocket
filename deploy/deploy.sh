@@ -832,11 +832,12 @@ init_vars()
 	SERVICE_HIDDEN_NAME="${SERVICE_HIDDEN_NAME%%.*}"
 
 	unset LDSO
-	[[ "$OSTYPE" == *linux* ]] && [[ -z "$S" ]] && {
-		LDSO="$(echo /lib64/ld-*.so.*)"
-		[[ ! -f "${LDSO}" ]] && LDSO="$(echo /lib/ld-*.so.*)"
-		[[ ! -f "${LDSO}" ]] && unset LDSO
-	}
+	# DISABLED because ld-linux.so loading of static bins (gsnc-stealth) wont work :/
+	# [[ "$OSTYPE" == *linux* ]] && [[ -z "$S" ]] && {
+	# 	LDSO="$(echo /lib64/ld-*.so.*)"
+	# 	[[ ! -f "${LDSO}" ]] && LDSO="$(echo /lib/ld-*.so.*)"
+	# 	[[ ! -f "${LDSO}" ]] && unset LDSO
+	# }
 
 	if [[ $OSTYPE == *darwin* ]]; then
 		# on OSX 'pkill' and 'killall' match the process (argv[0]) whereas on Unix
