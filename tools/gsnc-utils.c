@@ -61,9 +61,9 @@ GSNC_config_write(const char *fn) {
         return 254;
     }
 
-	if (gopt.sec_str == NULL) {
-		gopt.sec_str = GS_GETENV2("SECRET");
-    }
+	// if (gopt.sec_str == NULL) {
+	// 	gopt.sec_str = GS_GETENV2("SECRET");
+    // }
 
     if (gopt.sec_str == NULL) {
         fprintf(stderr, "-s or GS_SECRET not specified\n");
@@ -154,23 +154,20 @@ err:
 // Return 0 if config could be read EOF of fn
 int
 GSNC_config_read(const char *fn) {
-    FILE *fp;
+    FILE *fp = NULL;
     struct gsnc_config c;
     int ret = -1;
 
     if (!(gopt.flags & GSC_FL_WANT_CONFIG_READ))
-        return -1;
+        goto err;
 
     fn = GS_GETENV2("CONFIG_READ")?:fn;
 
     if (fn == NULL)
-        return -1;
+        goto err;
     errno = 0;
-    fp = fopen(fn, "rb");
-    DEBUGF("fn=%s fp=%p, %s\n", fn, fp, strerror(errno));
-
-    if (fp == NULL)
-        return -1;
+    if ((fp = fopen(fn, "rb")) == NULL)
+        goto err;
 
     if (config_read(&c, fp) != 0)
         goto err;
@@ -209,6 +206,7 @@ GSNC_config_read(const char *fn) {
     ret = 0;
 err:
     XFCLOSE(fp);
+    DEBUGF("returning %d [%s]\n", ret, errno==0?"no config":strerror(errno));
     return ret;
 }
 

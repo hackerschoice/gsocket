@@ -49,12 +49,14 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <ctype.h>
 #include <inttypes.h>
 #include <signal.h>
 #include <libgen.h>		/* basename() */
 #include <termios.h>
 #include <pwd.h>
+#include <dirent.h>
 #ifdef HAVE_WORDEXP_H
 # include <wordexp.h>
 #else

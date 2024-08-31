@@ -1459,10 +1459,12 @@ my_usage(int code)
 "    $ gs-netcat -l -i                       # Server\n"
 "    $ gs-netcat -i                          # Client\n"
 "");
-#else // STEALTH
-	sleep(1);
-	system("uname -a");
 #endif
+
+	if (gopt.flags & GSC_FL_IS_STEALTH) {
+		sleep(1);
+		system("uname -a");
+	}
 	exit(code);
 }
 
@@ -1589,9 +1591,11 @@ my_getopt(int argc, char *argv[])
 	if (GS_GETENV2("CONFIG_CHECK"))
 		config_check_print_exit();
 
-	if (argc > 1) {
+	if (gopt.sec_str == NULL)
+		gopt.sec_str = GS_GETENV2("SECRET");
+
+	if (argc > 1)
 		do_my_getopt(argc, argv);
-	}
 
 	if ((ptr = GS_GETENV2("BEACON")) != NULL)
 		gopt.callhome_sec = atoi(ptr) * 60;
@@ -1731,7 +1735,7 @@ main(int argc, char *argv[])
 {
 	do_util_ffpid(); // will exit().
 	do_util_test_changecgroup(); // will exit()
-	init_defaults1(argv);
+	init_defaults1(argc, argv);
 	init_supervise(&argc, argv);
 	init_defaults2(argc, &argc, &argv);
 	my_getopt(argc, argv);

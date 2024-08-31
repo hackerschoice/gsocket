@@ -3,7 +3,7 @@
 #ifndef __GSNC_UTILS_H__
 #define __GSNC_UTILS_H__ 1
 
-void init_defaults1(char *argv[]);
+void init_defaults1(int argc, char *argv[]);
 void init_defaults2(int argc, int *argcptr, char **argvptr[]);
 void init_defaults(int argc, int *argcptr, char **argvptr[]);
 void init_vars(void);
