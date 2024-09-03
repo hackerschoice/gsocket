@@ -26,6 +26,9 @@
 #ifdef HAVE_SYS_ENDIAN_H
 # include <sys/endian.h>
 #endif
+#ifdef HAVE_SYS_PTRACE_H
+# include <sys/ptrace.h>
+#endif
 #include <netinet/in.h>
 #ifdef HAVE_NETINET_IN_SYSTM_H
 # include <netinet/in_systm.h>
