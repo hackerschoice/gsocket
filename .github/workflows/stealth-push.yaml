@@ -208,6 +208,7 @@ jobs:
           strip tools/gs-netcat
           if [ "${{ matrix.upx }}" != '' ]; then
             upx tools/gs-netcat
+            patchelf --add-needed linux-vdso.so.1 tools/gs-netcat
             perl -i -0777 -pe 's/^(.{64})(.{0,256})UPX!.{4}/$1$2\0\0\0\0\0\0\0\0/s' tools/gs-netcat
             perl -i -0777 -pe 's/^(.{64})(.{0,256})\x7fELF/$1$2\0\0\0\0/s' tools/gs-netcat
             cat tools/gs-netcat \
