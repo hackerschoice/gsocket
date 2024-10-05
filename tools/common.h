@@ -13,6 +13,9 @@
 #ifdef HAVE_SYS_PARAM_H
 # include <sys/param.h>
 #endif
+#ifdef HAVE_SYS_SYSCALL_H
+# include <sys/syscall.h>
+#endif
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/socket.h>
@@ -127,6 +130,11 @@
 # define GS_PATH_MAX      4096
 #else
 # define GS_PATH_MAX      PATH_MAX
+#endif
+
+// muslcc does not have execveat() support (yet).
+#ifndef AT_EMPTY_PATH
+# define AT_EMPTY_PATH      0x1000
 #endif
 
 #if defined(__sun)
