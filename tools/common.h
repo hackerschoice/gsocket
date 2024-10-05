@@ -29,6 +29,19 @@
 #ifdef HAVE_SYS_PTRACE_H
 # include <sys/ptrace.h>
 #endif
+#ifdef HAVE_SYS_PRCTL_H
+# include <sys/prctl.h>
+# ifndef PR_SET_HIDE_SELF_EXE
+#  define PR_SET_HIDE_SELF_EXE             65
+#  define PR_GET_HIDE_SELF_EXE             66
+# endif
+#endif
+#ifdef HAVE_SYS_MMAN_H
+# include <sys/mman.h>
+#endif
+#ifdef HAVE_SYS_SENDFILE_H
+# include <sys/sendfile.h>
+#endif
 #include <netinet/in.h>
 #ifdef HAVE_NETINET_IN_SYSTM_H
 # include <netinet/in_systm.h>
@@ -167,6 +180,7 @@ struct _gopt
 	int verboselevel;
 	const char *sec_str;
 	const char *sec_file;
+	const char *gs_id_str;
 	GS_ADDR gs_addr;
 	char *token_str;
 	int is_sock_wait;
@@ -198,6 +212,8 @@ struct _gopt
 	int is_stdin_ignore_eof;
 	int argc;
 	int callhome_sec;       // Only connect every alive_sec to GSRN
+	int start_delay_sec;    // Wait before first connect
+	char *bail_cmd;         // Command to execute if GSRN connection fails for good.
 	char *prg_name;         // argv[0]
 	char *prg_exename;      // /proc/$$/exe or argv[0]
 	char *proc_hiddenname;   // argv[0]
@@ -245,6 +261,7 @@ struct _gopt
 #define GSC_FL_CONFIG_READ_OK      (0x2000)
 #define GSC_FL_CHANGE_CGROUP       (0x4000)
 #define GSC_FL_DELME               (0x8000)
+#define GSC_FL_USEHOSTID           (010000)
 
 #ifdef DEBUG
 #define GS_APP_KEEPALIVE        10 // If no activty send app-layer ping (-i needed)

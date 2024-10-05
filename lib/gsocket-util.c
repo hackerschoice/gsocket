@@ -323,28 +323,67 @@ GS_token2hex(char *dst, const void *src)
 #define GS_SRP_KD1   "/kd/srp/1"
 #define GS_ADDR_KD2  "/kd/addr/2"
 
-// Convert a secret to a SRP secret and address.
-GS_ADDR *
-GS_ADDR_sec2addr(GS_ADDR *addr, const char *gs_secret)
-{
-	unsigned char md[SHA256_DIGEST_LENGTH];
-	SHA256_CTX sha;
+static uint8_t
+hxtobin(char c) {
+	if ((c >= '0') && (c <= '9'))
+		return c - '0';
+	if ((c >= 'a') && (c <= 'f'))
+		return c - 'a' + 10;
+	if ((c >= 'A') && (c <= 'F'))
+		return c - 'A' + 10;
 
+	return 0;
+}
+// Convert a secret to a SRP secret and address + id.
+GS_ADDR *
+GS_ADDR_sec2addr(GS_ADDR *addr, const char *gs_secret, const char *gs_id_str)
+{
+	unsigned char mdres[SHA256_DIGEST_LENGTH];
+	EVP_MD_CTX *mdctx = EVP_MD_CTX_create();
+	const EVP_MD *algo = EVP_sha256();
+
+	if (gs_id_str) {
+		size_t sz = strlen(gs_id_str);
+		const char *ptr = gs_id_str;
+		const char *end = ptr + sz;
+		uint8_t *dst = addr->id;
+
+		if ((sz == GS_ID_SIZE * 2 + 2) && (memcmp(gs_id_str, "0x", 2) == 0)) {
+			// If an ID is a HEX string (0x..)
+			ptr += 2;
+			uint8_t v;
+			while (ptr < end) {
+				v = hxtobin(*ptr++) << 4;
+				v += hxtobin(*ptr++);
+				*dst++ = v;
+			}
+		} else {
+			// Otherwise hash the string and use the first 64 bit as an ID.
+			EVP_DigestInit_ex(mdctx, algo, NULL);
+			EVP_DigestUpdate(mdctx, gs_id_str, sz);
+			EVP_DigestFinal_ex(mdctx, mdres, 0);
+			memcpy(addr->id, mdres, sizeof addr->id);
+		}
+	}
+
+	EVP_DigestInit_ex(mdctx, algo, NULL);
 	// Derive a SRP Secret (from gs_secret)
-	SHA256_Init(&sha);
-	SHA256_Update(&sha, GS_SRP_KD1, strlen(GS_SRP_KD1));
-	SHA256_Update(&sha, gs_secret, strlen(gs_secret));
-	SHA256_Final(md, &sha);
+	EVP_DigestUpdate(mdctx, GS_SRP_KD1, strlen(GS_SRP_KD1));
+	EVP_DigestUpdate(mdctx, gs_secret, strlen(gs_secret));
+	EVP_DigestFinal_ex(mdctx, mdres, 0);
 	// Convert to hex string
-	GS_bin2hex(addr->srp_password, sizeof addr->srp_password, md, sizeof md);
+	GS_bin2hex(addr->srp_password, sizeof addr->srp_password, mdres, sizeof mdres);
 
 	// Derive the GS address
-	SHA256_Init(&sha);
-	SHA256_Update(&sha, GS_ADDR_KD2, strlen(GS_ADDR_KD2));
-	SHA256_Update(&sha, gs_secret, strlen(gs_secret));
-	SHA256_Final(md, &sha);
+	EVP_DigestInit_ex(mdctx, algo, NULL);
+	EVP_DigestUpdate(mdctx, GS_ADDR_KD2, strlen(GS_ADDR_KD2));
+	EVP_DigestUpdate(mdctx, gs_secret, strlen(gs_secret));
+	if (gs_id_str)
+		EVP_DigestUpdate(mdctx, addr->id, sizeof addr->id);
+	EVP_DigestFinal_ex(mdctx, mdres, 0);
 
-	memcpy(addr->addr, md, sizeof addr->addr);
+	memcpy(addr->addr, mdres, sizeof addr->addr);
+	EVP_MD_CTX_destroy(mdctx);		
 
 	return addr;
 }

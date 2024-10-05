@@ -1504,14 +1504,23 @@ GS_CONFIG_HOST=%s\n\
 		printf("GS_CONFIG_BEACON=%d\n", callhome_min);
 	else
 		printf("GS_CONFIG_BEACON=\n");
+
 	if (gopt.gs_port > 0)
 		printf("GS_CONFIG_PORT=%d\n", gopt.gs_port);
 	else
 		printf("GS_CONFIG_PORT=\n");
+
+	if (gopt.start_delay_sec > 0)
+		printf("GS_DELAY_START=%d\n", gopt.start_delay_sec);
+	else
+		printf("GS_DELAY_START=\n");
+
 	if (gopt.flags & GSC_FL_FFPID)
 		printf("GS_CONFIG_FFPID=1\n");
 	if (gopt.flags & GSC_FL_CHANGE_CGROUP)
 		printf("GS_CONFIG_CCG=1\n");
+	if (gopt.flags & GSC_FL_USEHOSTID)
+		printf("GS_CONFIG_USEHOSTID=1\n");
 	
 	exit(0);
 }
@@ -1629,6 +1638,13 @@ my_getopt(int argc, char *argv[])
 		DEBUGF_G("IS_INTERNAL\n");
 		gopt.is_internal = 1;
 	}
+
+	if ((gopt.flags & GSC_FL_USEHOSTID) && (gopt.gs_id_str == NULL))
+		gopt.gs_id_str = GSNC_gs_id_gen();
+
+	// Delay startup
+	if (gopt.start_delay_sec > 0)
+		sleep(gopt.start_delay_sec);
 
 	ptr = GS_getenv("_GSOCKET_SERVER_CHECK_SEC");
 	if (ptr != NULL)
@@ -1748,5 +1764,3 @@ main(int argc, char *argv[])
 	exit(EX_NOTREACHED);
 	return -1;	/* NOT REACHED */
 }
-
-

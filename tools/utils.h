@@ -46,6 +46,6 @@ void do_util_test_changecgroup(void);
 /* hack to set rows/columns */
 #define GS_STTY_INIT_HACK	"stty rows %d columns %d\r"
 
-#define UTILS_GETOPT_STR	"3:vigqwACTrIlSDL:a:s:k:p:d:e:P:B:"
+#define UTILS_GETOPT_STR	"3:vigqwACTrIlSDL:a:s:k:p:d:e:P:B:N:"
 
 #endif /* !__GSNC_UTILS_H__ */

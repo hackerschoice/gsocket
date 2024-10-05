@@ -614,6 +614,7 @@ gs_pkt_listen_write(GS *gsocket, struct gs_sox *sox)
 
 	memcpy(glisten.token, gsocket->token, sizeof glisten.token);
 	memcpy(glisten.addr, gsocket->gs_addr.addr, MIN(sizeof glisten.addr, GS_ADDR_SIZE));
+	memcpy(glisten.id, gsocket->gs_addr.id, sizeof glisten.id);
 	HEXDUMP(glisten.addr, sizeof glisten.addr);
 
 	ret = sox_write(sox, &glisten, sizeof glisten);

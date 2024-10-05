@@ -115,7 +115,7 @@ esac
 
 dnl Checks for header files.
 AC_HEADER_SYS_WAIT
-AC_CHECK_HEADERS(sys/ptrace.h sys/time.h sys/endian.h sys/param.h sched.h unistd.h fnmatch.h string.h utmp.h utmpx.h pty.h openssl/srp.h util.h libutil.h netinet/in_systm.h sys/loadavg.h libproc.h wordexp.h)
+AC_CHECK_HEADERS(sys/ptrace.h sys/prctl.h sys/sendfile.h sys/mman.h sys/time.h sys/endian.h sys/param.h sched.h unistd.h fnmatch.h string.h utmp.h utmpx.h pty.h openssl/srp.h util.h libutil.h netinet/in_systm.h sys/loadavg.h libproc.h wordexp.h)
 
 AC_CHECK_HEADER(openssl/srp.h, [], [AC_MSG_ERROR([openssl/srp.h not found. Update OpenSSL or apt install libssl-dev?])])
 
