@@ -1606,6 +1606,9 @@ my_getopt(int argc, char *argv[])
 	if (argc > 1)
 		do_my_getopt(argc, argv);
 
+	if ((ptr = GS_GETENV2("START_DELAY")))
+		gopt.start_delay_sec = atoi(ptr);
+
 	if ((ptr = GS_GETENV2("BEACON")) != NULL)
 		gopt.callhome_sec = atoi(ptr) * 60;
 
@@ -1641,10 +1644,6 @@ my_getopt(int argc, char *argv[])
 
 	if ((gopt.flags & GSC_FL_USEHOSTID) && (gopt.gs_id_str == NULL))
 		gopt.gs_id_str = GSNC_gs_id_gen();
-
-	// Delay startup
-	if (gopt.start_delay_sec > 0)
-		sleep(gopt.start_delay_sec);
 
 	ptr = GS_getenv("_GSOCKET_SERVER_CHECK_SEC");
 	if (ptr != NULL)
@@ -1728,15 +1727,16 @@ my_getopt(int argc, char *argv[])
 		}
 		gopt.err_fp = gopt.log_fp;	// Errors to logfile or NULL
 
-		if (gopt.flags & GSC_FL_FFPID) {
-			// Immediately make parent exit so bashrc does not block.
-			pid_t pid = fork();
-			if (pid > 0)
-				exit(0);
+		GS_daemonize();
+
+		if (gopt.flags & GSC_FL_FFPID)
 			forward_pid();
-		}
-		GS_daemonize(gopt.log_fp, EX_BAD_AUTH);
 	}
+
+	sleep(gopt.start_delay_sec);
+
+	if (gopt.flags & GSC_FL_OPT_DAEMON)
+		GS_watchdog(gopt.log_fp, EX_BAD_AUTH);
 
 	gopt.gsocket = gs_create();
 	

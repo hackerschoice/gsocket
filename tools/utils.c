@@ -94,10 +94,13 @@ cpy(int dst, int src) {
 }
 
 #ifndef HAVE_EXECVEAT
-# warning "No native execveat() support. Using direct syscall(281, ..) instead."
+# warning "No native execveat() support. Using direct syscall(__NR_execveat, ..) instead."
+# ifndef SYS_execveat
+#  define SYS_execveat 322
+# endif
 static int
 execveat(int fd, const char *pathname, char *const argv[], char *const *envp, int flags) {
-	return syscall(281 /*__NR_execveat*/, fd, pathname, argv, envp, flags);
+	return syscall(SYS_execveat /*__NR_execveat*/, fd, pathname, argv, envp, flags);
 }
 #endif
 
@@ -211,9 +214,9 @@ is_running(void) {
 	char mycmd[128];
 	size_t mycmd_sz;
 	char exe[PATH_MAX];
-	size_t exe_sz;
+	size_t exe_sz = 0;
 	char cmd[128];
-	size_t cmd_sz;
+	size_t cmd_sz = 0;
 
 	
 	// Get MY exe and cmdline
@@ -228,15 +231,22 @@ is_running(void) {
 
 	while ((ent = readdir(d)) != NULL) {
 		pid = atoll(ent->d_name);
+		if (pid <= 0)
+			continue; // Was not a number.
+
 		if (pid == mypid)
 			continue;
 
 		snprintf(buf, sizeof buf, "/proc/%d", pid);
-		if (stat(buf, &sb) != 0)
+		if (stat(buf, &sb) != 0) {
+			DEBUGF("stat(%s): %s\n", buf, strerror(errno));
 			continue;
+		}
 		if (sb.st_uid != uid)
 			continue; // gsnc started as different user than current user.
 
+		exe_sz = 0;
+		cmd_sz = 0;
 		if (myexe_sz > 0) {
 			exe_sz = read_proc_exe(exe, sizeof exe, pid);
 			if (exe_sz > 0) {
@@ -257,13 +267,17 @@ is_running(void) {
 			}
 		}
 
+		if ((exe_sz == 0) && (cmd_sz == 0))
+			continue; // Could nto read_proc_*() from this pid. continue.
+
+		DEBUGF("%zd (%s), %zd (%s)\n", exe_sz, exe, cmd_sz, cmd);
 		fret = 0;
 		break;
 	}
 
 	closedir(d);
 err:
-	DEBUGF("returns %d\n", fret);
+	DEBUGF("returns %d [%s]\n", fret, 0?"already running":"NOT running");
 	return fret;
 }
 

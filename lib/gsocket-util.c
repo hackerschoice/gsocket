@@ -549,20 +549,9 @@ err:
  * Set to -1 to ignore.
  */
 void
-GS_daemonize(FILE *logfp, int code_force_exit)
+GS_daemonize(void)
 {
 	pid_t pid;
-	struct timeval last;
-	struct timeval now;
-	int n_force_exit = 0;
-
-	memset(&last, 0, sizeof last);
-	memset(&now, 0, sizeof now);
-
-	gs_errfp = logfp;
-#ifdef DEBUG
-	gs_dout = logfp;
-#endif
 
 	pid = fork();
 	XASSERT(pid >= 0, "fork(): %s\n", strerror(errno));
@@ -577,7 +566,22 @@ GS_daemonize(FILE *logfp, int code_force_exit)
 	close(STDIN_FILENO);
 	close(STDOUT_FILENO);
 	close(STDERR_FILENO);
-	/* HERE: We are now a daemon. Next: Become a watchdog. */
+}
+
+void
+GS_watchdog(FILE *logfp, int code_force_exit) {
+	struct timeval last;
+	struct timeval now;
+	pid_t pid;
+	int n_force_exit = 0;
+
+	gs_errfp = logfp;
+#ifdef DEBUG
+	gs_dout = logfp;
+#endif
+
+	memset(&last, 0, sizeof last);
+	memset(&now, 0, sizeof now);
 	while (1)
 	{
 		signal(SIGCHLD, SIG_DFL);	// make wait() work...

@@ -482,7 +482,8 @@ uint32_t GS_hton(const char *hostname);
 uint8_t GS_ADDR_get_hostname_id(uint8_t *addr);
 void GS_SELECT_FD_SET_W(GS *gs);
 
-void GS_daemonize(FILE *logfp, int code_force_exit);
+void GS_daemonize(void);
+void GS_watchdog(FILE *logfp, int code_force_exit);
 uint64_t GS_usec(void);
 void GS_format_bps(char *dst, size_t size, int64_t bytes, const char *suffix);
 #define GS_BPS_MAXSIZE       (8)  // _without_ length of suffix!

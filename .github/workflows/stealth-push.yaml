@@ -204,7 +204,6 @@ jobs:
           ./bootstrap
           ./configure --prefix=/opt --enable-realprefix=/usr --enable-static --host=${{ matrix.arch }} --enable-stealth
           make all
-          echo "UPX='${{ matrix.upx }}'"
           strip tools/gs-netcat
           if [ "${{ matrix.upx }}" != '' ]; then
             upx tools/gs-netcat
