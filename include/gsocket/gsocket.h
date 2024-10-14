@@ -484,6 +484,7 @@ void GS_SELECT_FD_SET_W(GS *gs);
 
 void GS_daemonize(void);
 void GS_watchdog(FILE *logfp, int code_force_exit);
+void GS_watchdog_notify(int code);
 uint64_t GS_usec(void);
 void GS_format_bps(char *dst, size_t size, int64_t bytes, const char *suffix);
 #define GS_BPS_MAXSIZE       (8)  // _without_ length of suffix!

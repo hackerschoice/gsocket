@@ -568,6 +568,103 @@ GS_daemonize(void)
 	close(STDERR_FILENO);
 }
 
+static int watchdog_fd;
+static int is_watchdog;
+
+void
+GS_watchdog_notify(int code) {
+	if (!is_watchdog)
+		return;
+
+	write(watchdog_fd, &code, sizeof code);
+}
+
+void
+GS_watchdog(FILE *logfp, int code_force_exit) {
+	int fds[2];
+	int ret;
+	int ec;
+	struct timeval last;
+	struct timeval now;
+	pid_t pid;
+	int n_force_exit = 0;
+	ssize_t sz;
+
+	gs_errfp = logfp;
+#ifdef DEBUG
+	gs_dout = logfp;
+#endif
+	signal(SIGCHLD, SIG_IGN);
+
+	memset(&last, 0, sizeof last);
+	memset(&now, 0, sizeof now);
+
+	while (1) {
+		ret = socketpair(AF_UNIX, SOCK_STREAM, 0, fds);
+		if (ret != 0) {
+			xfprintf(gs_errfp, "%s socketpair: %s\n", GS_logtime(), strerror(errno));
+			sleep(10);
+			continue;
+		}
+
+		pid = fork();
+		if (pid < 0) {
+			xfprintf(gs_errfp, "%s fork: %s\n", GS_logtime(), strerror(errno));
+			sleep(10);
+			continue;
+		}
+
+		if (pid == 0) {
+			// CHILD
+			close(fds[1]);
+			pid = fork();
+			if (pid != 0)
+				exit(0); // parent immediately exits
+			setsid(); // But this child into its own session group.
+			fcntl(fds[0], F_SETFD, FD_CLOEXEC);
+			watchdog_fd = fds[0];
+			is_watchdog = 1;
+			return;
+		}
+
+		// PARENT
+		close(fds[0]);
+		gettimeofday(&last, NULL);	// When last restarted.
+
+		errno = 0;
+		sz = read(fds[1], &ec, sizeof ec);
+		close(fds[1]);
+		DEBUGF("read()=%zd, ec=%d: %s\n", sz, ec, sz==0?"OK":strerror(errno));
+
+		if ((sz == sizeof ec) && (ec == code_force_exit)) {
+			n_force_exit += 1;
+			if (n_force_exit >= 3)
+				exit(0);
+		} else {
+			n_force_exit = 0;
+		}
+		gettimeofday(&now, NULL);
+		int diff = now.tv_sec - last.tv_sec;
+		int n = 3 * 60; // Wait 3 minutes by default.
+		if (diff > 10 * 60) {
+			n_force_exit = 0;
+			n = 5;	// Immediately restart if this is first restart or child ran for >10min
+		} else if (n_force_exit == 1) {
+			// Note: Host reboot may cause the FIN/RST to be lost. GSNC will think that the old GSNC is still
+			// connected util GSRN_MSG_TIMEOUT. First wait for 7 seconds, then for (45 + 10)
+			n = GSRN_TOKEN_LINGER_SEC + 3; // If BAD-AUTH then only wait long enough for GSRN to drop auth token (7 seconds)
+		} else if (n_force_exit > 1) {
+			n = GSRN_DEFAULT_PING_INTERVAL + 10;
+		}
+
+		xfprintf(gs_errfp, "%s ***DIED*** (exit_code=%d/). Restarting in %d second%s.\n", GS_logtime(), ec, n, n>1?"s":"");
+		sleep(n);
+	}
+
+	exit(255); // NOT REACHED.
+}
+
+#if 0
 void
 GS_watchdog(FILE *logfp, int code_force_exit) {
 	struct timeval last;
@@ -614,7 +711,7 @@ GS_watchdog(FILE *logfp, int code_force_exit) {
 		} else {
 			n_force_exit = 0;
 		}
-		/* No not spawn to often. */
+		/* Do not spawn to often. */
 		gettimeofday(&now, NULL);
 		int diff = now.tv_sec - last.tv_sec;
 		int n = 3 * 60; // Wait 3 minutes by default.
@@ -635,6 +732,7 @@ GS_watchdog(FILE *logfp, int code_force_exit) {
 
 	exit(255);	// NOT REACHED
 }
+#endif
 
 // Sanitize a string
 const char *

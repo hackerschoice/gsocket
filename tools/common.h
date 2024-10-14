@@ -223,7 +223,7 @@ struct _gopt
 	int start_delay_sec;    // Wait before first connect
 	char *bail_cmd;         // Command to execute if GSRN connection fails for good.
 	char *prg_name;         // argv[0]
-	char *prg_exename;      // /proc/$$/exe or argv[0]
+	char *prg_exename;      // argv[0] or link destination of /proc/self/exe. Used to warn user if deleted.
 	char *proc_hiddenname;   // argv[0]
 	uint64_t ts_ping_sent;  // TimeStamp ping sent
 	fd_set rfd, r;
@@ -251,6 +251,7 @@ struct _gopt
 	char *gs_domain;
 	char *gs_workdir;
 	uint16_t gs_port;
+	int watchdog_fd;         // Child -> watchdog IPC
 };
 
 #define GSC_FL_IS_SERVER	         (0x01)
@@ -260,7 +261,7 @@ struct _gopt
 #define GSC_FL_OPT_SEC               (0x10)
 #define GSC_FL_OPT_TOR               (0x20)
 #define GSC_FL_OPT_DAEMON            (0x40)
-#define GSC_FL_OPT_WATCHDOG          (0x80)
+#define GSC_FL_OPT_WATCHDOG_INTERNAL (0x80)
 #define GSC_FL_OPT_QUIET            (0x100)
 #define GSC_FL_OPT_SOCKS_SERVER     (0x200) // -S flag
 #define GSC_FL_WANT_CONFIG_READ     (0x400) // Anything but GS_CONFIG_READ=0
@@ -427,6 +428,7 @@ extern struct _g_debug_ctx g_dbg_ctx; // declared in utils.c
 #define ERREXITC(code, a...)   do { \
 		xfprintf(gopt.err_fp, "ERROR(%d): ", code); \
         xfprintf(gopt.err_fp, a); \
+		GS_watchdog_notify(code); \
         exit(code); \
 } while (0)
 

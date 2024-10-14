@@ -1551,7 +1551,7 @@ do_my_getopt(int argc, char *argv[]) {
 				gopt.flags |= GSC_FL_OPT_DAEMON;
 				break;
 			case 'W':
-				gopt.flags |= GSC_FL_OPT_WATCHDOG;
+				gopt.flags |= GSC_FL_OPT_WATCHDOG_INTERNAL;
 				break;
 			case 'p':
 				gopt.port = htons(atoi(optarg));
@@ -1697,7 +1697,7 @@ my_getopt(int argc, char *argv[])
 		}
 	}
 
-	if ((gopt.is_internal) && (gopt.flags & GSC_FL_OPT_WATCHDOG))
+	if ((gopt.is_internal) && (gopt.flags & GSC_FL_OPT_WATCHDOG_INTERNAL))
 	{
 		try_quiet();
 		gs_watchdog();
@@ -1736,7 +1736,7 @@ my_getopt(int argc, char *argv[])
 	sleep(gopt.start_delay_sec);
 
 	if (gopt.flags & GSC_FL_OPT_DAEMON)
-		GS_watchdog(gopt.log_fp, EX_BAD_AUTH);
+		GS_watchdog(gopt.log_fp, EX_BAD_AUTH); // FOREVER
 
 	gopt.gsocket = gs_create();
 	
