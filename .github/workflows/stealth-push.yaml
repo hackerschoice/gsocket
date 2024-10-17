@@ -64,6 +64,8 @@ jobs:
             pkg_add automake-1.16.5
             pkg_add openssl-3.0.8
             pkg_info -Q tar
+            pkg_info -Q autoconf
+            pkg_info -Q automake
             pkg_add gcc-11.2.0p3
             pkg_add gmake
             pkg_add tar
