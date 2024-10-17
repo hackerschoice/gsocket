@@ -222,9 +222,9 @@ struct _gopt
 	int callhome_sec;       // Only connect every alive_sec to GSRN
 	int start_delay_sec;    // Wait before first connect
 	char *bail_cmd;         // Command to execute if GSRN connection fails for good.
-	char *prg_name;         // basename(argv[0]);
+	char *prg_name;         // basename(argv[0]). Different to proc_hiddenname because it can be '-bash ' on SIGTERM.
 	char *prg_exename;      // argv[0] or link destination of /proc/self/exe. Used to warn user if deleted.
-	char *proc_hiddenname;  // argv[0]
+	char *proc_hiddenname;  // argv[0]. Overwritten by config.
 	uint64_t ts_ping_sent;  // TimeStamp ping sent
 	fd_set rfd, r;
 	fd_set wfd, w;

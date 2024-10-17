@@ -1597,7 +1597,6 @@ do_my_getopt(int argc, char *argv[]) {
 
 static void
 cb_sigsegv(int sig) {
-	signal(SIGSEGV, SIG_DFL);
 	// It might be unsafe to call exit() to trigger SWD_reexec(). Instead, call
 	// SWD_reexec directly.
 	gopt.exit_code = EX_SIGSEGV;

