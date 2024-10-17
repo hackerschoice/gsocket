@@ -33,7 +33,7 @@ char *getcwdx(void);
 void gs_watchdog(void);
 void tty_leader(int fd);
 void do_util_test_changecgroup(void);
-
+void open_logfile(const char *fn);
 
 // #define VLOG(a...)	do{if (gopt.log_fp != NULL){ fprintf(gopt.log_fp, a); fflush(gopt.log_fp); } }while(0)
 

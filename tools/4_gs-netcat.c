@@ -201,13 +201,15 @@ peer_free(GS_SELECT_CTX *ctx, struct _peer *p)
 	}
 }
 
+
 static void
 cb_atexit(void)
 {
-	if (gopt.flags & GSC_FL_IS_NO_ATEXIT)
+	if (gopt.flags & GSC_FL_IS_SERVER) {
+		// Check if we should restart ourselves.
+		SWD_reexec();
 		return;
-	if (gopt.flags & GSC_FL_IS_SERVER)
-		return;
+	}
 
 	CONSOLE_reset();
 	stty_reset();
@@ -1549,6 +1551,7 @@ do_my_getopt(int argc, char *argv[]) {
 				break;	// NOT REACHED
 			case 'D':
 				gopt.flags |= GSC_FL_OPT_DAEMON;
+				gopt.flags |= GSC_FL_SELF_WATCHDOG; // implied.
 				break;
 			case 'W':
 				gopt.flags |= GSC_FL_OPT_WATCHDOG_INTERNAL;
@@ -1593,6 +1596,16 @@ do_my_getopt(int argc, char *argv[]) {
 }
 
 static void
+cb_sigsegv(int sig) {
+	signal(SIGSEGV, SIG_DFL);
+	// It might be unsafe to call exit() to trigger SWD_reexec(). Instead, call
+	// SWD_reexec directly.
+	gopt.exit_code = EX_SIGSEGV;
+	SWD_reexec();
+	_exit(EX_SIGSEGV); // NOT REACHED.
+}
+
+static void
 my_getopt(int argc, char *argv[])
 {
 	char *ptr;
@@ -1605,6 +1618,12 @@ my_getopt(int argc, char *argv[])
 
 	if (argc > 1)
 		do_my_getopt(argc, argv);
+
+	if ((ptr = GS_GETENV2("SELF_WATCHDOG")))
+		gopt.flags |= GSC_FL_SELF_WATCHDOG;
+
+	if ((gopt.is_logfile == 0) && ((ptr = GS_GETENV2("LOGFILE")) != NULL))
+		open_logfile(ptr);
 
 	if ((ptr = GS_GETENV2("START_DELAY")))
 		gopt.start_delay_sec = atoi(ptr);
@@ -1707,36 +1726,45 @@ my_getopt(int argc, char *argv[])
 	init_vars();			/* from utils.c */
 	try_quiet();
 
+
+	// Check if Self-Watchdog triggered this execution. Wait or exit hard, if needed.
+	SWD_wait();
+
 	/* Become a daemon & watchdog (auto-restart)
 	 * Do this before gs_create() so that any error in DNS resolving
 	 * is re-tried by watchdog.
 	 */
-	if (gopt.flags & GSC_FL_OPT_DAEMON)
-	{
-		if (gopt.token_str == NULL)
-		{
-			// Stop multiple daemons from starting (by crontab/.profile):
-			// Set the token-str uniq to this daemon. Then any other daemon
-			// that starts will have a different token_str and GSRN will return
-			// a BAD-AUTH message.
-			// The child will then exit with  EX_BAD_AUTH which also triggers the daemon
-			// to exit (because another daemon is already connected).
-			char buf[1024];
-			snprintf(buf, sizeof buf, "%u-BAD-AUTH-CHECK-%s", getpid(), gopt.sec_str);
-			gopt.token_str = strdup(buf);
+	if (!(gopt.flags & GSC_FL_STARTED_BY_SWD)) {
+		if (gopt.flags & GSC_FL_OPT_DAEMON) {
+			if (gopt.token_str == NULL)
+			{
+				// Stop multiple daemons from starting (by crontab/.profile):
+				// Set the token-str uniq to this daemon. Then any other daemon
+				// that starts will have a different token_str and GSRN will return
+				// a BAD-AUTH message.
+				// The child will then exit with  EX_BAD_AUTH which also triggers the daemon
+				// to exit (because another daemon is already connected).
+				char buf[1024];
+				snprintf(buf, sizeof buf, "%u-BAD-AUTH-CHECK-%s", getpid(), gopt.sec_str);
+				gopt.token_str = strdup(buf);
+			}
+			gopt.err_fp = gopt.log_fp;	// Errors to logfile or NULL
+
+			GS_daemonize();
+
+			if (gopt.flags & GSC_FL_FFPID)
+				forward_pid();
 		}
-		gopt.err_fp = gopt.log_fp;	// Errors to logfile or NULL
-
-		GS_daemonize();
-
-		if (gopt.flags & GSC_FL_FFPID)
-			forward_pid();
+		sleep(gopt.start_delay_sec);
 	}
 
-	sleep(gopt.start_delay_sec);
-
-	if (gopt.flags & GSC_FL_OPT_DAEMON)
-		GS_watchdog(gopt.log_fp, EX_BAD_AUTH); // FOREVER
+	if (gopt.flags & GSC_FL_OPT_DAEMON) {
+		if (gopt.flags & GSC_FL_SELF_WATCHDOG) {
+			signal(SIGSEGV, cb_sigsegv);
+		} else {
+			GS_watchdog(gopt.log_fp, EX_BAD_AUTH); // FOREVER
+		}
+	}
 
 	gopt.gsocket = gs_create();
 	

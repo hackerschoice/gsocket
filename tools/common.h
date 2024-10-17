@@ -222,9 +222,9 @@ struct _gopt
 	int callhome_sec;       // Only connect every alive_sec to GSRN
 	int start_delay_sec;    // Wait before first connect
 	char *bail_cmd;         // Command to execute if GSRN connection fails for good.
-	char *prg_name;         // argv[0]
+	char *prg_name;         // basename(argv[0]);
 	char *prg_exename;      // argv[0] or link destination of /proc/self/exe. Used to warn user if deleted.
-	char *proc_hiddenname;   // argv[0]
+	char *proc_hiddenname;  // argv[0]
 	uint64_t ts_ping_sent;  // TimeStamp ping sent
 	fd_set rfd, r;
 	fd_set wfd, w;
@@ -235,6 +235,7 @@ struct _gopt
 	int listen_fd;
 	struct winsize winsize;
 	struct winsize winsize_prev;
+	int exit_code;
 	int row_total; // Rows including console
 	int peer_count;
 	int peer_id_counter;
@@ -254,9 +255,9 @@ struct _gopt
 	int watchdog_fd;         // Child -> watchdog IPC
 };
 
-#define GSC_FL_IS_SERVER	         (0x01)
+#define GSC_FL_IS_SERVER             (0x01)
 #define GSC_FL_IS_STEALTH            (0x02)
-#define GSC_FL_IS_NO_ATEXIT          (0x04)
+#define GSC_FL_SELF_WATCHDOG         (0x04)
 #define GSC_FL_OPT_G                 (0x08)
 #define GSC_FL_OPT_SEC               (0x10)
 #define GSC_FL_OPT_TOR               (0x20)
@@ -271,11 +272,17 @@ struct _gopt
 #define GSC_FL_CHANGE_CGROUP       (0x4000)
 #define GSC_FL_DELME               (0x8000)
 #define GSC_FL_USEHOSTID          (0x10000)
+#define GSC_FL_STARTED_BY_SWD     (0x20000) // SelfWatchDog re-exec'ed us.
+#define GSC_FL_SWD_SURVIVED_SIGTERM  (0x40000) // Admin Tried to SIGTERM us but we 'escaped' by fork'ing.
 
 #ifdef DEBUG
-#define GS_APP_KEEPALIVE        10 // If no activty send app-layer ping (-i needed)
+# define GS_APP_KEEPALIVE        10 // If no activty send app-layer ping (-i needed)
+# define DEBUGSTR                "-DEBUG"
+# define GS_SIGTERM_START_DELAY  10 
 #else
-#define GS_APP_KEEPALIVE        GSRN_DEFAULT_PING_INTERVAL // If no activty send app-layer ping (-i needed)
+# define GS_APP_KEEPALIVE        GSRN_DEFAULT_PING_INTERVAL // If no activity send app-layer ping (-i needed)
+# define DEBUGSTR                ""
+# define GS_SIGTERM_START_DELAY  (3 * 60)
 #endif
 // Let the client be in control to send PING's to keep the connection busy
 // but if the client is 5 sec late then start sending PINGS to client.
@@ -290,8 +297,9 @@ struct _gopt
 #define EX_BADWRITE    250  // write() failed
 #define EX_UNKNWNCMD   251  // Unknown command line parameter
 
+#define EX_SIGSEGV     139
+#define EX_SIGTERM     143
 #define EX_BADSELECT   253
-#define EX_SIGTERM     254
 #define EX_FATAL       255
 
 struct _socks
@@ -429,6 +437,7 @@ extern struct _g_debug_ctx g_dbg_ctx; // declared in utils.c
 		xfprintf(gopt.err_fp, "ERROR(%d): ", code); \
         xfprintf(gopt.err_fp, a); \
 		GS_watchdog_notify(code); \
+		gopt.exit_code = code; \
         exit(code); \
 } while (0)
 

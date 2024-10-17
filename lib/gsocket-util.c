@@ -557,7 +557,7 @@ GS_daemonize(void)
 	XASSERT(pid >= 0, "fork(): %s\n", strerror(errno));
 
 	if (pid > 0)
-		exit(0);	// Parent exits
+		_exit(0);	// Parent exits
 
 	/* HERE: Child. */
 	setsid();
@@ -595,6 +595,7 @@ GS_watchdog(FILE *logfp, int code_force_exit) {
 	gs_dout = logfp;
 #endif
 	signal(SIGCHLD, SIG_IGN);
+	signal(SIGHUP, SIG_IGN);
 
 	memset(&last, 0, sizeof last);
 	memset(&now, 0, sizeof now);
@@ -619,7 +620,7 @@ GS_watchdog(FILE *logfp, int code_force_exit) {
 			close(fds[1]);
 			pid = fork();
 			if (pid != 0)
-				exit(0); // parent immediately exits
+				_exit(0); // parent immediately exits
 			setsid(); // But this child into its own session group.
 			fcntl(fds[0], F_SETFD, FD_CLOEXEC);
 			watchdog_fd = fds[0];
@@ -638,8 +639,6 @@ GS_watchdog(FILE *logfp, int code_force_exit) {
 
 		if ((sz == sizeof ec) && (ec == code_force_exit)) {
 			n_force_exit += 1;
-			if (n_force_exit >= 3)
-				exit(0);
 		} else {
 			n_force_exit = 0;
 		}
@@ -658,10 +657,13 @@ GS_watchdog(FILE *logfp, int code_force_exit) {
 		}
 
 		xfprintf(gs_errfp, "%s ***DIED*** (exit_code=%d/). Restarting in %d second%s.\n", GS_logtime(), ec, n, n>1?"s":"");
+		if (n_force_exit >= 3)
+			_exit(0);
+
 		sleep(n);
 	}
 
-	exit(255); // NOT REACHED.
+	_exit(255); // NOT REACHED.
 }
 
 #if 0
@@ -705,9 +707,6 @@ GS_watchdog(FILE *logfp, int code_force_exit) {
 			// is already listening and we should exit the daemon/watchdog.
 			n_force_exit += 1;
 
-			// Kill the daemon / watchdog.
-			if (n_force_exit >= 3)
-				exit(0);
 		} else {
 			n_force_exit = 0;
 		}
@@ -727,6 +726,10 @@ GS_watchdog(FILE *logfp, int code_force_exit) {
 		}
 
 		xfprintf(gs_errfp, "%s ***DIED*** (wstatus=%d/). Restarting in %d second%s.\n", GS_logtime(), wstatus, n, n>1?"s":"");
+		// Kill the daemon / watchdog.
+		if (n_force_exit >= 3)
+			_exit(0);
+
 		sleep(n);
 	}
 

