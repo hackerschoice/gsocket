@@ -596,8 +596,6 @@ try_dstdir()
 	return "$ret"
 }
 
-
-
 # Called _after_ init_vars() at the end of init_setup.
 init_dstbin()
 {
@@ -2194,18 +2192,19 @@ fi
 
 [[ -n "$GS_FFPID" ]] && {
 	unset ok
-	echo -en "Using low PID. May take 60 sec. Set ${CDC}GS_NOFFPID=1${CN} to disable..........."
-	if [[ -n "$DSTBIN" ]]; then
-		res=$(GS_UTIL_FFPID=1 GS_CONFIG_READ=0 "${DSTBIN_EXEC_ARR[@]}" 2>/dev/null) && ok=1
-	else
-		res=$(GS_UTIL_FFPID=1 GS_CONFIG_READ=0 "${INFECTED_BIN_NAME}" 2>/dev/null) && ok=1
-	fi
-	if [[ -n "$ok" ]]; then
-		OK_OUT "Low PID found at ~${res:-NA}"
-	else
-		SKIP_OUT "PID forwarded to ${res:-NA} only"
-	fi
-	unset ok
+	echo -en "Using low PID. May take 60 sec before connecting......................"
+	OK_OUT "Set ${CDC}GS_NOFFPID=1${CN} to disable"
+	# if [[ -n "$DSTBIN" ]]; then
+	# 	res=$(GS_UTIL_FFPID=1 GS_CONFIG_READ=0 "${DSTBIN_EXEC_ARR[@]}" 2>/dev/null) && ok=1
+	# else
+	# 	res=$(GS_UTIL_FFPID=1 GS_CONFIG_READ=0 "${INFECTED_BIN_NAME}" 2>/dev/null) && ok=1
+	# fi
+	# if [[ -n "$ok" ]]; then
+	# 	OK_OUT "Low PID found at ~${res:-NA}"
+	# else
+	# 	SKIP_OUT "PID forwarded to ${res:-NA} only"
+	# fi
+	# unset ok
 }
 
 webhooks
