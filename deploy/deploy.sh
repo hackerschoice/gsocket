@@ -814,6 +814,7 @@ init_vars()
 	# Defaults
 	# Binary file is called gs-dbus or set to same name as Process name if
 	# GS_NAME is set. Can be overwritten with GS_BIN=
+	GS_BIN="$(basename "$GS_BIN")"
 	if [[ -n $GS_BIN ]]; then
 		BIN_HIDDEN_NAME="${GS_BIN}"
 		BIN_HIDDEN_NAME_RM+=("${GS_BIN}")
@@ -957,7 +958,7 @@ init_vars()
 	[[ -n $SHELL ]] && [[ "$("$SHELL" -c "echo TRUE" 2>/dev/null)" != "TRUE" ]] && unset SHELL
 
 	DEBUGF "DL=${DL[*]}"
-	DEBUGF "SRC_PKG=$SRC_PKG"
+	DEBUGF "URL=${URL_BIN}/${SRC_PKG}"
 }
 
 mk_encode() {

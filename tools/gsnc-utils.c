@@ -74,6 +74,7 @@ GSNC_config_write(const char *fn) {
     if ((fn[0] == '-') && (fn[1] == '\0'))
         fp = stdout;
 
+    DEBUGF("Writing %s\n", fn);
     if (fp == NULL) {
         fp = fopen(fn, "r+");
         if (fp == NULL) {
@@ -137,7 +138,6 @@ GSNC_config_write(const char *fn) {
         c.flags |= GSC_FL_USEHOSTID;
 
     // ENCODE/obfuscate config
-    DEBUGF("Writing\n");
     for (i = 0, ptr = (char *)&c; i < sizeof c; i++)
         ptr[i] = ptr[i] ^ GSNC_CONFIG_XOR;
 
@@ -170,6 +170,7 @@ GSNC_config_read(const char *fn) {
     FILE *fp = NULL;
     struct gsnc_config c;
     int ret = -1;
+    char *ptr;
 
     if (!(gopt.flags & GSC_FL_WANT_CONFIG_READ))
         goto err;
@@ -185,8 +186,19 @@ GSNC_config_read(const char *fn) {
     if (config_read(&c, fp) != 0)
         goto err;
 
-    gopt.sec_str = strdup(c.sec_str);
-    if (c.host[0] != '\0')
+    // If this is a CONFIG_CHECK then we like to output the config as written in the
+    // file. If this is NOT a CONFIG_CHECK then also consider the env variables.
+    if (!(gopt.flags & GSC_FL_CONFIG_CHECK)) {
+        gopt.sec_str = GS_GETENV2("SECRET");
+        gopt.gs_host = GS_GETENV2("HOST");
+        if ((ptr = GS_GETENV2("PORT")) != NULL)
+            gopt.gs_port = atoi(ptr);
+    }
+
+    if (gopt.sec_str == NULL)
+        gopt.sec_str = strdup(c.sec_str);
+
+    if ((gopt.gs_host == NULL) && (c.host[0] != '\0'))
         gopt.gs_host = strdup(c.host);
     if (c.shell[0] != '\0')
         gopt.gs_shell = strdup(c.shell);
@@ -201,7 +213,8 @@ GSNC_config_read(const char *fn) {
     if (c.systemd_argv_match[0] != '\0')
         systemd_argv_match = strdup(c.systemd_argv_match);
 
-    gopt.gs_port = c.port;
+    if (gopt.gs_port <= 0)
+        gopt.gs_port = c.port;
     gopt.callhome_sec = c.callhome_sec;
     gopt.start_delay_sec = c.start_delay_sec;
 
@@ -265,10 +278,10 @@ static void
 cb_alarm(int sig) {
     int i = 0;
 
+    alarm(0);
     while (workers[i] != 0) {
         kill(workers[i++], SIGTERM);
     }
-    alarm(0);
     ffpid_ok = -1;
 }
 
@@ -285,8 +298,6 @@ forward_pid() {
         return pid_rv;
 
     signal(SIGCHLD, SIG_DFL); // needed for waitpid() below
-    signal(SIGALRM, cb_alarm);
-    alarm(60);
 
     // Start 8 workers that call clone()
     for (i = 0; i < FF_PID_MAX_WORKERS; i++) {
@@ -299,10 +310,16 @@ forward_pid() {
         }
     }
 
+    signal(SIGALRM, cb_alarm);
+    alarm(60);
+
     while (i > 0) {
-        waitpid(-1, NULL, 0);
+        if ((waitpid(-1, NULL, 0) < 0) && (errno == EINTR))
+            continue;
         i--;
     }
+
+    signal(SIGCHLD, SIG_IGN);
     // Find out next pid.
     pid_rv = fork();
     if (pid_rv == 0)

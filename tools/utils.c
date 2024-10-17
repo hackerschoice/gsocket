@@ -408,9 +408,6 @@ try_changeargv0(int argc, char *argv[]) {
 		myself_exe = fs_exename;
 	DEBUGF("fs_Exename='%s' config_exe='%s'\n", fs_exename, myself_exe);
 
-	// This can never happen:
-	// XASSERT(strstr(fs_exename, "ld-linux") == NULL, "Oops. Set GS_EXENAME= to binary file.");
-
 	if (GS_GETENV2("CONFIG_CHECK")) {
 		gopt.flags |= GSC_FL_CONFIG_CHECK;
 		GSNC_config_read(NULL /* default to GS_CONFIG_READ=*/);
