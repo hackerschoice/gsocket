@@ -251,7 +251,6 @@ cbe_peer_timeout(void *ptr)
 		// checks. Server's ping are not answered by client (which is ok)
 		if (p->gs->ts_net_io + GS_SEC_TO_USEC(gopt.app_keepalive_sec) < GS_TV_TO_USEC(&gopt.tv_now))
 		{
-			// DEBUGF_Y("STOP HERE: why do we not see stat4e? n_sox=%d\n", p->gs->net.n_sox);
 			DEBUGF_M("[%d] Sending APP PING (fd=%d)\n", p->id, p->gs->fd);
 			cmd_ping(p);
 		}

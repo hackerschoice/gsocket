@@ -196,7 +196,7 @@ GS_library_init(FILE *err_fp, FILE *dout_fp, gs_cb_log_t func_log)
 int
 GS_CTX_init(GS_CTX *ctx, fd_set *rfd, fd_set *wfd, fd_set *r, fd_set *w, struct timeval *tv_now)
 {
-	GS_library_init(stderr, stderr, NULL);
+	GS_library_init(NULL, NULL, NULL);
 
 	memset(ctx, 0, sizeof *ctx);
 

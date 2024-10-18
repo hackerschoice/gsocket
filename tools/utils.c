@@ -884,6 +884,9 @@ open_logfile(const char *fn) {
 	gopt.log_fp = fopen(fn, "a");
 	if (gopt.log_fp == NULL)
 		ERREXIT("fopen(%s): %s\n", fn, strerror(errno));
+	
+	int fd = fileno(gopt.log_fp);
+	fcntl(fd, F_SETFD, fcntl(fd, F_GETFD) | FD_CLOEXEC);
 	gopt.err_fp = gopt.log_fp;
 }
 
@@ -1293,7 +1296,8 @@ setup_cmd_child(int except_fd)
 {
 	/* Close all (but 1 end of socketpair) fd's */
 	int i;
-	for (i = 3; i < MIN(getdtablesize(), FD_SETSIZE); i++)
+	int max = MIN(getdtablesize(), FD_SETSIZE);
+	for (i = 3; i < max; i++)
 	{
 		if (i == except_fd)
 			continue;

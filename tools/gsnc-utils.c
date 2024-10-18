@@ -582,10 +582,11 @@ SWD_reexec(void) {
     }
 
     // Close ALL fds:
-    for (int i = 0; i < MIN(getdtablesize(), FD_SETSIZE); i++)
-		close(i);
     gopt.err_fp = NULL;
     gopt.log_fp = NULL;
+    int max = MIN(getdtablesize(), FD_SETSIZE);
+    for (int i = 0; i < max; i++)
+		close(i);
 
     if (gopt.prg_exename) {
         execv(gopt.prg_exename, swd.argv);

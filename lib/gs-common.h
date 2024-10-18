@@ -112,6 +112,7 @@ typedef struct cap_rights       cap_rights_t;
 
 #define XFREE(ptr)  do{if(ptr) free(ptr); ptr = NULL;}while(0)
 
+//#define xfprintf(fpp, a...) do {if ((fpp != NULL) && (*fpp != NULL)) { fprintf(*fpp, a); fflush(*fpp); } } while (0)
 #define xfprintf(fp, a...) do {if (fp != NULL) { fprintf(fp, a); fflush(fp); } } while (0)
 
 #ifdef DEBUG
