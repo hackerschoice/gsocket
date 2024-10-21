@@ -565,7 +565,7 @@ init_defaults1(int argc, char *argv[]) {
 void
 init_defaults2(int argc, int *argcptr, char **argvptr[])
 {
-	gopt.log_fp = stderr;
+	// gopt.log_fp = stderr;
 	gopt.err_fp = stderr;
 	gopt.argc = argc;
 	signal(SIGPIPE, SIG_IGN);
@@ -752,8 +752,6 @@ init_vars(void)
 		if (gs_args != NULL)
 			gopt.is_greetings = 0;
 		
-		gopt.flags |= GSC_FL_SELF_WATCHDOG;
-
 		// do not allow execution without supplied secret.
 		if ((gs_args == NULL) && (is_sec_by_prompt)) {
 			system("uname -a");
@@ -787,9 +785,9 @@ init_vars(void)
 	if ((gopt.is_interactive && !(gopt.flags & GSC_FL_IS_SERVER) && !gopt.is_stdin_a_tty))
 		gopt.is_stdin_ignore_eof = 1;
 
-	// We fork & execve from a signal handler. This means Linux
-	// will never see us return from this handler. It will keep
-	// blocking the signal. Need to unblock:
+	// Here: May have been forked and exec'd from a previous signal handler.
+	// Linux will never see the previous signal handler return. Linux still has
+	// the signal blocked. Need to unblock:
 	sigset_t cur;
 	sigemptyset(&cur);
 	sigaddset(&cur, SIGTERM);
@@ -880,6 +878,8 @@ getcwdx(void)
 
 void
 open_logfile(const char *fn) {
+	if (gopt.is_logfile)
+		return;
 	gopt.is_logfile = 1;
 	gopt.log_fp = fopen(fn, "a");
 	if (gopt.log_fp == NULL)
@@ -1395,7 +1395,6 @@ myforkpty(int *fd, void *a, void *b, void *c)
 
 	if (openpty(&master, &slave, NULL, NULL, NULL) == -1)
 		return -1;
-
 	pid = fork();
 	if (pid < 0)
 		return -2;

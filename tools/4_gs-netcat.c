@@ -201,12 +201,10 @@ peer_free(GS_SELECT_CTX *ctx, struct _peer *p)
 	}
 }
 
-
 static void
 cb_atexit(void)
 {
 	if (gopt.flags & GSC_FL_IS_SERVER) {
-		// Check if we should restart ourselves.
 		SWD_reexec();
 		return;
 	}
@@ -1481,8 +1479,9 @@ try_quiet(void)
 	if (!(gopt.flags & GSC_FL_OPT_QUIET))
 		return;
 
-	gopt.log_fp = NULL;
-	gopt.err_fp = NULL;
+	// gopt.log_fp might be NULL (no -L specified).
+	if (gopt.log_fp != gopt.err_fp)
+		gopt.err_fp = NULL;
 }
 
 static void
@@ -1620,7 +1619,7 @@ my_getopt(int argc, char *argv[])
 	if ((ptr = GS_GETENV2("SELF_WATCHDOG")))
 		gopt.flags |= GSC_FL_SELF_WATCHDOG;
 
-	if ((gopt.is_logfile == 0) && ((ptr = GS_GETENV2("LOGFILE")) != NULL))
+	if ((ptr = GS_GETENV2("LOGFILE")) != NULL)
 		open_logfile(ptr);
 
 	if ((ptr = GS_GETENV2("START_DELAY")))
@@ -1673,11 +1672,13 @@ my_getopt(int argc, char *argv[])
 		signal(SIGALRM, cb_sigalarm);
 	}
 
-	if (gopt.flags & GSC_FL_OPT_DAEMON)
-	{
+	if (gopt.flags & GSC_FL_OPT_DAEMON) {
 		if (gopt.is_logfile == 0)
 			gopt.flags |= GSC_FL_OPT_QUIET;
 	}
+
+	if ((gopt.is_logfile == 0) && (!(gopt.flags & GSC_FL_OPT_QUIET)))
+		gopt.log_fp = gopt.err_fp; // Log to err_fp [stderr] by default.
 
 	if (gopt.flags & GSC_FL_IS_SERVER)
 	{
@@ -1714,16 +1715,13 @@ my_getopt(int argc, char *argv[])
 		}
 	}
 
+	try_quiet();
+
 	if ((gopt.is_internal) && (gopt.flags & GSC_FL_OPT_WATCHDOG_INTERNAL))
-	{
-		try_quiet();
 		gs_watchdog();
-	}
 
 	// init all (and ask for password if -s/-k missing)
 	init_vars();			/* from utils.c */
-	try_quiet();
-
 
 	// Check if Self-Watchdog triggered this execution. Wait or exit hard, if needed.
 	SWD_wait();
@@ -1758,6 +1756,10 @@ my_getopt(int argc, char *argv[])
 
 	if (gopt.flags & GSC_FL_OPT_DAEMON) {
 		if (gopt.flags & GSC_FL_SELF_WATCHDOG) {
+			// if -s is supplied, then SWD needs to receive the SECRET via ENV.
+			if ((gopt.sec_str != NULL) && (gopt.flags & (GSC_FL_OPT_SEC | GSC_FL_OPT_SEC)))
+				setenv("GS_SECRET", gopt.sec_str, 1);
+
 			signal(SIGSEGV, cb_sigsegv);
 		} else {
 			GS_watchdog(gopt.log_fp, EX_BAD_AUTH); // FOREVER
