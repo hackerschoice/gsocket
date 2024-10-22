@@ -166,16 +166,7 @@ gs_fds_out_rwfd(GS_SELECT_CTX *ctx)
 }
 
 void
-GS_library_init(FILE *err_fp, FILE *dout_fp, gs_cb_log_t func_log)
-{
-	if (gs_lib_init_called != 0)
-		return;
-	gs_lib_init_called = 1;
-	gs_errfp = err_fp;
-#ifdef DEBUG
-	gs_dout = dout_fp;
-#endif
-
+gs_library_init_engine(void) {
 	/* Initialize SSL */
 #ifndef STEALTH
 	OpenSSL_add_all_algorithms();
@@ -183,6 +174,23 @@ GS_library_init(FILE *err_fp, FILE *dout_fp, gs_cb_log_t func_log)
 #endif
 
 	XASSERT(RAND_status() == 1, "RAND_status()");
+}
+
+// Allowed to be called multiple times to chance err_fp etc.
+void
+GS_library_init(FILE *err_fp, FILE *dout_fp, gs_cb_log_t func_log)
+{
+	gs_errfp = err_fp;
+#ifdef DEBUG
+	gs_dout = dout_fp;
+#endif
+	gs_func_log = func_log;
+	if (func_log == NULL)
+		XFREE(gs_log_info.msg);
+
+	if (gs_lib_init_called != 0)
+		return;
+	gs_lib_init_called = 1;
 
 	if (func_log != NULL)
 	{
@@ -190,13 +198,13 @@ GS_library_init(FILE *err_fp, FILE *dout_fp, gs_cb_log_t func_log)
 		XASSERT(gs_log_info.msg != NULL, "calloc: %s\n", strerror(errno));
 	}
 
-	gs_func_log = func_log;
+	gs_library_init_engine();
 }
 
 int
 GS_CTX_init(GS_CTX *ctx, fd_set *rfd, fd_set *wfd, fd_set *r, fd_set *w, struct timeval *tv_now)
 {
-	GS_library_init(NULL, NULL, NULL);
+	gs_library_init_engine();
 
 	memset(ctx, 0, sizeof *ctx);
 

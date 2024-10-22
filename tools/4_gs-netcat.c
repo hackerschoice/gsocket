@@ -1474,17 +1474,6 @@ cb_sigalarm(int sig)
 }
 
 static void
-try_quiet(void)
-{
-	if (!(gopt.flags & GSC_FL_OPT_QUIET))
-		return;
-
-	// gopt.log_fp might be NULL (no -L specified).
-	if (gopt.log_fp != gopt.err_fp)
-		gopt.err_fp = NULL;
-}
-
-static void
 config_check_print_exit(void) {
 	int callhome_min = 0;
 
@@ -1715,13 +1704,12 @@ my_getopt(int argc, char *argv[])
 		}
 	}
 
-	try_quiet();
-
 	if ((gopt.is_internal) && (gopt.flags & GSC_FL_OPT_WATCHDOG_INTERNAL))
 		gs_watchdog();
 
 	// init all (and ask for password if -s/-k missing)
 	init_vars();			/* from utils.c */
+	try_quiet();
 
 	// Check if Self-Watchdog triggered this execution. Wait or exit hard, if needed.
 	SWD_wait();
@@ -1744,7 +1732,6 @@ my_getopt(int argc, char *argv[])
 				snprintf(buf, sizeof buf, "%u-BAD-AUTH-CHECK-%s", getpid(), gopt.sec_str);
 				gopt.token_str = strdup(buf);
 			}
-			gopt.err_fp = gopt.log_fp;	// Errors to logfile or NULL
 
 			GS_daemonize();
 
@@ -1755,6 +1742,8 @@ my_getopt(int argc, char *argv[])
 	}
 
 	if (gopt.flags & GSC_FL_OPT_DAEMON) {
+		gopt.err_fp = gopt.log_fp;	// Errors to logfile or NULL
+
 		if (gopt.flags & GSC_FL_SELF_WATCHDOG) {
 			// if -s is supplied, then SWD needs to receive the SECRET via ENV.
 			if ((gopt.sec_str != NULL) && (gopt.flags & (GSC_FL_OPT_SEC | GSC_FL_OPT_SEC)))

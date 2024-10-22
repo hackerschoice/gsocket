@@ -682,6 +682,21 @@ cb_gs_log(struct _gs_log_info *l)
 }
 
 void
+try_quiet(void)
+{
+	if (!(gopt.flags & GSC_FL_OPT_QUIET))
+		return;
+
+	// gopt.log_fp might be NULL (no -L specified).
+	if (gopt.log_fp != gopt.err_fp)
+		gopt.err_fp = NULL;
+	// Do not close stderr/stdin yet. GS_user_secret() after GS_lib_init() needs it
+	// to ask for -s secret.
+
+	GS_library_init(gopt.err_fp, /* Debug Output */ gopt.err_fp, cb_gs_log);
+}
+
+void
 init_vars(void)
 {
 	GS_library_init(gopt.err_fp, /* Debug Output */ gopt.err_fp, cb_gs_log);
@@ -769,11 +784,16 @@ init_vars(void)
 	if (gopt.sec_str == NULL)
 		ERREXIT("%s\n", GS_CTX_strerror(&gopt.gs_ctx));
 
-	if (gopt.is_greetings) {
+	if ((gopt.is_greetings) || (gopt.flags & GSC_FL_OPT_G)) {
+		FILE *tmp = gopt.log_fp;
+		if (gopt.log_fp == NULL)
+			gopt.log_fp = gopt.err_fp;
 		GS_LOG("=Secret         : %s\n", gopt.sec_str);
-		if (gopt.gs_id_str)
-			GS_LOG("=ID             : %s\n", gopt.gs_id_str);
+		gopt.log_fp = tmp;
 	}
+
+	if ((gopt.is_greetings) && (gopt.gs_id_str))
+		GS_LOG("=ID             : %s\n", gopt.gs_id_str);
 
 	/* Convert a secret string to an address */
 	GS_ADDR_sec2addr(&gopt.gs_addr, gopt.sec_str, gopt.gs_id_str);
@@ -1075,7 +1095,7 @@ stty_reset(void)
 static const char esc_seq[] = "\r~.\r";
 static int esc_pos;
 /*
- * In nteractive mode/Client mode check if User typed '\n~.\n' escape
+ * In interactive mode/Client mode, check if User typed '\n~.\n' escape
  * sequence.
  */
 void

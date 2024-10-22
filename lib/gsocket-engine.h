@@ -11,6 +11,7 @@ int gs_srp_init(GS *gsocket);
 void gs_select_rw_save_state(GS_SELECT_CTX *ctx, int fd, char *idstr);
 void gs_select_rw_restore_state(GS_SELECT_CTX *ctx, int fd, char *idstr);
 void gs_select_set_rdata_pending(GS_SELECT_CTX *ctx, int fd, int len);
+void gs_library_init_engine(void);
 
 void gs_fds_out(fd_set *fdset, int max, char id);
 void gs_fds_out_rwfd(GS_SELECT_CTX *ctx);

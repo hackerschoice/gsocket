@@ -154,7 +154,7 @@ GS_gen_secret(void)
 {
 	int ret;
 
-	GS_library_init(stderr, stderr, NULL);
+	gs_library_init_engine();
 
 	// Generate random numbers
 	uint8_t buf[GS_SECRET_MAX_LEN];
