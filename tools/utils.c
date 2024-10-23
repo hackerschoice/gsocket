@@ -200,15 +200,14 @@ read_proc_cmd(char *dst, size_t sz, pid_t pid) {
 // Called after tried to hide so that we can check if any other process hides
 // like us (and we consider this a duplicate to exit(0)).
 // Note: /proc/PID/exe is not always accessible (for non-root). Instead, /proc/PID/stat
-// holds the name of the executeable file (ps -fp <PID> -o pid,comm,cmd). For memfd_create
+// holds the name of the executable file (ps -fp <PID> -o pid,comm,cmd). For memfd_create
 // this is a number. 
-static int
+static pid_t
 is_running(void) {
 	DIR *d;
 	struct dirent *ent;
-	int fret = -1;
 	pid_t mypid = getpid();
-	pid_t pid;
+	pid_t pid = 0;
 	struct stat sb;
 	uid_t uid = geteuid();
 	char buf[64];
@@ -283,14 +282,16 @@ is_running(void) {
 			continue; // Could not read_proc_*() from this pid. continue.
 
 		DEBUGF("%zd (%s), %zd (%s)\n", exe_sz, exe, cmd_sz, cmd);
-		fret = 0;
 		break;
 	}
 
+	if (ent == NULL)
+		pid = 0;
+
 	closedir(d);
 err:
-	DEBUGF("returns %d [%s]\n", fret, fret==0?"already running":"NOT running");
-	return fret;
+	DEBUGF("returns pid=%d [%s]\n", pid, pid!=0?"already running":"NOT running");
+	return pid;
 }
 
 // STOP ptrace() of myself.
@@ -311,7 +312,15 @@ changeargv0_finish(void) {
 	unsetenv("_GS_PROC_EXENAME");
 
 	if (!(gopt.flags & GSC_FL_STARTED_BY_SWD)) {
-		if (is_running() == 0)
+		pid_t pid = is_running();
+		if (GS_GETENV2("SHOW_RUNNING")) {
+			if (pid > 0) {
+				printf("%d\n", pid);
+				exit(0);
+			}
+			exit(100);
+		}
+		if (pid > 0)
 			exit(0);
 	}
 

