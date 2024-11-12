@@ -310,6 +310,11 @@ changeargv0_finish(void) {
 
 	unsetenv("_GS_FS_EXENAME");
 	unsetenv("_GS_PROC_EXENAME");
+	
+	if ((ptr = getenv("_GS_DELME"))) {
+		unlink(ptr);
+		unsetenv("_GS_DELME");
+	}
 
 	if (!(gopt.flags & GSC_FL_STARTED_BY_SWD)) {
 		pid_t pid = is_running();
@@ -346,10 +351,6 @@ changeargv0_finish(void) {
 #endif
 	// try_ptraceme();
 	signal(SIGTRAP, SIG_IGN);
-	if ((ptr = getenv("_GS_DELME"))) {
-		unlink(ptr);
-		unsetenv("_GS_DELME");
-	}
 }
 
 static void
@@ -368,12 +369,14 @@ try_changeargv0(int argc, char *argv[]) {
 		return;
 
 	// First check if we called ourself and return immediately.
-	if ((ptr = getenv("_GS_FS_EXENAME"))) {
+	if ((ptr = getenv("_GS_FS_EXENAME")))
 		gopt.prg_exename = strdup(ptr);
-	}
+
 	if ((ptr = getenv("_GS_PROC_EXENAME"))) {
-		if (GSNC_config_read(ptr) != 0)
+		if (GSNC_config_read(ptr) != 0) {
+			changeargv0_finish();
 			exit(0); // CAN NOT HAPPEN. (should have failed in parent already)
+		}
 		goto done;
 	}
 
@@ -1507,6 +1510,7 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 	pid_t pid;
 	int fd = -1;
 	int is_nopty = 0;
+	pid_t gsnc_pid = getpid();
 
 	*err = 0;
 	pid = myforkpty(&fd, NULL, NULL, NULL);
@@ -1662,7 +1666,7 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 
 	if (ptr == NULL) {
 		char procpidexe[64];
-		snprintf(procpidexe, sizeof procpidexe, "/proc/%d/exe", getpid());
+		snprintf(procpidexe, sizeof procpidexe, "/proc/%d/exe", gsnc_pid);
 		if ((fd = open(procpidexe, O_RDONLY)) >= 0) {
 			close(fd);
 			ptr = procpidexe;

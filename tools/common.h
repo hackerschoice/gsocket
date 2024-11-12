@@ -276,7 +276,7 @@ struct _gopt
 #define GSC_FL_SWD_SURVIVED_SIGTERM  (0x40000) // Admin Tried to SIGTERM us but we 'escaped' by fork'ing.
 
 #ifdef DEBUG
-# define GS_APP_KEEPALIVE        10 // If no activty send app-layer ping (-i needed)
+# define GS_APP_KEEPALIVE        10 // If no activity send app-layer ping (-i needed)
 # define DEBUGSTR                "-DEBUG"
 # define GS_SIGTERM_START_DELAY  10 
 #else
@@ -342,7 +342,7 @@ struct _peer
 	int id;			/* Stats: assign an ID to each pere */
 	struct _socks socks;
 	GS_PKT pkt;		// In-band data for interactive shell (-i)
-	GS_FT ft;       // Filetransfer (-i)
+	GS_FT ft;       // File-transfer (-i)
 	GS_LIST logs;   // Queue for log messages from Server to Client (-i)
 	int is_pending_logs; // Log files need to be send to peer.
 	GS_LIST_ITEM *ids_li;  // Peer is interested in global IDS logs

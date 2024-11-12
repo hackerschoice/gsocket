@@ -1623,7 +1623,7 @@ install_systemd_infect() {
 	# recover if this fails:
 	do_config2bin "${DSTBIN}" "${bin}" "-liq" "" || return 255
 
-	STARTING_STR="Starting gs-netcat as infected ${CDB}${name}.service${CN}${CDC}${CN}"
+	STARTING_STR="Starting gs-netcat as infected ${CB}${name}.service${CN}${CDC}${CN}"
 }
 
 install_system_systemd()
@@ -2275,6 +2275,6 @@ echo -e "--> ${CW}Join us on Telegram - https://t.me/thcorg${CN}"
 unset is_warn
 [ "$UID" -eq 0 ] && [ -z "$GS_SUPERVISE" ] && is_warn=1
 [ -z "$GS_BIN" ] && is_warn=1
-[ -n "$is_warn" ] && WARN "Using default names is easily detectable.\n             Set ${CDC}GS_BIN=<filename>${CN} and ${CDC}GS_NAME=<processname>${CN} instead."
+[ -n "$is_warn" ] && WARN "Using default names is easily detectable.\n             Set ${CB}GS_BIN=<filename>${CN} and ${CDC}GS_NAME=<processname>${CN} instead."
 
 exit_code 0
