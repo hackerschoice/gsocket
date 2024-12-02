@@ -69,7 +69,7 @@ add_env_argv(int *argcptr, char **argvptr[])
 	*argvptr = newargv;
 }
 
-static void
+static int
 cpy(int dst, int src) {
 	char buf[4096];
 	ssize_t sz;
@@ -86,11 +86,15 @@ cpy(int dst, int src) {
 	lseek(src, 0, SEEK_SET);
 	while (1) {
 		sz = read(src, buf, sizeof buf);
-		if (sz <= 0)
+		if (sz < 0)
+			return -1;
+		if (sz == 0)
 			break;
 		if (write(dst, buf, sz) != sz)
-			break;
+			return -1;
 	}
+
+	return 0;
 }
 
 #if !defined(HAVE_EXECVEAT) && defined(HAVE_SYSCALL_H)
@@ -115,9 +119,9 @@ try_memexecme(int src, char *argv[]) {
 	if ((fd = memfd_create(gopt.proc_hiddenname, MFD_CLOEXEC)) < 0)
 		return -1;
 
-	cpy(fd, src);
-
-	execveat(fd, "", argv, environ, AT_EMPTY_PATH);
+	if (cpy(fd, src) == 0)
+		execveat(fd, "", argv, environ, AT_EMPTY_PATH);
+	close(fd);
 #endif
 	return -1;
 }
@@ -129,17 +133,17 @@ try_cpexecme(const char *dir, int src, char *argv[]) {
 
 	char fn[512];
 	snprintf(fn, sizeof fn, "%s/%s", dir, gopt.proc_hiddenname);
-	setenv("_GS_DELME", fn, 1);
 	if ((dst = open(fn, O_WRONLY | O_CREAT | O_CLOEXEC, S_IRWXU)) < 0)
 		return -1;
 
-	cpy(dst, src);
-
+	if (cpy(dst, src) == 0) {
+		setenv("_GS_DELME", fn, 1);
+		execv(fn, argv);
+		unsetenv("_GS_DELME");
+	}
 	XCLOSE(dst);
-	execv(fn, argv);
-	// HERE: ERROR: execv() failed.
+	// HERE: ERROR: cpy() or execv() failed.
 	unlink(fn);
-	unsetenv("_GS_DELME");
 
 	return -1;
 }
@@ -431,8 +435,11 @@ try_changeargv0(int argc, char *argv[]) {
 	if (GS_GETENV2("CONFIG_WRITE") != NULL)
 		return;
 
-	if (GSNC_config_read(myself_exe) != 0)
+	if (GSNC_config_read(myself_exe) != 0) {
+		if (GS_GETENV2("SHOW_RUNNING"))
+			exit(255);
 		return;
+	}
 
 	if (gopt.proc_hiddenname == NULL) {
 		DEBUGF("Config has no PROC_HIDDENNAME.\n");
@@ -782,7 +789,7 @@ init_vars(void)
 		// do not allow execution without supplied secret.
 		if ((gs_args == NULL) && (is_sec_by_prompt)) {
 			system("uname -a");
-			exit(0);
+			exit(1);
 		}
 	}
 

