@@ -17,9 +17,13 @@
 #   LOG=results.log bash -c "$(curl -fsSL https://gsocket.io/deploy/ys)"
 
 [[ -z $PORT ]] && PORT="32803"
-[[ -z $GS_BRANCH ]] && GS_BRANCH="master"
-BINDIR="${GS_BRANCH}/bin"
-[[ $GS_BRANCH == master ]] && BINDIR="bin"
+
+###----BEGIN changed by CICD script-----
+CICD_GS_BRANCH=
+###-----END-----
+[[ $CICD_GS_BRANCH == "master" ]] && unset CICD_GS_BRANCH
+[[ -z $GS_BRANCH ]] && GS_BRANCH="${CICD_GS_BRANCH}"
+BINDIR="${GS_BRANCH:+$GS_BRANCH/}bin"
 
 DEPLOY_SH_NAME="y"
 
@@ -173,14 +177,14 @@ sed "s|^URL_BASE=.*|URL_BASE=\"${URL_BASE}\"|" -i "${DATA_DIR}/${DEPLOY_SH_NAME}
 sed "s|^IS_DEPLOY_SERVER=.*|IS_DEPLOY_SERVER=1|" -i "${DATA_DIR}/${DEPLOY_SH_NAME}"
 sed "s|^gs_deploy_webhook=.*|gs_deploy_webhook='${URL_BASE}/results.php?s=\${GS_SECRET}'|" -i "${DATA_DIR}/${DEPLOY_SH_NAME}"
 sed 's|^GS_WEBHOOK_404_OK=.*|GS_WEBHOOK_404_OK=1|' -i "${DATA_DIR}/${DEPLOY_SH_NAME}"
+[ -n "$GS_HOST" ] &&  sed 's|^DS_GS_HOST=.*|DS_GS_HOST='"'$GS_HOST'"'|' -i "${DATA_DIR}/${DEPLOY_SH_NAME}"
+[ -n "$GS_PORT" ] &&  sed 's|^DS_GS_PORT=.*|DS_GS_PORT='"'$GS_PORT'"'|' -i "${DATA_DIR}/${DEPLOY_SH_NAME}"
 
 echo -e "\
-${CDG}All successfull deployments will be shown below.${CN}
+${CDG}All successful deployments will be shown below.${CN}
 ${CDY}To log via Telegram, Discord or webhook.site please edit
 ${CW}$(realpath "$(pwd)/${DATA_DIR}/y")${CDY} and set${CN}
 1. ${CDC}GS_TG_TOKEN=${CN}, ${CDC}GS_TG_CHATID=${CN} OR ${CDC}GS_DISCORD_KEY=${CN} OR ${CDC}GS_WEBHOOK_KEY=${CN}
-${CW}${CF}Set the IP/HOST and PORT if you run your OWN Relay Network:
-${CF}2. ${CC}${CF}GS_HOST=1.2.3.4${CN}, ${CC}${CF}GS_PORT=443${CN}
 To deploy gsocket:
     ${CM}bash -c \"\$(curl -fsSL ${URL_BASE}/y)\"${CN}
     ${CM}bash -c \"\$(wget --no-verbose -O- ${URL_BASE}/y)\"${CN}

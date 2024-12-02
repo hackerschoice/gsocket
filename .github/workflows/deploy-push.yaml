@@ -26,6 +26,8 @@ jobs:
       run: |
         cp deploy/deploy.sh /tmp/y
         cp deploy/deploy_server.sh /tmp/ys
+        sed "s|^CICD_GS_BRANCH=.*|CICD_GS_BRANCH=\"${DSTDIR:1}\"|" -i "y"
+        sed "s|^CICD_GS_BRANCH=.*|CICD_GS_BRANCH=\"${DSTDIR:1}\"|" -i "ys"
   
     - name: Clone https://gsocket.io
       env:

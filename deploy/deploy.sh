@@ -80,8 +80,11 @@
 #       - Guess what...
 
 # Global Defines
-### DISABLE ME:
-[[ -z $GS_BRANCH ]] && GS_BRANCH="beta"
+###----BEGIN changed by CICD script-----
+CICD_GS_BRANCH=
+###-----END-----
+[[ $CICD_GS_BRANCH == "master" ]] && unset CICD_GS_BRANCH
+[[ -z $GS_BRANCH ]] && GS_BRANCH="${CICD_GS_BRANCH}"
 
 URL_BASE_CDN="https://cdn.gsocket.io"
 URL_BASE_X="https://gsocket.io"
@@ -90,8 +93,12 @@ URL_BASE_X="https://gsocket.io"
 # These stubs are filled out by deploy_server.sh:
 IS_DEPLOY_SERVER=
 URL_BASE=
+DS_GS_HOST=
+DS_GS_PORT=
 [[ -n $URL_BASE ]] && [[ -z $GS_URL_BASE ]] && GS_URL_BASE="$URL_BASE"
 [[ -n $IS_DEPLOY_SERVER ]] && unset GS_BRANCH
+[ -z "$GS_HOST" ] && GS_HOST="$DS_GS_HOST"
+[ -z "$GS_PORT" ] && GS_PORT="$DS_GS_PORT"
 gs_deploy_webhook=
 GS_WEBHOOK_404_OK=
 [[ -n $gs_deploy_webhook ]] && GS_WEBHOOK="$gs_deploy_webhook"
