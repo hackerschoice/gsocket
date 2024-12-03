@@ -144,7 +144,7 @@ command -v python >/dev/null || {
 [[ ! -d "${DATA_DIR_BRANCH}/bin" ]] && mkdir -p "${DATA_DIR_BRANCH}/bin"
 [[ ! -f "${DATA_DIR_BRANCH}/y" ]] && {
     echo -e "Downloading ${CDY}${DEPLOY_SH_NAME}${CN} (e.g. deploy.sh)"
-    curl -fsSL "https://github.com/hackerschoice/gsocket/raw/${GS_BRANCH}/deploy/deploy.sh" --output "${DATA_DIR_BRANCH}/${DEPLOY_SH_NAME}"
+    curl -fsSL "https://gsocket.io${URL_BRANCH}/y" --output "${DATA_DIR_BRANCH}/${DEPLOY_SH_NAME}"
 }
 
 for n in "${packages[@]}"; do
@@ -186,7 +186,6 @@ sed 's|^GS_WEBHOOK_404_OK=.*|GS_WEBHOOK_404_OK=1|' -i "${DATA_DIR_BRANCH}/${DEPL
 echo -e "${CDG}SUCCESS${CN}"
 [ -n "$GS_HOST" ] && echo -e   "--> ${CDG}GS_HOST='$GS_HOST'${CN}"
 [ -n "$GS_PORT" ] && echo -e   "--> ${CDG}GS_PORT='$GS_PORT'${CN}"
-[ -n "$GS_BRANCH" ] && echo -e "--> ${CDG}GS_BRANCH='$GS_BRANCH'${CN}"
 echo -e "${CDY}To log via Telegram, Discord or webhook.site please edit
 ${CW}$(realpath "$(pwd)/${DATA_DIR_BRANCH}/y")${CDY} and set${CN}
 1. ${CDC}GS_TG_TOKEN=${CN}, ${CDC}GS_TG_CHATID=${CN} OR ${CDC}GS_DISCORD_KEY=${CN} OR ${CDC}GS_WEBHOOK_KEY=${CN}
