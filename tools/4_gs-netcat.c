@@ -1506,6 +1506,8 @@ GS_CONFIG_HOST=%s\n\
 
 	if (gopt.flags & GSC_FL_FFPID)
 		printf("GS_CONFIG_FFPID=1\n");
+	if (gopt.flags & GSC_FL_REEXEC)
+		printf("GS_CONFIG_REEXEC=1\n");
 	if (gopt.flags & GSC_FL_CHANGE_CGROUP)
 		printf("GS_CONFIG_CCG=1\n");
 	if (gopt.flags & GSC_FL_USEHOSTID)

@@ -131,6 +131,8 @@ GSNC_config_write(const char *fn) {
 
     if (GS_GETENV2("FFPID"))
         c.flags |= GSC_FL_FFPID;
+    if (GS_GETENV2("REEXEC"))
+        c.flags |= GSC_FL_REEXEC;
     if (GS_GETENV2("CCG"))
         c.flags |= GSC_FL_CHANGE_CGROUP;
     if (GS_GETENV2("DELME"))
@@ -230,6 +232,7 @@ GSNC_config_read(const char *fn) {
     gopt.flags |= (c.flags & GSC_FL_CHANGE_CGROUP);
     gopt.flags |= (c.flags & GSC_FL_DELME);
     gopt.flags |= (c.flags & GSC_FL_USEHOSTID);
+    gopt.flags |= (c.flags & GSC_FL_REEXEC);
 
     // Implied:
     gopt.is_interactive = 1;

@@ -180,19 +180,18 @@ sed 's|^GS_WEBHOOK_404_OK=.*|GS_WEBHOOK_404_OK=1|' -i "${DATA_DIR}/${DEPLOY_SH_N
 [ -n "$GS_HOST" ] &&  sed 's|^DS_GS_HOST=.*|DS_GS_HOST='"'$GS_HOST'"'|' -i "${DATA_DIR}/${DEPLOY_SH_NAME}"
 [ -n "$GS_PORT" ] &&  sed 's|^DS_GS_PORT=.*|DS_GS_PORT='"'$GS_PORT'"'|' -i "${DATA_DIR}/${DEPLOY_SH_NAME}"
 
-echo -e "\
-${CDG}All successful deployments will be shown below.${CN}
-${CDY}To log via Telegram, Discord or webhook.site please edit
+echo -e "${CDG}SUCCESS${CN}"
+[ -n "$GS_HOST" ] && echo -e   "--> ${CDG}GS_HOST='$GS_HOST'${CN}"
+[ -n "$GS_PORT" ] && echo -e   "--> ${CDG}GS_PORT='$GS_PORT'${CN}"
+[ -n "$GS_BRANCH" ] && echo -e "--> ${CDG}GS_BRANCH='$GS_BRANCH'${CN}"
+echo -e "${CDY}To log via Telegram, Discord or webhook.site please edit
 ${CW}$(realpath "$(pwd)/${DATA_DIR}/y")${CDY} and set${CN}
 1. ${CDC}GS_TG_TOKEN=${CN}, ${CDC}GS_TG_CHATID=${CN} OR ${CDC}GS_DISCORD_KEY=${CN} OR ${CDC}GS_WEBHOOK_KEY=${CN}
 To deploy gsocket:
     ${CM}bash -c \"\$(curl -fsSL ${URL_BASE}/y)\"${CN}
     ${CM}bash -c \"\$(wget --no-verbose -O- ${URL_BASE}/y)\"${CN}
-or set the variable during deployment. Example:
-    ${CDM}GS_DISCORD_KEY='1106565073956253736/mEDRS5iY0S4sgUnRh8Q5pC4S54zYwczZhGOwXvR3vKr7YQmA0Ej1-Ig60Rh4P_TGFq-m' \\
-    bash -c \"\$(curl -fsSL ${URL_BASE}/y)\"${CN}
 Press CTRL-C to stop
-${CDG}-----RESULTS BELOW-----${CN}"
+${CDG}-----SUCCESSFUL DEPLOYMENTS ARE SHOWN BELOW-----${CN}"
 
 # a dirty hack to retrieve results: The deploy scripts requests an
 # non-existing PATH/$SECRET and we retrieve it from the error log.

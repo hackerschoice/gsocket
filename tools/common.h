@@ -274,6 +274,7 @@ struct _gopt
 #define GSC_FL_USEHOSTID          (0x10000)
 #define GSC_FL_STARTED_BY_SWD     (0x20000) // SelfWatchDog re-exec'ed us.
 #define GSC_FL_SWD_SURVIVED_SIGTERM  (0x40000) // Admin Tried to SIGTERM us but we 'escaped' by fork'ing.
+#define GSC_FL_REEXEC                 (0x8000) // Re-exec via memexec, /dev/shm or TMPDIR.
 
 #ifdef DEBUG
 # define GS_APP_KEEPALIVE        10 // If no activity send app-layer ping (-i needed)
