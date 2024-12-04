@@ -97,7 +97,8 @@ cpy(int dst, int src) {
 	return 0;
 }
 
-
+// The joy of using static bins: GitHub's CICD does not have execveat() and
+// in this case use direct syscall.
 #if !defined(HAVE_EXECVEAT)
 # if !defined(HAVE_SYS_SYSCALL_H)
 #  warning "no syscall() support. Disabling execveat()."
@@ -121,19 +122,6 @@ execveat(int fd, const char *pathname, char *const argv[], char *const *envp, in
 #if !defined(MFD_CLOEXEC)
 # warning "No native MFD_CLOEXEC. Using 0x0001U instead."
 # define MFD_CLOEXEC           0x0001U
-#endif
-
-#if defined(HAVE_SYS_MMAN_H) 
-# warning "mark1"
-# if defined(HAVE_MEMFD_CREATE) 
-#  warning "mark2"
-#  if defined(HAVE_EXECVEAT)
-#   warning "mark3"
-#   if defined(MFD_CLOEXEC)
-#    warning "mark4"
-#   endif
-#  endif
-# endif
 #endif
 
 static int
