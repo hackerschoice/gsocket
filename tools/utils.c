@@ -97,20 +97,25 @@ cpy(int dst, int src) {
 	return 0;
 }
 
-#if !defined(HAVE_EXECVEAT) && defined(HAVE_SYSCALL_H)
-# if !defined(SYS_execveat) && defined(linux)
-#  define SYS_execveat 322
-#  warning "Using NR_execveat=322. Will work on linux/x86_64 only"
-# endif
-# ifdef SYS_execveat
-#  warning "No native execveat() support. Using direct syscall(__NR_execveat, ..) instead."
+
+#if !defined(HAVE_EXECVEAT)
+# if !defined(HAVE_SYS_SYSCALL_H)
+#  warning "no syscall() support. Disabling execveat()."
+# else
+#  if !defined(SYS_execveat) && defined(linux)
+#   define SYS_execveat 322
+#   warning "Using NR_execveat=322. Will work on linux/x86_64 only"
+#  endif
+#  ifdef SYS_execveat
+#   warning "No native execveat() support. Using direct syscall(__NR_execveat, ..) instead."
 static int
 execveat(int fd, const char *pathname, char *const argv[], char *const *envp, int flags) {
 	return syscall(SYS_execveat /*__NR_execveat*/, fd, pathname, argv, envp, flags);
 }
-#  define HAVE_EXECVEAT    1
-# else
-#  warning "No SYS_execveat"
+#   define HAVE_EXECVEAT    1
+#  else
+#   warning "No SYS_execveat"
+#  endif
 # endif
 #endif
 #if !defined(MFD_CLOEXEC)
