@@ -404,9 +404,8 @@ try_changeargv0(int argc, char *argv[]) {
 			if (strstr(ptr, "ld-linux") != NULL) {
 				is_ldso = 1;   // exename remains argv[0]
 				free(ptr);
-			}
-			 else if (strstr(ptr, "(deleted)") != NULL) {
-				// A sneaky user create "<name> (deleted)" file, which is not us.
+			} else if (strstr(ptr, "(deleted)") != NULL) {
+				// A sneaky user created "<name> (deleted)" file, which is not us.
 				free(ptr);
 			} else {
 				// Destination exists. Ignore argv0.
@@ -414,7 +413,14 @@ try_changeargv0(int argc, char *argv[]) {
 			}
 		} else {
 			// HERE: Link destination does _NOT_ exists. (memfd or delete)
-			myself_exe = "/proc/self/exe";
+			// musl-static compile uses O_LARGEFILE but linux <= 2.6 open() on
+			// /proc/self/exe will always fail if O_LARGEFILE is called. Thus
+			// test-open and fall back to argv0
+			int fd;
+			if ((fd = open(myself_exe, O_RDONLY)) >= 0) {
+				myself_exe = "/proc/self/exe";
+				close(fd);
+			}
 		}
 		if (fs_exename == NULL)
 			fs_exename = realpath(argv[0], NULL /* malloc */);

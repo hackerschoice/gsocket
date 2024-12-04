@@ -1396,14 +1396,14 @@ HOWTO_CONNECT_OUT()
 	[[ -n $GS_HOST ]] && str+="GS_HOST=$GS_HOST "
 	[[ -n $GS_BEACON ]] && {
 		opt+="w"
-		xstr="GS_ARGS=-w "
+		xstr="GS_ARGS='-w "
 	}
 	# After all install attempts output help how to uninstall
 	echo -e "--> To uninstall use ${CM}GS_UNDO=1 ${UNINST_CMD}${CN}"
 	echo -e "--> To connect use one of the following
 --> ${CM}${str}gs-netcat -s \"${GS_SECRET}\" ${opt}${CN}
---> ${CM}${str}${xstr}S=\"${GS_SECRET}\" ${DL_CRL}${CN}
---> ${CM}${str}${xstr}S=\"${GS_SECRET}\" ${DL_WGT}${CN}"
+--> ${CM}${str}${xstr}S=\"${GS_SECRET}\"' ${DL_CRL}${CN}
+--> ${CM}${str}${xstr}S=\"${GS_SECRET}\"' ${DL_WGT}${CN}"
 }
 
 
