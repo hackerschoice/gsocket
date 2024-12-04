@@ -103,13 +103,19 @@ cpy(int dst, int src) {
 #  warning "Using NR_execveat=322. Will work on linux/x86_64 only"
 # endif
 # ifdef SYS_execveat
-# warning "No native execveat() support. Using direct syscall(__NR_execveat, ..) instead."
+#  warning "No native execveat() support. Using direct syscall(__NR_execveat, ..) instead."
 static int
 execveat(int fd, const char *pathname, char *const argv[], char *const *envp, int flags) {
 	return syscall(SYS_execveat /*__NR_execveat*/, fd, pathname, argv, envp, flags);
 }
-# define HAVE_EXECVEAT    1
+#  define HAVE_EXECVEAT    1
+# else
+#  warning "No SYS_execveat"
 # endif
+#endif
+#if !defined(MFD_CLOEXEC)
+# warning "No native MFD_CLOEXEC. Using 0x0001U instead."
+# define MFD_CLOEXEC           0x0001U
 #endif
 
 static int
