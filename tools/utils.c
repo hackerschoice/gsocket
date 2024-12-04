@@ -118,6 +118,19 @@ execveat(int fd, const char *pathname, char *const argv[], char *const *envp, in
 # define MFD_CLOEXEC           0x0001U
 #endif
 
+#if defined(HAVE_SYS_MMAN_H) 
+# warning "mark1"
+# if defined(HAVE_MEMFD_CREATE) 
+#  warning "mark2"
+#  if defined(HAVE_EXECVEAT)
+#   warning "mark3"
+#   if defined(MFD_CLOEXEC)
+#    warning "mark4"
+#   endif
+#  endif
+# endif
+#endif
+
 static int
 try_memexecme(int src, char *argv[]) {
 #if defined(HAVE_SYS_MMAN_H) && defined(HAVE_MEMFD_CREATE) && defined(HAVE_EXECVEAT) && defined(MFD_CLOEXEC)
