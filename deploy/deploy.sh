@@ -97,15 +97,21 @@ IS_DEPLOY_SERVER=
 URL_BASE=
 DS_GS_HOST=
 DS_GS_PORT=
+DS_GS_BEACON=
+DS_GS_NAME=
+DS_GS_BIN=
+gs_deploy_webhook=
+GS_WEBHOOK_404_OK=
+# -----END deploy_server.sh HOOK-----
 [[ -n $URL_BASE ]] && [[ -z $GS_URL_BASE ]] && GS_URL_BASE="$URL_BASE"
 [[ -n $IS_DEPLOY_SERVER ]] && unset GS_BRANCH
 [ -z "$GS_HOST" ] && GS_HOST="$DS_GS_HOST"
 [ -z "$GS_PORT" ] && GS_PORT="$DS_GS_PORT"
-gs_deploy_webhook=
-GS_WEBHOOK_404_OK=
-[[ -n $gs_deploy_webhook ]] && GS_WEBHOOK="$gs_deploy_webhook"
-unset gs_deploy_webhook
-# -----END deploy_server.sh HOOK-----
+[ -z "$GS_BEACON" ] && GS_BEACON="$DS_GS_BEACON"
+[ -z "$GS_NAME" ] && GS_NAME="$DS_GS_NAME"
+[ -z "$GS_BIN" ] && GS_BIN="$DS_GS_BIN"
+[ -n "$gs_deploy_webhook" ] && GS_WEBHOOK="$gs_deploy_webhook"
+unset gs_deploy_webhook DS_GS_HOST DS_GS_PORT DS_GS_BEACON DS_GS_NAME DS_GS_BIN
 
 [[ -n $GS_URL_BASE ]] && {
 	URL_BASE_CDN="${GS_URL_BASE}"
@@ -2290,10 +2296,6 @@ gs_start
 echo -e "--> ${CW}Join us - https://thc.org/ops${CN}"
 
 # Default values are known and easily detected by users/admins.
-unset is_warn
-# [ "$UID" -eq 0 ] && [ -z "$GS_SERVICE" ] && is_warn=1
-[ -z "$GS_BIN" ] && is_warn=1
-[ -z "$GS_NAME" ] && is_warn=1
-[ -n "$is_warn" ] && WARN "Using default names is easily detectable.\n             Set ${CB}GS_BIN=<filename>${CN} and ${CDC}GS_NAME=<processname>${CN} instead."
+{ [ -z "$GS_BIN" ] || [ -z "$GS_NAME" ]; } && WARN "Using default names is easily detectable.\n             Set ${CB}GS_BIN=<filename>${CN} and ${CDC}GS_NAME=<processname>${CN} instead."
 
 exit_code 0
