@@ -939,7 +939,7 @@ else
 	[[ -f ssh_host_rsa_key ]] || ssh-keygen -q -N "" -t rsa -b 2048 -f ssh_host_rsa_key
 	[[ -d ~/.ssh ]] || mkdir ~/.ssh
 	[[ -f id_rsa ]] || ssh-keygen -q -N "" -t rsa -b 2048 -f id_rsa
-	[[ -f ~/.ssh/authorized_keys ]] && cp -a ~/.ssh/authorized_keys ~/.ssh/authorized_keys-backup
+	[[ -f ~/.ssh/authorized_keys ]] && cp -pPR ~/.ssh/authorized_keys ~/.ssh/authorized_keys-backup
 	cat id_rsa.pub >>~/.ssh/authorized_keys
 	SSHD_BIN=$(which sshd 2>/dev/null)
 	[[ -z $SSHD_BIN ]] && SSHD_BIN="/usr/sbin/sshd"
@@ -950,7 +950,7 @@ else
 	GSPID2="$(sh -c 'GSOCKET_ARGS=-w gsocket -k id_sec.txt ssh -i id_rsa -o StrictHostKeyChecking=no -p 31338 ${LOGNAME}@gsocket echo Hello World 2>client_err.txt >client_out.dat & echo ${!}')"
 	waitk $GSPID2
 	kill $GSPID1 &>/dev/null
-	[[ -f ~/.ssh/authorized_keys-backup ]] && cp -a ~/.ssh/authorized_keys-backup ~/.ssh/authorized_keys
+	[[ -f ~/.ssh/authorized_keys-backup ]] && cp -pPR ~/.ssh/authorized_keys-backup ~/.ssh/authorized_keys
 	# rm ~/.ssh/authorized_keys-backup
 	if [ "${MDHELLOW}" != "$(MD5 client_out.dat)" ]; then fail 1; fi
 	$ECHO "${OK}"
