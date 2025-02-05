@@ -24,9 +24,9 @@ jobs:
           strip tools/gs-netcat
           mv tools/gs-netcat tools/gs-netcat_mini-macOS-x86_64
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: gsnc
+          name: art-gsnc-macos-intel
           path: tools/gs-netcat_mini-macOS-x86_64
 
   MacOS-arm64:
@@ -42,9 +42,9 @@ jobs:
           strip tools/gs-netcat
           mv tools/gs-netcat tools/gs-netcat_mini-macOS-arm64
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: gsnc
+          name: art-gsnc-macos-arm
           path: tools/gs-netcat_mini-macOS-arm64
 
 # https://github.com/vmactions/openbsd-vm
@@ -84,9 +84,9 @@ jobs:
             strip tools/gs-netcat
             mv tools/gs-netcat tools/gs-netcat_mini-${{ env.OS }}-x86_64
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: gsnc
+          name: art-gsnc-openbsd
           path: tools/gs-netcat_mini-${{ env.OS }}-x86_64
 
   FreeBSD:
@@ -115,9 +115,9 @@ jobs:
             tools/gs-netcat -g
             mv tools/gs-netcat tools/gs-netcat_mini-${{ env.OS }}-x86_64
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: gsnc
+          name: art-gsnc-freebsd
           path: tools/gs-netcat_mini-${{ env.OS }}-x86_64
 
   Linux-Cross-Compile:
@@ -224,9 +224,9 @@ jobs:
           mv tools/gs-netcat tools/gs-netcat_mini-linux-${{ matrix.arch }}
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: gsnc
+          name: art-gsnc-linux
           path: tools/gs-netcat_mini-linux-${{ matrix.arch }}
 
   deploy:
@@ -235,10 +235,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Add build dependencies
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Download artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: /tmp
       
@@ -250,7 +250,7 @@ jobs:
           cd /tmp
           git clone -b gh-pages --single-branch git@github.com:hackerschoice/gsocket.io.git
           cd gsocket.io/${BINDIR:-/dev/null}
-          mv /tmp/gsnc/gs-netcat_* .
+          mv /tmp/art-gsnc-*/gs-netcat_* .
           pwd
           ls -alR
           git config --local user.name "GitHub Action"
