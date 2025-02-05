@@ -226,7 +226,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: art-gsnc-linux
+          name: art-gsnc-linux-${{ matrix.arch }}
           path: tools/gs-netcat_mini-linux-${{ matrix.arch }}
 
   deploy:
