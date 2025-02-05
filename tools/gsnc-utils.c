@@ -192,6 +192,7 @@ GSNC_config_read(const char *fn) {
     // If this is a CONFIG_CHECK then we like to output the config as written in the
     // file. If this is NOT a CONFIG_CHECK then also consider the env variables.
     if (!(gopt.flags & GSC_FL_CONFIG_CHECK)) {
+        // HERE: not a config-check
         gopt.sec_str = GS_GETENV2("SECRET");
         gopt.gs_host = GS_GETENV2("HOST");
         if ((ptr = GS_GETENV2("PORT")) != NULL)

