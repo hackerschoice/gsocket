@@ -105,7 +105,7 @@ SCRIPT_DEPLOY_NAME="y"
 
 # DEFAULT: Pure GitHub:
 # GitHub action changes this to https://gsocket.io for www deployment.
-URL_BASE_CDN="https://github.com/hackerschoice/gsocket.io/blob/gh-pages"
+URL_BASE_CDN="https://github.com/hackerschoice/gsocket.io/raw/refs/heads/gh-pages"
 URL_BASE_X="https://github.com/hackerschoice/binary/tree/main/gsocket"
 
 # -----BEGIN deploy_server.sh HOOK-----
