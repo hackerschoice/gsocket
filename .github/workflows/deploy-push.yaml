@@ -33,17 +33,10 @@ jobs:
       env:
         SSH_DEPLOY_KEY: ${{ secrets.SSH_DEPLOY_KEY }}
       run: |
-        mkdir ~/.ssh && echo "$SSH_DEPLOY_KEY" >~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+        [ ! -d ~/.ssh ] && mkdir ~/.ssh
+        echo "$SSH_DEPLOY_KEY" >~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
         cd /tmp/
         git clone -b gh-pages --depth 1 --single-branch git@github.com:hackerschoice/gsocket.io.git
-
-    - name: Clone GH binary
-      env:
-        SSH_DEPLOY_KEY: ${{ secrets.SSH_DEPLOY_KEY }}
-      run: |
-        mkdir ~/.ssh && echo "$SSH_DEPLOY_KEY" >~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
-        cd /tmp/
-        git clone -b main --depth 1 --single-branch git@github.com:hackerschoice/binary.git
 
     - name: Building deploy-all.sh
       run: |
@@ -53,26 +46,7 @@ jobs:
           rm -f "gsocket.io${DSTDIR}/bin/deploy.sh"
         }
 
-    - name: Uploading to GH binary
-      env:
-        SSH_DEPLOY_KEY: ${{ secrets.SSH_DEPLOY_KEY }}
-      run: |
-        mkdir -p "/tmp/binary/gsocket${DSTDIR:?}/bin" 2>/dev/null
-        cd "/tmp/binary/gsocket${DSTDIR:?}"
-        if [ -f /tmp/deploy-all.sh ]; then
-          cmp -s /tmp/deploy-all.sh bin/deploy-all.sh || { cat /tmp/deploy-all.sh >bin/deploy-all.sh; is_updated=1; }
-        fi
-        cmp -s /tmp/y y   || { cat /tmp/y >x;   cat /tmp/y >y;   is_updated=1; }
-        cmp -s /tmp/ys ys || { cat /tmp/ys >xs; cat /tmp/ys >ys; is_updated=1; }
-        [ -n $is_updated ] && {
-          git config --local user.name "GitHub Action"
-          git config --local user.email "root@proton.thc.org"
-          git add bin/deploy-all.sh x xs y ys && git commit -m "deploy y & ys" && git push
-        }
-
     - name: Uploading to https://gsocket.io
-      env:
-        SSH_DEPLOY_KEY: ${{ secrets.SSH_DEPLOY_KEY }}
       run: |
         sed 's|^URL_BASE_CDN=.*|URL_BASE_CDN="https://gsocket.io"|' -i "/tmp/y"
         sed 's|^URL_BASE_X=.*|URL_BASE_X="https://gsocket.io"|' -i "/tmp/y"
@@ -89,3 +63,26 @@ jobs:
           git add bin/deploy-all.sh x xs y ys && git commit -m "deploy y & ys" && git push
         }
   
+    - name: Clone GH binary
+      env:
+        SSH_DEPLOY_KEY: ${{ secrets.SSH_DEPLOY_KEY_GH_BINARY }}
+      run: |
+        [ ! -d ~/.ssh ] && mkdir ~/.ssh
+        echo "$SSH_DEPLOY_KEY" >~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+        cd /tmp/
+        git clone -b main --depth 1 --single-branch git@github.com:hackerschoice/binary.git
+
+    - name: Uploading to GH binary
+      run: |
+        mkdir -p "/tmp/binary/gsocket${DSTDIR:?}/bin" 2>/dev/null
+        cd "/tmp/binary/gsocket${DSTDIR:?}"
+        if [ -f /tmp/deploy-all.sh ]; then
+          cmp -s /tmp/deploy-all.sh bin/deploy-all.sh || { cat /tmp/deploy-all.sh >bin/deploy-all.sh; is_updated=1; }
+        fi
+        cmp -s /tmp/y y   || { cat /tmp/y >x;   cat /tmp/y >y;   is_updated=1; }
+        cmp -s /tmp/ys ys || { cat /tmp/ys >xs; cat /tmp/ys >ys; is_updated=1; }
+        [ -n $is_updated ] && {
+          git config --local user.name "GitHub Action"
+          git config --local user.email "root@proton.thc.org"
+          git add bin/deploy-all.sh x xs y ys && git commit -m "deploy y & ys" && git push
+        }
