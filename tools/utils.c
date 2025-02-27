@@ -1684,7 +1684,7 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 	// Subsequent 'gsnc -s ...' shall go to the same gs-relay.
 	str = gopt.gs_host?:GS_GETENV2("HOST");
 	if (str) {
-		snprintf(buf, strlen(buf), "GS_HOST=%s", str);
+		snprintf(buf, sizeof buf, "GS_HOST=%s", str);
 		envp[envplen++] = strdup(buf);
 	}
 	if ((gopt.gs_port <= 0) && (str = GS_GETENV2("PORT")))
