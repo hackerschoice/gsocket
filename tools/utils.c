@@ -1435,24 +1435,6 @@ tty_leader(int fd) {
 }
 
 // Make the PPID equal to 1 (unlink from process tree) in STEALTH mode
-#if 0
-static void
-try_doublefork(void) {
-	pid_t pid;
-
-	if (!(gopt.flags & GSC_FL_IS_STEALTH))
-		return;
-
-	signal(SIGHUP, SIG_IGN);
-	pid = fork();
-	if (pid > 0) {
-		_exit(0); // dont call cb_atexit().
-	}
-	// HERE: Child
-	signal(SIGHUP, SIG_DFL);
-}
-#endif
-
 static pid_t
 try_doublefork(void) {
 	int fds[2];
@@ -1484,8 +1466,8 @@ try_doublefork(void) {
 		return 0; // NO double fork needed.
 
 	pid = fork();
-	if (pid == 0) {
-		// GRANDCHILD
+	if (pid <= 0) {
+		// GRANDCHILD _or_ ERROR
 		close(fds[0]);
 		close(fds[1]);
 		return 0;
@@ -1495,6 +1477,7 @@ try_doublefork(void) {
 	_exit(0);
 	return -1; // NOT REACHED.
 }
+
 // Must use my own forkpty() because OpenBSD and FreeBSD <10.x do not
 // allow to re-assign controlling terminals that were already assigned
 // previously - a feature that's needed for GS_STEALTH to force parent-pid
@@ -1561,7 +1544,7 @@ forkfd(int *fd)
 	}
 
 	// CHILD
-	// try_doublefork();
+	close(fds[1]);
 
 	// Put this child into its own group.
 	// Otherwise keypress 'Ctrl-C' on the server would not
@@ -1612,9 +1595,7 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 
 		// *pidptr is used to emulate CTRL-c when TTY allocation fails and
 		// for filetransfer to get the CWD of the shell.
-		// if (gopt.flags & GSC_FL_IS_STEALTH)
-			// pid = -1; // pid becomes meaningless when performing double-fork.
-		DEBUGF_R("PID is now %d\n", pid);
+		DEBUGF_R("PID is now %d [fd=%d]\n", pid, fd);
 
 		if (pidptr)
 			*pidptr = pid;
