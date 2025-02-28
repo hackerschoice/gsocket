@@ -294,7 +294,7 @@ main(int argc, const char *argv[])
 	if ((*argv[1] == 'c') || (*argv[1] == 'C'))
 	{
 		// CLIENT
-		GS_FT_init(&ft, cb_stats, cb_status, 0, NULL, 0);
+		GS_FT_init(&ft, cb_stats, cb_status, NULL, 0, NULL, 0);
 
 
 		if (*argv[1] == 'c')
@@ -320,7 +320,7 @@ main(int argc, const char *argv[])
 		// SERVER
 		GS_FT_init_tests(&argv[2]); // Test [8.9]
 
-		GS_FT_init(&ft, NULL, cb_status, 0, NULL, 1);
+		GS_FT_init(&ft, NULL, cb_status, NULL, 0, NULL, 1);
 		GS_PKT_assign_chn(&pkt, GS_FT_CHN_PUT, pkt_cb_put, NULL);
 		GS_PKT_assign_chn(&pkt, GS_FT_CHN_DATA, pkt_cb_data, NULL);
 		GS_PKT_assign_chn(&pkt, GS_FT_CHN_SWITCH, pkt_cb_switch, NULL);

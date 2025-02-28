@@ -1098,7 +1098,7 @@ gs_net_try_reconnect_by_sox(GS *gs, struct gs_sox *sox)
 	gs_net_reconnect_by_sox(gs, sox);
 }
 
-// CALLHOME: Called every GS_CALLHOME= minutes to connect GSNR
+// CALLHOME: Called every GS_CALLHOME= minutes to connect GSRN
 // and check for a buddy.
 static int
 cbe_gsrn_reconnect(void *ptr) {
@@ -1686,6 +1686,7 @@ GS_listen(GS *gsocket, int backlog_NOT_USED)
 	// SELECT_CTX set for gs-netcat.
 	if ((ctx->gselect_ctx != NULL) && (ctx->callhome_interval_sec > 0)) {
 		GS_EVENT_add_by_ts(&ctx->gselect_ctx->emgr, &ctx->ev_gsrn_reconnect, 0, GS_SEC_TO_USEC(ctx->callhome_interval_sec), cbe_gsrn_reconnect, ctx->gs_listen, 0);
+		GS_EVENT_set_jitter(&ctx->ev_gsrn_reconnect, 50); // Add a 50% jitter to the reconnect timer
 	}
 
 	gsocket->flags |= GS_FL_AUTO_RECONNECT;

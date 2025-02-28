@@ -77,7 +77,7 @@ pkt_app_cb_log(uint8_t msg, const uint8_t *data, size_t len, void *ptr)
 	// struct _peer *p = (struct _peer *)ptr;
 	struct _pkt_app_log *log = (struct _pkt_app_log *)data;
 
-	GS_sanitize_fname_str((char *)log->msg, sizeof log->msg);
+	GS_sanitize_logmsg_str((char *)log->msg, sizeof log->msg);
 	GS_condis_log(&gs_condis, log->type, (const char *)log->msg);
 	CONSOLE_draw(gs_condis.fd);
 
@@ -234,7 +234,7 @@ pkt_app_send_pwdreply(GS_SELECT_CTX *ctx, struct _peer *p)
 	hdr->esc = GS_PKT_ESC;
 	hdr->type = GS_PKT_CHN2TYPE(GS_CHN_PWD);
 
-	char *wd = GS_getpidwd(p->pid);
+	char *wd = GS_getpidwd(p->pid, NULL);
 	snprintf((char *)p->wbuf + sizeof *hdr, sizeof p->wbuf - sizeof *hdr, "%s", wd);
 	size_t sz = strlen(wd) + 1; // including \0
 	XFREE(wd);

@@ -47,8 +47,12 @@ struct _gs_ft_stats_file
 	int is_zero;
 	char speed_str[GS_FT_SPEEDSTR_MAXSIZE];     // Speed (bps). Human readable string.
 };
-
 typedef void (*gsft_cb_stats_t)(struct _gs_ft_stats_file *s, void *arg);
+
+struct _gs_ft_log {
+	const char *msg;  // log message
+};
+typedef void (*gsft_cb_log_t)(struct _gs_ft_log *log, void *arg);
 
 // Updated after each file completion
 typedef struct
@@ -101,13 +105,14 @@ typedef struct
 	GS_LIST fdl;         // List of files ready to send (switch to).
 	// GS_LIST fdl_completed;  // Waiting for ERR_COMPLETED
 
-	pid_t pid;          // Server only: Use the CWD of this process for uploads/downloadds
+	pid_t pid;          // Server only: Use the CWD of this process for uploads/downloads
 	int g_id;           // global request ID (unique) to match error-replies to requests
 	int g_globbing_id;  // global globbing id
 	struct _gs_ft_file *active_put_file;  // Current active upload file
 	struct _gs_ft_file *active_dl_file;  // Current active download file
 	gsft_cb_stats_t func_stats;
 	gsft_cb_status_t func_status;
+	gsft_cb_log_t func_log;
 	void *func_arg;
 
 	GS_LIST qerrs;      // queue'd errors
@@ -206,7 +211,7 @@ struct _gs_ft_error
 #define GS_FT_ERR_INVAL        (11)  // wordexp(3) error
 #define GS_FT_ERR_COMPLETED    (128) // All data written successfully
 
-void GS_FT_init(GS_FT *ft, gsft_cb_stats_t func_stats, gsft_cb_status_t func_status, pid_t pid, void *arg, int is_server);
+void GS_FT_init(GS_FT *ft, gsft_cb_stats_t func_stats, gsft_cb_status_t func_status, gsft_cb_log_t func_log, pid_t pid, void *arg, int is_server);
 void GS_FT_free(GS_FT *ft);
 int GS_FT_add_file(GS_FT *ft, uint32_t id, const char *fname, size_t len, int64_t fsize, uint32_t mtime, uint32_t fperm, uint8_t flags);
 int GS_FT_dl_add_file(GS_FT *ft, uint32_t id, const char *fname, size_t len, int64_t fsize);

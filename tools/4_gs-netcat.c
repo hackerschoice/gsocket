@@ -1477,6 +1477,9 @@ static void
 config_check_print_exit(void) {
 	int callhome_min = 0;
 
+	// Prefix with '#' in case this is sourced by a shell.
+	printf("# Version %s%s, %s %s [%s]\n", PACKAGE_VERSION, gopt.is_built_debug?"#debug":"", __DATE__, __TIME__, OPENSSL_VERSION_TEXT);
+
 	if (!(gopt.flags & GSC_FL_CONFIG_READ_OK)) {
 		printf("GS_CONFIG_NOT_FOUND=1\n");
 		exit(255);
@@ -1543,6 +1546,7 @@ do_my_getopt(int argc, char *argv[]) {
 				gopt.flags |= GSC_FL_SELF_WATCHDOG; // implied.
 				break;
 			case 'W':
+				// Old style were gsnc monitors itself via a separate process. [deprecated]
 				gopt.flags |= GSC_FL_OPT_WATCHDOG_INTERNAL;
 				break;
 			case 'p':

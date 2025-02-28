@@ -204,6 +204,27 @@ cb_errors(void *ft_ptr, struct _gs_ft_status *s, void *arg)
 	CONSOLE_draw(gs_condis.fd);
 }
 
+static void
+add_log(struct _peer *p, uint8_t type, const char *str) {
+	struct _pkt_app_log *log = malloc(sizeof *log);
+	log->type = type;
+	snprintf((char *)log->msg, sizeof log->msg, "%.62s", str);
+	GS_LIST_add(&p->logs, NULL, log, GS_LIST_ID_COUNT(&p->logs));
+	p->is_pending_logs = 1;
+	GS_SELECT_FD_SET_W(p->gs);
+}
+
+// SERVER: Called by FT to send a log message to peer
+static void
+cb_log(struct _gs_ft_log *log, void *arg) {
+	struct _peer *p = (struct _peer *)arg;
+
+	if (!p || !log)
+		return;
+
+	add_log(p, GS_PKT_APP_LOG_TYPE_INFO, log->msg);
+}
+
 // Return length of packet created.
 // Return 0 on if not packet available.
 // Return -1 if all files have been transferred (client only. Server never stops
@@ -305,7 +326,7 @@ GS_FTM_init(struct _peer *p, int is_server)
 	if (is_server == 0)
 	{
 		// CLIENT
-		GS_FT_init(&p->ft, cb_stats, cb_errors, 0 /*pid, unused*/, p, 0);
+		GS_FT_init(&p->ft, cb_stats, cb_errors, NULL, 0 /*pid, unused*/, p, 0);
 
 		// PUT (upload)
 		GS_PKT_assign_chn(&p->pkt, GS_FT_CHN_ACCEPT, pkt_cb_accept, p);
@@ -316,7 +337,7 @@ GS_FTM_init(struct _peer *p, int is_server)
 		GS_PKT_assign_chn(&p->pkt, GS_FT_CHN_SWITCH, pkt_cb_switch, p);
 	} else {
 		// SERVER
-		GS_FT_init(&p->ft, NULL, cb_errors, p->pid, p, 1);
+		GS_FT_init(&p->ft, NULL, cb_errors, cb_log, p->pid, p, 1);
 
 		// PUT (upload)
 		GS_PKT_assign_chn(&p->pkt, GS_FT_CHN_PUT, pkt_cb_put, p);

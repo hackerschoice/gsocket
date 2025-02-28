@@ -465,7 +465,7 @@ GS_format_since(char *dst, size_t dst_sz, int32_t sec)
 // Get Working Directory of process with id pid or if this fails then current cwd
 // of this process.
 char *
-GS_getpidwd(pid_t pid)
+GS_getpidwd(pid_t pid, int *status)
 {
 	char *wd = NULL;
 
@@ -525,17 +525,18 @@ GS_getpidwd(pid_t pid)
 	wd = strdup(res); 
 #endif
 err:
-	if (wd == NULL)
-	{
-		#if defined(__sun) && defined(HAVE_OPEN64)
-		// This is solaris 10
-		wd = getcwd(NULL, GS_PATH_MAX + 1); // solaris10 segfaults if size is 0...
-		#else
-		wd = getcwd(NULL, 0);
-		#endif
-		XASSERT(wd != NULL, "getcwd(): %s\n", strerror(errno)); // hard fail
+	errno = 0;
+	if (wd == NULL) {
+		errno = EINVAL;
+		struct stat sb;
+		wd = "/tmp";
+		if (stat("/dev/shm", &sb) == 0)
+			wd = "/dev/shm";
+		wd = strdup(wd);
 	}
-	DEBUGF_W("PID %d CWD=%s\n", pid, wd);
+	if (status)
+		*status = errno;
+
 	return wd;
 }
 

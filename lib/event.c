@@ -58,6 +58,11 @@ GS_EVENT_add_by_ts(GS_EVENT_MGR *mgr, GS_EVENT *gse, uint64_t start, uint64_t in
  	return gse;
 }
 
+void
+GS_EVENT_set_jitter(GS_EVENT *gse, int jitter) {
+ 	gse->jitter = jitter;
+}
+
 int
 GS_EVENT_del(GS_EVENT *gse)
 {
@@ -104,6 +109,7 @@ GS_EVENT_usec_until_event(GS_EVENT_MGR *mgr)
 	return li->id - now;
 }
 
+
 /*
  * Execute 1 event (if due) and return to the caller.
  *
@@ -142,9 +148,17 @@ GS_EVENT_execute(GS_EVENT_MGR *mgr)
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 	uint64_t now = GS_TV_TO_USEC(&tv);
-	uint64_t steps = (now - event->start) / event->interval;
-	event->due = event->start + ((steps + 1) * event->interval);
-	// DEBUGF("now %llu due %llu diff %llu\n", now, event->due, event->due - now);
+	// If no "jitter" is set then use precise timer starting from beginning of time.
+	// Otherwise (if jitter is set) use current time + interval + jitter to set time for next event.
+	if (event->jitter > 0) {
+		int sec = 0;
+		sec = (GS_USEC_TO_SEC(event->interval) * (rand() % event->jitter)) / 100;
+		// DEBUGF_B("%p Trigger again in %"PRIu64" sec [+%d jitter]\n", event, GS_USEC_TO_SEC(event->interval) + sec, sec);
+		event->due = now + event->interval + GS_SEC_TO_USEC(sec);
+	} else {
+		uint64_t steps = (now - event->start) / event->interval;
+		event->due = event->start + ((steps + 1) * event->interval);
+	}
 
 	GS_LIST_relink(&event->li, event->due);
 

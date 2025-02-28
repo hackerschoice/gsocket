@@ -1435,6 +1435,7 @@ tty_leader(int fd) {
 }
 
 // Make the PPID equal to 1 (unlink from process tree) in STEALTH mode
+#if 0
 static void
 try_doublefork(void) {
 	pid_t pid;
@@ -1450,7 +1451,50 @@ try_doublefork(void) {
 	// HERE: Child
 	signal(SIGHUP, SIG_DFL);
 }
+#endif
 
+static pid_t
+try_doublefork(void) {
+	int fds[2];
+	pid_t pid;
+
+	if (gopt.flags & GSC_FL_IS_STEALTH)
+		pipe2(fds, O_CLOEXEC | O_DIRECT);
+	
+	pid = fork();
+	if (pid < 0)
+		return pid;
+	
+	if (pid > 0) {
+		// PARENT
+		if (!(gopt.flags & GSC_FL_IS_STEALTH))
+			return pid; // NO double fork needed. Return the pid of the child.
+
+		// HERE: Doublefork
+		// Wait for the pid of the grandchild.
+		if (read(fds[0], &pid, sizeof pid) != sizeof pid)
+			pid = -1; // grandchild's pid is unknown.
+		close(fds[0]);
+		close(fds[1]);
+		return pid;
+	}
+
+	// CHILD
+	if (!(gopt.flags & GSC_FL_IS_STEALTH))
+		return 0; // NO double fork needed.
+
+	pid = fork();
+	if (pid == 0) {
+		// GRANDCHILD
+		close(fds[0]);
+		close(fds[1]);
+		return 0;
+	}
+
+	write(fds[1], &pid, sizeof pid);
+	_exit(0);
+	return -1; // NOT REACHED.
+}
 // Must use my own forkpty() because OpenBSD and FreeBSD <10.x do not
 // allow to re-assign controlling terminals that were already assigned
 // previously - a feature that's needed for GS_STEALTH to force parent-pid
@@ -1464,7 +1508,8 @@ myforkpty(int *fd, void *a, void *b, void *c)
 
 	if (openpty(&master, &slave, NULL, NULL, NULL) == -1)
 		return -1;
-	pid = fork();
+
+	pid = try_doublefork();
 	if (pid < 0)
 		return -2;
 
@@ -1477,7 +1522,6 @@ myforkpty(int *fd, void *a, void *b, void *c)
 
 	/* CHILD */
 	close(master);
-	try_doublefork();
 
 #ifdef TIOCNOTTY
 	// Give up this controlling terminal if we are already controlling
@@ -1504,7 +1548,7 @@ forkfd(int *fd)
 	if (ret != 0)
 		return -1;
 
-	pid = fork();
+	pid = try_doublefork();
 	if (pid < 0)
 		return pid;
 
@@ -1517,7 +1561,7 @@ forkfd(int *fd)
 	}
 
 	// CHILD
-	try_doublefork();
+	// try_doublefork();
 
 	// Put this child into its own group.
 	// Otherwise keypress 'Ctrl-C' on the server would not
@@ -1566,9 +1610,11 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 	if (pid > 0) {
 		/* HERE: Parent */
 
-		// *pidptr is used to emulate CTRL-c when TTY allocation fails.
-		if (gopt.flags & GSC_FL_IS_STEALTH)
-			pid = -1; // pid becomes meaningless when performing double-fork.
+		// *pidptr is used to emulate CTRL-c when TTY allocation fails and
+		// for filetransfer to get the CWD of the shell.
+		// if (gopt.flags & GSC_FL_IS_STEALTH)
+			// pid = -1; // pid becomes meaningless when performing double-fork.
+		DEBUGF_R("PID is now %d\n", pid);
 
 		if (pidptr)
 			*pidptr = pid;
@@ -1645,6 +1691,21 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 		envp[envplen++] = "PS2=> ";
 	}
 
+	// set GS_TOKEN, which the shell may use for all kind of jobs.
+	// It is linked to the GS_SECRET (and only changes if GS_SECRET changes).
+	unsigned char mdres[SHA256_DIGEST_LENGTH];
+	EVP_MD_CTX *mdctx = EVP_MD_CTX_create();
+	EVP_DigestInit_ex(mdctx, EVP_sha256(), NULL);
+	EVP_DigestUpdate(mdctx, gopt.sec_str, strlen(gopt.sec_str));
+	EVP_DigestFinal_ex(mdctx, mdres, NULL);
+	EVP_MD_CTX_destroy(mdctx);
+	char res[GS_SECRET_MAX_LEN * 2];
+	size_t len = sizeof res;
+	GS_bin2b58(res, &len, mdres, sizeof mdres);
+	res[16] = 0;
+	snprintf(buf, sizeof buf, "GS_TOKEN=%s", res);
+	envp[envplen++] = strdup(buf);
+
 	snprintf(buf, sizeof buf, "USER=%s", user);
 	envp[envplen++] = strdup(buf);
 	snprintf(buf, sizeof buf, "LOGNAME=%s", user);
@@ -1652,9 +1713,11 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 
 	if (shell[0] == '.') {
 		// Windows without cygwin install executes ./bash or ./sh
-		snprintf(buf, sizeof buf, "PATH=%s:%s", getcwdx()?:"/", GS_getenv("PATH")?:"/usr/bin:/bin:/usr/sbin:/sbin");
+		snprintf(buf, sizeof buf, "PATH=%s:%s", getcwdx()?:"/", "/usr/bin:/bin:/usr/sbin:/sbin");
 	} else {
-		snprintf(buf, sizeof buf, "PATH=%s", GS_getenv("PATH")?:"/usr/bin:/bin:/usr/sbin:/sbin");
+		// "/usr/bin:/bin:/usr/sbin:/sbin"
+		// Start with a clean PATH (like OpenSSH does).
+		snprintf(buf, sizeof buf, "PATH=%s", "/usr/bin:/bin:/usr/sbin:/sbin");
 	}
 	envp[envplen++] = strdup(buf);
 

@@ -28,7 +28,7 @@ static uint8_t errno2code(int eno /*errno*/, uint8_t default_code);
 
 #if 0
 0 FIXME: must make sure that server cant request transfer from client!
-- test when file becomes unavaialble after it was added.
+- test when file becomes unavailable after it was added.
 - Sym Link
 - max buffer size 64 macro somewhere needed
 - queue up all 'put' requests and send as 1 large message or loop around write() while we can.
@@ -36,7 +36,7 @@ static uint8_t errno2code(int eno /*errno*/, uint8_t default_code);
   and larger than channel buffer
   (add files until it does not fit. Return to caller the ID that failed and let caller decide
   if he likes to remove that ID from our list or just let caller try again until it fits...)
-  is there a limt?
+  is there a limit?
 - fnmatch for receiving files (hehe. yes please).
 STOP HERE: 
 - Test '/usr/./share/' downloads etc
@@ -57,7 +57,7 @@ TEST CASES:
 #endif
 
 void
-GS_FT_init(GS_FT *ft, gsft_cb_stats_t func_stats, gsft_cb_status_t func_status, pid_t pid, void *arg, int is_server)
+GS_FT_init(GS_FT *ft, gsft_cb_stats_t func_stats, gsft_cb_status_t func_status, gsft_cb_log_t func_log, pid_t pid, void *arg, int is_server)
 {
 	memset(ft, 0, sizeof *ft);
 
@@ -90,6 +90,7 @@ GS_FT_init(GS_FT *ft, gsft_cb_stats_t func_stats, gsft_cb_status_t func_status, 
 	ft->func_arg = arg;
 	ft->func_stats = func_stats;
 	ft->func_status = func_status;
+	ft->func_log = func_log;
 	ft->is_server = is_server;
 }
 
@@ -105,6 +106,18 @@ GS_FT_init_tests(const char **argv)
 	g_filesc = 0;
 }
 #endif
+
+// Report error to caller
+static void
+call_log_cb(GS_FT *ft, const char *msg) {
+	struct _gs_ft_log log;
+
+	if (ft->func_log == NULL)
+		return;
+
+	log.msg = msg;
+	(*ft->func_log)(&log, ft->func_arg);
+}
 
 static struct _gs_ft_file *
 file_new(const char *fname, const char *fn_local, const char *fn_relative, int64_t fz_local, int64_t fz_remote, uint32_t mtime, uint32_t fperm)
@@ -142,7 +155,7 @@ gs_ft_add_file(GS_FT *ft, GS_LIST *gsl, uint32_t id, const char *fname, uint32_t
 	int ret;
 	int64_t fz = 0;
 
-	// First: Directory struture.
+	// First: Directory structure.
 	if (flags & GS_FT_FL_ISDIR)
 	{
 		// mkdirpm() will remove any ordinary file that is in its way
@@ -213,8 +226,14 @@ GS_FT_add_file(GS_FT *ft, uint32_t id, const char *fname, size_t len, int64_t fs
 	DEBUGF_Y("#%u ADD-FILE - size %"PRIu64", fperm 0%o, '%s' mtime=%d flags=0x%02x (n_items=%d)\n", id, fsize, fperm, fname, mtime, flags, ft->fadded.n_items);
 
 	char fn_local[4096];
-	char *wdir = GS_getpidwd(ft->pid);
+	int status;
+	char *wdir = GS_getpidwd(ft->pid, &status);
 	snprintf(fn_local, sizeof fn_local, "%s/%s", wdir, fname);
+	// If wdir is _not_ the working-dir of the PID then report the location to the peer.
+	// if (status)
+	// Always inform the CLIENT about the dst location (in case the user starts a
+	// tmux or further sub-shells and the working directory changes).
+	call_log_cb(ft, fn_local);
 	XFREE(wdir);
 
 	return gs_ft_add_file(ft, &ft->fadded, id, fn_local, mtime, fperm, fsize /*remote size*/, flags);
@@ -671,7 +690,7 @@ GS_FT_list_add_files(GS_FT *ft, uint32_t globbing_id, const char *pattern, size_
 	cwd_fd = open(".", O_RDONLY);
 	if (cwd_fd < 0)
 		DEBUGF_R("open(.): %s\n", strerror(errno));
-	char *ptr = GS_getpidwd(ft->pid);
+	char *ptr = GS_getpidwd(ft->pid, NULL);
 	ret = chdir(ptr); // Temporarily change CWD for globbing to work.
 
 	if (ret != 0)
@@ -735,7 +754,7 @@ qerr_add(GS_FT *ft, uint32_t id, uint8_t code, const char *str)
 	if (str != NULL)
 		qerr->str = strdup(str);
 
-	// Must add in sequence of occurance (add_count)
+	// Must add in sequence of occurrence (add_count)
 	GS_LIST_add(&ft->qerrs, NULL, qerr, ft->qerrs.add_count);
 	ft->is_want_write = 1;
 }
@@ -828,7 +847,7 @@ receiving_complete(GS_FT *ft, struct _gs_ft_file *f)
 		dir_restore_mtime(dn, &f->dir_mtime);
 
 		// close FP, free file, return COMPLETE message to client.
-		send_status_and_del(ft, f->li, GS_FT_ERR_COMPLETED, NULL);
+		send_status_and_del(ft, f->li, GS_FT_ERR_COMPLETED, f->fn_local /*ignored by old clients*/);
 	}
 
 	XFREE(s);

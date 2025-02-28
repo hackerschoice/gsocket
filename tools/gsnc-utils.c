@@ -173,7 +173,6 @@ GSNC_config_read(const char *fn) {
     FILE *fp = NULL;
     struct gsnc_config c;
     int ret = -1;
-    char *ptr;
 
     if (!(gopt.flags & GSC_FL_WANT_CONFIG_READ))
         goto err;
@@ -189,15 +188,12 @@ GSNC_config_read(const char *fn) {
     if (config_read(&c, fp) != 0)
         goto err;
 
-    // If this is a CONFIG_CHECK then we like to output the config as written in the
-    // file. If this is NOT a CONFIG_CHECK then also consider the env variables.
-    if (!(gopt.flags & GSC_FL_CONFIG_CHECK)) {
-        // HERE: not a config-check
-        gopt.sec_str = GS_GETENV2("SECRET");
-        gopt.gs_host = GS_GETENV2("HOST");
-        if ((ptr = GS_GETENV2("PORT")) != NULL)
-            gopt.gs_port = atoi(ptr);
-    }
+    // Ignore all ENV such as GS_HOST and GS_PORT _if_ there is a config.
+    // (Otherwise the following conuntrum occurs:
+    // 1. A current GSNC shell has GS_HOST set.
+    // 2. The user adds a config to a new GSNC binary and starts it (-ilD)
+    // 3. The new instance would ingore its own config and use GS_HOST (which is wrong).
+    // 4. The user would have to unset GS_HOST to make it work.
 
     if (gopt.sec_str == NULL) {
         if (c.sec_str[0] == '\0')

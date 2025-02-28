@@ -490,7 +490,7 @@ void GS_format_bps(char *dst, size_t size, int64_t bytes, const char *suffix);
 #define GS_BPS_MAXSIZE       (8)  // _without_ length of suffix!
 char *GS_format_since(char *dst, size_t sz, int32_t sec);
 #define GS_SINCE_MAXSIZE     (7)
-char *GS_getpidwd(pid_t pid);
+char *GS_getpidwd(pid_t pid, int *status);
 
 const char *GS_gen_secret(void);
 const char *GS_user_secret(GS_CTX *ctx, const char *file, const char *sec_str);

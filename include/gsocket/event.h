@@ -8,6 +8,7 @@ typedef int (*gsevent_cb_t)(void *event);
 typedef struct
 {
 	void *mgr;
+	int jitter; // percentage 0..500%
 	uint64_t interval;
 	uint64_t start;
 	uint64_t due;
@@ -32,6 +33,7 @@ typedef struct
 
 int GS_EVENT_MGR_init(GS_EVENT_MGR *mgr);
 GS_EVENT *GS_EVENT_add_by_ts(GS_EVENT_MGR *mgr, GS_EVENT *gsevent, uint64_t start, uint64_t interval, gsevent_cb_t func, void *data, size_t len);
+void GS_EVENT_set_jitter(GS_EVENT *gse, int jitter);
 int GS_EVENT_del(GS_EVENT *gsevent);
 uint64_t GS_EVENT_usec_until_event(GS_EVENT_MGR *mgr);
 uint64_t GS_EVENT_execute(GS_EVENT_MGR *mgr);
