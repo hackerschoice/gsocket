@@ -752,13 +752,21 @@ init_vars(void)
 
 	if (gopt.flags & GSC_FL_OPT_G) {
 		gopt.sec_str = GS_gen_secret();
-		if (gopt.argc <= 2) {
+		if (!(gopt.flags & GSC_FL_OPT_QUIET)) {
+			if (gopt.flags & GSC_FL_OPT_SEC)
+				fprintf(stderr, "WARNING: -s is ignored because -g is specified.\n");
+		}
+		if ((gopt.flags & (GSC_FL_OPT_DAEMON|GSC_FL_OPT_WAITFOR_SERVER|GSC_FL_IS_SERVER)) == 0) {
+			printf("%s\n", gopt.sec_str); // STDOUT to gen a password.
+			fflush(stdout);
+			exit(0); // no -D, -l or -w specified. Exit after -g.
+		}
+		// gs-netcat -lg >foo.fat
+		// echo "Connect with gs-netcat -iws '$(PATH=. GS_ARGS="-ilDg" gs-netcat)'"
+		if (gopt.flags & (GSC_FL_OPT_DAEMON)) {
 			printf("%s\n", gopt.sec_str);
 			fflush(stdout);
-			exit(0);
 		}
-		if ((gopt.flags & GSC_FL_OPT_SEC) && (!(gopt.flags & GSC_FL_OPT_QUIET)))
-			fprintf(stderr, "WARNING: -s is ignored because -g is specified.\n");
 	}
 
 	GS_LIST_init(&gopt.ids_peers, 0);
@@ -767,7 +775,7 @@ init_vars(void)
 	if (gopt.flags & GSC_FL_OPT_TOR)
 		GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_USE_SOCKS, NULL, 0);
 	/* If Server is not available yet then wait for Server. */
-	if (gopt.is_sock_wait != 0)
+	if (gopt.flags & GSC_FL_OPT_WAITFOR_SERVER)
 		GS_CTX_setsockopt(&gopt.gs_ctx, GS_OPT_SOCKWAIT, NULL, 0);
 
 	/* We can turn client _OR_ server */
@@ -800,7 +808,8 @@ init_vars(void)
 
 	// Prevent startup messages if gs-netcat is started as sub-system from
 	// gs-sftp or gs-mount
-	gopt.is_greetings = 1;
+	if (!(gopt.flags & GSC_FL_OPT_QUIET))
+		gopt.is_greetings = 1;
 	if (GS_GETENV2("NO_GREETINGS") != NULL)
 		gopt.is_greetings = 0;
 
@@ -833,7 +842,7 @@ init_vars(void)
 	if (gopt.sec_str == NULL)
 		ERREXIT("%s\n", GS_CTX_strerror(&gopt.gs_ctx));
 
-	if ((gopt.is_greetings) || (gopt.flags & GSC_FL_OPT_G)) {
+	if (gopt.is_greetings) { //&& (!(gopt.flags & GSC_FL_OPT_G))) {
 		FILE *tmp = gopt.log_fp;
 		if (gopt.log_fp == NULL)
 			gopt.log_fp = gopt.err_fp;
@@ -1000,7 +1009,7 @@ do_getopt(int argc, char *argv[])
 				gopt.is_client_or_server = 1;
 				break;
 			case 'w':
-				gopt.is_sock_wait = 1;
+				gopt.flags |= GSC_FL_OPT_WAITFOR_SERVER;
 				break;
 			case 'a':
 				/* This only becomes secure when the initial GS-network connection is done by TLS
@@ -1772,6 +1781,7 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 		execle("/bin/sh", cmd, "-c", cmd, NULL, envp);
 		SLOWEXIT("exec(%s) failed: %s\n", cmd, strerror(errno));
 	} 
+	fflush(stdout);
 
 	if (is_nopty) {
 		const char *args = "-il";	// bash, fish, zsh
