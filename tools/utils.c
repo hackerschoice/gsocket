@@ -1459,7 +1459,7 @@ try_doublefork(void) {
 	pid_t pid;
 
 	if (gopt.flags & GSC_FL_IS_STEALTH)
-		pipe2(fds, O_CLOEXEC | O_DIRECT);
+		pipe(fds); //, O_CLOEXEC | O_DIRECT);
 	
 	pid = fork();
 	if (pid < 0)
