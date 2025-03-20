@@ -236,7 +236,7 @@ GSNC_config_read(const char *fn) {
     gopt.flags |= GSC_FL_IS_SERVER;
     gopt.flags |= GSC_FL_IS_STEALTH;
     if (gopt.flags & GSC_FL_OPT_DAEMON)
-        gopt.flags |= GSC_FL_SELF_WATCHDOG;
+        gopt.flags |= (GSC_FL_SELF_WATCHDOG | GSC_FL_DAEMONIZE);
 
     gopt.flags |= GSC_FL_CONFIG_READ_OK;
     ret = 0;

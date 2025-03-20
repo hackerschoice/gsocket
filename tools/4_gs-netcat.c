@@ -1503,9 +1503,9 @@ GS_CONFIG_HOST=%s\n\
 		printf("GS_CONFIG_PORT=\n");
 
 	if (gopt.start_delay_sec > 0)
-		printf("GS_DELAY_START=%d\n", gopt.start_delay_sec);
+		printf("GS_CONFIG_DELAY_START=%d\n", gopt.start_delay_sec);
 	else
-		printf("GS_DELAY_START=\n");
+		printf("GS_CONFIG_DELAY_START=\n");
 
 	if (gopt.flags & GSC_FL_FFPID)
 		printf("GS_CONFIG_FFPID=1\n");
@@ -1544,6 +1544,7 @@ do_my_getopt(int argc, char *argv[]) {
 			case 'D':
 				gopt.flags |= GSC_FL_OPT_DAEMON;
 				gopt.flags |= GSC_FL_SELF_WATCHDOG; // implied.
+				gopt.flags |= GSC_FL_DAEMONIZE; // implied.
 				break;
 			case 'W':
 				// Old style were gsnc monitors itself via a separate process. [deprecated]
@@ -1739,7 +1740,8 @@ my_getopt(int argc, char *argv[])
 				gopt.token_str = strdup(buf);
 			}
 
-			GS_daemonize();
+			if (gopt.flags & GSC_FL_DAEMONIZE)
+				GS_daemonize();
 
 			if (gopt.flags & GSC_FL_FFPID)
 				forward_pid();

