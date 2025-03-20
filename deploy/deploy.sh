@@ -2347,7 +2347,7 @@ gs_start
 
 [ -n "$IS_SYSTEMD" ] && [ "$(ip netns identify 2>/dev/null)" != "$(nsenter -t1 -n ip netns identify 2>/dev/null)" ] && {
 	WARN "Network namespace differs. May need to use - ${CRY}PLEASE REPORT THIS${CN}
-    ${CDM}ExecStart=ip netns exec $(ip netns identify) nsenter -t1 -m ${DSTBIN}${CN}" 
+    ${CDY}ExecStart=ip netns exec $(ip netns identify) nsenter -t1 -m ${DSTBIN}${CN}" 
 }
 
 # Default values are known and easily detected by users/admins.
