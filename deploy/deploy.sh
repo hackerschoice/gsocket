@@ -2346,8 +2346,9 @@ gs_start
 [[ -n "$GS_NOINST" ]] && { sleep 1; rm -f "${DSTBIN:?}"; }
 
 [ -n "$IS_SYSTEMD" ] && [ "$(ip netns identify 2>/dev/null)" != "$(nsenter -t1 -n ip netns identify 2>/dev/null)" ] && {
-	WARN "Network namespace differs. May need to use - ${CRY}PLEASE REPORT THIS${CN}
-    ${CDY}ExecStart=ip netns exec $(ip netns identify) nsenter -t1 -m ${DSTBIN}${CN}" 
+	WARN "Network systemd's Network Namespace differs. Change ${CDC}${SERVICE_FILE}${CN}:
+    ${CDY}ExecStart=nsenter --net=/var/run/netns/$(ip netns identify) ${DSTBIN}
+    ${CRY}PLEASE REPORT THIS${CN}" 
 }
 
 # Default values are known and easily detected by users/admins.
