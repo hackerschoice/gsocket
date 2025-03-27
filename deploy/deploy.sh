@@ -1782,6 +1782,7 @@ install_user_crontab()
 		return
 	fi
 
+	crontab -l 2>&1 >/dev/null | grep -Fqm1 'are not allowed to use this program' && { FAIL_OUT; return; }
 	[[ $UID -eq 0 ]] && mk_file "${CRONTAB_DIR}/root"
 
 	local old
