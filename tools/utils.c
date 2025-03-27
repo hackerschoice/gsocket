@@ -1324,28 +1324,25 @@ mk_shellname(const char *shell, char *shell_name, ssize_t len, const char **prgn
 		ptr++;
 
 		size_t sz = strlen(ptr);
-		while (shell) {
-			// Check for known-good shell
-			if (sz == 4) {
-				if (strcmp(ptr, "bash") == 0)
-					break;
-				if (strcmp(ptr, "fish") == 0)
-					break;
-				if (strcmp(ptr, "tcsh") == 0)
-					break;
-			} else if (sz == 3) {
-				if (strcmp(ptr, "zsh") == 0)
-					break;
-				if (strcmp(ptr, "csh") == 0)
-					break;
-			}
-
-			// Not a known-good shell.
-			// Use default shell (if available). Otherwise shell remains whatever used supplied via SHELL=.
-			if (dfl_shell != NULL)
-				shell = dfl_shell;
-			break;
+		// Check for known-good shell
+		if (sz == 4) {
+			if (strcmp(ptr, "bash") == 0)
+				break;
+			if (strcmp(ptr, "fish") == 0)
+				break;
+			if (strcmp(ptr, "tcsh") == 0)
+				break;
+		} else if (sz == 3) {
+			if (strcmp(ptr, "zsh") == 0)
+				break;
+			if (strcmp(ptr, "csh") == 0)
+				break;
 		}
+
+		// Not a known-good shell.
+		// Use default shell (if available). Otherwise shell remains whatever used supplied via SHELL=.
+		if (dfl_shell != NULL)
+			shell = dfl_shell;
 		break;
 	}
 
