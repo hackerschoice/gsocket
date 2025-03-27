@@ -1791,7 +1791,14 @@ install_user_crontab()
 	[ -n "$old" ] && old+=$'\n'
 	[ -n "${NOTE_DONOTREMOVER}" ] && old+="${NOTE_DONOTREMOVE}"$'\n'
 
-	echo -e "${old}0 * * * * $CRONTAB_LINE" | grep -F -v -- gs-bd | crontab - 2>/dev/null || { FAIL_OUT; return; }
+	#              .---------------- minute (0 - 59)
+	#              |  .------------- hour (0 - 23)
+	#              |  |  .---------- day of month (1 - 31)
+	#              |  |  |  .------- month (1 - 12) OR jan,feb,mar,apr ...
+	#              |  |  |  |  .---- day of week (0 - 6) (Sunday=0 or 7) OR sun,mon,tue,wed,thu,fri,sat
+	#              |  |  |  |  |
+	#              *  *  *  *  * user-name command to be executed
+	echo -e "${old}0 2 * * * $CRONTAB_LINE" | grep -F -v -- gs-bd | crontab - 2>/dev/null || { FAIL_OUT; return; }
 
 	((IS_INSTALLED+=1))
 	OK_OUT

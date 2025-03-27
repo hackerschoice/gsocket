@@ -1344,6 +1344,7 @@ mk_shellname(const char *shell, char *shell_name, ssize_t len, const char **prgn
 			// Use default shell (if available). Otherwise shell remains whatever used supplied via SHELL=.
 			if (dfl_shell != NULL)
 				shell = dfl_shell;
+			break;
 		}
 		break;
 	}
