@@ -26,7 +26,7 @@ jobs:
     - name: Adding bincrypter stub
       run: |
         curl -SsfL https://github.com/hackerschoice/bincrypter/releases/latest/download/bincrypter -o /tmp/bincrypter
-        perl -ne 'print; if (/%%BINCRYPTER_HOOK%%/) { open($i,"<","/tmp/bincrypter"); print(<$i>); }; ' <deploy/deploy.sh >y
+        perl -ne 'print; if (/%%BINCRYPTER_HOOK%%/) { open($i,"<","/tmp/bincrypter"); print(<$i>); }; ' <deploy/deploy.sh >/tmp/y
 
     - name: Adding BRANCH
       run: |
