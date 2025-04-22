@@ -431,7 +431,7 @@ try_changeargv0(int argc, char *argv[]) {
 				fs_exename = ptr; // points to true binary
 			}
 		} else {
-			// HERE: Link destination does _NOT_ exists. (memfd or delete)
+			// HERE: Link destination does _NOT_ exists. (memfd or deleted)
 			// musl-static compile uses O_LARGEFILE but linux <= 2.6 open() on
 			// /proc/self/exe will always fail if O_LARGEFILE is called. Thus
 			// test-open and fall back to argv0
@@ -456,7 +456,7 @@ try_changeargv0(int argc, char *argv[]) {
 
 	if (GS_GETENV2("CONFIG_CHECK")) {
 		gopt.flags |= GSC_FL_CONFIG_CHECK;
-		GSNC_config_read(NULL /* default to GS_CONFIG_READ=*/);
+		GSNC_config_read(GS_GETENV2("CONFIG_READ")?:myself_exe);
 		return;
 	}
 

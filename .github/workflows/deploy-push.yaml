@@ -22,10 +22,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - name: Copying deploy.sh
+
+    - name: Adding bincrypter stub
+      run: |
+        curl -SsfL https://github.com/hackerschoice/bincrypter/releases/latest/download/bincrypter -o /tmp/bincrypter
+        perl -ne 'print; if (/%%BINCRYPTER_HOOK%%/) { open($i,"<","/tmp/bincrypter"); print(<$i>); }; ' <deploy/deploy.sh >y
+
+    - name: Adding BRANCH
       run: |
         [ ! -d ~/.ssh ] && mkdir ~/.ssh
-        cp deploy/deploy.sh /tmp/y
         cp deploy/deploy_server.sh /tmp/ys
         sed "s|^CICD_GS_BRANCH=.*|CICD_GS_BRANCH=\"${DSTDIR:1}\"|" -i "/tmp/y"
         sed "s|^CICD_GS_BRANCH=.*|CICD_GS_BRANCH=\"${DSTDIR:1}\"|" -i "/tmp/ys"

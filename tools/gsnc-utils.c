@@ -66,11 +66,6 @@ GSNC_config_write(const char *fn) {
         return 254;
     }
 
-    // if (gopt.sec_str == NULL) {
-    //     fprintf(stderr, "-s or GS_SECRET not specified\n");
-    //     return 253;
-    // }
-
     if ((fn[0] == '-') && (fn[1] == '\0'))
         fp = stdout;
 
@@ -177,7 +172,7 @@ GSNC_config_read(const char *fn) {
     if (!(gopt.flags & GSC_FL_WANT_CONFIG_READ))
         goto err;
 
-    fn = GS_GETENV2("CONFIG_READ")?:fn;
+    // fn = GS_GETENV2("CONFIG_READ")?:fn;
 
     if (fn == NULL)
         goto err;
