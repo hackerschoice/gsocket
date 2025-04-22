@@ -63,11 +63,12 @@ jobs:
             pkg_info -Q autoconf
             pkg_info -Q automake
             pkg_info -Q openssl
+            pkg_info -Q gcc
             pkg_add curl
             #pkg_add autoconf-2.72p0
             pkg_add automake-1.16.5
             pkg_add openssl
-            pkg_add gcc-11.2.0p3
+            pkg_add gcc
             pkg_add gmake
             pkg_add tar
           # NOTE: ${OPENSSL_VER} is not passed to VM. Must use ${{ env.OPENSSL_VER }}
