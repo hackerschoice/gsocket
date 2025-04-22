@@ -289,8 +289,8 @@ else
 fi
 
 # Replaced during release-build with _bincrypter() from https://github.com/hackerschoice/bincrypter:
-# sed -n '/%%BEGIN_BC_FUNC%%/,/%%END_BC_FUNC%%/p' <bincrypter.sh | grep -vE '(^\s*$|^\s*\#)' >/tmp/b.sh
-# perl -ne 'print; if (/%%BINCRYPTER_HOOK%%/) { open($i,"<","/tmp/b.sh"); print(<$i>); }; ' <deploy.sh >y
+# cat bincrypter.sh | sed -n '/%%BEGIN_BC_FUNC%%/,/%%END_BC_FUNC%%/p' | grep -vE '(^\s*$|^\s*\#)' >/tmp/bc_stub
+# perl -ne 'print; if (/^# %%BINCRYPTER_HOOK%%/) { open($i,"<","/tmp/bc_stub"); print(<$i>); }; ' <deploy/deploy.sh >/tmp/y
 # %%BINCRYPTER_HOOK%%
 declare -F _bincrypter >/dev/null || {
 	# Fallback to bincrypter binary (if installed; mostly for development)
