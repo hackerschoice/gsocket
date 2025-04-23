@@ -1205,18 +1205,20 @@ bin2config() {
 	unset GS_CONFIG_HOST
 	unset GS_CONFIG_PORT
 	unset GS_CONFIG_REEXEC
-	[[ ! -f "${exe}" ]] && return 255
-	[[ ! -f "${bin}" ]] && return 255
+	[ ! -f "${exe}" ] && return 255
+	[ -n "$bin" ] && [ ! -f "${bin}" ] && return 255
 
 	[[ -n "$LDSO" ]] && exec_arr=("$LDSO")
 	exec_arr+=("${exe:?}")
-	eval "$(GS_STEALTH=1 GS_CONFIG_READ="${bin:?}" GS_CONFIG_CHECK=1 "${exec_arr[@]}" -h 2>/dev/null | grep ^GS_CONFIG_)"
+	eval "$(GS_STEALTH=1 GS_CONFIG_READ="${bin}" GS_CONFIG_CHECK=1 "${exec_arr[@]}" -h 2>/dev/null | grep ^GS_CONFIG_)"
 	[[ -z "$GS_CONFIG_SECRET" ]] && return 255
+	DEBUGF "Found: $exe"
 	return 0
 }
 
 uninstall_rm()
 {
+	[ -n "$GS_DRYRUN" ] && return
 	[[ -z "$1" ]] && return
 	[[ ! -f "$1" ]] && return # return if file does not exist
 
@@ -1231,6 +1233,7 @@ uninstall_bin_rm() {
 
 uninstall_rmdir()
 {
+	[ -n "$GS_DRYRUN" ] && return
 	[[ -z "$1" ]] && return
 	[[ ! -d "$1" ]] && return # return if file does not exist
 
@@ -1246,6 +1249,7 @@ uninstall_rc()
 	hname="$2"
 	fn="$1"
 
+	[ -n "$GS_DRYRUN" ] && return
 	[[ ! -f "$fn" ]] && return # File does not exist
 
 	grep -F -- "${hname}" "$fn" &>/dev/null || return # not installed
@@ -1268,6 +1272,7 @@ uninstall_service()
 	sn="$2"
 	sf="${dir}/${sn}.service"
 
+	[ -n "$GS_DRYRUN" ] && return
 	[[ ! -f "${sf}" ]] && return
 	[[ $UID -ne 0 ]] && {
 		echo -e "${CDY}WARN${CN}: Disinfecting ${CDY}${sf}${CN}...FAILED. Need to be root."
@@ -1289,6 +1294,7 @@ uninstall_systemd_infect() {
 	local fn="$2"
 	local bn
 	
+	[ -n "$GS_DRYRUN" ] && return
 	[[ ! -f "${fn} " ]] && return 0
 	[[ $UID -ne 0 ]] && {
 		echo -e "${CDY}WARN${CN}: Disinfecting ${fn}...FAILED. Need to be root."
@@ -1376,7 +1382,7 @@ uninstall()
 	echo -e "${CG}Uninstall complete.${CN}"
 
 	[ -n "$systemd_kill_cmd" ] && {
-		systemctl daemon-reload 2>/dev/null
+		[ -z "$GS_DRYRUN" ] && systemctl daemon-reload 2>/dev/null
 		[ -n "$UNINST_IS_SYSTEMD_SIMPLE" ] && echo -e "--> Use ${CM}${systemd_kill_cmd}${CN} to terminate all running shells."
 	}
 
