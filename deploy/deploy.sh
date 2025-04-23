@@ -98,6 +98,13 @@
 # GS_WORKDIR=
 #       - Set the HOME directory (e.g. try GS_WORKDIR=/dev/shm).
 
+# If called like: 'bash -c "$(curl -fsSL https://.../deploy.sh)"' then
+# the ps-output will show the entire script as command line. To "kill" the command
+# line we re-exec and call eval on the string.
+[ -z "$GS_NOEVAL" ] && [ -n "$BASH_EXECUTION_STRING" ] && {
+	c="$BASH_EXECUTION_STRING" GS_NOEVAL=1 exec bash -c 'eval "$c"'
+}
+
 # Global Defines
 ###----BEGIN changed by CICD script-----
 CICD_GS_BRANCH=
