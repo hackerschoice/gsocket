@@ -120,6 +120,12 @@
 #   define ntohll(x) ((uint64_t)ntohl((x) & 0xFFFFFFFF) << 32) | ntohl((uint64_t)(x) >> 32)
 #  endif
 # endif
+#elif defined(__APPLE__)
+# if !defined(be64toh)
+#  include <libkern/OSByteOrder.h>
+#  define be64toh(v) OSSwapBigToHostInt64(v)
+#  define htobe64(v) OSSwapHostToBigInt64(v)
+# endif
 #endif
 
 #ifndef htonll
