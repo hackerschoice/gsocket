@@ -81,6 +81,8 @@ jobs:
             # OpenBSD madness, must set AUTOCONF_VERSION. Why can't it just use the only one installed?
             a="$(echo /usr/local/bin/autoconf-*)"
             echo "AUTOCONF_VERSION=${a##*/autoconf-}"
+            a="$(echo /usr/local/bin/automake-*)"
+            echo "AUTOMAKE_VERSION=${a##*/autoconf-}"
             export AUTOCONF_VERSION=2.71
             export AUTOMAKE_VERSION=1.16
             ./bootstrap
