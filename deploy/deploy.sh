@@ -975,7 +975,7 @@ init_vars()
 	# Set GS_BIN if GS_NAME is forced by user without forcing GS_BIN.
 	# [ -n "$GS_NAME" ] && [ -z "$GS_BIN" ] && GS_BIN="${GS_NAME}" # DISABLED because we like to disassociate process with file.
 	str="$(basename "$GS_BIN")"
-	if [[ -n "$bin" ]]; then
+	if [[ -n "$str" ]]; then
 		BIN_HIDDEN_NAME="${str}"
 		BIN_HIDDEN_NAME_RM+=("${str}")
 		service="$GS_SERVICE"
