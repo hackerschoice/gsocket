@@ -67,6 +67,10 @@ jobs:
             pkg_add curl
             #pkg_add autoconf-2.72p0
             pkg_add automake-1.16.5p0
+            # OpenBSD madness, must set AUTOCONF_VERSION below but impossible to find out
+            ls -al /usr/local/bin/autoconf-*
+            a="$(echo /usr/local/bin/autoconf-* | sed 's/.*autoconf-\([0-9]\+\.[0-9]\+\).*/\1/')"
+            echo "AUTOCONF_VERSION=${a}"
             # pkg_add automake
             pkg_add openssl
             pkg_add gcc
@@ -78,9 +82,8 @@ jobs:
             ( cd /tmp/openssl-${{ env.OPENSSL_VER }} && \
             ./Configure --prefix=/opt ${{ env.OPENSSL_OPTS }} BSD-generic64 && \
             make install_sw )
-            ls -al /usr/local/bin/auto*
             rm -rf rm -rf /tmp/openssl-${{ env.OPENSSL_VER }} /opt/bin/openssl /opt/bin/c_rehash
-            export AUTOCONF_VERSION=2.69
+            # export AUTOCONF_VERSION=2.71
             export AUTOMAKE_VERSION=1.16
             ./bootstrap
             ./configure --enable-static --prefix=/opt --enable-stealth
