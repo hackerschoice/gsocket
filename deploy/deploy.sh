@@ -1088,7 +1088,7 @@ init_vars()
 		# - exec(/proc/self/fd/3) fails
 		# - bad syscall will send SIGSYS and then SIGKILL (seccomp).
 		# FIXME: Have a fallback in bincrypter to work if perl's exec fails (use /dev/shm or /tmp)
-		GS_NOBC=1
+		unset GS_BC
 	}
 	# Check that the resolver is working at the time of installation:
 	[ -z "$GS_HOST" ] && {
@@ -1916,7 +1916,7 @@ install_user_profile()
 		return
 	fi
 
-	install_to_file "${rc_file}" "$NOTE_DONOTREMOVE" "${PROFILE_LINE}" || { SKIP_OUT "${CDR}Permission denied:${CN} ~/${rc_filename}"; false; return; }
+	install_to_file "${rc_file}" "$NOTE_DONOTREMOVE" "${PROFILE_LINE}" || { SKIP_OUT "${CDR}Permission denied:${CN} ${rc_file}"; false; return; }
 
 	((IS_INSTALLED+=1))
 	OK_OUT
