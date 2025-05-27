@@ -65,8 +65,8 @@ jobs:
             pkg_info -Q openssl
             pkg_info -Q gcc
             pkg_add curl
-            pkg_add automake-1.16.5p0
-            # pkg_add automake
+            # pkg_add automake-1.16.5p0
+            pkg_add automake
             pkg_add openssl
             pkg_add gcc
             pkg_add gmake
@@ -80,11 +80,9 @@ jobs:
             rm -rf rm -rf /tmp/openssl-${{ env.OPENSSL_VER }} /opt/bin/openssl /opt/bin/c_rehash
             # OpenBSD madness, must set AUTOCONF_VERSION. Why can't it just use the only one installed?
             a="$(echo /usr/local/bin/autoconf-*)"
-            echo "AUTOCONF_VERSION=${a##*/autoconf-}"
+            export "AUTOCONF_VERSION=${a##*/autoconf-}"
             a="$(echo /usr/local/bin/automake-*)"
-            echo "AUTOMAKE_VERSION=${a##*/autoconf-}"
-            export AUTOCONF_VERSION=2.71
-            export AUTOMAKE_VERSION=1.16
+            export"AUTOMAKE_VERSION=${a##*/automake-}"
             ./bootstrap
             ./configure --enable-static --prefix=/opt --enable-stealth
             make all
