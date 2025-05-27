@@ -48,5 +48,7 @@ void try_quiet(void);
 #define GS_STTY_INIT_HACK	"stty rows %d columns %d\r"
 
 #define UTILS_GETOPT_STR	"3:vigqwACTrIlSDL:a:s:k:p:d:e:P:B:N:"
+#define DEFAULT_PATH		"/usr/bin:/bin:/usr/sbin:/sbin"
+#define ANDROID_PATH		"/data/data/com.termux/files/usr/bin:/data/data/com.termux/files/usr/bin/applets"
 
 #endif /* !__GSNC_UTILS_H__ */

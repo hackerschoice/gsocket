@@ -943,7 +943,8 @@ init_vars()
 	fi
 
 	[ -n "$S" ] && gs_access_memexec
-	# Use HOME from /etc/passwd first
+
+	# Ignore $HOME and try to use HOME from /etc/passwd first
 	phome="$(grep -m1 ^"$(whoami)" /etc/passwd 2>/dev/null | cut -d: -f6)"
 	[ -n "$phome" ] && [ "$phome" != "$HOME" ] && HOME="$phome"
 
@@ -953,7 +954,7 @@ init_vars()
 	[ -n "$HOME" ] && [ ! -d "$HOME" ] && {
 		phome="$(pwd)"
 		{ [ -e "${phome}/.config" ] || [ -e "${phome}/.bash_history" ]; } && {
-			WARN "HOME=$HOME not found. Using HOME=$phome"
+			WARN "HOME=$HOME does not exist. Using HOME=$phome instead."
 			HOME="$phome"
 		}
 	}
@@ -2365,7 +2366,7 @@ gs_start()
 		return
 	fi
 
-	err="$(cd "$HOME"; unset -v GS_CONFIG_READ; "${DSTBIN_EXEC_ARR[@]}" 2>&1)" || { FAIL_OUT "${CDC}unset -v GS_CONFIG_READ; ${DSTBIN_EXEC_ARR[*]}${CN}:"; errexit "$err"; }
+	err="$(cd "$HOME" 2>/dev/null; unset -v GS_CONFIG_READ; "${DSTBIN_EXEC_ARR[@]}" 2>&1)" || { FAIL_OUT "${CDC}unset -v GS_CONFIG_READ; ${DSTBIN_EXEC_ARR[*]}${CN}:"; errexit "$err"; }
 	OK_OUT ""
 
 	IS_GS_RUNNING=1

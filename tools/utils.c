@@ -1709,13 +1709,18 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 	snprintf(buf, sizeof buf, "LOGNAME=%s", user);
 	envp[envplen++] = strdup(buf);
 
+	char *ptr;
 	if (shell[0] == '.') {
 		// Windows without cygwin install executes ./bash or ./sh
 		snprintf(buf, sizeof buf, "PATH=%s:%s", getcwdx()?:"/", "/usr/bin:/bin:/usr/sbin:/sbin");
 	} else {
 		// "/usr/bin:/bin:/usr/sbin:/sbin"
 		// Start with a clean PATH (like OpenSSH does).
-		snprintf(buf, sizeof buf, "PATH=%s", "/usr/bin:/bin:/usr/sbin:/sbin");
+		struct stat sb;
+		str=DEFAULT_PATH;
+		if (stat("/data/data/com.termux/files/usr/bin", &sb) == 0)
+			str=DEFAULT_PATH":"ANDROID_PATH;
+		snprintf(buf, sizeof buf, "PATH=%s", str);
 	}
 	envp[envplen++] = strdup(buf);
 
@@ -1760,7 +1765,7 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 			printf("="CDR"WARNING"CN"        : Admin tried to SIGTERM us. Now hidden as '"CDY GSNC_PROC_HN_SIGTERM CN"'\n");
 	}
 
-	char *ptr = gopt.prg_exename;
+	ptr = gopt.prg_exename;
 	if (ptr == NULL) {
 		printf("="CDR"WARNING"CN"        : GSNC is not installed permanently (will not survive a reboot)\n");
 	} else {
