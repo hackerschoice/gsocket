@@ -82,7 +82,7 @@ jobs:
             a="$(echo /usr/local/bin/autoconf-*)"
             export "AUTOCONF_VERSION=${a##*/autoconf-}"
             a="$(echo /usr/local/bin/automake-*)"
-            export"AUTOMAKE_VERSION=${a##*/automake-}"
+            export "AUTOMAKE_VERSION=${a##*/automake-}"
             ./bootstrap
             ./configure --enable-static --prefix=/opt --enable-stealth
             make all
