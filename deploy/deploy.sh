@@ -947,17 +947,21 @@ init_vars()
 	phome="$(grep -m1 ^"$(whoami)" /etc/passwd 2>/dev/null | cut -d: -f6)"
 	[ -n "$phome" ] && [ "$phome" != "$HOME" ] && HOME="$phome"
 
-	[ -z "$HOME" ] && {
-		HOME="$(pwd)"
-		WARN "HOME not set. Using HOME=$HOME"
+	[ -z "$GS_DSTDIR" ] && {
+		[ -z "$HOME" ] && {
+			HOME="$(pwd)"
+			WARN "HOME not set. Using HOME=$HOME"
+		}
+		# HOME does not exist. Check if CWD looks like a home.
+		[ ! -d "$HOME" ] && {
+			phome="$(pwd)"
+			{ [ -e "${phome}/.config" ] || [ -e "${phome}/.bash_history" ]; } && {
+				WARN "HOME=$HOME not found. Using HOME=$phome"
+				HOME="$phome"
+			}
+		}
+		[ ! -d "$HOME" ] && errexit "ERROR: Not found: '$HOME'. Try 'export HOME=<users home directory>'"
 	}
-	[ ! -d "$HOME" ] && {
-		phome="$(cd;pwd)"
-		[ ! -d "$phome" ] && phome="$(pwd)"
-		WARN "HOME=$HOME not found. Using HOME=$phome"
-		HOME="$phome"
-	}
-	[ ! -d "$HOME" ] && errexit "ERROR: Not found: '$HOME'. Try 'export HOME=<users home directory>'"
 
 	# Docker does not set USER
 	[[ -z "$USER" ]] && USER=$(id -un)
