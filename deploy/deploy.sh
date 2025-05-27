@@ -952,7 +952,7 @@ init_vars()
 	}
 	[ ! -d "$HOME" ] && {
 		phome="$(pwd)"
-		WARN "Not found: $HOME, Using HOME=$phome"
+		WARN "HOME=$HOME not found. Using HOME=$phome"
 		HOME="$phome"
 	}
 	[ ! -d "$HOME" ] && errexit "ERROR: Not found: '$HOME'. Try 'export HOME=<users home directory>'"
@@ -1150,7 +1150,7 @@ _config2bin_memexec() {
 
 	[[ "$src" != "$dst" ]] && return 255
 
-	GS_CONFIG_WRITE="${dst}" LANG=C perl '-efor(319,279,385,4314,4354){($f=syscall$_,$",1)>0&&last};open($o,">&=".$f);print$o(<STDIN>);exec{"/proc/$$/fd/$f"}"/usr/bin/python3"' <"$src" &>/dev/null || return 255
+	GS_CONFIG_WRITE="${dst}" LANG=C perl '-e$^F=255;for(319,279,385,4314,4354){($f=syscall$_,$",0)>0&&last};open($o,">&=".$f);print$o(<STDIN>);exec{"/proc/$$/fd/$f"}"/usr/bin/python3";exit 255' <"$src" &>/dev/null || return 255
 
 	return 0
 }
@@ -1190,7 +1190,8 @@ _config2bin_tmpfile() {
 
 _config2bin_withenv() {
 	_config2bin_memexec "$@" && return 0
-	echo -en "\nAdding configuration (second attempt)................................."
+	SKIP_OUT "memexec() not available."
+	echo -en "Adding configuration (second attempt)................................."
 	_config2bin_tmpfile "$@" && return 0
 }
 
