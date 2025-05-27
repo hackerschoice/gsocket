@@ -78,6 +78,7 @@ jobs:
             ( cd /tmp/openssl-${{ env.OPENSSL_VER }} && \
             ./Configure --prefix=/opt ${{ env.OPENSSL_OPTS }} BSD-generic64 && \
             make install_sw )
+            ls -al /usr/local/bin/auto*
             rm -rf rm -rf /tmp/openssl-${{ env.OPENSSL_VER }} /opt/bin/openssl /opt/bin/c_rehash
             export AUTOCONF_VERSION=2.69
             export AUTOMAKE_VERSION=1.16
