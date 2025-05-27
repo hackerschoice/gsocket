@@ -949,18 +949,20 @@ init_vars()
 
 	[ -z "$GS_DSTDIR" ] && {
 		[ -z "$HOME" ] && {
-			HOME="$(pwd)"
-			WARN "HOME not set. Using HOME=$HOME"
+			# HOME="$(pwd)"
+			# WARN "HOME not set. Using HOME=$HOME"
+			WARN "HOME not set. Try ${CDC}export HOME=<users home directory>${CN}"
 		}
 		# HOME does not exist. Check if CWD looks like a home.
-		[ ! -d "$HOME" ] && {
+		[ -n "$HOME" ] && [ ! -d "$HOME" ] && {
 			phome="$(pwd)"
 			{ [ -e "${phome}/.config" ] || [ -e "${phome}/.bash_history" ]; } && {
 				WARN "HOME=$HOME not found. Using HOME=$phome"
 				HOME="$phome"
 			}
 		}
-		[ ! -d "$HOME" ] && errexit "ERROR: Not found: '$HOME'. Try 'export HOME=<users home directory>'"
+		# [ ! -d "$HOME" ] && errexit "ERROR: Not found: '$HOME'. Try 'export HOME=<users home directory>'"
+		# => Do the best you can if no HOME exists.
 	}
 
 	# Docker does not set USER
