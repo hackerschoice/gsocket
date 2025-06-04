@@ -275,7 +275,8 @@ struct _gopt
 #define GSC_FL_SWD_SURVIVED_SIGTERM  (0x40000) // Admin Tried to SIGTERM us but we 'escaped' by fork'ing.
 #define GSC_FL_REEXEC                (0x80000) // Re-exec via memexec, /dev/shm or TMPDIR.
 #define GSC_FL_OPT_WAITFOR_SERVER   (0x100000) // Wait for server to be available
-#define GSC_FL_DAEMONIZE	        (0x200000) // -D may be given but fork() should not be done (CCG fail?)
+#define GSC_FL_DAEMONIZE            (0x200000) // -D may be given but fork() should not be done (CCG fail?)
+#define GSC_FL_MEMEXEC              (0x400000) // memexec() is known to fail. Do not use it.
 
 #ifdef DEBUG
 # define GS_APP_KEEPALIVE        10 // If no activity send app-layer ping (-i needed)

