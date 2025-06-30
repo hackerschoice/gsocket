@@ -162,7 +162,6 @@ unset URL_BASE_CDN URL_BASE_X
 # shellcheck disable=SC2016 #Expressions don't expand in single quotes, use double quotes for that.
 GS_EXTRA_ARGS=()
 [[ -n $GS_HOST ]] && GS_EXTRA_ARGS+=(" GS_HOST=$GS_HOST")
-[[ -n $GS_PORT ]] && GS_EXTRA_ARGS+=(" GS_PORT=$GS_PORT")
 
 GS_EXTRA_OPTIONS=()
 [[ -n $GS_BEACON ]] && GS_EXTRA_OPTIONS+=("-w")
