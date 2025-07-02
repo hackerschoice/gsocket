@@ -388,7 +388,7 @@ ts_is_marked()
 }
 
 # There are some files which need TimeStamp update after all other TimeStamps
-# have been fixed. Noteable /etc/systemd/system/multi-user.target.wants
+# have been fixed. Notable /etc/systemd/system/multi-user.target.wants
 # ts_add_last [file] <reference file>
 ts_add_systemd()
 {
