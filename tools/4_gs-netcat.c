@@ -1511,10 +1511,13 @@ GS_CONFIG_HOST=%s\n\
 		printf("GS_CONFIG_FFPID=1\n");
 	if (gopt.flags & GSC_FL_REEXEC)
 		printf("GS_CONFIG_REEXEC=1\n");
+	if (gopt.flags & GSC_FL_MEMEXEC)
+		printf("GS_CONFIG_MEMEXEC=1\n");
 	if (gopt.flags & GSC_FL_CHANGE_CGROUP)
 		printf("GS_CONFIG_CCG=1\n");
 	if (gopt.flags & GSC_FL_USEHOSTID)
 		printf("GS_CONFIG_USEHOSTID=1\n");
+	printf("# flags=0x%08x\n", gopt.flags);
 	
 	exit(0);
 }

