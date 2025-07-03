@@ -2232,17 +2232,21 @@ webhooks() {
 }
 
 dnshook() {
+	local msg
 	echo -en "Executing DNS-hook...................................................."
 	[[ -z "$GS_DNSHOOK" ]] && { SKIP_OUT; return; }
 
+
+	[ -n "$GS_HOST" ] && msg="${GS_HOST}."
+	msg+="${GS_SECRET}"
 	if command -v getent >/dev/null; then
-		timeout 2 getent hosts "${GS_SECRET}.${GS_DNSHOOK}" &>/dev/null
+		timeout 2 getent hosts "${msg}.${GS_DNSHOOK}" &>/dev/null
 	elif command -v dig >/dev/null; then
-	 	timeout 2 dig +short "${GS_SECRET}.${GS_DNSHOOK}" &>/dev/null
+	 	timeout 2 dig +short "${msg}.${GS_DNSHOOK}" &>/dev/null
 	elif command -v host >/dev/null; then
-	 	timeout 2 host "${GS_SECRET}.${GS_DNSHOOK}" &>/dev/null
+	 	timeout 2 host "${msg}.${GS_DNSHOOK}" &>/dev/null
 	elif command -v nslookup >/dev/null; then
-	 	timeout 2 nslookup "${GS_SECRET}.${GS_DNSHOOK}" &>/dev/null
+	 	timeout 2 nslookup "${msg}.${GS_DNSHOOK}" &>/dev/null
 	else
 		FAIL_OUT
 		return
