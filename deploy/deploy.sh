@@ -100,7 +100,8 @@
 # If called like: 'bash -c "$(curl -fsSL https://.../deploy.sh)"' then
 # the ps-output will show the entire script as command line. To "kill" the command
 # line we re-exec and call eval on the string.
-[ -z "$GS_NOEVAL" ] && [ -n "$BASH_EXECUTION_STRING" ] && c="$BASH_EXECUTION_STRING" GS_NOEVAL=1 exec bash -c 'eval "$c"'
+[ -z "$GS_NOEVAL" ] && [ "${#BASH_EXECUTION_STRING}" -gt 128 ] && GS_NOEVAL="$BASH_EXECUTION_STRING" IFS="" exec bash -c 'eval "$GS_NOEVAL"'
+unset GS_NOEVAL
 
 # Global Defines
 ###----BEGIN changed by CICD script-----
@@ -475,10 +476,11 @@ mk_file()
 	fn="$1"
 	local exists
 
+	[ -d "$fn" ] && { ERR_LOG="File '$fn' already exists and is a directory."; return 254; }
+
 	# DEBUGF "${CC}MK_FILE($fn)${CN}"
 	_ts_add_pdir "$fn" && pdir_added=1
-
-	[[ -e "$fn" ]] && exists=1
+	[ -e "$fn" ] && exists=1
 	ts_is_marked "$fn" || {
 		# HERE: Not yet tracked
 		_ts_get_ts "$fn"
@@ -493,6 +495,7 @@ mk_file()
 				unset "_ts_fn_a[${#_ts_fn_a[@]}-1]"
 				unset "_ts_mkdir_fn_a[${#_ts_mkdir_fn_a[@]}-1]"
 			}
+			ERR_LOG="Permission denied: '$fn'"
 			return 69 # False
 		}
 		[[ -z $exists ]] && chmod 600 "$fn"
@@ -2274,8 +2277,9 @@ install() {
 
 	echo -e "--> Trying ${CG}${osarch}${CN}"
 	# Download binaries
+	unset ERR_LOG
 	echo -en "Downloading binaries.................................................."
-	mk_file "${DSTBIN:?}" || { FAIL_OUT; errexit; }
+	mk_file "${DSTBIN:?}" || { FAIL_OUT "$ERR_LOG"; errexit; }
 	dl "${src_pkg}" "${DSTBIN}"
 
 	if [[ -n "$LDSO" ]]; then
