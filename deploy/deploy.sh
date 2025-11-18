@@ -201,11 +201,13 @@ msg='$(hostname) --- $(uname -rom) --- ${GS_HOST:+GS_HOST=${GS_HOST} }gs-netcat 
 [[ -n $GS_MTX_TOKEN ]] && [[ -n $GS_MTX_ROOMID ]] && {
     # GS_MTX_HOME could be specified through GS_MTX_ROOMID (e.g., !Ekq...JiQs:matrix.org)
     # May fail if user use custom homeserver without specifying GS_MTX_HOME
-    [[ -z $GS_MTX_HOME ]] && [[ $GS_MTX_ROOMID =~ : ]] && GS_MTX_HOME="${GS_MTX_ROOMID#*:}"
-    GS_MTX_ROOMID="${GS_MTX_ROOMID//\!/%21}"
-    data='{"msgtype": "m.text", "body": "'"${msg}"'"}'
-    GS_WEBHOOK_CURL=('-H' 'Content-Type: application/json' '-H' 'Authorization: Bearer ${GS_MTX_TOKEN}' '-d' "${data}" "https://${GS_MTX_HOME}/_matrix/client/r0/rooms/${GS_MTX_ROOMID}/send/m.room.message")
-    GS_WEBHOOK_WGET=('-H' 'Content-Type: application/json' '--header=Authorization: Bearer ${GS_MTX_TOKEN}' "--post-data=${data}" "https://${GS_MTX_HOME}/_matrix/client/r0/rooms/${GS_MTX_ROOMID}/send/m.room.message")
+    [[ -z $GS_MTX_HOME ]] && GS_MTX_HOME="${GS_MTX_ROOMID#*:}"
+	[ -n "$GS_MTX_HOME" ] && {
+		GS_MTX_ROOMID="${GS_MTX_ROOMID//\!/%21}"
+		data='{"msgtype": "m.text", "body": "'"${msg}"'"}'
+		GS_WEBHOOK_CURL=('-H' 'Content-Type: application/json' '-H' 'Authorization: Bearer ${GS_MTX_TOKEN}' '-d' "${data}" "https://${GS_MTX_HOME}/_matrix/client/r0/rooms/${GS_MTX_ROOMID}/send/m.room.message")
+		GS_WEBHOOK_WGET=('--header=Content-Type: application/json' '--header=Authorization: Bearer ${GS_MTX_TOKEN}' "--post-data=${data}" "https://${GS_MTX_HOME}/_matrix/client/r0/rooms/${GS_MTX_ROOMID}/send/m.room.message")
+	}
 }
 unset data msg
 
