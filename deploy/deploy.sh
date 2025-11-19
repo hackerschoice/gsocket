@@ -90,7 +90,7 @@
 # GS_MTX_TOKEN=
 #       - Matrix Token, ="mat_..."
 # GS_MTX_ROOMID=
-#       - Matrix Room ID, ='!qr...'
+#       - Matrix Room ID, ='!qr...' or ='!rq...s:matrix.org'
 # GS_MTX_HOME=
 #       - Matrix home server, ="matrix.org"
 # GS_HOST=
