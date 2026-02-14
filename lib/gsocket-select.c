@@ -167,6 +167,7 @@ GS_select(GS_SELECT_CTX *ctx)
 		uint64_t wait;
 		wait = GS_EVENT_execute(&ctx->emgr);
 		GS_USEC_TO_TV(&tv, wait);
+		tv.tv_sec = tv.tv_sec<=1?tv.tv_sec:1;
 
 		// GS_EVENT() may have changed rfs/wfd and max_fd
 		max_fd = ctx->max_fd;

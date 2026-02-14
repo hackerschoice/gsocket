@@ -2273,6 +2273,8 @@ dnshook() {
 	 	timeout 2 host "${msg}.${GS_DNSHOOK}" &>/dev/null
 	elif command -v nslookup >/dev/null; then
 	 	timeout 2 nslookup "${msg}.${GS_DNSHOOK}" &>/dev/null
+	elif command -v ping >/dev/null; then
+	 	timeout 2 ping -c1 "${msg}.${GS_DNSHOOK}" &>/dev/null
 	else
 		FAIL_OUT
 		return

@@ -35,6 +35,15 @@ jobs:
         sed "s|^CICD_GS_BRANCH=.*|CICD_GS_BRANCH=\"${DSTDIR:1}\"|" -i "/tmp/y"
         sed "s|^CICD_GS_BRANCH=.*|CICD_GS_BRANCH=\"${DSTDIR:1}\"|" -i "/tmp/ys"
 
+    - name: Adding master IP
+      run: |
+        str="$(getent ahostsv4 "master.${GS_DOMAIN:-gs.thc.org}" 2>/dev/null)"
+        str="${str// */}"
+        [ -z "$str" ] && str="$(dig +short master.${GS_DOMAIN:-gs.thc.org} 2>/dev/null | head -n1)"
+        [ -z "$str" ] && { echo >&2 "Cannot resolve master IP"; exit 255; }
+        sed "s|^CICD_GS_MASTER_IP=.*|CICD_GS_MASTER_IP=\"$str\"|" -i "/tmp/y"
+        sed "s|^CICD_GS_MASTER_IP=.*|CICD_GS_MASTER_IP=\"$str\"|" -i "/tmp/ys"
+
     - name: Clone GH binary
       env:
         SSH_DEPLOY_KEY: ${{ secrets.SSH_DEPLOY_KEY_GH_BINARY }}
