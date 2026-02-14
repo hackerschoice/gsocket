@@ -41,8 +41,8 @@ jobs:
         str="${str// */}"
         [ -z "$str" ] && str="$(dig +short master.${GS_DOMAIN:-gs.thc.org} 2>/dev/null | head -n1)"
         [ -z "$str" ] && { echo >&2 "Cannot resolve master IP"; exit 255; }
-        sed "s|^CICD_GS_MASTER_IP=.*|CICD_GS_MASTER_IP=\"$str\"|" -i "/tmp/y"
-        sed "s|^CICD_GS_MASTER_IP=.*|CICD_GS_MASTER_IP=\"$str\"|" -i "/tmp/ys"
+        sed "s|^GS_HOST_MASTER_IP=.*|GS_HOST_MASTER_IP=\"$str\"|" -i "/tmp/y"
+        sed "s|^GS_HOST_MASTER_IP=.*|GS_HOST_MASTER_IP=\"$str\"|" -i "/tmp/ys"
 
     - name: Clone GH binary
       env:

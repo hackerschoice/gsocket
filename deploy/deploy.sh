@@ -112,7 +112,7 @@ unset GS_NOEVAL
 # Global Defines
 ###----BEGIN changed by CICD script-----
 CICD_GS_BRANCH=
-GS_HOST_MASTER_IP=87.106.101.131
+GS_HOST_MASTER_IP=212.132.98.170
 ###-----END-----
 [[ $CICD_GS_BRANCH == "master" ]] && unset CICD_GS_BRANCH
 [[ -z $GS_BRANCH ]] && GS_BRANCH="${CICD_GS_BRANCH}"
