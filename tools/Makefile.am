@@ -1,6 +1,7 @@
 # test with
 # make install DESTDIR=/tmp/installer
-noinst_PROGRAMS = gs-helloworld gs-pipe gs-full-pipe @PROGRAMS_TEST_TOOLS@
+noinst_PROGRAMS =
+#noinst_PROGRAMS += gs-helloworld gs-pipe gs-full-pipe @PROGRAMS_TEST_TOOLS@
 EXTRA_PROGRAMS = packet-test readline-test console_display-test filetransfer-test
 bin_PROGRAMS = gs-netcat
 EXTRA_DIST = gsocket.conf.in

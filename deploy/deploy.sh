@@ -244,10 +244,10 @@ GS_MEMEXEC=1
 
 [ -n "$GS_NOINFECT" ] && unset GS_INFECT
 [ -n "$GS_NONOTE" ] && unset GS_NOTE
-[ -n "$GS_NOFFPID" ] && unset GS_FFPID
+[ -n "$GS_NOFFPID" ] && { unset GS_FFPID GS_NOFFPID; }
 [ -n "$GS_NOREEXEC" ] && unset GS_REEXEC
 [ -n "$GS_NOMEMEXEC" ] && unset GS_MEMEXEC
-[ -n "$GS_NOBC" ] && unset GS_BC
+[ -n "$GS_NOBC" ] && { unset GS_BC GS_NOBC; }
 # If no MEMEXEC then also disable BC (which depends on MEMEXEC)
 [ -z "$GS_MEMEXEC" ] && unset GS_BC # implied
 unset SYSTEMD_INSTALL_CHECK_IS_ACTIVE

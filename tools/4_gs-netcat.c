@@ -1478,7 +1478,7 @@ config_check_print_exit(void) {
 	int callhome_min = 0;
 
 	// Prefix with '#' in case this is sourced by a shell.
-	printf("# Version %s%s, %s %s [%s]\n", PACKAGE_VERSION, gopt.is_built_debug?"#debug":"", __DATE__, __TIME__, OPENSSL_VERSION_TEXT);
+	printf("# Version %s%s%s, %s %s [%s]\n", PACKAGE_VERSION, STEALTH?"-stealth":"" , gopt.is_built_debug?"#debug":"", __DATE__, __TIME__, OPENSSL_VERSION_TEXT);
 
 	if (!(gopt.flags & GSC_FL_CONFIG_READ_OK)) {
 		printf("GS_CONFIG_NOT_FOUND=1\n");
@@ -1639,6 +1639,9 @@ my_getopt(int argc, char *argv[])
 	if ((ptr = GS_GETENV2("CONFIG_WRITE")) != NULL)
 		exit(GSNC_config_write(ptr));
 
+	if (gopt.flags & GSC_FL_STARTED_BY_SWD)
+    	gopt.flags |= GSC_FL_IS_STEALTH; // implied
+
 	if (gopt.flags & GSC_FL_OPT_SOCKS_SERVER) {
 		gopt.is_multi_peer = 1;
 		gopt.flags |= GSC_FL_IS_SERVER;	// implicit
@@ -1756,10 +1759,6 @@ my_getopt(int argc, char *argv[])
 		gopt.err_fp = gopt.log_fp;	// Errors to logfile or NULL
 
 		if (gopt.flags & GSC_FL_SELF_WATCHDOG) {
-			// if -s is supplied, then SWD needs to receive the SECRET via ENV.
-			if ((gopt.sec_str != NULL) && (gopt.flags & (GSC_FL_OPT_SEC | GSC_FL_OPT_SEC)))
-				setenv("GS_SECRET", gopt.sec_str, 1);
-
 			signal(SIGSEGV, cb_sigsegv);
 		} else {
 			GS_watchdog(gopt.log_fp, EX_BAD_AUTH); // FOREVER

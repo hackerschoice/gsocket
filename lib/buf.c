@@ -32,6 +32,11 @@ GS_BUF_resize(GS_BUF *gsb, size_t sz_new)
 	if (GS_BUF_UNUSED(gsb) >= sz_new + gsb->sz_max_add)
 		return 0;
 
+	if (sz_new > SIZE_MAX - gsb->sz_used)
+		return -1;  // Overflow would occur
+	if (gsb->sz_used + sz_new > SIZE_MAX - gsb->sz_max_add)
+		return -1;  // Overflow would occur
+
 	size_t t = gsb->sz_used + sz_new + gsb->sz_max_add;
 	// Round the new size to the next 1k boundary
 	gsb->sz_total = t - (t % 1024) + 1024;

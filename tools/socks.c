@@ -166,7 +166,7 @@ SOCKS5_add(struct _peer *p)
 			if (p->rbuf[1 + 1 + i] == 0x00)
 				break;	// No-Auth offered by client
 		}
-		if (i > p->rbuf[1])
+		if (i >= p->rbuf[1])
 		{
 			return GS_ERR_FATAL;	// No-Auth not offered by client
 		}

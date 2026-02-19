@@ -589,7 +589,8 @@ gs_pkt_ping_write(GS *gsocket, struct gs_sox *sox)
 	}
 
 	struct _gs_ping gping;
-	memset(&gping, 0, sizeof gping);
+	// memset(&gping, 0, sizeof gping); 2026
+	RAND_bytes((unsigned char *)&gping, sizeof gping);
 	gping.type = GS_PKT_TYPE_PING; 
 
 	ret = sox_write(sox, &gping, sizeof gping);
@@ -614,7 +615,8 @@ gs_pkt_listen_write(GS *gsocket, struct gs_sox *sox)
 		ERREXIT("CC trying to send a listen message. Should send connect.\n");
 
 	struct _gs_listen glisten;
-	memset(&glisten, 0, sizeof glisten);
+	// memset(&glisten, 0, sizeof glisten); 2026
+	RAND_bytes((unsigned char *)&glisten, sizeof glisten);
 	glisten.type = GS_PKT_TYPE_LISTEN;
 	glisten.version_major = GS_PKT_PROTO_VERSION_MAJOR;
 	glisten.version_minor = GS_PKT_PROTO_VERSION_MINOR;
@@ -639,7 +641,8 @@ gs_pkt_connect_write(GS *gsocket, struct gs_sox *sox)
 	DEBUGF("pkt_connect_write(fd = %d)\n", sox->fd);
 
 	struct _gs_connect gconnect;
-	memset(&gconnect, 0, sizeof gconnect);
+	// memset(&gconnect, 0, sizeof gconnect); 2026
+	RAND_bytes((unsigned char *)&gconnect, sizeof gconnect);
 	gconnect.type = GS_PKT_TYPE_CONNECT;
 	gconnect.version_major = GS_PKT_PROTO_VERSION_MAJOR;
 	gconnect.version_minor = GS_PKT_PROTO_VERSION_MINOR;
@@ -661,7 +664,8 @@ gs_pkt_accept_write(GS *gsocket, struct gs_sox *sox)
 	int ret;
 
 	struct _gs_accept gaccept;
-	memset(&gaccept, 0, sizeof gaccept);
+	// memset(&gaccept, 0, sizeof gaccept); 2026
+	RAND_bytes((unsigned char *)&gaccept, sizeof gaccept);
 	gaccept.type = GS_PKT_TYPE_ACCEPT;
 
 	ret = sox_write(sox, &gaccept, sizeof gaccept);
@@ -2519,6 +2523,10 @@ GS_set_token(GS *gs, const void *data, size_t len)
 		RAND_bytes(gs->token, sizeof gs->token);
 	else {
 		input = malloc(len + sizeof gs->gs_addr.addr);
+		if (!input) {
+			memset(gs->token, 0, sizeof gs->token);
+			return;
+		}
 		memcpy(input, data, len);
 		memcpy(input + len, gs->gs_addr.addr, sizeof gs->gs_addr.addr);
 		SHA256(input, len + sizeof gs->gs_addr.addr, md);

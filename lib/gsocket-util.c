@@ -198,7 +198,7 @@ GS_user_secret(GS_CTX *ctx, const char *sec_file, const char *sec_str)
 	return ptr;
 }
 
-
+#define MAX_B58_INPUT_SIZE (4*1024)  // Reasonable limit
 /* Convert 128 bit binary into base58 + CRC
  */
 static int
@@ -208,6 +208,9 @@ b58enc(char *b58, size_t *b58sz, uint8_t *src, size_t binsz)
     int carry;
     size_t i, j, high, zcount = 0;
     size_t size;
+
+	if (binsz > MAX_B58_INPUT_SIZE)
+		return -1;
 
     /* Find out the length. Count leading 0's. */
     while (zcount < binsz && !bin[zcount])
@@ -243,9 +246,8 @@ b58enc(char *b58, size_t *b58sz, uint8_t *src, size_t binsz)
     	memset(b58, '1', zcount);
 
     for (i = zcount; j < size; ++i, ++j)
-    {
-            b58[i] = b58digits_ordered[buf[j]];
-    }
+		b58[i] = b58digits_ordered[buf[j]];
+
     b58[i] = '\0';
     *b58sz = i + 1;
 

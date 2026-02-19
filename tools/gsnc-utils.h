@@ -23,6 +23,7 @@ struct gsnc_config {
 };
 
 int GSNC_config_read(const char *file);
+int GSNC_config_read_any(const char *argv0);
 int GSNC_config_write(const char *file);
 void init_supervise(int *argc, char *argv[]);
 void sv_sigforward(int sig);
