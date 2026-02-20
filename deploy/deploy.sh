@@ -918,7 +918,8 @@ init_vars()
 	elif [[ $OSARCH == "powerpcle-linux" ]]; then
 		SRC_PKG="gs-netcat_mini-linux-powerpcle"
 	elif [[ $OSARCH == "x86_64-osx" ]]; then
-		SRC_PKG="gs-netcat_mini-macOS-x86_64"
+		SRC_PKG="gs-netcat_mini-macOS-arm64"
+		# SRC_PKG="gs-netcat_mini-macOS-x86_64" # GH runner for x86_64 no longer supported. Fall-back to arm64 which works on both x86_64 with Rosetta.
 	elif [[ $OSARCH == "arm64-osx" ]]; then
 		SRC_PKG="gs-netcat_mini-macOS-arm64"
 	elif [[ $OSARCH == "x86_64-freebsd" ]]; then
