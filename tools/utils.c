@@ -303,7 +303,7 @@ is_running(void) {
 			if (cmd_sz > 0) {
 				// Check if this is either or:
 				// 1. Our argv[0]
-				// 2. The argv[0] only used if SWD received a SIGTERM.
+				// 2. The argv[0] only used if SWD received a SIGTERM. "-bash " (with space)
 				// 3. The GS_BIN name (in case gsnc failed to change argv[0])
 				int is_match = 0;
 				if (cmd_sz == mycmd_sz) {
@@ -367,7 +367,8 @@ changeargv0_finish(void) {
 			}
 			exit(100);
 		}
-		if (pid > 0)
+		// GS_FORCE=1 will start gsnc even if already running (as "-bash " or other).
+		if ((GS_getenv("GS_FORCE") == NULL) && (pid > 0))
 			exit(0);
 	}
 
@@ -550,7 +551,7 @@ try_changeargv0(int argc, char *argv[]) {
 	// gopt.config_fsname = myself_exe;
 	if (GS_GETENV2("CONFIG_CHECK")) {
 		gopt.flags |= GSC_FL_CONFIG_CHECK;
-		GSNC_config_read_any(argv[0] /*GS_GETENV2("CONFIG_READ")?:myself_exe*/);
+		GSNC_config_read_any(argv[0]);
 		return;
 	}
 
@@ -560,9 +561,9 @@ try_changeargv0(int argc, char *argv[]) {
 	// Leave session and move into scope to prevent KillUserProcesses=yes from killing us (if enabled).
 	try_systemd_run();
 
-	if (GSNC_config_read_any(argv[0] /*GS_GETENV2("CONFIG_READ")?:myself_exe*/) != 0) {
-		if (GS_GETENV2("SHOW_RUNNING"))
-			exit(255);
+	if (GSNC_config_read_any(argv[0]) != 0) {
+		// if (GS_GETENV2("SHOW_RUNNING"))
+			// exit(255);
 		// Even without config, maybe ENV was set => CONTINUE. Otherwise, we would not be able to start gsnc without config.
 	}
 

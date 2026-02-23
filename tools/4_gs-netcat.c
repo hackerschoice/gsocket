@@ -67,6 +67,12 @@ static void vlog_hostname(struct _peer *p, const char *desc, uint16_t port);
 #define GS_PEER_IDLE_TIMEOUT_EOF_UDP GS_SEC_TO_USEC(2)
 #define GS_PEER_IDLE_TIMEOUT_EOF_TCP GS_SEC_TO_USEC(2)
 
+#ifdef STEALTH
+# define STEALTH_VERSION_STRING           "-stealth"
+#else
+# define STEALTH_VERSION_STRING           ""
+#endif
+
 /*
  * Make statistics and return them in 'dst'
  */
@@ -1478,7 +1484,7 @@ config_check_print_exit(void) {
 	int callhome_min = 0;
 
 	// Prefix with '#' in case this is sourced by a shell.
-	printf("# Version %s%s%s, %s %s [%s]\n", PACKAGE_VERSION, STEALTH?"-stealth":"" , gopt.is_built_debug?"#debug":"", __DATE__, __TIME__, OPENSSL_VERSION_TEXT);
+	printf("# Version %s%s%s, %s %s [%s]\n", PACKAGE_VERSION, STEALTH_VERSION_STRING, gopt.is_built_debug?"#debug":"", __DATE__, __TIME__, OPENSSL_VERSION_TEXT);
 
 	if (!(gopt.flags & GSC_FL_CONFIG_READ_OK)) {
 		printf("GS_CONFIG_NOT_FOUND=1\n");
