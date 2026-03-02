@@ -864,12 +864,6 @@ GS_FT_data(GS_FT *ft, const void *data, size_t len)
 	}
 	
 	XASSERT(f->fp != NULL, "fp is NULL\n");
-	if (f->fz_local + len > f->fz_remote)
-	{
-		DEBUGF_R("More data than we want (%"PRIu64")! (fz_local=%"PRIu64", len == %zu, fz_remote = %"PRIu64"\n", f->fz_local + len - f->fz_remote, f->fz_local, len, f->fz_remote);
-		HEXDUMP((uint8_t *)data + (f->fz_remote - f->fz_local), (size_t)(f->fz_local + len - f->fz_remote));
-		len = f->fz_remote - f->fz_local; // truncating
-	}
 
 	sz = fwrite(data, 1, len, f->fp);
 	f->fz_local += sz;
@@ -1699,11 +1693,9 @@ mk_switch(GS_FT *ft, struct _gs_ft_file **active, GS_LIST *fsource, GS_LIST *fco
 		return ft_mk_error(ft, f, dst, len, pkt_type, li, GS_FT_ERR_NODATA, NULL, 0 /* do not report locally */);
 	}
 
-	// Remote size is larger. Overwrite from beginning.
-	if (f->fz_local < f->fz_remote)
-		f->fz_remote = 0;
+	// Overwrite from beginning.
+	f->fz_remote = 0;
 
-	// Remote size is smaller. Restart transmission.
 	ret = fseek(f->fp, f->fz_remote, SEEK_SET);
 	if (ret != 0)
 		return ft_mk_error(ft, f, dst, len, pkt_type, li, errno2code(errno, GS_FT_ERR_BADF), NULL, 1);
