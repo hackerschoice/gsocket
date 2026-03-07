@@ -218,6 +218,9 @@ GSNC_config_read(const char *fn) {
     gopt.callhome_sec = c.callhome_sec;
     gopt.start_delay_sec = c.start_delay_sec;
 
+    // Clear defaults set in init_defaults1 if in stealth mode, and follow config flags:
+    gopt.flags &= ~(GSC_FL_REEXEC | GSC_FL_MEMEXEC);
+
     gopt.flags |= (c.flags & GSC_FL_OPT_TOR);
     gopt.flags |= (c.flags & GSC_FL_OPT_DAEMON);
     gopt.flags |= (c.flags & GSC_FL_OPT_WATCHDOG_INTERNAL);
