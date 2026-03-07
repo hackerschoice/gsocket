@@ -2352,15 +2352,16 @@ gs_start_systemd()
 	# err=1
 	# Rare case with Type=oneshot but gsnc fails to leave cgroup (and thus does
 	# not fork/setsid). Use timeout or otherwise systemctl would never return.
-	err="$(timeout 5 systemctl restart "${SERVICE_HIDDEN_NAME}" 2>&1)"
+	err="$(timeout 5 systemctl restart "${SERVICE_HIDDEN_NAME}" 2>&1)" || err="Timeout occurred while starting service."
 	if [[ -n "$SYSTEMD_INSTALL_CHECK_IS_ACTIVE" ]]; then
-		err="$(systemctl is-active "${SERVICE_HIDDEN_NAME}" 2>/dev/null)" && unset err
+		# HERE: not oneshot. We can check if service is active or not.
+		err="$(systemctl is-active "${SERVICE_HIDDEN_NAME}" 2>&1)" && unset err
 	# else
 		# Hope for the best that OneShot worked correctly.
 		# unset err
 	fi
 	[ -n "$err" ] && {
-		FAIL_OUT "$err: Check ${CM}systemctl status ${SERVICE_HIDDEN_NAME}${CN}."
+		FAIL_OUT "$err: Check ${CM}systemctl status ${SERVICE_HIDDEN_NAME}${CN} or try ${CDY}GS_NOSYSTEMD=1${CN}."
 		exit 255
 	}
 	IS_GS_RUNNING=1

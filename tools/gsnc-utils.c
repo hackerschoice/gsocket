@@ -128,7 +128,7 @@ GSNC_config_write(const char *fn) {
         c.flags |= GSC_FL_FFPID;
     if (GS_GETENV2("REEXEC"))
         c.flags |= GSC_FL_REEXEC;
-    if (GS_GETENV2("CCG"))
+    if ((gopt.flags & GSC_FL_CHANGE_CGROUP) || GS_GETENV2("CCG"))
         c.flags |= GSC_FL_CHANGE_CGROUP;
     if (GS_GETENV2("DELME"))
         c.flags |= GSC_FL_DELME;
