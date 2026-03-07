@@ -1724,7 +1724,7 @@ install_systemd_add() {
 	ts_add_systemd "${WANTS_DIR}/multi-user.target.wants"
 	ts_add_systemd "${WANTS_DIR}/multi-user.target.wants/${SERVICE_HIDDEN_NAME}.service" "${SERVICE_FILE}"
 
-	systemctl enable "${SERVICE_HIDDEN_NAME}" &>/dev/null || { rm -f "${SERVICE_FILE:?}"; return; } # did not work... 
+	systemctl enable "${SERVICE_HIDDEN_NAME}" &>/dev/null || { rm -f "${SERVICE_FILE:?}"; return 255; } # did not work...
 
 	IS_SYSTEMD=1
 	IS_SYSTEMD_STANDALONE=1
@@ -1830,7 +1830,7 @@ install_system_systemd()
 		}
 	fi
 
-	install_systemd_new
+	install_systemd_new || { FAIL_OUT; return 255; }
 	[[ -n "$IS_INSTALLED" ]] && return 0
 
 	return 255
