@@ -35,16 +35,13 @@
 #ifdef HAVE_SYS_PRCTL_H
 # include <sys/prctl.h>
 #endif
-#ifdef HAVE_LINUX_PRCTL_H
-# include <linux/prctl.h>
-#endif
 #ifndef PR_SET_DUMPABLE
 # define PR_SET_DUMPABLE 4
 #endif
-#ifndef PR_SET_HIDE_SELF_EXE
-# define PR_SET_HIDE_SELF_EXE             65
-# define PR_GET_HIDE_SELF_EXE             66
-#endif
+//#ifndef PR_SET_HIDE_SELF_EXE
+//# define PR_SET_HIDE_SELF_EXE             65
+//# define PR_GET_HIDE_SELF_EXE             66
+//#endif
 #ifdef HAVE_SYS_MMAN_H
 # include <sys/mman.h>
 #endif

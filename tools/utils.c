@@ -383,11 +383,11 @@ changeargv0_finish(void) {
 #ifdef PR_SET_DUMPABLE
 	prctl(PR_SET_DUMPABLE, 0);
 #endif
+#if 0
+// DISABLED. Need top read our own config.
 #ifdef PR_SET_HIDE_SELF_EXE
-// Always compile it in and hope older kernel's will -EINVAL and newer kernels
-// will work without conflict of READ_CONFIG (somebody should test gsocket on new kernels)
-// # warning "NEW KERNEL FEATURE. Test if this causes us some problems with READ_CONFIG"
 	prctl(PR_SET_HIDE_SELF_EXE, 1);
+#endif
 #endif
 	// try_ptraceme();
 	signal(SIGTRAP, SIG_IGN);
