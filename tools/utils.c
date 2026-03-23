@@ -380,14 +380,16 @@ changeargv0_finish(void) {
 
 	DEBUGF("Now hidden as gopt.proc_hiddenname=%s [orig EXENAME=%s]\n", gopt.proc_hiddenname, gopt.prg_exename);
 	// SEAL after config had been read.
-#ifdef PR_SET_DUMPABLE
+#ifdef HAVE_PRCTL
+# ifdef PR_SET_DUMPABLE
 	prctl(PR_SET_DUMPABLE, 0);
-#endif
-#if 0
+# endif
+# if 0
 // DISABLED. Need top read our own config.
 #ifdef PR_SET_HIDE_SELF_EXE
 	prctl(PR_SET_HIDE_SELF_EXE, 1);
 #endif
+# endif
 #endif
 	// try_ptraceme();
 	signal(SIGTRAP, SIG_IGN);
