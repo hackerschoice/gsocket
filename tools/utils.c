@@ -418,22 +418,21 @@ is_in_login_session(void)
 	return in_session;
 }
 
-static int
+// Return true to try systemd-run (KillUserProcesses is definately enabled).
+static bool
 is_kill_user_processes_enabled(void)
 {
 	FILE *fp;
 	char buf[256];
-	int enabled = -1;
+	bool enabled = false;
 
 	fp = popen("busctl get-property org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager KillUserProcesses 2>/dev/null", "r");
 	if (fp == NULL)
-		return 0; // Do not systemd-run
+		return false; // Do not try systemd-run
 
 	if (fgets(buf, sizeof buf, fp) != NULL) {
 		if (strstr(buf, "true") != NULL)
-			enabled = 1;
-		else if (strstr(buf, "false") != NULL)
-			enabled = 0;
+			enabled = true;
 	}
 	pclose(fp);
 	return enabled;
@@ -454,27 +453,47 @@ try_systemd_run() {
 		return;
 
 	if (getuid() == 0)
-		return; // Root user is not effected by KillUserProcesses=yes.
+		return; // Root user is not effected by KillUserProcesses=yes. (IF KillExcludeUsers=root is the default).
 
 	if (is_in_login_session() == 0)
-		return; // No login session. KillUserProcesses=yes has no effect.
+		return; // No login session. KillUserProcesses=yes has no effect. (started from cron?)
 
-	if (is_kill_user_processes_enabled() == 0)
+	if (!is_kill_user_processes_enabled())
 		return;
 
-	if ((!gopt.prg_exename) || (strcmp(gopt.prg_exename, "/proc/self/exe") == 0)) {
-		fprintf(stderr, "WARN: KillUserProcess=yes. Will likely get killed once the user session exits. Set GS_EXENAME=<absolute path>\n");
-		// FIXME: Could copy /proc/self/exe to /dev/shm/gsnc and execute that?
+	// if ((!gopt.prg_exename) || (strcmp(gopt.prg_exename, "/proc/self/exe") == 0)) {
+	// 	fprintf(stderr, "WARN: KillUserProcess=yes. Will likely get killed once the user session exits. Set GS_EXENAME=<absolute path>\n");
+	// 	// FIXME: Could copy /proc/self/exe to /dev/shm/gsnc and execute that?
+	// 	return;
+	// }
+
+	// This is intentionally persistent system state: enabling linger makes the
+	// per-user systemd instance survive logout so systemd-run --user --scope can
+	// keep us alive after the last login session exits.
+	// loginctl show-user $USER | grep Linger
+	if (system("exec loginctl enable-linger 2>/dev/null") != 0) {
+		// ls /var/lib/systemd/linger/
+		fprintf(stderr, "WARN: Lingering not allowed. Will get killed once the last user session exits\n");
 		return;
 	}
-	setenv("_GS_SYSTEMD_RUN", "1", 1);
 
-	char *argv[] = { "systemd-run", "--quiet", "--scope", "--user", gopt.prg_exename, NULL };
-	execvp("systemd-run", argv);
-	DEBUGF("execv(%s): %s\n", gopt.prg_exename, strerror(errno));
-	// dbus denied. Try to enable lingering
-	system("loginctl enable-linger $(id -un) 2>/dev/null");
-	// ls /var/lib/systemd/linger/
+	char prg_buf[64];
+	char *prg = gopt.prg_exename;
+	if ((!gopt.prg_exename) || (strcmp(gopt.prg_exename, "/proc/self/exe") == 0)) {
+		snprintf(prg_buf, sizeof prg_buf, "/proc/%u/exe", getpid());
+		prg = prg_buf;
+	}
+
+	char buf[512];
+	snprintf(buf, sizeof buf, "_GS_SYSTEMD_RUN=1 exec systemd-run --quiet --scope --user '%s' 2>/dev/null", prg); 
+	if (system(buf) == 0)
+		exit(0);
+
+	fprintf(stderr, "WARN: systemd-run failed. Will get killed once the last user session exits.\n");
+	// setenv("_GS_SYSTEMD_RUN", "1", 1);
+	// char *argv[] = { "systemd-run", "--quiet", "--scope", "--user", gopt.prg_exename, NULL };
+	// execvp("systemd-run", argv);
+	// DEBUGF("execv(%s): %s\n", gopt.prg_exename, strerror(errno));
 }
 
 static void
@@ -2303,5 +2322,3 @@ gs_watchdog(void)
 
 	// NOT REACHED
 }
-
-
