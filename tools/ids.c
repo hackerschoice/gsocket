@@ -83,7 +83,10 @@ utmp_db_add(const char *user, int idle, int token)
 
 	DEBUGF_C("Adding new user %s with idle %d\n", user, idle);
 	new = malloc(sizeof *new);
-	new->idle = idle;
+        if (new == NULL)
+            return NULL;
+
+        new->idle = idle;
 	new->idle_old = 0;
 	new->token = token;
 	snprintf(new->user, sizeof new->user, "%s", user);
