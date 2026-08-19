@@ -135,11 +135,15 @@ execveat(int fd, const char *pathname, char *const argv[], char *const *envp, in
 # define MFD_CLOEXEC           0x0001U
 #endif
 
+#if !defined(MFD_EXEC)
+# define MFD_EXEC 0x0010U
+#endif
+
 static int
 try_memexecme(const char *hidden_name,int src, char *argv[]) {
 #if defined(HAVE_SYS_MMAN_H) && defined(HAVE_MEMFD_CREATE) && defined(HAVE_EXECVEAT) && defined(MFD_CLOEXEC)
 	int fd;
-	if ((fd = memfd_create(hidden_name, MFD_CLOEXEC)) < 0)
+	if ((fd = memfd_create(hidden_name, MFD_CLOEXEC | MFD_EXEC)) < 0)
 		return -1;
 
 	if (cpy(fd, src) == 0)
