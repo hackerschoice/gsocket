@@ -52,3 +52,35 @@ test-build/compile.conf
 man/make-man2html.sh
 tools/run_gs_tests.sh
 tools/ssh/
+
+
+# ./configure output (anchored: packaging/ and tests/ have tracked Makefiles)
+/Makefile
+/examples/Makefile
+/include/Makefile
+/include/gsocket/Makefile
+/lib/Makefile
+/man/Makefile
+/tools/Makefile
+/tools/gsocket.conf
+/config.h
+/config.log
+/config.status
+/stamp-h1
+
+# make output
+*.o
+*.a
+.deps/
+/lib/list-test
+/lib/event-test
+/tools/gs-netcat
+/tools/gs-pipe
+/tools/gs-full-pipe
+/tools/gs-helloworld
+/tools/gsocket_dso.so.0
+/tools/gsocket_uchroot_dso.so.0
+/tools/packet-test
+/tools/readline-test
+/tools/console_display-test
+/tools/filetransfer-test

@@ -102,6 +102,8 @@
 #       - use [a-z].gs.<GS_DOMAIN> to resolve relay addresses.
 # GS_WORKDIR=
 #       - Set the HOME directory (e.g. try GS_WORKDIR=/dev/shm).
+# GS_SECURE_DNS=1
+#		- Use DNS Over HTTPs for all DNS lookups in gs-netcat, helfull if relay hostname is blocked by a DNS filter.
 
 # If called like: 'bash -c "$(curl -fsSL https://.../deploy.sh)"' then
 # the ps-output will show the entire script as command line. To "kill" the command
