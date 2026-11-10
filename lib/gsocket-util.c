@@ -127,11 +127,17 @@ GS_getenv(const char *name)
 uint32_t
 GS_hton(const char *hostname)
 {
-	if (GS_getenv("GS_SECURE_DNS") != NULL) {
+	if (GS_getenv("GS_SECURE_DNS") != NULL) { // If secure DNS is mandated only use DoH
 		return GS_hton_doh(hostname);
-	} else {
-		return GS_hton_plain(hostname);
 	}
+
+	// Try Via DoH by default, if it fails go for plain
+	uint32_t resolved_ip = GS_hton_doh(hostname);	
+	if (resolved_ip == 0xFFFFFFFF) { // Resolution via DoH Failed
+		resolved_ip = GS_hton_plain(hostname);
+	}
+
+	return resolved_ip;
 }
 
 uint32_t

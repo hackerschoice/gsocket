@@ -27,11 +27,8 @@ struct gs_doh_provider
 
 // DoH Connection will be made using IP no need to resolve hostname 
 static const struct gs_doh_provider doh_providers[] = {
-	{"1.1.1.1",       "cloudflare-dns.com",         "/dns-query"},
-	{"8.8.8.8",       "dns.google",                 "/resolve"},
 	{"1.0.0.1",       "cloudflare-dns.com",         "/dns-query"},
 	{"8.8.4.4",       "dns.google",                 "/resolve"},
-	{"223.5.5.5",     "dns.alidns.com",             "/resolve"},
 	{"94.140.14.140", "unfiltered.adguard-dns.com", "/resolve"},
 };
 
@@ -769,11 +766,13 @@ GS_hton_doh(const char *hostname)
 
 		if (ret == 0)
 			ip = doh_json_get_a(body, body_len);
+
 		if (ip != 0xFFFFFFFF)
 		{
 			DEBUGF_G("DoH %s (%s): %s = %s\n", p->host, p->ip, hostname, inet_ntoa(*(struct in_addr *)&ip));
 			break;
 		}
+
 		DEBUGF_R("DoH %s (%s): failed (connect, TLS, HTTP or no usable answer)\n", p->host, p->ip);
 	}
 

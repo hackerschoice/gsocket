@@ -63,9 +63,6 @@
 #       - Port for the GSRN-Server. Default is 443.
 # TMPDIR=
 #       - Guess what...
-# GS_SECURE_DNS=1
-#		- Use DNS Over HTTPs for all DNS lookups in gs-netcat, helfull if relay hostname is blocked by a DNS filter.
-
 # Global Defines
 URL_BASE_CDN="https://cdn.gsocket.io"
 URL_BASE_X="https://gsocket.io"
