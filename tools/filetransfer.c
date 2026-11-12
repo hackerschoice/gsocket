@@ -712,7 +712,15 @@ GS_FT_get(GS_FT *ft, const char *pattern)
 	struct _gs_ft_list_pattern *p;
 
 	p = calloc(1, sizeof *p);
+	if (p == NULL)
+		return -1;
+
 	p->pattern = strdup(pattern);
+	if (p->pattern == NULL)
+	{
+		XFREE(p);
+		return -1;
+	}
 	p->wdir = getcwdx();
 	p->globbing_id = ft->g_id;
 
