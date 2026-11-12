@@ -266,6 +266,9 @@ bin2hex(char *dst, size_t dsz, const void *src, size_t sz, char *hexset)
 {
 	char *end = dst + dsz;
 	char *dst_orig = dst;
+
+	if (src == NULL)
+		sz = 0;
 	uint8_t *s = (uint8_t *)src;
 	uint8_t *e = s + sz;
 
