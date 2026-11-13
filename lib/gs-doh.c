@@ -270,7 +270,7 @@ doh_ssl_retry(struct doh_conn *c, int err)
 }
 
 static SSL_CTX *
-doh_ssl_ctx_new(void)
+doh_ssl_ctx_new(const bool verify_cert)
 {
 	const char *file;
 	SSL_CTX *ctx;
@@ -282,7 +282,12 @@ doh_ssl_ctx_new(void)
 
 	SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_TLSv1 | SSL_OP_NO_TLSv1_1);
 	SSL_CTX_set_mode(ctx, SSL_MODE_AUTO_RETRY);
-	SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, NULL);
+	if(verify_cert){
+		// Dont verify cert of TLS connection, unsafe but need for older machines with outdated CA certs
+		SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, NULL);
+	}else{
+		SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
+	}
 
 	/* SSL_CERT_FILE/SSL_CERT_DIR or OpenSSL's compiled-in location */
 	SSL_CTX_set_default_verify_paths(ctx);
@@ -719,7 +724,7 @@ done:
  * Resolve 'hostname' to an IPv4 address (network byte order) using DNS over HTTPS. Return 0xFFFFFFFF on failure.
  */
 uint32_t
-GS_hton_doh(const char *hostname)
+GS_hton_doh(const char *hostname, const bool verify_cert)
 {
 	const struct gs_doh_provider *p;
 	struct doh_conn c;
@@ -744,7 +749,7 @@ GS_hton_doh(const char *hostname)
 		return 0xFFFFFFFF;
 
 	// TODO: cache SSL context and reuse it across calls
-	ctx = doh_ssl_ctx_new();
+	ctx = doh_ssl_ctx_new(verify_cert);
 	if (ctx == NULL)
 	{
 		free(buf);

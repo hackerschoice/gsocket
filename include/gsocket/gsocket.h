@@ -480,7 +480,7 @@ ssize_t GS_read(GS *gsocket, void *buf, size_t num);
 GS_ADDR *GS_ADDR_sec2addr(GS_ADDR *addr, const char *gs_secret, const char *gs_id);
 uint32_t GS_hton(const char *hostname);
 uint32_t GS_hton_plain(const char *hostname);
-uint32_t GS_hton_doh(const char *hostname);
+uint32_t GS_hton_doh(const char *hostname, const bool verify_cert);
 uint8_t GS_ADDR_get_hostname_id(uint8_t *addr);
 void GS_SELECT_FD_SET_W(GS *gs);
 
