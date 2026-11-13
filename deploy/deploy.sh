@@ -63,7 +63,6 @@
 #       - Port for the GSRN-Server. Default is 443.
 # TMPDIR=
 #       - Guess what...
-
 # Global Defines
 URL_BASE_CDN="https://cdn.gsocket.io"
 URL_BASE_X="https://gsocket.io"
